@@ -88,11 +88,11 @@ playsound.playsound('power up.mp3')
 name="Aaryan"
 age="15"
 email_id="your-gmail-here"
-email_id_password="your-gamail-here"
+email_id_password="your-gmail-password-here"
 gender="Sir"
 city="Kathmandu"
 dad="your-contacts-gmail"
-mom="your-contacts-gmail
+mom="your-contacts-gmail"
 sis="your-contacts-gmail"
 account_sid = 'your-twilio-acc-sid'
 auth_token = 'your-twilio-acc-token'
