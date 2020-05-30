@@ -475,7 +475,7 @@ def locate():
     webbrowser.open_new_tab("https://www.google.com/maps/place/"+place)
 
 def weather_info():
-    owm=pyowm.OWM('your_api'
+    owm=pyowm.OWM('your_api)
     location=owm.weather_at_place(f'{city}')
     weather=location.get_weather()
     temp=weather.get_temperature('celsius')
@@ -490,7 +490,7 @@ def weather_info():
     speak(f'The air is {humidity}% humid today')
 
 def weather_at_place():
-    owm=pyowm.OWM('b318d9f28024e9e56d74dd853a43de5b')
+    owm=pyowm.OWM('your-api-key')
     location=owm.weather_at_place(f'{city}')
     weather=location.get_weather()
     temp=weather.get_temperature('celsius')
@@ -796,7 +796,7 @@ if __name__ == '__main__':
 
                                 root.geometry=("300x300")
 
-                                label1=Label(root,text="Enter the recipient's mail: ",font = ("algerian",19,"bold"),fg ='black').place(x=10,y=200)
+                                label1=Label(root,text="Enter the recipient's mail: ",font = ("algerian",19,"bold")fg ='black').place(x=10,y=200)
 
                                 entry=Entry(root,textvariable=to,width=25).place(x=200,y=210)
                                 to=str(to.get())
