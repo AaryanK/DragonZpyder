@@ -12,6 +12,13 @@ from .client import (
     DragonZpyderClientError,
 )
 from .config import ConfigError, DragonZpyderConfig
+from .tasks import (
+    approve_and_resume_durable_task,
+    cancel_durable_task,
+    durable_task_status,
+    resume_durable_task,
+    submit_durable_task,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -36,13 +43,46 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("logout", help="Revoke the current Operly session and delete local cookies.")
     subparsers.add_parser("status", help="Show the current Personal session status.")
 
-    submit = subparsers.add_parser("submit", help="Submit a retry-safe Personal task.")
+    submit = subparsers.add_parser("submit", help="Submit an immediate retry-safe Personal turn.")
     submit.add_argument("message", nargs="+", help="Task text.")
     submit.add_argument("--conversation", help="Continue an existing Personal conversation.")
     submit.add_argument(
         "--request-id",
         help="Stable retry ID. Reuse this exact value after a timeout or lost response.",
     )
+
+    task = subparsers.add_parser(
+        "task",
+        help="Submit a durable Personal task that Operly can resume after worker/API restarts.",
+    )
+    task.add_argument("message", nargs="+", help="Durable task objective.")
+    task.add_argument("--conversation", help="Attach the task to an existing Personal conversation.")
+    task.add_argument(
+        "--request-id",
+        help="Stable submission ID. Reuse it after a lost response to recover the same task.",
+    )
+    task.add_argument("--max-steps", type=int, default=8)
+    task.add_argument("--max-mutations", type=int, default=4)
+
+    task_status = subparsers.add_parser("task-status", help="Show one durable Personal task.")
+    task_status.add_argument("task_id")
+
+    task_cancel = subparsers.add_parser("task-cancel", help="Cancel one durable Personal task.")
+    task_cancel.add_argument("task_id")
+
+    task_resume = subparsers.add_parser(
+        "task-resume",
+        help="Requeue a resumable durable task; waiting approvals require the exact approval ID.",
+    )
+    task_resume.add_argument("task_id")
+    task_resume.add_argument("--approval-id")
+
+    task_approve = subparsers.add_parser(
+        "task-approve",
+        help="Approve a waiting durable task step and hand execution back to Operly's worker.",
+    )
+    task_approve.add_argument("task_id")
+    task_approve.add_argument("approval_id")
 
     approvals = subparsers.add_parser("approvals", help="Show pending Personal approvals.")
     approvals.set_defaults(command="approvals")
@@ -58,7 +98,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     resume = subparsers.add_parser(
         "resume",
-        help="Resume an already-approved action after a client/network interruption.",
+        help="Resume an already-approved immediate action after a client/network interruption.",
     )
     resume.add_argument("approval_id")
 
@@ -94,11 +134,42 @@ def _print_submission(result: dict) -> None:
         print(f"Blocker: {blocker}")
     if approval_id:
         print(f"Approval ID: {approval_id}")
-        print(f"Next: dragonzpyder approvals")
+        print("Next: dragonzpyder approvals")
     if result.get("conversation_id"):
         print(f"Conversation: {result['conversation_id']}")
     if result.get("client_request_id"):
         print(f"Request ID: {result['client_request_id']}")
+    if result.get("replayed"):
+        print("Safe retry replay: yes")
+
+
+def _print_task(result: dict) -> None:
+    status = str(result.get("status") or "unknown")
+    print(f"Status: {status}")
+    if result.get("task_id"):
+        print(f"Task ID: {result['task_id']}")
+    if result.get("conversation_id"):
+        print(f"Conversation: {result['conversation_id']}")
+    if result.get("client_request_id"):
+        print(f"Request ID: {result['client_request_id']}")
+    if result.get("current_step_id"):
+        print(f"Current step: {result['current_step_id']}")
+    if result.get("checkpoint_version") is not None:
+        print(f"Checkpoint: {result['checkpoint_version']}")
+    approval_id = str(result.get("approval_id") or "").strip()
+    if approval_id:
+        print(f"Approval ID: {approval_id}")
+        if result.get("task_id"):
+            print(f"Next: dragonzpyder task-approve {result['task_id']} {approval_id}")
+    if result.get("error_code"):
+        print(f"Blocker: {result['error_code']}")
+    if result.get("error"):
+        print(f"Detail: {result['error']}")
+    payload = result.get("result")
+    if isinstance(payload, dict) and payload:
+        print("Result: " + json.dumps(payload, ensure_ascii=False, sort_keys=True))
+    if status == "execution_uncertain":
+        print("An external effect may already have happened. Do not submit a replacement task until Operly reconciles it.")
     if result.get("replayed"):
         print("Safe retry replay: yes")
 
@@ -201,8 +272,6 @@ def main(argv: list[str] | None = None) -> int:
 
         if args.command == "submit":
             request_id = str(args.request_id or uuid4())
-            # Print the stable identity before crossing the network boundary. If the
-            # response is lost, the user still has the exact ID required for a safe retry.
             print(f"Request ID: {request_id}")
             try:
                 result = dict(
@@ -215,6 +284,57 @@ def main(argv: list[str] | None = None) -> int:
             except DragonZpyderClientError as exc:
                 return _error(exc, request_id=request_id)
             _print_submission(result)
+            return 0
+
+        if args.command == "task":
+            request_id = str(args.request_id or uuid4())
+            print(f"Request ID: {request_id}")
+            try:
+                result = dict(
+                    submit_durable_task(
+                        client,
+                        " ".join(args.message),
+                        request_id=request_id,
+                        conversation_id=args.conversation,
+                        max_steps=args.max_steps,
+                        max_mutations=args.max_mutations,
+                    )
+                )
+            except DragonZpyderClientError as exc:
+                return _error(exc, request_id=request_id)
+            _print_task(result)
+            return 0
+
+        if args.command == "task-status":
+            _print_task(dict(durable_task_status(client, args.task_id)))
+            return 0
+
+        if args.command == "task-cancel":
+            _print_task(dict(cancel_durable_task(client, args.task_id)))
+            return 0
+
+        if args.command == "task-resume":
+            _print_task(
+                dict(
+                    resume_durable_task(
+                        client,
+                        args.task_id,
+                        approval_id=args.approval_id,
+                    )
+                )
+            )
+            return 0
+
+        if args.command == "task-approve":
+            _print_task(
+                dict(
+                    approve_and_resume_durable_task(
+                        client,
+                        args.task_id,
+                        args.approval_id,
+                    )
+                )
+            )
             return 0
 
         if args.command == "approvals":

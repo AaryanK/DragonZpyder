@@ -1,6 +1,6 @@
 # DragonZpyder
 
-DragonZpyder is the personal client for Operly's governed execution runtime. Operly remains the authority, data boundary, approval system, and capability executor; DragonZpyder is intentionally thin.
+DragonZpyder is the personal client for Operly's governed execution runtime. Operly remains the authority, data boundary, approval system, task worker, and capability executor; DragonZpyder is intentionally thin.
 
 The historical desktop-assistant program stays disabled. The current package contains no shared backend administrator key, provider credential, local browser-control runtime, or independent business/workspace authority.
 
@@ -33,7 +33,7 @@ dragonzpyder login --email you@example.com
 
 If the Operly account initially opens in a Workspace session, DragonZpyder immediately uses Operly's existing `/api/auth/personal-scope` flow to revoke that session and replace it with Personal-only authority. DragonZpyder never asks for a workspace ID.
 
-Submit a task:
+For an immediate Personal turn:
 
 ```bash
 dragonzpyder submit "Find an afternoon next week when I am free."
@@ -45,17 +45,46 @@ The output includes the conversation ID and client request ID. To continue after
 dragonzpyder submit --conversation <conversation-id> "Use Tuesday and draft the invitation to Alex."
 ```
 
-If a network timeout or lost response occurs while submitting a task, retry with the **same** request ID printed by the first attempt:
+If a network timeout or lost response occurs, retry with the **same** request ID printed by the first attempt. Operly durably scopes that identity to the authenticated Personal principal.
+
+## Durable tasks
+
+Use a durable task when work should survive an API or worker restart, may pause for approval, or should be cancellable while queued/waiting:
 
 ```bash
-dragonzpyder submit --request-id <same-id> "Find an afternoon next week when I am free."
+dragonzpyder task "Find an afternoon next week when I am free and prepare the next step."
 ```
 
-Operly durably scopes this ID to the authenticated Personal principal. An identical completed retry replays the stored result; a changed payload under the same ID is rejected; an unresolved request is reported as in progress rather than blindly duplicated.
+DragonZpyder prints the stable request ID before submission. If the first `202 Accepted` response is lost, repeat the same objective with that exact request ID; Operly returns the same persisted task rather than creating another task or conversation:
 
-## Approvals and sends
+```bash
+dragonzpyder task --request-id <same-id> "Find an afternoon next week when I am free and prepare the next step."
+```
 
-Review pending approvals before allowing a high-risk action:
+Inspect or cancel the task:
+
+```bash
+dragonzpyder task-status <task-id>
+dragonzpyder task-cancel <task-id>
+```
+
+If a durable task pauses for approval, review the exact proposal with `dragonzpyder approvals`, then approve that specific task step and return execution to Operly's worker:
+
+```bash
+dragonzpyder task-approve <task-id> <approval-id>
+```
+
+If the approval was already recorded but the client disconnected before the task was requeued:
+
+```bash
+dragonzpyder task-resume <task-id> --approval-id <approval-id>
+```
+
+DragonZpyder does not execute durable task capabilities itself. It submits, inspects, cancels, and resumes the server-owned task; Operly's durable worker owns leases, authority re-resolution, Kernel execution, retries/reconciliation, and checkpoints. A cancelled task cannot resume. An uncertain external effect is reported as uncertain and must be reconciled before replacement work is submitted.
+
+## Approvals and immediate sends
+
+Review pending approvals before allowing a high-risk immediate action:
 
 ```bash
 dragonzpyder approvals
@@ -73,7 +102,7 @@ Rejecting performs no action:
 dragonzpyder reject <approval-id>
 ```
 
-If the approval decision succeeded but the client disconnected before the approved invocation began, resume the already-approved contract instead of approving a new one:
+If the approval decision succeeded but the client disconnected before the approved immediate invocation began, resume the already-approved contract instead of approving a new one:
 
 ```bash
 dragonzpyder resume <approval-id>
