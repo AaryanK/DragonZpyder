@@ -45,7 +45,7 @@ The output includes the conversation ID and client request ID. To continue after
 dragonzpyder submit --conversation <conversation-id> "Use Tuesday and draft the invitation to Alex."
 ```
 
-If a network timeout or lost response occurs, retry with the **same** request ID printed by the first attempt:
+If a network timeout or lost response occurs while submitting a task, retry with the **same** request ID printed by the first attempt:
 
 ```bash
 dragonzpyder submit --request-id <same-id> "Find an afternoon next week when I am free."
@@ -53,13 +53,35 @@ dragonzpyder submit --request-id <same-id> "Find an afternoon next week when I a
 
 Operly durably scopes this ID to the authenticated Personal principal. An identical completed retry replays the stored result; a changed payload under the same ID is rejected; an unresolved request is reported as in progress rather than blindly duplicated.
 
-Review pending approvals and decide them through Operly's existing Personal approval endpoints:
+## Approvals and sends
+
+Review pending approvals before allowing a high-risk action:
 
 ```bash
 dragonzpyder approvals
+```
+
+For an email send, the review shows the exact canonical recipient/subject/body, the server-calculated review hash, and the approval expiry. Approving executes only that exact server-returned contract using the same capability, arguments, request ID, conversation, and approval ID:
+
+```bash
 dragonzpyder approve <approval-id>
+```
+
+Rejecting performs no action:
+
+```bash
 dragonzpyder reject <approval-id>
 ```
+
+If the approval decision succeeded but the client disconnected before the approved invocation began, resume the already-approved contract instead of approving a new one:
+
+```bash
+dragonzpyder resume <approval-id>
+```
+
+Operly re-resolves current Personal authority immediately before execution. An edit to the reviewed recipient/body, an expired approval, or revoked permission blocks the action.
+
+For Gmail sends, Operly persists the logical send identity before crossing the provider boundary and uses a deterministic RFC Message-ID. If Gmail acknowledges the message, Operly reports the provider result and attempts read-back verification when the connector scope supports it. If a timeout or disconnect makes delivery ambiguous, DragonZpyder reports **uncertain delivery** and the stable message identity. Do **not** send again just because the HTTP response was lost; the message identity must be reconciled against sent mail first.
 
 Check or revoke the current session:
 
