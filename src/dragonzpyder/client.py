@@ -26,11 +26,13 @@ class DragonZpyderClientError(RuntimeError):
         code: str = "CLIENT_ERROR",
         status: int | None = None,
         retryable: bool = False,
+        details: Mapping[str, Any] | None = None,
     ) -> None:
         super().__init__(message)
         self.code = code
         self.status = status
         self.retryable = retryable
+        self.details = dict(details or {})
 
 
 class DragonZpyderAuthError(DragonZpyderClientError):
@@ -156,10 +158,18 @@ class CookieSessionTransport:
     @staticmethod
     def _detail(payload: Any, status: int) -> DragonZpyderClientError:
         detail = payload.get("detail") if isinstance(payload, Mapping) else None
+        details: dict[str, Any] = {}
         if isinstance(detail, Mapping):
             code = str(detail.get("code") or f"HTTP_{status}")
             message = str(detail.get("message") or code)
             retryable = bool(detail.get("retryable", False))
+            nested = detail.get("details")
+            if isinstance(nested, Mapping):
+                details = dict(nested)
+            # An ambiguous external mutation is deliberately not a transport retry.
+            # It must be reconciled by its stable provider identity before another send.
+            if code == "execution_outcome_uncertain":
+                retryable = False
         else:
             code = f"HTTP_{status}"
             message = str(detail or f"Operly request failed with HTTP {status}")
@@ -170,6 +180,7 @@ class CookieSessionTransport:
             code=code,
             status=status,
             retryable=retryable,
+            details=details,
         )
 
     def request_json(
