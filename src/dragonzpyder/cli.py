@@ -168,6 +168,9 @@ def main(argv: list[str] | None = None) -> int:
 
         if args.command == "submit":
             request_id = str(args.request_id or uuid4())
+            # Print the stable identity before crossing the network boundary. If the
+            # response is lost, the user still has the exact ID required for a safe retry.
+            print(f"Request ID: {request_id}")
             try:
                 result = dict(
                     client.submit(
