@@ -7,14 +7,14 @@
   <meta name="description" content="DragonZpyder Personal AI: a private frontend for the governed Operly personal runtime.">
   <meta name="robots" content="noindex,nofollow">
   <meta name="theme-color" content="#07090d">
-  <link rel="icon" type="image/png" href="https://raw.githubusercontent.com/AaryanK/DragonZpyder-Landing/codex/personal-web-frontend/favicon.png">
+  <link rel="icon" type="image/png" href="https://raw.githubusercontent.com/AaryanK/DragonZpyder-Landing/f18fa6a100eebfa8a43036d7baad5b85d9623785/favicon.png">
   <link rel="stylesheet" href="/app.css">
 </head>
 <body>
   <div class="app-shell" id="app-shell">
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-head">
-        <a class="brand" href="/" aria-label="DragonZpyder home"><img src="https://raw.githubusercontent.com/AaryanK/DragonZpyder-Landing/codex/personal-web-frontend/favicon.png" alt=""><span>DragonZpyder</span></a>
+        <a class="brand" href="/" aria-label="DragonZpyder home"><img src="https://raw.githubusercontent.com/AaryanK/DragonZpyder-Landing/f18fa6a100eebfa8a43036d7baad5b85d9623785/favicon.png" alt=""><span>DragonZpyder</span></a>
         <button class="icon-btn mobile-only" id="close-sidebar" aria-label="Close sidebar">×</button>
       </div>
       <button class="new-chat" id="new-chat">＋ New conversation</button>
@@ -25,20 +25,15 @@
       <a class="side-action" href="/">About DragonZpyder</a>
       <a class="side-action" href="https://operly.dragonzpyder.xyz/" target="_blank" rel="noreferrer">Open Operly ↗</a>
     </aside>
-
     <section class="workspace">
       <header class="workspace-head">
         <button class="icon-btn mobile-only" id="open-sidebar" aria-label="Open sidebar">☰</button>
         <div class="runtime-status"><span class="status-dot" id="status-dot"></span><span id="status-text">Checking runtime…</span></div>
-        <div class="head-actions">
-          <button class="ghost-btn" id="approvals-top">Approvals</button>
-          <button class="profile-btn" id="profile-button" aria-label="Account menu"><span id="profile-initial">D</span></button>
-        </div>
+        <div class="head-actions"><button class="ghost-btn" id="approvals-top">Approvals</button><button class="profile-btn" id="profile-button" aria-label="Account menu"><span id="profile-initial">D</span></button></div>
       </header>
-
       <main class="chat-main" id="chat-main">
         <section class="empty-state" id="empty-state">
-          <img src="https://raw.githubusercontent.com/AaryanK/DragonZpyder-Landing/codex/personal-web-frontend/favicon.png" alt="" class="hero-logo">
+          <img src="https://raw.githubusercontent.com/AaryanK/DragonZpyder-Landing/f18fa6a100eebfa8a43036d7baad5b85d9623785/favicon.png" alt="" class="hero-logo">
           <div class="eyebrow">Personal AI · governed by Operly</div>
           <h1>What do you want to get done?</h1>
           <p>Ask DragonZpyder to reason, retrieve connected information, draft work, or use approved capabilities. Your personal session stays separate from Workspace authority.</p>
@@ -51,46 +46,12 @@
         </section>
         <section class="messages" id="messages" aria-live="polite"></section>
       </main>
-
-      <footer class="composer-wrap">
-        <form class="composer" id="composer">
-          <textarea id="message-input" rows="1" maxlength="12000" placeholder="Message DragonZpyder…" aria-label="Message DragonZpyder"></textarea>
-          <button class="send-button" id="send-button" type="submit" aria-label="Send message">↑</button>
-        </form>
-        <div class="composer-note">DragonZpyder uses Operly's permissions, approvals, and connected capabilities. Review actions before approving them.</div>
-      </footer>
+      <footer class="composer-wrap"><form class="composer" id="composer"><textarea id="message-input" rows="1" maxlength="12000" placeholder="Message DragonZpyder…" aria-label="Message DragonZpyder"></textarea><button class="send-button" id="send-button" type="submit" aria-label="Send message">↑</button></form><div class="composer-note">DragonZpyder uses Operly's permissions, approvals, and connected capabilities. Review actions before approving them.</div></footer>
     </section>
   </div>
-
-  <div class="modal-backdrop" id="auth-modal" hidden>
-    <section class="modal auth-card" role="dialog" aria-modal="true" aria-labelledby="auth-title">
-      <a class="brand auth-brand" href="/"><img src="https://raw.githubusercontent.com/AaryanK/DragonZpyder-Landing/codex/personal-web-frontend/favicon.png" alt=""><span>DragonZpyder</span></a>
-      <div class="eyebrow">Private personal runtime</div>
-      <h2 id="auth-title">Sign in to your Personal AI</h2>
-      <p class="modal-copy">DragonZpyder uses your existing Operly account and converts the session to Personal-only authority before running tasks.</p>
-      <form id="login-form" class="login-form">
-        <label>Email<input id="login-email" type="email" autocomplete="email" required></label>
-        <label>Password<input id="login-password" type="password" autocomplete="current-password" required></label>
-        <button class="primary-btn" id="login-button" type="submit">Sign in</button>
-      </form>
-      <div class="form-error" id="login-error" hidden></div>
-      <p class="small-copy">Need an account or Google sign-in? <a href="https://operly.dragonzpyder.xyz/" target="_blank" rel="noreferrer">Open Operly ↗</a></p>
-    </section>
-  </div>
-
-  <div class="drawer-backdrop" id="approvals-drawer" hidden>
-    <aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="approvals-title">
-      <div class="drawer-head"><div><div class="eyebrow">Human boundary</div><h2 id="approvals-title">Pending approvals</h2></div><button class="icon-btn" id="close-approvals" aria-label="Close approvals">×</button></div>
-      <p class="modal-copy">Review the exact action and content before allowing DragonZpyder to execute it.</p>
-      <div id="approval-list" class="approval-list"></div>
-    </aside>
-  </div>
-
-  <div class="menu" id="profile-menu" hidden>
-    <div class="menu-title" id="session-label">Personal session</div>
-    <button id="logout-button">Sign out</button>
-  </div>
-
+  <div class="modal-backdrop" id="auth-modal" hidden><section class="modal auth-card" role="dialog" aria-modal="true" aria-labelledby="auth-title"><a class="brand auth-brand" href="/"><img src="https://raw.githubusercontent.com/AaryanK/DragonZpyder-Landing/f18fa6a100eebfa8a43036d7baad5b85d9623785/favicon.png" alt=""><span>DragonZpyder</span></a><div class="eyebrow">Private personal runtime</div><h2 id="auth-title">Sign in to your Personal AI</h2><p class="modal-copy">DragonZpyder uses your existing Operly account and converts the session to Personal-only authority before running tasks.</p><form id="login-form" class="login-form"><label>Email<input id="login-email" type="email" autocomplete="email" required></label><label>Password<input id="login-password" type="password" autocomplete="current-password" required></label><button class="primary-btn" id="login-button" type="submit">Sign in</button></form><div class="form-error" id="login-error" hidden></div><p class="small-copy">Need an account or Google sign-in? <a href="https://operly.dragonzpyder.xyz/" target="_blank" rel="noreferrer">Open Operly ↗</a></p></section></div>
+  <div class="drawer-backdrop" id="approvals-drawer" hidden><aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="approvals-title"><div class="drawer-head"><div><div class="eyebrow">Human boundary</div><h2 id="approvals-title">Pending approvals</h2></div><button class="icon-btn" id="close-approvals" aria-label="Close approvals">×</button></div><p class="modal-copy">Review the exact action and content before allowing DragonZpyder to execute it.</p><div id="approval-list" class="approval-list"></div></aside></div>
+  <div class="menu" id="profile-menu" hidden><div class="menu-title" id="session-label">Personal session</div><button id="logout-button">Sign out</button></div>
   <div class="toast" id="toast" hidden></div>
   <script type="module" src="/app.js"></script>
 </body>
