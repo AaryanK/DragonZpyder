@@ -47,11 +47,20 @@ def build_parser() -> argparse.ArgumentParser:
     approvals = subparsers.add_parser("approvals", help="Show pending Personal approvals.")
     approvals.set_defaults(command="approvals")
 
-    approve = subparsers.add_parser("approve", help="Approve one pending Personal action.")
+    approve = subparsers.add_parser(
+        "approve",
+        help="Approve and immediately execute the exact reviewed Personal action.",
+    )
     approve.add_argument("approval_id")
 
     reject = subparsers.add_parser("reject", help="Reject one pending Personal action.")
     reject.add_argument("approval_id")
+
+    resume = subparsers.add_parser(
+        "resume",
+        help="Resume an already-approved action after a client/network interruption.",
+    )
+    resume.add_argument("approval_id")
 
     return parser
 
@@ -85,13 +94,24 @@ def _print_submission(result: dict) -> None:
         print(f"Blocker: {blocker}")
     if approval_id:
         print(f"Approval ID: {approval_id}")
-        print(f"Next: dragonzpyder approve {approval_id}")
+        print(f"Next: dragonzpyder approvals")
     if result.get("conversation_id"):
         print(f"Conversation: {result['conversation_id']}")
     if result.get("client_request_id"):
         print(f"Request ID: {result['client_request_id']}")
     if result.get("replayed"):
         print("Safe retry replay: yes")
+
+
+def _print_execution(result: dict) -> None:
+    print("Status: complete")
+    payload = result.get("result") if isinstance(result.get("result"), dict) else {}
+    if payload.get("verification_status"):
+        print(f"Verification: {payload['verification_status']}")
+    if payload.get("message_id"):
+        print(f"Provider message ID: {payload['message_id']}")
+    if payload.get("rfc822_message_id"):
+        print(f"Stable message identity: {payload['rfc822_message_id']}")
 
 
 def _approval_arguments(row: dict) -> dict:
@@ -107,11 +127,15 @@ def _print_approvals(rows: tuple[dict, ...]) -> None:
         print(f"Approval ID: {row.get('id', '<unknown>')}")
         arguments = _approval_arguments(row)
         if arguments:
-            print("Proposed action:")
+            print("Proposed action (exact reviewed content):")
             for key, value in sorted(arguments.items()):
                 rendered = json.dumps(value, ensure_ascii=False) if not isinstance(value, str) else value
                 print(f"  {key}: {rendered}")
-        print("Decision: pending")
+        if row.get("arguments_hash"):
+            print(f"Review hash: {row['arguments_hash']}")
+        if row.get("expires_at"):
+            print(f"Approval expires: {row['expires_at']}")
+        print(f"Decision: {row.get('status') or 'pending'}")
         print()
 
 
@@ -123,6 +147,15 @@ def _error(exc: DragonZpyderClientError, *, request_id: str | None = None) -> in
     print(f"DragonZpyder stopped: {exc}")
     if exc.code:
         print(f"Blocker: {exc.code}")
+    if exc.code == "execution_outcome_uncertain":
+        stable_id = str(exc.details.get("rfc822_message_id") or "").strip()
+        if stable_id:
+            print(f"Stable message identity: {stable_id}")
+        print("Delivery may already have happened. Do not send again until this identity is reconciled.")
+        recovery = str(exc.details.get("recovery") or "").strip()
+        if recovery:
+            print(f"Recovery: {recovery}")
+        return 5
     if request_id and exc.retryable:
         print(f"Retry with the same request ID: {request_id}")
     return 4 if exc.retryable else 2
@@ -189,11 +222,20 @@ def main(argv: list[str] | None = None) -> int:
             _print_approvals(rows)
             return 0
 
-        if args.command in {"approve", "reject"}:
-            approved = args.command == "approve"
-            row = dict(client.decide_approval(args.approval_id, approved=approved))
-            status = str(row.get("status") or ("approved" if approved else "rejected"))
-            print(f"Approval {args.approval_id}: {status}")
+        if args.command == "approve":
+            approved, result = client.approve_and_execute(args.approval_id)
+            print(f"Approval {approved.get('id') or args.approval_id}: approved")
+            _print_execution(dict(result))
+            return 0
+
+        if args.command == "reject":
+            row = dict(client.decide_approval(args.approval_id, approved=False))
+            print(f"Approval {args.approval_id}: {row.get('status') or 'denied'}")
+            return 0
+
+        if args.command == "resume":
+            result = dict(client.resume_approved(args.approval_id))
+            _print_execution(result)
             return 0
 
     except DragonZpyderClientError as exc:

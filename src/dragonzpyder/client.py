@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping, Protocol
 from urllib.error import HTTPError, URLError
+from urllib.parse import quote
 from urllib.request import (
     HTTPCookieProcessor,
     HTTPRedirectHandler,
@@ -26,11 +27,13 @@ class DragonZpyderClientError(RuntimeError):
         code: str = "CLIENT_ERROR",
         status: int | None = None,
         retryable: bool = False,
+        details: Mapping[str, Any] | None = None,
     ) -> None:
         super().__init__(message)
         self.code = code
         self.status = status
         self.retryable = retryable
+        self.details = dict(details or {})
 
 
 class DragonZpyderAuthError(DragonZpyderClientError):
@@ -156,10 +159,18 @@ class CookieSessionTransport:
     @staticmethod
     def _detail(payload: Any, status: int) -> DragonZpyderClientError:
         detail = payload.get("detail") if isinstance(payload, Mapping) else None
+        details: dict[str, Any] = {}
         if isinstance(detail, Mapping):
             code = str(detail.get("code") or f"HTTP_{status}")
             message = str(detail.get("message") or code)
             retryable = bool(detail.get("retryable", False))
+            nested = detail.get("details")
+            if isinstance(nested, Mapping):
+                details = dict(nested)
+            # An ambiguous external mutation is deliberately not a transport retry.
+            # It must be reconciled by its stable provider identity before another send.
+            if code == "execution_outcome_uncertain":
+                retryable = False
         else:
             code = f"HTTP_{status}"
             message = str(detail or f"Operly request failed with HTTP {status}")
@@ -170,6 +181,7 @@ class CookieSessionTransport:
             code=code,
             status=status,
             retryable=retryable,
+            details=details,
         )
 
     def request_json(
@@ -373,12 +385,11 @@ class DragonZpyderClient:
             )
         return result
 
-    def pending_approvals(self) -> tuple[Mapping[str, Any], ...]:
-        payload = self.transport.request_json(
-            "GET",
-            "/api/personal-tools/approvals?status=pending",
-            authenticated=True,
-        ).payload
+    def approvals(self, *, status: str | None = None) -> tuple[Mapping[str, Any], ...]:
+        path = "/api/personal-tools/approvals"
+        if status:
+            path += "?status=" + quote(str(status).strip(), safe="")
+        payload = self.transport.request_json("GET", path, authenticated=True).payload
         rows = payload.get("approvals") if isinstance(payload, Mapping) else None
         if not isinstance(rows, list):
             raise DragonZpyderClientError(
@@ -386,6 +397,19 @@ class DragonZpyderClient:
                 code="INVALID_SERVER_RESPONSE",
             )
         return tuple(row for row in rows if isinstance(row, Mapping))
+
+    def pending_approvals(self) -> tuple[Mapping[str, Any], ...]:
+        return self.approvals(status="pending")
+
+    def _approval(self, approval_id: str) -> Mapping[str, Any]:
+        clean_id = str(approval_id or "").strip()
+        for row in self.approvals():
+            if str(row.get("id") or "") == clean_id:
+                return row
+        raise DragonZpyderClientError(
+            "That Personal approval is not available in this account.",
+            code="APPROVAL_NOT_FOUND",
+        )
 
     def decide_approval(self, approval_id: str, *, approved: bool) -> Mapping[str, Any]:
         clean_id = str(approval_id or "").strip()
@@ -407,3 +431,47 @@ class DragonZpyderClient:
                 code="INVALID_SERVER_RESPONSE",
             )
         return result
+
+    def execute_approved(self, approval: Mapping[str, Any]) -> Mapping[str, Any]:
+        if str(approval.get("status") or "") != "approved":
+            raise DragonZpyderClientError(
+                "Only an approved Personal action can be resumed.",
+                code="APPROVAL_NOT_EXECUTABLE",
+            )
+        capability_id = str(approval.get("capability_id") or "").strip()
+        request_id = str(approval.get("request_id") or "").strip()
+        approval_id = str(approval.get("id") or "").strip()
+        arguments = approval.get("arguments")
+        if not capability_id or not request_id or not approval_id or not isinstance(arguments, Mapping):
+            raise DragonZpyderClientError(
+                "The approved action is missing its bound execution contract.",
+                code="APPROVAL_CONTRACT_INVALID",
+            )
+        payload: dict[str, Any] = {
+            "goal": "",
+            "arguments": dict(arguments),
+            "request_id": request_id,
+            "approval_id": approval_id,
+        }
+        if approval.get("conversation_id"):
+            payload["conversation_id"] = str(approval["conversation_id"])
+        result = self.transport.request_json(
+            "POST",
+            f"/api/personal-tools/{quote(capability_id, safe='')}/execute",
+            payload,
+            csrf=True,
+            authenticated=True,
+        ).payload
+        if not isinstance(result, Mapping):
+            raise DragonZpyderClientError(
+                "Operly approved action returned an invalid response.",
+                code="INVALID_SERVER_RESPONSE",
+            )
+        return result
+
+    def approve_and_execute(self, approval_id: str) -> tuple[Mapping[str, Any], Mapping[str, Any]]:
+        approved = self.decide_approval(approval_id, approved=True)
+        return approved, self.execute_approved(approved)
+
+    def resume_approved(self, approval_id: str) -> Mapping[str, Any]:
+        return self.execute_approved(self._approval(approval_id))
