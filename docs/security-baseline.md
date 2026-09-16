@@ -1,13 +1,21 @@
 # Legacy security and execution baseline — 2026-09-15
 
-Inspected revision: `86a12ef56bf46d214dd02ee4be7549d7056dd4c7` on master. Static inspection only; no credentials were used and no legacy actions were executed.
+Baseline revision: `86a12ef56bf46d214dd02ee4be7549d7056dd4c7` on `master`. The original repository was a single 1,042-line desktop-assistant program that did not parse under Python 3.12, had no reproducible package/test setup, and contained non-placeholder credential-like provider assignments.
 
-The sole program contains 1,042 lines. Python 3.12 `ast.parse` fails at line 346: unterminated string literal. There is no dependency manifest, package layout, test suite or CI. The `testcode` import has no matching tracked module. These facts block a reproducible launch independently of provider access.
+## P1 source-containment status
 
-Non-placeholder credential-like Twilio assignments occur at lines 320–321 and 359–360. Treat them as exposed pending owner/provider revocation checks; their validity was not tested. Some top-level credential assignments are obvious placeholders. Do not copy any values into reports, prompts or tickets. This was not a complete history or secret scan.
+The containment branch removes the historical program from the current runnable tree instead of repairing and re-exposing its ungoverned desktop, mail, telephony and local-credential actions. The new `src/dragonzpyder` package has no import path to the legacy program. The repository now has a pinned build backend, placeholder-only environment example, ignored credential/token/key/pickle paths, fail-clear configuration validation, a current-tree secret-pattern gate and minimal CI.
 
-Next containment PR: replace all credential literals with validated environment/broker lookups, add ignored local secret/token paths and a placeholder-only example configuration, scan current tree and full history with redacted output, and add a secrets gate. Revoke/rotate affected provider credentials and check usage through an authorized account. Removing source values does not revoke credentials or remove historical copies. Do not rewrite shared history without coordinating downstream clones and branches.
+The legacy source remains reachable in Git history for audit/reference. No credential value is copied into the modern package, documentation, fixtures or CI.
 
-Keep the old program as clearly labelled legacy reference, excluded from the new package and default startup. Do not repair just the syntax and expose its ungoverned SMTP/Twilio/desktop actions. Avoid loading its pickle credential files in a new runtime; migrate through fresh trusted OAuth authorization and encrypted credential storage. Scope shell/files/browser access, make consequential mutations policy-controlled, and verify effects.
+## Outstanding operational security work
 
-The current work adds acceptance specifications only and has not performed revocation, source containment, provider configuration or production deployment. The architectural plan is maintained in Operly at `docs/architecture/dragonzpyder-operly-2026-09-15.md`.
+Provider revocation/rotation is **not** completed by deleting literals from source. The credential-like values observed in the historical program must be treated as exposed until an authorized provider account confirms replacement/revocation and downstream deployment health. This status must be tracked separately from source containment.
+
+A complete independent full-history secret scan has not been executed in this slice. The known historical exposure is already sufficient to require provider-side action; history rewriting, if ever chosen, must be coordinated separately and must not be represented as credential revocation.
+
+Fresh OAuth authorization must be used for the modern product. Historical pickle/token files must never be loaded into the new runtime. Consequential actions belong behind Operly's scoped authority, approval, idempotency and effect-verification boundaries.
+
+## Acceptance evidence
+
+Local pre-commit validation for this slice: package installation succeeds without runtime dependencies; the CLI reports its version; Python compile succeeds; five package/config boundary tests pass; and the current-tree secret-pattern scan passes. Live provider revocation and deployment changes are intentionally not claimed.
