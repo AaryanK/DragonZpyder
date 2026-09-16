@@ -29,7 +29,6 @@ jobs:
           node --check home.js
           node --check script.js
           node --check server.mjs
-          node --check 'api/[...path].js'
       - name: Guard governed frontend boundary
         run: |
           ! grep -RniE 'proxy\.runpod\.net|Bearer EMPTY|/v1/chat/completions' -- web
@@ -38,7 +37,6 @@ jobs:
           grep -q '/api/auth/personal-scope' web/app.js
           grep -q '/api/personal-tools/approvals' web/app.js
           grep -q 'https://operly.dragonzpyder.xyz' web/server.mjs
-          grep -q 'https://operly.dragonzpyder.xyz' 'web/api/[...path].js'
       - name: Check required web root
         run: |
           test -s web/index.html
@@ -47,7 +45,6 @@ jobs:
           test -s web/app.js
           test -s web/package.json
           test -s web/server.mjs
-          test -s 'web/api/[...path].js'
           test -s web/privacy.html
           test -s web/terms.html
       - name: Smoke test Railway server
