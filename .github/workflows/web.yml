@@ -28,6 +28,7 @@ jobs:
           node --check app.js
           node --check home.js
           node --check script.js
+          node --check server.mjs
           node --check 'api/[...path].js'
       - name: Guard governed frontend boundary
         run: |
@@ -36,6 +37,7 @@ jobs:
           grep -q '/api/personal-agent/chat' web/app.js
           grep -q '/api/auth/personal-scope' web/app.js
           grep -q '/api/personal-tools/approvals' web/app.js
+          grep -q 'https://operly.dragonzpyder.xyz' web/server.mjs
           grep -q 'https://operly.dragonzpyder.xyz' 'web/api/[...path].js'
       - name: Check required web root
         run: |
@@ -43,6 +45,22 @@ jobs:
           test -s web/app.html
           test -s web/app.css
           test -s web/app.js
+          test -s web/package.json
+          test -s web/server.mjs
           test -s 'web/api/[...path].js'
           test -s web/privacy.html
           test -s web/terms.html
+      - name: Smoke test Railway server
+        working-directory: web
+        run: |
+          PORT=4173 node server.mjs > /tmp/dragonzpyder-web.log 2>&1 &
+          pid=$!
+          trap 'kill $pid' EXIT
+          for i in {1..20}; do
+            if curl -fsS http://127.0.0.1:4173/healthz >/tmp/health.json; then break; fi
+            sleep 0.25
+          done
+          grep -q '"status":"ok"' /tmp/health.json
+          curl -fsS http://127.0.0.1:4173/ | grep -q 'DragonZpyder'
+          curl -fsS http://127.0.0.1:4173/app.html | grep -q 'Personal AI'
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:4173/server.mjs)" = "404"
