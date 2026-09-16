@@ -156,14 +156,25 @@ def _print_task(result: dict) -> None:
         print(f"Current step: {result['current_step_id']}")
     if result.get("checkpoint_version") is not None:
         print(f"Checkpoint: {result['checkpoint_version']}")
+
+    wait_predicate = result.get("wait_predicate")
+    if status == "waiting_event" and isinstance(wait_predicate, dict):
+        if wait_predicate.get("kind") == "gmail_thread_reply":
+            sender = str(wait_predicate.get("expected_sender") or "").strip()
+            print(f"Waiting for reply{f' from {sender}' if sender else ''}.")
+            if result.get("deadline_at"):
+                print(f"Reply deadline: {result['deadline_at']}")
+            print("Operly is monitoring the existing invitation; do not submit a duplicate booking task.")
+
     approval_id = str(result.get("approval_id") or "").strip()
     if approval_id:
         print(f"Approval ID: {approval_id}")
         if result.get("task_id"):
             print(f"Next: dragonzpyder task-approve {result['task_id']} {approval_id}")
-    if result.get("error_code"):
-        print(f"Blocker: {result['error_code']}")
-    if result.get("error"):
+    error_code = str(result.get("error_code") or "").strip()
+    if error_code and not (status == "waiting_event" and error_code == "waiting_for_invitation_reply"):
+        print(f"Blocker: {error_code}")
+    if result.get("error") and status != "waiting_event":
         print(f"Detail: {result['error']}")
     payload = result.get("result")
     if isinstance(payload, dict) and payload:
