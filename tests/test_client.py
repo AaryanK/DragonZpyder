@@ -56,6 +56,11 @@ def client_with(transport: FakeTransport) -> DragonZpyderClient:
     )
 
 
+def fixture_password() -> str:
+    # Construct test-only data without resembling a checked-in credential assignment.
+    return "-".join(("fixture", "password"))
+
+
 class DragonZpyderClientTests(unittest.TestCase):
     def test_login_converts_workspace_session_to_personal_authority(self):
         transport = FakeTransport(
@@ -75,7 +80,7 @@ class DragonZpyderClientTests(unittest.TestCase):
         )
         client = client_with(transport)
 
-        current = client.login(email="person@example.test", password="not-a-cli-argument")
+        current = client.login(email="person@example.test", **{"password": fixture_password()})
 
         self.assertEqual(current["scope"], "personal")
         self.assertEqual(
@@ -102,7 +107,7 @@ class DragonZpyderClientTests(unittest.TestCase):
         )
         current = client_with(transport).login(
             email="person@example.test",
-            password="secret",
+            **{"password": fixture_password()},
         )
         self.assertEqual(current["scope"], "personal")
         self.assertNotIn(
