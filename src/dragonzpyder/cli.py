@@ -107,11 +107,15 @@ def _print_approvals(rows: tuple[dict, ...]) -> None:
         print(f"Approval ID: {row.get('id', '<unknown>')}")
         arguments = _approval_arguments(row)
         if arguments:
-            print("Proposed action:")
+            print("Proposed action (exact reviewed content):")
             for key, value in sorted(arguments.items()):
                 rendered = json.dumps(value, ensure_ascii=False) if not isinstance(value, str) else value
                 print(f"  {key}: {rendered}")
-        print("Decision: pending")
+        if row.get("arguments_hash"):
+            print(f"Review hash: {row['arguments_hash']}")
+        if row.get("expires_at"):
+            print(f"Approval expires: {row['expires_at']}")
+        print(f"Decision: {row.get('status') or 'pending'}")
         print()
 
 
