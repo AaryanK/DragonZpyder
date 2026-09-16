@@ -18,3 +18,5 @@ token*.json
 *.pkl
 *.pem
 *.key
+*.cookies
+.dragonzpyder/
