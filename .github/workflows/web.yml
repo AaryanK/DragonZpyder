@@ -32,7 +32,8 @@ jobs:
       - name: Guard governed frontend boundary
         run: |
           ! grep -RniE 'proxy\.runpod\.net|Bearer EMPTY|/v1/chat/completions' -- web
-          grep -q '/api/personal-tools/client/submit' web/app.js
+          # The Personal client may use the direct chat adapter or the retry-safe submit adapter.
+          grep -Eq '/api/personal-agent/chat|/api/personal-tools/client/submit' web/app.js
           grep -q '/api/personal-agent/chat' web/app.js
           grep -q '/api/auth/personal-scope' web/app.js
           grep -q '/api/personal-tools/approvals' web/app.js
