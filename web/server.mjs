@@ -129,7 +129,7 @@ async function serveStatic(req, res, url) {
     res.writeHead(200, {
       "content-type": contentTypes[extname(filename)] || "application/octet-stream",
       "content-length": info.size,
-      "cache-control": pathname.endsWith(".html") ? "no-cache" : "public, max-age=300",
+      "cache-control": pathname.endsWith(".html") || pathname.endsWith(".js") || pathname.endsWith(".css") ? "no-store" : "public, max-age=300",
       "x-content-type-options": "nosniff",
       "referrer-policy": "strict-origin-when-cross-origin",
     });
