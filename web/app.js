@@ -235,6 +235,64 @@ function showEmptyState() {
   messages.replaceChildren();
 }
 
+function renderMessageContent(element, content, role = "assistant") {
+  const source = String(content || "").replace(/\\r\\n?/g, "\\n");
+  element.replaceChildren();
+  if (role === "user") {
+    element.textContent = source;
+    return;
+  }
+
+  // Build formatted content through text nodes: model output is never trusted HTML.
+  function addInline(parent, text) {
+    const pattern = /(\\*\\*([^*\\n]+)\\*\\*|\\*([^*\\n]+)\\*|`([^`\\n]+)`)/g;
+    let cursor = 0;
+    for (const match of text.matchAll(pattern)) {
+      if (match.index > cursor) parent.append(document.createTextNode(text.slice(cursor, match.index)));
+      const node = document.createElement(match[2] ? "strong" : match[3] ? "em" : "code");
+      node.textContent = match[2] || match[3] || match[4];
+      parent.append(node);
+      cursor = match.index + match[0].length;
+    }
+    if (cursor < text.length) parent.append(document.createTextNode(text.slice(cursor)));
+  }
+
+  let list = null;
+  let code = null;
+  for (const line of source.split("\\n")) {
+    if (/^\\s*```/.test(line)) {
+      if (code) { code = null; } else {
+        const pre = document.createElement("pre");
+        code = document.createElement("code");
+        pre.append(code);
+        element.append(pre);
+      }
+      list = null;
+      continue;
+    }
+    if (code) { code.textContent += (code.textContent ? "\\n" : "") + line; continue; }
+    if (!line.trim()) { list = null; continue; }
+    const bullet = line.match(/^\\s*[-*]\\s+(.+)$/);
+    const numbered = line.match(/^\\s*\\d+[.)]\\s+(.+)$/);
+    if (bullet || numbered) {
+      const tag = bullet ? "ul" : "ol";
+      if (!list || list.tagName.toLowerCase() !== tag) {
+        list = document.createElement(tag);
+        element.append(list);
+      }
+      const li = document.createElement("li");
+      addInline(li, (bullet || numbered)[1]);
+      list.append(li);
+      continue;
+    }
+    list = null;
+    const heading = line.match(/^(#{1,3})\\s+(.+)$/);
+    const block = document.createElement(heading ? "h" + Math.min(heading[1].length + 2, 5) : "p");
+    addInline(block, heading ? heading[2] : line);
+    element.append(block);
+  }
+}
+
 function messageNode(role, content, { pending = false, error = false, meta = "", approvalId = null } = {}) {
   const wrap = document.createElement("article");
   wrap.className = `message ${role === "user" ? "user" : "assistant"}`;
@@ -251,7 +309,7 @@ function messageNode(role, content, { pending = false, error = false, meta = "",
   if (pending) {
     value.innerHTML = '<span class="thinking"><i></i><i></i><i></i></span>';
   } else {
-    value.textContent = content || "";
+    renderMessageContent(value, content, role);
   }
   body.append(label, value);
   if (meta) {
@@ -383,7 +441,7 @@ async function sendMessage(message) {
     if (result.conversation_id) state.conversationId = String(result.conversation_id);
     const blocker = result.error_code ? String(result.error_code) : "";
     const text = runtimeMessage(result);
-    pending.value.textContent = text;
+    renderMessageContent(pending.value, text);
     if (blocker) {
       pending.value.classList.add("error");
       const meta = document.createElement("div");
