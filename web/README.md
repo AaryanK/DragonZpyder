@@ -25,3 +25,16 @@ The first consolidation commit intentionally pins the existing favicon/social pr
 ## Legacy boundary
 
 `chat.html` redirects to the governed `/app.html` product. Direct RunPod/OpenAI-compatible browser inference is prohibited and checked in CI.
+
+## AI Mesh and Project IC direction (October 2026)
+
+The public landing page also documents a broader **planned** vision alongside the already implemented Personal AI frontend:
+
+- **AI Mesh:** a model-agnostic consumer interface, selectable primary models, bounded delegation to specialist models, creative services, explicit approvals, usage metering and task spending limits. A model gateway such as OpenRouter is an implementation candidate, not a completed integration.
+- **Project IC:** an exploratory shared wallet and usage-ledger concept for participating AI applications, allowing small metered experiences alongside subscriptions. External credits are not automatically portable; partner contracts and payment compliance are prerequisites.
+- **Compute economy:** longer-term research into verifiable GPU-hours, operations, useful AI work and contractual redemption for computing services. FLOPs do not directly measure intelligence and do not by themselves back a stable currency.
+- **Motivation:** accessible AI across backgrounds and languages, with imagery of fire as creative energy and the spider that weaves a web without becoming confined by it. These philosophical inspirations are inclusive, not product access requirements.
+
+**Implementation status:** these are roadmap/research initiatives, not claims that the wallet, partner marketplace, multi-model consumer hub or currency is live. The production runtime and approved-action boundary described above remain unchanged.
+
+**Proposed order:** prototype a provider-connected model selector and usage controls; validate unit economics; pilot an auditable ledger; then explore consenting partner integrations and regulated settlement, before any transferable-credit or compute-backed instrument.
