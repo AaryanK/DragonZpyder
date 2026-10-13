@@ -236,7 +236,8 @@ function showEmptyState() {
 }
 
 function renderMessageContent(element, content, role = "assistant") {
-  const source = String(content || "").replace(/\r\n?/g, "\n");
+  const source = String(content || "").replace(/\r\n?/g, "\n")
+    .replace(/^\s*(?:\*\*Operly:\*\*|\*\*Operly\*\*:|Operly:)\s*/i, "");
   element.replaceChildren();
   if (role === "user") {
     element.textContent = source;
