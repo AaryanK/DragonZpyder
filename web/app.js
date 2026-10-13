@@ -226,11 +226,13 @@ function escapeHtml(value) {
 
 function showMessages() {
   emptyState.hidden = true;
+  emptyState.style.setProperty("display", "none", "important");
   messages.classList.add("active");
 }
 
 function showEmptyState() {
   emptyState.hidden = false;
+  emptyState.style.removeProperty("display");
   messages.classList.remove("active");
   messages.replaceChildren();
 }
