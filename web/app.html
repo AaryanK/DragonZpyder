@@ -34,19 +34,19 @@
       <main class="chat-main" id="chat-main">
         <section class="empty-state" id="empty-state">
           <img src="https://raw.githubusercontent.com/AaryanK/DragonZpyder-Landing/f18fa6a100eebfa8a43036d7baad5b85d9623785/favicon.png" alt="" class="hero-logo">
-          <div class="eyebrow">Personal AI · governed by Operly</div>
-          <h1>What do you want to get done?</h1>
-          <p>Ask DragonZpyder to reason, retrieve connected information, draft work, or use approved capabilities. Your personal session stays separate from Workspace authority.</p>
+          <div class="eyebrow">DragonZpyder / Personal</div>
+          <h1>Make progress on what matters.</h1>
+          <p>Think through an idea, work with connected information, or prepare your next step. DragonZpyder acts through permissions you control—not invisible authority.</p>
           <div class="prompt-grid">
-            <button class="prompt-chip">Find an afternoon next week when I am free.</button>
-            <button class="prompt-chip">Draft a reply to my professor explaining my absence.</button>
-            <button class="prompt-chip">What can you help me do with my connected tools?</button>
-            <button class="prompt-chip">Help me plan this week around my calendar.</button>
+            <button class="prompt-chip">Find a good time next week for a meeting.</button>
+            <button class="prompt-chip">Help me draft an email I can review.</button>
+            <button class="prompt-chip">Show me which connected tools I can use.</button>
+            <button class="prompt-chip">Help me make a clear plan for this week.</button>
           </div>
         </section>
         <section class="messages" id="messages" aria-live="polite"></section>
       </main>
-      <footer class="composer-wrap"><form class="composer" id="composer"><textarea id="message-input" rows="1" maxlength="12000" placeholder="Message DragonZpyder…" aria-label="Message DragonZpyder"></textarea><button class="send-button" id="send-button" type="submit" aria-label="Send message">↑</button></form><div class="composer-note">DragonZpyder uses Operly's permissions, approvals, and connected capabilities. Review actions before approving them.</div></footer>
+      <footer class="composer-wrap"><form class="composer" id="composer"><textarea id="message-input" rows="1" maxlength="12000" placeholder="Message DragonZpyder…" aria-label="Message DragonZpyder"></textarea><button class="send-button" id="send-button" type="submit" aria-label="Send message">↑</button></form><div class="composer-note">Personal scope · Connected capabilities are permissioned · Review significant actions before approving.</div></footer>
     </section>
   </div>
   <div class="modal-backdrop" id="auth-modal" hidden><section class="modal auth-card" role="dialog" aria-modal="true" aria-labelledby="auth-title"><a class="brand auth-brand" href="/"><img src="https://raw.githubusercontent.com/AaryanK/DragonZpyder-Landing/f18fa6a100eebfa8a43036d7baad5b85d9623785/favicon.png" alt=""><span>DragonZpyder</span></a><div class="eyebrow">Private personal runtime</div><h2 id="auth-title">Sign in to your Personal AI</h2><p class="modal-copy">DragonZpyder uses your existing Operly account and converts the session to Personal-only authority before running tasks.</p><form id="login-form" class="login-form"><label>Email<input id="login-email" type="email" autocomplete="email" required></label><label>Password<input id="login-password" type="password" autocomplete="current-password" required></label><button class="primary-btn" id="login-button" type="submit">Sign in</button></form><div class="form-error" id="login-error" hidden></div><p class="small-copy">Need an account or Google sign-in? <a href="https://operly.dragonzpyder.xyz/" target="_blank" rel="noreferrer">Open Operly ↗</a></p></section></div>
