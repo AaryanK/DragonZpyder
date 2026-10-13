@@ -17,3 +17,6 @@
 .message-content pre{padding:15px;overflow-x:auto;border:1px solid #293040;border-radius:12px;background:#0e141d;margin:.7em 0 1em}
 .message-content pre code{padding:0;border:0;background:transparent;white-space:pre;font-size:13px}
 .message.user .message-content{white-space:pre-wrap}
+
+/* Hidden states must override display:flex/grid component styles. */
+.empty-state[hidden], .messages[hidden] { display: none !important; }
