@@ -361,7 +361,7 @@ async function submitViaClientAdapter(message, requestId) {
   try {
     return await api("/api/personal-tools/client/submit", { method: "POST", body });
   } catch (error) {
-    if (error instanceof ApiError && error.status === 404) {
+    if (error instanceof ApiError && [404, 405].includes(error.status)) {
       const fallback = { message };
       if (state.conversationId) fallback.conversation_id = state.conversationId;
       const result = await api("/api/personal-agent/chat", { method: "POST", body: fallback });
