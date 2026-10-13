@@ -2,6 +2,18 @@
 
 This directory is the source for `dragonzpyder.xyz`.
 
+## Core positioning (October 2026)
+
+**DragonZpyder is building the connective layer for independent AI**, not chiefly marketing another Personal assistant. Lead with the fragmented model and app ecosystem, then the solution: a compatible AI Mesh, one coherent experience, and Project IC / AIC as a proposed unified usage-credit balance. Operly is the governed execution backbone; existing DragonZpyder Personal is an early-access starting point.
+
+The purpose is to connect independent providers (reasoning, coding, image, video, audio, agents) and participating third-party AI applications into compound workflows, with visible model choice, permissions, cost and spending limits.
+
+**Economic promise:** a user should be able to fund a DragonZpyder balance once and spend small amounts across services participating through permitted interfaces, rather than needing a premium subscription everywhere. The illustrative $20 allocation on the public site is hypothetical and must not be treated as live pricing, an announced offer, or existing partnerships.
+
+**Non-negotiable honesty:** do not promise universal access, bypass subscriptions, claim external credits transfer, imply vendor partnerships, or present AIC as an issued crypto/transferable currency. Integration availability follows each vendor's technical access and commercial terms. Provider policies, payments compliance and cost recovery matter.
+
+The homepage should introduce these concepts before describing the narrower currently available Personal AI interface. Use the existing grounded editorial palette and avoid decorative AI marketing cliches.
+
 ## Interface direction
 
 The web surface and the Personal interface must look and feel like one product, not two unrelated AI demos.
