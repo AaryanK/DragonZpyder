@@ -75,7 +75,7 @@ dragonzpyder approvals
 dragonzpyder status
 ```
 
-For durable actions and approval recovery, see [the client implementation](src/) and [web deployment guide](web/README.md) **on the consolidation branch**. Keep request identities stable when retrying and never blindly repeat an externally uncertain action.
+For durable actions and approval recovery, see [the client implementation](https://github.com/AaryanK/DragonZpyder/tree/codex/consolidate-dragonzpyder-web/src) and [web deployment guide](https://github.com/AaryanK/DragonZpyder/blob/codex/consolidate-dragonzpyder-web/web/README.md) **on the consolidation branch**. Keep request identities stable when retrying and never blindly repeat an externally uncertain action.
 
 ## Validate
 
