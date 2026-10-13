@@ -236,7 +236,7 @@ function showEmptyState() {
 }
 
 function renderMessageContent(element, content, role = "assistant") {
-  const source = String(content || "").replace(/\\r\\n?/g, "\\n");
+  const source = String(content || "").replace(/\r\n?/g, "\n");
   element.replaceChildren();
   if (role === "user") {
     element.textContent = source;
@@ -245,7 +245,7 @@ function renderMessageContent(element, content, role = "assistant") {
 
   // Build formatted content through text nodes: model output is never trusted HTML.
   function addInline(parent, text) {
-    const pattern = /(\\*\\*([^*\\n]+)\\*\\*|\\*([^*\\n]+)\\*|`([^`\\n]+)`)/g;
+    const pattern = /(\*\*([^*\n]+)\*\*|\*([^*\n]+)\*|`([^`\n]+)`)/g;
     let cursor = 0;
     for (const match of text.matchAll(pattern)) {
       if (match.index > cursor) parent.append(document.createTextNode(text.slice(cursor, match.index)));
@@ -259,8 +259,8 @@ function renderMessageContent(element, content, role = "assistant") {
 
   let list = null;
   let code = null;
-  for (const line of source.split("\\n")) {
-    if (/^\\s*```/.test(line)) {
+  for (const line of source.split("\n")) {
+    if (/^\s*```/.test(line)) {
       if (code) { code = null; } else {
         const pre = document.createElement("pre");
         code = document.createElement("code");
@@ -270,10 +270,10 @@ function renderMessageContent(element, content, role = "assistant") {
       list = null;
       continue;
     }
-    if (code) { code.textContent += (code.textContent ? "\\n" : "") + line; continue; }
+    if (code) { code.textContent += (code.textContent ? "\n" : "") + line; continue; }
     if (!line.trim()) { list = null; continue; }
-    const bullet = line.match(/^\\s*[-*]\\s+(.+)$/);
-    const numbered = line.match(/^\\s*\\d+[.)]\\s+(.+)$/);
+    const bullet = line.match(/^\s*[-*]\s+(.+)$/);
+    const numbered = line.match(/^\s*\d+[.)]\s+(.+)$/);
     if (bullet || numbered) {
       const tag = bullet ? "ul" : "ol";
       if (!list || list.tagName.toLowerCase() !== tag) {
@@ -286,7 +286,7 @@ function renderMessageContent(element, content, role = "assistant") {
       continue;
     }
     list = null;
-    const heading = line.match(/^(#{1,3})\\s+(.+)$/);
+    const heading = line.match(/^(#{1,3})\s+(.+)$/);
     const block = document.createElement(heading ? "h" + Math.min(heading[1].length + 2, 5) : "p");
     addInline(block, heading ? heading[2] : line);
     element.append(block);
