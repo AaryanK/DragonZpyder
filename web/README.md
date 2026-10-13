@@ -2,6 +2,19 @@
 
 This directory is the source for `dragonzpyder.xyz`.
 
+## Interface direction
+
+The web surface and the Personal interface must look and feel like one product, not two unrelated AI demos.
+
+- **Visual language:** graphite/ink surfaces, warm ember/copper emphasis, neutral type, restrained serif editorial moments, thin lines, and deliberate spacing. Avoid neon purple, abstract gradient glows, floating dashboard tiles, and decorative effects that carry no information.
+- **Show the actual product:** Personal conversation, scoped capabilities, approvals, and clear execution status. Do not fabricate customer logos, testimonials, completion rates, live model availability, or connected services.
+- **Keep examples honest:** example interactions on the landing page are labelled illustrative and never expose inert controls that look actionable.
+- **Separate status from aspiration:** Personal AI and Operly have concrete experiences; AI Mesh and Project IC remain labelled planned/research until implemented.
+- **Keep the boundaries:** frontend changes must preserve the existing element IDs consumed by `home.js` and `app.js`, same-origin API routing, and Personal-only permissions. Visual redesign is not a reason to widen authority.
+- **Ship accessibly:** responsive mobile and desktop layouts, visible keyboard focus, semantic navigation and readable contrast, support for reduced motion.
+
+Public page: `index.html` (self-contained styles). Authenticated experience: `app.html`, `app.css`, `app.js`. The common palette should evolve together; treat `app.js` selectors and backend endpoints as functional contracts.
+
 ## Deployment
 
 DragonZpyder Web is designed to run as a small Railway Node service from the `AaryanK/DragonZpyder` repository with **Root Directory** set to `web`.
