@@ -1,133 +1,97 @@
 # DragonZpyder
 
-DragonZpyder is the personal client for Operly's governed execution runtime. Operly remains the authority, data boundary, approval system, task worker, and capability executor; DragonZpyder is intentionally thin.
+**An intelligence that stays with you.**
 
-The historical desktop-assistant program stays disabled. The current package contains no shared backend administrator key, provider credential, local browser-control runtime, or independent business/workspace authority.
+DragonZpyder is the personal interface to useful AI: a place to reason, work with connected information, and take carefully authorised actions. Models and interfaces will change. Your context, preferences, permissions, and relationship with the system should not have to start over each time.
 
-## Configure
+**[Website](https://dragonzpyder.xyz/) · [Personal AI](https://dragonzpyder.xyz/app.html) · [Operly](https://operly.dragonzpyder.xyz/)**
 
-Set an Operly HTTPS endpoint:
+## What we're building
+
+We start with a practical personal assistant, not a catalogue of model names. DragonZpyder provides the experience; **Operly provides the governed execution infrastructure**—authentication, capability discovery, approval checks, durable tasks, integrations, and execution. Sensitive credentials and business/workspace authority stay on the server.
+
+The broader direction is an interoperable **AI Mesh**: compatible models and specialist creative or software tools, brought together under explicit user permission and visible cost controls. **Project IC** is separate, early-stage research into metered access and accounting among consenting AI-service partners. A universal wallet, transferable credits, cross-provider subscription sharing, and compute-backed currency are **not launched features**.
+
+| Area | Status | Purpose |
+| --- | --- | --- |
+| DragonZpyder Personal | Early access / active development | Personal conversations, connected capabilities, and reviewed actions |
+| Operly | Separate product and runtime | Workspaces, permissions, approvals, integrations, and execution |
+| AI Mesh | Planned | Model-agnostic access, bounded delegation, and usage controls |
+| Project IC | Research | Auditable consumption and partner settlement, subject to commercial and regulatory work |
+
+## Design principles
+
+1. **Useful before impressive.** Build functioning workflows; show what the product does rather than promising general intelligence.
+2. **Continuity over lock-in.** Separate the person's context and permissions from a particular model.
+3. **Permission before action.** Show consequential actions for review. Do not blur a personal account into business/workspace authority.
+4. **Clarity over spectacle.** Plain language, legible interfaces, real status information, and transparent limitations.
+5. **Broad access.** Design for different languages, devices, budgets, and technical experience.
+
+The name combines the creative force of fire with the image of a spider weaving a web without becoming trapped by it: connections should expand human capability, not constrain it.
+
+## Repositories and architecture
+
+**This is the authoritative DragonZpyder repository.** The former `DragonZpyder-Landing` repository is legacy website history and temporary asset storage, not the long-term product source.
+
+The web consolidation is being integrated in [PR #9](https://github.com/AaryanK/DragonZpyder/pull/9). Until that work merges, some paths below exist on its development branch rather than on `master`.
+
+```text
+DragonZpyder/
+├── web/                 # Public site + Personal AI frontend (web consolidation branch)
+│   ├── index.html       # Public website
+│   ├── app.html         # Personal interface
+│   ├── app.js / app.css
+│   └── server.mjs       # Same-origin gateway for /api/*
+├── src/                 # Python Personal client (development branch)
+├── tests/               # Client validation
+└── docs/                # Design and implementation notes
+```
+
+```text
+Browser / Personal CLI
+       │
+       ▼
+DragonZpyder (Personal-only interface)
+       │ HTTPS, authenticated & retry-safe
+       ▼
+Operly Personal Runtime + Execution Kernel
+       │ permissions · approvals · durable tasks · auditing
+       ▼
+Approved connected tools and model providers
+```
+
+The web service is designed to run from `web/` on Railway, with `npm start`, `/healthz`, and a server-side `OPERLY_ORIGIN` override when required. The default upstream is `https://operly.dragonzpyder.xyz`. Do not put model keys, third-party access tokens, or administrative credentials in browser code.
+
+## Personal client (development branch)
 
 ```bash
+git checkout codex/consolidate-dragonzpyder-web
+python -m pip install --no-deps .
 export DRAGONZPYDER_OPERLY_BASE_URL=https://your-operly.example
-export DRAGONZPYDER_REQUEST_TIMEOUT_SECONDS=30
-```
 
-Remote endpoints must use HTTPS. `http://localhost` is allowed for local development only.
-
-By default the authenticated session cookie jar is stored at `~/.config/dragonzpyder/session.cookies`. Set `DRAGONZPYDER_SESSION_FILE` to choose another local path. Treat this file as an authentication secret; DragonZpyder creates it with restrictive permissions where the platform supports POSIX permissions.
-
-## Personal client
-
-Install without extra runtime dependencies:
-
-```bash
-python -m pip install --no-deps .
-```
-
-Sign in. The password is prompted securely and is not accepted as a command-line argument:
-
-```bash
 dragonzpyder login --email you@example.com
-```
-
-If the Operly account initially opens in a Workspace session, DragonZpyder immediately uses Operly's existing `/api/auth/personal-scope` flow to revoke that session and replace it with Personal-only authority. DragonZpyder never asks for a workspace ID.
-
-For an immediate Personal turn:
-
-```bash
-dragonzpyder submit "Find an afternoon next week when I am free."
-```
-
-The output includes the conversation ID and client request ID. To continue after a clarification:
-
-```bash
-dragonzpyder submit --conversation <conversation-id> "Use Tuesday and draft the invitation to Alex."
-```
-
-If a network timeout or lost response occurs, retry with the **same** request ID printed by the first attempt. Operly durably scopes that identity to the authenticated Personal principal.
-
-## Durable tasks
-
-Use a durable task when work should survive an API or worker restart, may pause for approval, or should be cancellable while queued/waiting:
-
-```bash
-dragonzpyder task "Find an afternoon next week when I am free and prepare the next step."
-```
-
-DragonZpyder prints the stable request ID before submission. If the first `202 Accepted` response is lost, repeat the same objective with that exact request ID; Operly returns the same persisted task rather than creating another task or conversation:
-
-```bash
-dragonzpyder task --request-id <same-id> "Find an afternoon next week when I am free and prepare the next step."
-```
-
-Inspect or cancel the task:
-
-```bash
-dragonzpyder task-status <task-id>
-dragonzpyder task-cancel <task-id>
-```
-
-If a durable task pauses for approval, review the exact proposal with `dragonzpyder approvals`, then approve that specific task step and return execution to Operly's worker:
-
-```bash
-dragonzpyder task-approve <task-id> <approval-id>
-```
-
-If the approval was already recorded but the client disconnected before the task was requeued:
-
-```bash
-dragonzpyder task-resume <task-id> --approval-id <approval-id>
-```
-
-DragonZpyder does not execute durable task capabilities itself. It submits, inspects, cancels, and resumes the server-owned task; Operly's durable worker owns leases, authority re-resolution, Kernel execution, retries/reconciliation, and checkpoints. A cancelled task cannot resume. An uncertain external effect is reported as uncertain and must be reconciled before replacement work is submitted.
-
-## Approvals and immediate sends
-
-Review pending approvals before allowing a high-risk immediate action:
-
-```bash
+dragonzpyder submit "Help me plan my week."
 dragonzpyder approvals
-```
-
-For an email send, the review shows the exact canonical recipient/subject/body, the server-calculated review hash, and the approval expiry. Approving executes only that exact server-returned contract using the same capability, arguments, request ID, conversation, and approval ID:
-
-```bash
-dragonzpyder approve <approval-id>
-```
-
-Rejecting performs no action:
-
-```bash
-dragonzpyder reject <approval-id>
-```
-
-If the approval decision succeeded but the client disconnected before the approved immediate invocation began, resume the already-approved contract instead of approving a new one:
-
-```bash
-dragonzpyder resume <approval-id>
-```
-
-Operly re-resolves current Personal authority immediately before execution. An edit to the reviewed recipient/body, an expired approval, or revoked permission blocks the action.
-
-For Gmail sends, Operly persists the logical send identity before crossing the provider boundary and uses a deterministic RFC Message-ID. If Gmail acknowledges the message, Operly reports the provider result and attempts read-back verification when the connector scope supports it. If a timeout or disconnect makes delivery ambiguous, DragonZpyder reports **uncertain delivery** and the stable message identity. Do **not** send again just because the HTTP response was lost; the message identity must be reconciled against sent mail first.
-
-Check or revoke the current session:
-
-```bash
 dragonzpyder status
-dragonzpyder logout
 ```
 
-`logout` revokes the Operly session server-side and removes the local cookie jar. An expired or revoked session fails as an authentication blocker and requires a fresh login.
+For durable actions and approval recovery, see [the client implementation](src/) and [web deployment guide](web/README.md) **on the consolidation branch**. Keep request identities stable when retrying and never blindly repeat an externally uncertain action.
 
-## Local validation
+## Validate
+
+On the consolidation branch:
 
 ```bash
-python -m pip install --no-deps .
 python -m compileall -q src tests scripts
 PYTHONPATH=src python -m unittest discover -s tests -v
 python scripts/check_no_secrets.py
+node --check web/server.mjs
+node --check web/app.js
+node --check web/home.js
 ```
 
-Do not commit session cookies, tokens, OAuth files, pickle credentials, private keys, provider secrets, or `.env` files.
+## An open-ended vision, a grounded starting point
+
+DragonZpyder should make intelligence useful to individuals and, through Operly, to the people running real organisations. Future systems may connect creative work, software, education, science, and industry. That ambition does not change what must be demonstrated today: software that works, honest descriptions of what is available, and user control over actions and spending.
+
+See [the consolidation PR](https://github.com/AaryanK/DragonZpyder/pull/9) for current web work and deployment/cutover notes.
