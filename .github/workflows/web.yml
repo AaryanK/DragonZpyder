@@ -51,6 +51,7 @@ jobs:
           test -s web/frontend/src/HomeTemplate.jsx
           test -s web/frontend/src/PersonalTemplate.jsx
           test -s web/frontend/src/AccountTemplate.jsx
+          test -s web/frontend/src/AdminPage.jsx
           test ! -e web/index.html
           test ! -e web/app.html
           test ! -e web/account.html
@@ -87,4 +88,5 @@ jobs:
           test -s web/dist/index.html
           test -s web/dist/app.html
           test -s web/dist/account.html
+          test -s web/dist/admin.html
           test -n "$(find web/dist/assets -name '*.js' -print -quit)"
