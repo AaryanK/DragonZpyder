@@ -14,6 +14,7 @@ from usage_ledger import ledger
 MESH_TOKEN = "m" * 48
 LAB_TOKEN = "c" * 48
 Q_TOKEN = "q" * 48
+OPERLY_TOKEN = "o" * 48
 PAYLOAD = {"model": "google/gemini-2.5-flash",
            "messages": [{"role": "user", "content": "Hey"}],
            "max_tokens": 80, "stream": False}
@@ -23,7 +24,7 @@ def config(monkeypatch):
     monkeypatch.setenv("DRAGONZPYDER_RUNTIME_TOKEN", "a" * 48)
     monkeypatch.setenv("DRAGONZPYDER_APP_KEYS_JSON",
                        json.dumps({"ai-mesh": MESH_TOKEN, "chat-lab": LAB_TOKEN,
-                                   "querypedia": Q_TOKEN}))
+                                   "querypedia": Q_TOKEN, "operly": OPERLY_TOKEN}))
     monkeypatch.setenv("OPENROUTER_API_KEY", "mock-openrouter-key")
     monkeypatch.setenv("DRAGONZPYDER_IMAGE_OPENROUTER_API_KEY", "mock-capped-image-key")
 
@@ -41,11 +42,13 @@ def test_provider_catalog_scope_and_isolation(monkeypatch):
             mesh = {"Authorization": "Bearer " + MESH_TOKEN}
             chat = {"Authorization": "Bearer " + LAB_TOKEN}
             querypedia = {"Authorization": "Bearer " + Q_TOKEN}
+            operly = {"Authorization": "Bearer " + OPERLY_TOKEN}
             assert client.get("/internal/provider/models", headers=mesh).status_code == 200
             assert client.get("/internal/provider/images/models", headers=mesh).status_code == 200
             assert client.get("/internal/provider/videos/models", headers=mesh).status_code == 200
             assert client.get("/internal/provider/models", headers=chat).status_code == 403
             assert client.get("/internal/provider/models", headers=querypedia).status_code == 403
+            assert client.get("/internal/provider/models", headers=operly).status_code == 403
             assert client.get("/internal/provider/models").status_code == 401
             assert client.get("/internal/provider/unapproved-path", headers=mesh).status_code == 404
             assert all(token == ("Bearer mock-capped-image-key" if path == "/api/v1/images/models" else "Bearer mock-openrouter-key") for path, token in paths)
@@ -72,7 +75,7 @@ def test_provider_model_call_audited_per_app(monkeypatch):
         real_http = client.app.state.http
         client.app.state.http = httpx.AsyncClient(transport=httpx.MockTransport(transport))
         try:
-            for token, expected in ((MESH_TOKEN, "ai-mesh"), (LAB_TOKEN, "chat-lab")):
+            for token, expected in ((MESH_TOKEN, "ai-mesh"), (LAB_TOKEN, "chat-lab"), (OPERLY_TOKEN, "operly")):
                 response = client.post("/internal/provider/chat/completions", json=PAYLOAD,
                                        headers={"Authorization": "Bearer " + token})
                 assert response.status_code == 200, response.text
@@ -84,6 +87,10 @@ def test_provider_model_call_audited_per_app(monkeypatch):
                                headers={"Authorization": "Bearer " + Q_TOKEN}).status_code == 403
             assert client.post("/internal/provider/images", json={"model":"test/model","prompt":"cat"},
                                headers={"Authorization": "Bearer " + LAB_TOKEN}).status_code == 403
+            assert client.post("/internal/provider/images", json={"model":"test/model","prompt":"cat"},
+                               headers={"Authorization": "Bearer " + OPERLY_TOKEN}).status_code == 403
+            assert client.post("/internal/provider/audio/speech", json={"model":"test/speech","input":"Hi"},
+                               headers={"Authorization": "Bearer " + OPERLY_TOKEN}).status_code == 403
         finally:
             client.app.state.http = real_http
 
