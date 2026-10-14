@@ -297,7 +297,10 @@ async def chat(request, identity, body, streaming=False):
             p.get("text", "") for p in answer if isinstance(p, dict) and p.get("type") == "text"
         ) if isinstance(answer, list) else ""
         return {"model": model["id"], "text": text or "No text was returned.",
-                "usage": data.get("usage"), "generation_id": data.get("id")}
+                "usage": data.get("usage"), "generation_id": data.get("id"),
+                "trace_id": r.headers.get("x-dragonzpyder-trace-id"),
+                "request_id": r.headers.get("x-dragonzpyder-request-id"),
+                "audit": r.headers.get("x-dragonzpyder-audit", "unavailable")}
 
     call = client.build_request("POST", BASE + "/chat/completions",
                                 headers=provider_headers(), json=payload, timeout=90)
@@ -316,7 +319,9 @@ async def chat(request, identity, body, streaming=False):
         yielded = 0
         done = False
         try:
-            yield event({"type": "start", "model": model["id"]})
+            yield event({"type": "start", "model": model["id"],
+                         "trace_id": upstream_stream.headers.get("x-dragonzpyder-trace-id"),
+                         "request_id": upstream_stream.headers.get("x-dragonzpyder-request-id")})
             async for line in upstream_stream.aiter_lines():
                 if not line.startswith("data:"):
                     continue
