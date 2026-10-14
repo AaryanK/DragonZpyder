@@ -30,7 +30,8 @@ jobs:
           node --check server.mjs
       - name: Guard governed frontend boundary
         run: |
-          ! grep -RniE 'proxy\.runpod\.net|Bearer EMPTY|/v1/chat/completions' -- web
+          # Scan only browser assets; the Python backend owns model calls.
+          ! grep -RniE 'proxy\.runpod\.net|Bearer EMPTY|/v1/chat/completions' -- web/app.js web/home.js web/script.js web/frontend/src
           # The Personal client may use the direct chat adapter or the retry-safe submit adapter.
           grep -Eq '/api/personal-agent/chat|/api/personal-tools/client/submit' web/app.js
           grep -q '/api/personal-agent/chat' web/app.js
@@ -63,7 +64,7 @@ jobs:
           python-version: "3.12"
       - run: pip install -r web/requirements.txt pytest
       - run: python -m compileall -q web/main.py web/backend web/tests
-      - run: pytest -q web/tests/test_fastapi_web.py
+      - run: pytest -q web/tests/test_fastapi_web.py web/tests/test_chat_demo.py
 
   react-vite:
     runs-on: ubuntu-latest
