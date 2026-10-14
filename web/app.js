@@ -353,6 +353,7 @@ function clearConversationSelection() {
   state.conversationId = null;
   for (const button of conversationList.querySelectorAll(".conversation-button")) button.classList.remove("active");
   showEmptyState();
+  if(window.dragonzpyderMesh?.isActive())window.dragonzpyderMesh.clear();
   messageInput.focus();
   sidebar.classList.remove("open");
 }
@@ -391,6 +392,7 @@ async function loadConversations() {
 
 async function openConversation(id) {
   if (!id || state.sending) return;
+  if(window.dragonzpyderMesh?.isActive())window.dragonzpyderMesh.disable();
   state.conversationId = id;
   renderConversations();
   sidebar.classList.remove("open");
@@ -702,7 +704,8 @@ loginForm.addEventListener("submit", async (event) => {
 
 composer.addEventListener("submit", (event) => {
   event.preventDefault();
-  sendMessage(messageInput.value);
+  if(window.dragonzpyderMesh?.isActive())window.dragonzpyderMesh.submit(messageInput.value);
+  else sendMessage(messageInput.value);
 });
 messageInput.addEventListener("input", autoSizeInput);
 messageInput.addEventListener("keydown", (event) => {
@@ -713,7 +716,10 @@ messageInput.addEventListener("keydown", (event) => {
 });
 
 for (const chip of document.querySelectorAll(".prompt-chip")) {
-  chip.addEventListener("click", () => sendMessage(chip.textContent));
+  chip.addEventListener("click", () => {
+    if(window.dragonzpyderMesh?.isActive()) { messageInput.value=chip.textContent; autoSizeInput(); messageInput.focus(); }
+    else sendMessage(chip.textContent);
+  });
 }
 
 $("new-chat").addEventListener("click", clearConversationSelection);
@@ -735,3 +741,5 @@ window.addEventListener("offline", () => setRuntimeStatus("error", "Offline"));
 
 autoSizeInput();
 bootstrapAuth();
+
+window.addEventListener("dragonzpyder:mesh-disabled",()=>{ if(state.conversationId)openConversation(state.conversationId);else showEmptyState(); });

@@ -9,6 +9,7 @@
   <meta name="theme-color" content="#07090d">
   <link rel="icon" type="image/png" href="https://raw.githubusercontent.com/AaryanK/DragonZpyder-Landing/f18fa6a100eebfa8a43036d7baad5b85d9623785/favicon.png">
   <link rel="stylesheet" href="/app.css">
+  <link rel="stylesheet" href="/mesh.css">
 </head>
 <body>
   <div class="app-shell" id="app-shell">
@@ -46,7 +47,21 @@
         </section>
         <section class="messages" id="messages" aria-live="polite"></section>
       </main>
-      <footer class="composer-wrap"><span id="dictation-feedback" class="dictation-feedback" role="status" aria-live="polite" hidden></span><form class="composer" id="composer"><textarea id="message-input" rows="1" maxlength="12000" placeholder="Message DragonZpyder…" aria-label="Message DragonZpyder"></textarea><button class="dictation-button" id="dictation-toggle" type="button" title="Dictate into message" aria-label="Start dictation" aria-pressed="false"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"></rect><path d="M5 10a7 7 0 0 0 14 0M12 17v5m-4 0h8"></path></svg></button><button class="send-button" id="send-button" type="submit" aria-label="Send message">↑</button></form><div class="composer-note">Personal scope · Connected capabilities are permissioned · Review significant actions before approving.</div></footer>
+      <footer class="composer-wrap">
+      <div class="mesh-tools">
+        <button type="button" id="mesh-switch" class="mesh-switch" aria-pressed="false" title="Switch between tool-using Agent and OpenRouter AI Mesh"><span>✦</span> Agent</button>
+        <div id="mesh-controls" class="mesh-controls" hidden>
+          <select id="mesh-task" class="mesh-select" aria-label="AI Mesh task">
+            <option value="chat">Text & vision</option><option value="image">Create image</option>
+            <option value="transcribe">Transcribe audio</option><option value="speech">Create speech</option><option value="video">Create video</option>
+          </select>
+          <select id="mesh-model" class="mesh-select" aria-label="OpenRouter model"><option value="">Loading models…</option></select>
+          <label id="mesh-file-label" class="mesh-input-label" title="Attach an image or audio file">＋ Attach<input id="mesh-upload" type="file" accept="image/png,image/jpeg,image/webp,audio/*"></label>
+        </div>
+      </div>
+      <div id="mesh-attachments" class="mesh-attachments" hidden></div>
+      <div id="mesh-status" class="mesh-status" role="status" aria-live="polite" hidden></div>
+      <span id="dictation-feedback" class="dictation-feedback" role="status" aria-live="polite" hidden></span><form class="composer" id="composer"><textarea id="message-input" rows="1" maxlength="12000" placeholder="Message DragonZpyder…" aria-label="Message DragonZpyder"></textarea><button class="dictation-button" id="dictation-toggle" type="button" title="Dictate into message" aria-label="Start dictation" aria-pressed="false"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"></rect><path d="M5 10a7 7 0 0 0 14 0M12 17v5m-4 0h8"></path></svg></button><button class="send-button" id="send-button" type="submit" aria-label="Send message">↑</button></form><div class="composer-note">Personal scope · Connected capabilities are permissioned · Review significant actions before approving.</div></footer>
     </section>
   </div>
   <section class="companion-panel" id="companion-panel" role="dialog" aria-modal="true" aria-label="Live companion" hidden>
@@ -64,5 +79,6 @@
   <script type="module" src="/app.js"></script>
   <script type="module" src="/companion.js"></script>
   <script type="module" src="/dictation.js"></script>
+  <script type="module" src="/mesh.js"></script>
 </body>
 </html>
