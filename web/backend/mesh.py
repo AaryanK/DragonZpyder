@@ -12,7 +12,6 @@ from docx import Document
 import hashlib
 import hmac
 import json
-import math
 import os
 import re
 import time
@@ -86,13 +85,11 @@ def modalities(model, direction):
     return value if isinstance(value, list) else []
 
 
-def cost(model):
-    try:
-        value = float((model.get("pricing") or {}).get("prompt")) + float(
-            (model.get("pricing") or {}).get("completion"))
-        return value if math.isfinite(value) and value >= 0 else float("inf")
-    except (TypeError, ValueError):
-        return float("inf")
+def by_name(model):
+    # Prefer discoverability over ranking by price. Models are billed at
+    # provider rates and individually attributable in the central ledger.
+    return (str(model.get("name") or model.get("id") or "").casefold(),
+            str(model.get("id") or ""))
 
 
 def brief(model):
@@ -108,20 +105,20 @@ async def model_list(client):
             return []
     images, videos = await asyncio.gather(optional("image"), optional("video"))
     chats = sorted((m for m in chat if "text" in modalities(m, "input")
-                    and "text" in modalities(m, "output")), key=cost)[:500]
+                    and "text" in modalities(m, "output")), key=by_name)
     return {
         "chat": [{**brief(m), "inputs": modalities(m, "input"), "outputs": modalities(m, "output"),
                   "promptPrice": (m.get("pricing") or {}).get("prompt"),
                   "completionPrice": (m.get("pricing") or {}).get("completion"),
                   "context": m.get("context_length")} for m in chats],
-        "image": [brief(m) for m in images[:80]],
+        "image": [brief(m) for m in sorted(images, key=by_name)],
         "video": [{**brief(m), "options": {
             "durations": m.get("supported_durations") or [],
             "resolutions": m.get("supported_resolutions") or [],
             "ratios": m.get("supported_aspect_ratios") or [],
-            "pricing": m.get("pricing_skus") or {}}} for m in videos[:80]],
-        "tts": [brief(m) for m in chat if "speech" in modalities(m, "output")][:40],
-        "stt": [brief(m) for m in chat if "transcription" in modalities(m, "output")][:40],
+            "pricing": m.get("pricing_skus") or {}}} for m in sorted(videos, key=by_name)],
+        "tts": [brief(m) for m in sorted(chat, key=by_name) if "speech" in modalities(m, "output")],
+        "stt": [brief(m) for m in sorted(chat, key=by_name) if "transcription" in modalities(m, "output")],
         "imageEnabled": os.getenv("MESH_ENABLE_IMAGE") == "true",
         "videoEnabled": os.getenv("MESH_ENABLE_VIDEO") == "true",
     }
@@ -270,18 +267,14 @@ async def chat(request, identity, body, streaming=False):
                  choose(all_models, "google/gemini-3.1-flash-lite") or
                  next(iter(sorted((m for m in all_models
                                    if "text" in modalities(m, "input")
-                                   and "text" in modalities(m, "output")), key=cost)), None))
+                                   and "text" in modalities(m, "output")), key=by_name)), None))
     if (not model or "text" not in modalities(model, "output") or
             "text" not in modalities(model, "input") or
             (has_image and "image" not in modalities(model, "input"))):
         fail(400, "Choose a compatible text/vision model")
-    pricing = model.get("pricing") or {}
-    try:
-        input_price, output_price = float(pricing["prompt"]), float(pricing["completion"])
-    except (TypeError, ValueError, KeyError):
-        fail(403, "That model exceeds the AI Mesh low-cost testing policy")
-    if not (0 <= input_price <= 0.0000015 and 0 <= output_price <= 0.000004):
-        fail(403, "That model exceeds the AI Mesh low-cost testing policy")
+    # Do not arbitrarily block higher-priced models during testing. The
+    # user selects from OpenRouter's available text/vision models, while the
+    # existing session limits and central gateway accounting stay in force.
     await take(identity, "chat")
     payload = {"model": model["id"],
                "messages": [{"role": "system", "content": SYSTEM}] + incoming,

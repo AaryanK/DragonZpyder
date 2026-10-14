@@ -32,6 +32,7 @@ function modernPicker(select, { searchable = false, kind = "task" } = {}) {
   options.setAttribute("aria-label", select.getAttribute("aria-label") || "Options");
   trigger.setAttribute("aria-controls", id);
   let search;
+  let visibleLimit = 120;
   if (searchable) {
     const searchBox = document.createElement("div");
     searchBox.className = "mesh-picker-search-wrap";
@@ -64,12 +65,18 @@ function modernPicker(select, { searchable = false, kind = "task" } = {}) {
     value.textContent = selected?.textContent?.trim() || "Select model";
     trigger.title = selected?.textContent?.trim() || "Select model";
     const query = (search?.value || "").trim().toLocaleLowerCase();
+    // Search over the entire catalogue; only render a page of results
+    // at once so hundreds of providers/models do not freeze the dropdown.
+    const matching = Array.from(select.options).filter(option => {
+      const label = option.textContent.trim();
+      return !query || label.toLocaleLowerCase().includes(query) ||
+        option.value.toLocaleLowerCase().includes(query);
+    });
     options.replaceChildren();
     let count = 0;
-    for (const option of select.options) {
+    const batch = document.createDocumentFragment();
+    for (const option of matching.slice(0, visibleLimit)) {
       const label = option.textContent.trim();
-      if (query && !label.toLocaleLowerCase().includes(query) &&
-          !option.value.toLocaleLowerCase().includes(query)) continue;
       const item = document.createElement("button");
       item.className = "mesh-picker-option";
       item.type = "button";
@@ -92,8 +99,17 @@ function modernPicker(select, { searchable = false, kind = "task" } = {}) {
         draw();
         close({ focus: true });
       });
-      options.append(item);
+      batch.append(item);
       count++;
+    }
+    options.append(batch);
+    if (matching.length > visibleLimit) {
+      const more = document.createElement("button");
+      more.type = "button";
+      more.className = "mesh-picker-option mesh-picker-more";
+      more.textContent = "Show more models (" + count + " of " + matching.length + ")";
+      more.addEventListener("click", () => { visibleLimit += 120; draw(); });
+      options.append(more);
     }
     if (!count) {
       const none = document.createElement("p");
@@ -106,6 +122,7 @@ function modernPicker(select, { searchable = false, kind = "task" } = {}) {
   const open = () => {
     if (activePicker && activePicker !== close) activePicker();
     activePicker = close;
+    visibleLimit = 120;
     draw();
     popover.hidden = false;
     root.classList.add("open");
@@ -119,7 +136,7 @@ function modernPicker(select, { searchable = false, kind = "task" } = {}) {
     }
   };
   trigger.addEventListener("click", () => popover.hidden ? open() : close());
-  search?.addEventListener("input", draw);
+  search?.addEventListener("input", () => { visibleLimit = 120; draw(); });
   popover.addEventListener("keydown", event => {
     if (event.key === "Escape") { event.preventDefault(); close({ focus: true }); return; }
     const buttons = Array.from(options.querySelectorAll(".mesh-picker-option:not(:disabled)"));

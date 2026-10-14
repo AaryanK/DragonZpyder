@@ -115,9 +115,25 @@ function showImagePending(item,model,abortController){
     clearInterval(timer);panel.remove();
    },duration:()=>performance.now()-started};
 }
-function option(m,selectedValue){
- const node=document.createElement("option");node.value=m.id;node.textContent=m.name||m.id;
- if(m.id===selectedValue)node.selected=true;
+function pricePerMillion(value){
+ // OpenRouter pricing is USD per token. Do not treat missing values as free.
+ if(value===null||value===undefined||String(value).trim()==="")return null;
+ const number=Number(value);
+ return Number.isFinite(number)&&number>=0
+   ? "$"+(number*1_000_000).toLocaleString("en-US",{maximumFractionDigits:4})
+   : null;
+}
+function option(m,isChat=false){
+ const node=document.createElement("option");
+ node.value=m.id;
+ const label=m.name||m.id;
+ const prompt=isChat?pricePerMillion(m.promptPrice):null;
+ const completion=isChat?pricePerMillion(m.completionPrice):null;
+ const price=prompt!==null&&completion!==null
+   ? " · "+prompt+" in / "+completion+" out per 1M tokens"
+   : "";
+ node.textContent=label+price;
+ node.title=label+price+" ["+m.id+"]";
  return node;
 }
 function availableModels(){
@@ -132,19 +148,24 @@ function availableModels(){
 }
 function refreshModels(){
  if(!models)return;
- const list=availableModels();const old=model.value;
- model.replaceChildren();
- if(task.value==="chat"){
-  const cheap=list.filter(m=>Number(m.promptPrice)<=0.0000015&&Number(m.completionPrice)<=0.000004&&m.inputs?.includes("text")&&m.outputs?.includes("text")&&(!assets.some(a=>a.mime.startsWith("image/"))||m.inputs?.includes("image")));
-  const first=cheap.find(m=>m.id==="qwen/qwen3.7-flash")||cheap.find(m=>m.id==="google/gemini-3.1-flash-lite")||cheap[0];
-  for(const m of cheap.slice(0,80))model.append(option(m,old||first?.id));
- }else{
-  for(const m of list)model.append(option(m,old));
- }
+ const old=model.value;
+ const requiresImage=assets.some(a=>a.mime.startsWith("image/"));
+ const list=availableModels().filter(m=>task.value!=="chat" ||
+   (m.inputs?.includes("text")&&m.outputs?.includes("text")&&
+    (!requiresImage||m.inputs?.includes("image"))));
+ // Every compatible OpenRouter model can be selected, regardless of price.
+ // Build the native select in one mutation so the searchable picker stays fast.
+ const options=document.createDocumentFragment();
+ for(const m of list)options.append(option(m,task.value==="chat"));
+ model.replaceChildren(options);
+ const preferred=list.find(m=>m.id===old)||
+   (task.value==="chat"&&list.find(m=>m.id==="qwen/qwen3.7-flash"))||
+   (task.value==="chat"&&list.find(m=>m.id==="google/gemini-3.1-flash-lite"))||
+   list[0];
+ if(preferred)model.value=preferred.id;
  if(!model.options.length)note("No compatible models are available for this task.",true);
- else if(old&&Array.from(model.options).some(o=>o.value===old))model.value=old;
- else if(task.value==="chat"){const q=Array.from(model.options).find(o=>o.value==="qwen/qwen3.7-flash");if(q)model.value=q.value;}
 }
+
 const IMAGE_TYPES=["image/png","image/jpeg","image/webp"];
 const AUDIO_TYPES=["audio/webm","audio/mpeg","audio/mp4","audio/ogg","audio/wav","audio/flac"];
 const DOC_TYPES={pdf:"application/pdf",docx:"application/vnd.openxmlformats-officedocument.wordprocessingml.document",txt:"text/plain",md:"text/plain",csv:"text/plain",json:"application/json",py:"text/plain",log:"text/plain"};

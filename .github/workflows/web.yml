@@ -66,7 +66,7 @@ jobs:
           python-version: "3.12"
       - run: pip install -r web/requirements.txt pytest
       - run: python -m compileall -q web/main.py web/backend web/tests
-      - run: pytest -q web/tests/test_fastapi_web.py web/tests/test_chat_demo.py web/tests/test_mesh_attachments.py web/tests/test_admin_protection.py
+      - run: pytest -q web/tests/test_fastapi_web.py web/tests/test_chat_demo.py web/tests/test_mesh_attachments.py web/tests/test_mesh_model_catalogue.py web/tests/test_admin_protection.py
 
   react-vite:
     runs-on: ubuntu-latest
