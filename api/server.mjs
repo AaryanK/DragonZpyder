@@ -1,5 +1,7 @@
 // Standalone DragonZpyder API runtime. The personal website is not imported here.
 import { createServer } from "node:http";
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { handleInternalInference } from "./inference.mjs";
 
 const port = Number(process.env.PORT || 3000);
@@ -38,6 +40,6 @@ export function serve(req, res) {
   }).finally(()=>{pending -= 1;});
 }
 
-if (process.env.NODE_ENV !== "test") {
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   createServer(serve).listen(port, "0.0.0.0", () => console.log("DragonZpyder API service listening on port " + port));
 }
