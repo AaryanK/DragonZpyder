@@ -144,8 +144,19 @@ async def provider_request(request: Request, path: str, *, app_id: str, runtime)
     op = _operation(request.method, path)
     if op is None:
         return error_response(404, "Unsupported provider route")
-    if not (app_id == "ai-mesh" or (app_id == "chat-lab" and path == "/chat/completions" and request.method == "POST")):
+    if not (app_id == "ai-mesh" or (app_id in {"chat-lab", "operly"} and path == "/chat/completions" and request.method == "POST")):
         return error_response(403, "This provider operation is not enabled for the application")
+    # The /models endpoint defaults to text output. Audio model discovery
+    # requires explicit, tightly allowlisted output-modality filters.
+    model_filter = None
+    if path == "/models":
+        filters = list(request.query_params.multi_items())
+        if filters:
+            if len(filters) != 1 or filters[0][0] != "output_modalities" or filters[0][1] not in {
+                "text", "speech", "transcription"
+            }:
+                return error_response(400, "Unsupported model catalogue filter")
+            model_filter = filters[0][1]
     provider_key = _provider_key(path)
     if not provider_key:
         return error_response(503, "Image test provider is not configured" if
@@ -182,7 +193,8 @@ async def provider_request(request: Request, path: str, *, app_id: str, runtime)
                    "X-DragonZpyder-Request-Id": request_id}
         if payload is not None:
             headers["content-type"] = "application/json"
-        query = {"index": "0"} if path.endswith("/content") else None
+        query = ({"index": "0"} if path.endswith("/content") else
+                 {"output_modalities": model_filter} if model_filter else None)
         if is_stream:
             try:
                 upstream = await request.app.state.http.send(
