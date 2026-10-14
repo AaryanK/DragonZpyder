@@ -22,3 +22,86 @@
 .mesh-hint{color:#869586;font-size:10px}
 .mesh-action-info{font-size:11px;color:#d6a573}
 @media(max-width:680px){.mesh-tools{gap:5px}.mesh-select{max-width:158px}.mesh-switch{padding:0 9px}.mesh-input-label{padding:0 8px}.mesh-controls{gap:5px}}
+
+
+/* Unified Personal composer: input + attachments + contextual controls in one surface. */
+.unified-composer{
+  pointer-events:auto;display:flex;flex-direction:column;align-items:stretch;gap:0;
+  width:min(920px,100%);margin:0 auto;padding:11px 13px 10px;
+  border:1px solid #434d41;border-radius:22px;background:#171b16;
+  box-shadow:0 18px 48px rgba(0,0,0,.35);
+}
+.unified-composer:focus-within{border-color:#987b59}
+.unified-composer.dragging{border:2px dashed #d6a573;background:#22291e}
+.unified-composer #message-input{
+  display:block;width:100%;flex:none;min-height:57px;max-height:170px;
+  padding:9px 7px 12px;line-height:1.5;font-size:14px;
+  resize:none;background:transparent;border:none;box-shadow:none;outline:0
+}
+.composer-toolbar{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:42px}
+.composer-left{display:flex;align-items:center;min-width:0;flex:1;gap:7px;flex-wrap:wrap}
+.composer-right{display:flex;align-items:center;justify-content:flex-end;gap:5px;flex:0 0 auto}
+.unified-composer .composer-plus{
+  display:inline-flex!important;align-items:center;justify-content:center;flex:0 0 37px;
+  width:37px;height:37px;border:1px solid transparent;border-radius:50%;
+  background:transparent;color:#edece3;padding:0;cursor:pointer;
+  font-size:27px;font-weight:350;line-height:1;transition:background .12s,border-color .12s
+}
+.unified-composer .composer-plus:hover{background:#30382d;border-color:#5f6a5b}
+.unified-composer .composer-plus:focus-visible{outline:2px solid #d6a573;outline-offset:2px}
+.unified-composer .composer-plus input{display:none}
+.unified-composer .mesh-switch{
+  display:inline-flex;align-items:center;gap:6px;height:35px;
+  background:#22291f;border:1px solid #3e483c;border-radius:10px;
+  color:#e8e6dc;font-size:12px;padding:0 12px;white-space:nowrap
+}
+.unified-composer .mesh-switch[aria-pressed="true"]{border-color:#8c7454;background:#2c2b22}
+.unified-composer .mesh-controls{display:flex;align-items:center;gap:7px;min-width:0;max-width:100%;flex-wrap:wrap}
+.unified-composer .mesh-controls[hidden]{display:none!important}
+.unified-composer .mesh-select{
+ height:35px;max-width:100%;min-width:0;border-radius:10px;background:#222820;
+ border:1px solid #3b463a;color:#e3e7dc;font-size:12px;outline-offset:2px
+}
+.unified-composer .task-select{width:122px}
+.unified-composer .model-select{width:clamp(152px,18vw,260px);text-overflow:ellipsis}
+.unified-composer .dictation-button{
+  width:37px;height:37px;flex:0 0 37px;border-radius:11px;
+}
+.unified-composer .send-button{
+  display:grid;place-items:center;width:37px;height:37px;flex:0 0 37px;
+  border-radius:11px;font-size:22px
+}
+.unified-composer .mesh-attachments{
+ display:flex;align-items:center;gap:7px;flex-wrap:wrap;width:100%;max-width:none;
+ margin:0 0 6px;padding:0 3px;pointer-events:auto
+}
+.unified-composer .mesh-attachments[hidden]{display:none!important}
+.unified-composer .mesh-file-chip{
+ display:inline-flex;align-items:center;gap:8px;max-width:100%;min-height:38px;
+ background:#273126;border:1px solid #4b5e4a;border-radius:11px;
+ padding:4px 6px 4px 7px;font-size:11px;color:#e9e8d9
+}
+.unified-composer .mesh-file-chip span{max-width:180px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.unified-composer .mesh-file-thumb{width:34px;height:34px;border-radius:6px;object-fit:cover}
+.unified-composer .mesh-file-chip button{
+ display:grid;place-items:center;min-width:25px;min-height:25px;border-radius:6px;font-size:16px
+}
+.unified-composer .mesh-file-chip button:hover{background:#465345}
+.composer-wrap .mesh-status{width:min(920px,100%);max-width:none;margin:7px auto 0;font-size:11px}
+.composer-wrap .composer-note{width:min(920px,100%);max-width:none;color:#859084;font-size:10px}
+.mesh-attachment-preview{max-width:min(330px,100%);max-height:220px;object-fit:contain;border-radius:11px;margin-top:9px}
+@media(max-width:760px){
+ .unified-composer{border-radius:18px;padding:8px 9px}
+ .unified-composer #message-input{min-height:54px;font-size:14px}
+ .unified-composer .mesh-switch{padding:0 8px}
+ .unified-composer .mesh-select{height:34px}
+ .unified-composer .model-select{width:clamp(110px,32vw,190px)}
+ .composer-toolbar{gap:5px}.composer-left{gap:5px}
+}
+@media(max-width:440px){
+ .unified-composer .task-select{width:108px}
+ .unified-composer .model-select{width:min(100%,175px)}
+ .unified-composer .composer-plus{flex-basis:33px;width:33px;height:34px}
+ .unified-composer .mesh-file-chip span{max-width:145px}
+ .composer-wrap .mesh-status{line-height:1.35}
+}
