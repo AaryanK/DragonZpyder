@@ -58,6 +58,15 @@ async def secure_headers(request: Request, call_next):
     response = await call_next(request)
     response.headers["x-content-type-options"] = "nosniff"
     response.headers["referrer-policy"] = "strict-origin-when-cross-origin"
+    if is_chat or route == "/chat" or route.startswith(("/chat/", "/demo/")):
+        response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'none'; script-src 'self'; style-src 'self'; "
+            "img-src 'self' data:; connect-src 'self'; form-action 'self'; "
+            "base-uri 'none'; frame-ancestors 'none'"
+        )
     return response
 
 
