@@ -1,5 +1,6 @@
 """Python FastAPI gateway serving compiled, React-owned pages and API routes."""
 import os
+import re
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -99,6 +100,64 @@ async def proxy(request: Request, destination: str, rewrite_origin=False):
     return response
 
 
+
+async def is_admin(request: Request) -> bool:
+    """Check a signed-in Operly identity against the operator's explicit allowlist."""
+    allowed = {entry.strip().casefold() for entry in
+               os.getenv("DRAGONZPYDER_ADMIN_EMAILS", "").split(",") if entry.strip()}
+    if not allowed:
+        return False
+    cookie = request.headers.get("cookie", "")
+    if not cookie:
+        return False
+    try:
+        response = await request.app.state.http.get(
+            OPERLY + "/api/auth/me",
+            headers={"cookie": cookie, "origin": OPERLY, "referer": OPERLY + "/"},
+            timeout=10)
+        if response.status_code != 200:
+            return False
+        account = response.json()
+        email = account.get("email", "") if isinstance(account, dict) else ""
+        return isinstance(email, str) and email.casefold() in allowed
+    except (httpx.HTTPError, ValueError, TypeError):
+        return False
+
+
+async def admin_route(request: Request):
+    if request.method != "GET":
+        return JSONResponse({"detail": "Not found"}, status_code=404)
+    if not await is_admin(request):
+        return JSONResponse({"detail": "Administrator sign-in required"}, status_code=403,
+                            headers={"cache-control": "no-store"})
+    if request.url.path == "/admin":
+        target = DIST / "admin.html"
+        if not target.is_file():
+            return JSONResponse({"detail": "Admin frontend not built"}, status_code=503)
+        return FileResponse(target, media_type="text/html",
+                            headers={"cache-control": "no-store", "x-frame-options": "DENY"})
+    secret = os.getenv("DRAGONZPYDER_ADMIN_TOKEN", "")
+    if len(secret) < 40:
+        return JSONResponse({"detail": "Admin usage gateway is not configured"},
+                            status_code=503)
+    params = request.query_params
+    # Narrowly copy validated filters; never construct target URLs from user input.
+    days = params.get("days", "30")
+    app = params.get("app", "")
+    if not days.isdigit() or not 1 <= int(days) <= 90:
+        return JSONResponse({"detail": "Invalid date range"}, status_code=400)
+    if app and not re.fullmatch(r"[a-z0-9_-]{2,60}", app):
+        return JSONResponse({"detail": "Invalid app filter"}, status_code=400)
+    try:
+        upstream = await request.app.state.http.get(
+            API + "/internal/admin/usage",
+            params={"days": days, **({"app": app} if app else {})},
+            headers={"authorization": "Bearer " + secret}, timeout=20)
+    except httpx.HTTPError:
+        return JSONResponse({"detail": "Usage data service unavailable"}, status_code=502)
+    return Response(content=upstream.content, status_code=upstream.status_code,
+                    media_type="application/json", headers={"cache-control": "no-store"})
+
 app.include_router(chat_router)
 
 
@@ -110,6 +169,8 @@ async def healthz():
 @app.api_route("/{path:path}", methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
 async def dispatch(path: str, request: Request):
     route = "/" + path
+    if route == "/admin" or route == "/admin/api/usage":
+        return await admin_route(request)
     if route.startswith("/api/"):
         return await proxy(request, OPERLY, rewrite_origin=True)
     if route.startswith("/internal/v1/"):

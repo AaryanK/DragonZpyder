@@ -18,9 +18,9 @@ jobs:
       - name: Install FastAPI and tests
         run: pip install -r api/requirements.txt pytest
       - name: Validate Python source
-        run: python -m compileall -q api/main.py api/tests
+        run: python -m compileall -q api/main.py api/usage_ledger.py api/observability.py api/tests
       - name: Run FastAPI contract checks
-        run: pytest -q api/tests/test_fastapi_gateway.py
+        run: pytest -q api/tests/test_fastapi_gateway.py api/tests/test_usage_audit.py
   legacy-compatibility:
     runs-on: ubuntu-latest
     permissions:

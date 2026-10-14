@@ -48,6 +48,7 @@ export default defineConfig({
         index: resolve(root, "index.html"),
         app: resolve(root, "app.html"),
         account: resolve(root, "account.html"),
+        admin: resolve(root, "admin.html"),
       },
     },
   },
