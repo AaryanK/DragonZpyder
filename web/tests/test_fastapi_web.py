@@ -12,9 +12,13 @@ from main import app
 def test_static_pages_and_source_not_exposed():
     with TestClient(app) as client:
         assert client.get("/healthz").json() == {"status": "ok", "service": "dragonzpyder-web"}
-        for path in ("/app.js", "/mesh.js", "/app.css", "/account.css"):
+        for path in ("/app.js", "/mesh.js", "/app.css", "/account.css", "/workspace.css"):
             response = client.get(path)
             assert response.status_code == 200, path
+        workspace = client.get("/workspace.css")
+        assert workspace.headers["content-type"].startswith("text/css")
+        assert ".workspace-switcher" in workspace.text
+        assert ".prompt-grid" in workspace.text
         # Page content is served only from the React build, never old templates.
         for path in ("/", "/index.html", "/app", "/account"):
             response = client.get(path)
