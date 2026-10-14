@@ -5,7 +5,7 @@ import { JSDOM } from "jsdom";
 const dom = new JSDOM("<!doctype html><div id='answer'></div>", { url: "https://dragonzpyder.xyz/app" });
 globalThis.window = dom.window;
 globalThis.document = dom.window.document;
-globalThis.navigator = dom.window.navigator;
+Object.defineProperty(globalThis, "navigator", { configurable: true, value: dom.window.navigator });
 globalThis.requestAnimationFrame = fn => { fn(); return 1; };
 globalThis.cancelAnimationFrame = () => {};
 const { renderMarkdown } = await import("../src/markdown.js");
