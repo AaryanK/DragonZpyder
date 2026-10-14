@@ -27,6 +27,8 @@ for (const section of ["workspace-switcher", "conversation-search", "workspace-b
     "Redesigned Personal workspace missing: " + section);
 }
 assert.match(app, /workspace\.css/, "Personal workspace stylesheet missing");
+assert.match(app, /data-workspace-theme="light"/, "Clean light appearance should be the default");
+assert.match(app, /id="workspace-theme-toggle"/, "Dark/light theme control missing");
 assert.match(app, /id="mesh-model"/, "Model selection must remain connected");
 
 assert.equal((app.match(/id="companion-open"/g) || []).length, 1,
