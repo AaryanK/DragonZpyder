@@ -25,7 +25,7 @@ LEGACY_PAGE_ROUTES = {"/app.html": "/app", "/account.html": "/account"}
 STATIC = {
     "/", "/index.html", "/app.html", "/account.html", "/account.css",
     "/account.js", "/app.css", "/app.js", "/companion.js", "/dictation.js",
-    "/mesh.js", "/mesh.css", "/chat.html", "/privacy.html",
+    "/mesh.js", "/mesh.css", "/workspace.css", "/chat.html", "/privacy.html",
     "/terms.html", "/robots.txt", "/sitemap.xml", "/script.js",
 }
 HOP_HEADERS = {"connection", "transfer-encoding", "content-length", "host",
