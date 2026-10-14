@@ -1,0 +1,21 @@
+name: DragonZpyder API
+on:
+  push:
+    branches: [codex/consolidate-dragonzpyder-web]
+    paths: [api/**, .github/workflows/dragonzpyder-api.yml]
+  pull_request:
+    paths: [api/**]
+jobs:
+  gateway-test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm test

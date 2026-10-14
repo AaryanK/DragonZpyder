@@ -99,3 +99,22 @@ cost receipts, and can resume work safely across devices.
 
 **Non-goal:** moving Operly business databases, business memberships or
 policy enforcement into a universal personal AI service.
+
+
+## Independent API service (October 2026)
+
+The production API code now has its own process in the `api/` directory.
+It implements `GET /healthz`, service-authenticated `GET /v1/models`,
+`POST /v1/chat/completions`, and compatible `/internal/v1/*` routes.
+It has no personal website, login proxy, or business/tenant database.
+Only the restricted inference contract is migrated in this cut.
+
+The intended external hostname is `api.dragonzpyder.xyz`; the Operly
+backend should prefer the private Railway endpoint
+`http://dragonzpyder-api.railway.internal/internal/v1` while both services
+run in the same Railway project. The API bearer token must be stored only
+in service secrets and Operly's backend reference. API callers cannot use
+browser cookies or business-session credentials.
+
+The old DragonZpyder Web `/internal/v1/*` endpoint is kept temporarily for
+rollback; do not remove until Operly's new internal target is verified.
