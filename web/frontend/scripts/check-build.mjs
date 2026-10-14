@@ -22,6 +22,16 @@ for (const [name, markup] of [["home", home], ["app", app], ["account", account]
     name + ": found old static-template navigation");
 }
 assert.match(app, /id="composer"/);
+assert.equal((app.match(/id="companion-open"/g) || []).length, 1,
+  "Live voice should have exactly one launch button");
+const voice = app.indexOf('id="companion-open"');
+const mic = app.indexOf('id="dictation-toggle"');
+const send = app.indexOf('id="send-button"');
+assert.ok(mic !== -1 && mic < voice && voice < send,
+  "Composer action order must be microphone, Live voice, then conditional Send");
+assert.match(app, /id="send-button"[^>]*hidden/,
+  "Send starts hidden until the composer has something to send");
+
 assert.match(account, /id="login-form"/);
 assert.match(home, /runtime-text/);
 for (const id of ["composer","auth-modal","mesh-switch","conversation-list",
