@@ -25,6 +25,7 @@ def config(monkeypatch):
                        json.dumps({"ai-mesh": MESH_TOKEN, "chat-lab": LAB_TOKEN,
                                    "querypedia": Q_TOKEN}))
     monkeypatch.setenv("OPENROUTER_API_KEY", "mock-openrouter-key")
+    monkeypatch.setenv("DRAGONZPYDER_IMAGE_OPENROUTER_API_KEY", "mock-capped-image-key")
 
 
 def test_provider_catalog_scope_and_isolation(monkeypatch):
@@ -47,7 +48,7 @@ def test_provider_catalog_scope_and_isolation(monkeypatch):
             assert client.get("/internal/provider/models", headers=querypedia).status_code == 403
             assert client.get("/internal/provider/models").status_code == 401
             assert client.get("/internal/provider/unapproved-path", headers=mesh).status_code == 404
-            assert all(token == "Bearer mock-openrouter-key" for _, token in paths)
+            assert all(token == ("Bearer mock-capped-image-key" if path == "/api/v1/images/models" else "Bearer mock-openrouter-key") for path, token in paths)
         finally:
             client.app.state.http = real_http
 
@@ -148,5 +149,72 @@ def test_binary_media_ledger_metadata_and_video_fetch(monkeypatch):
             r=client.get("/internal/provider/videos/job123/content",headers=h)
             assert r.status_code == 200
             assert r.content == b"fake-mp4"
+        finally:
+            client.app.state.http = old
+
+
+def test_image_operations_fail_closed_without_dedicated_test_key(monkeypatch):
+    config(monkeypatch)
+    monkeypatch.delenv("DRAGONZPYDER_IMAGE_OPENROUTER_API_KEY")
+    seen = []
+
+    def transport(request):
+        seen.append(request.url.path)
+        return httpx.Response(200, json={"data": []})
+
+    with TestClient(app) as client:
+        old = client.app.state.http
+        client.app.state.http = httpx.AsyncClient(transport=httpx.MockTransport(transport))
+        try:
+            headers = {"Authorization": "Bearer " + MESH_TOKEN}
+            assert client.get("/internal/provider/images/models", headers=headers).status_code == 503
+            assert client.post("/internal/provider/images", headers=headers, json={
+                "model": "test/image-model", "prompt": "a blue bird", "n": 1,
+            }).status_code == 503
+            assert seen == []
+            # Ordinary chat catalogues still work with the existing default key.
+            assert client.get("/internal/provider/models", headers=headers).status_code == 200
+            assert seen == ["/api/v1/models"]
+        finally:
+            client.app.state.http = old
+
+
+def test_image_generation_uses_only_dedicated_key_and_is_audited(monkeypatch):
+    config(monkeypatch)
+    events = []
+    seen = []
+
+    async def record(**data):
+        events.append(data)
+        return True
+
+    monkeypatch.setattr(ledger, "record", record)
+
+    def transport(request):
+        seen.append((request.url.path, request.headers["authorization"], json.loads(request.content)))
+        return httpx.Response(200, json={
+            "data": [{"b64_json": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9YbRO5UAAAAASUVORK5CYII="}],
+            "usage": {"cost": 0.02},
+        })
+
+    with TestClient(app) as client:
+        old = client.app.state.http
+        client.app.state.http = httpx.AsyncClient(transport=httpx.MockTransport(transport))
+        try:
+            headers = {"Authorization": "Bearer " + MESH_TOKEN}
+            params = {"model": "test/image-model", "prompt": "A dragon above Kathmandu"}
+            rejected = client.post("/internal/provider/images", headers=headers, json={
+                **params, "n": 2,
+            })
+            assert rejected.status_code == 400
+            assert seen == []
+            response = client.post("/internal/provider/images", headers=headers, json=params)
+            assert response.status_code == 200, response.text
+            assert response.json()["data"][0]["b64_json"].startswith("iVBOR")
+            assert seen == [("/api/v1/images", "Bearer mock-capped-image-key", {**params, "n": 1})]
+            assert len(events) == 1
+            assert events[0]["app_id"] == "ai-mesh"
+            assert events[0]["requested_model"] == "test/image-model"
+            assert events[0]["response"]["usage"]["cost"] == 0.02
         finally:
             client.app.state.http = old

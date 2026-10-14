@@ -1,9 +1,10 @@
 """Scoped OpenRouter transport for DragonZpyder first-party applications.
 
-The gateway owns the only OpenRouter credential. AI Mesh keeps its existing
-session, model-price, attachment, confirmation and daily-limit checks; this
-layer separately enforces a fixed operation allowlist, caller identity, size
-limits, request tracing and durable completion accounting where provisioned.
+The gateway owns OpenRouter credentials. Image-generation requests use a
+separate, capped test key and fail closed when it is absent; no images ever
+fall back to the ordinary inference key. AI Mesh retains its session, model,
+confirmation and daily-limit checks. The gateway enforces an operation
+allowlist, caller identity, bounds, tracing and usage accounting.
 """
 from __future__ import annotations
 
@@ -35,6 +36,14 @@ MAX_RESULT = 16 * 1024 * 1024
 
 def error_response(code, message):
     return JSONResponse({"error": {"message": message, "code": code}}, status_code=code)
+
+
+def _provider_key(path):
+    # Image models and generation MUST use the capped test key, never the
+    # unrestricted key shared by other apps. Fail closed while unconfigured.
+    if path in ("/images/models", "/images"):
+        return os.getenv("DRAGONZPYDER_IMAGE_OPENROUTER_API_KEY", "")
+    return os.getenv("OPENROUTER_API_KEY", "")
 
 
 def _operation(method: str, path: str) -> str | None:
@@ -75,6 +84,14 @@ def _json_payload(raw: bytes, path: str):
     else:
         if body.get("stream"):
             raise ValueError("Streaming is supported for chat completions only")
+    if path == "/images":
+        prompt = body.get("prompt")
+        if not isinstance(prompt, str) or not 1 <= len(prompt.strip()) <= 1600:
+            raise ValueError("Invalid image prompt")
+        # Enforce the one-image smoke-test contract at the central gateway too.
+        if type(body.get("n", 1)) is not int or body.get("n", 1) != 1:
+            raise ValueError("Only one image per request is permitted")
+        body["n"] = 1
     return body
 
 
@@ -129,8 +146,11 @@ async def provider_request(request: Request, path: str, *, app_id: str, runtime)
         return error_response(404, "Unsupported provider route")
     if not (app_id == "ai-mesh" or (app_id == "chat-lab" and path == "/chat/completions" and request.method == "POST")):
         return error_response(403, "This provider operation is not enabled for the application")
-    if not os.getenv("OPENROUTER_API_KEY"):
-        return error_response(503, "Inference provider is not configured")
+    provider_key = _provider_key(path)
+    if not provider_key:
+        return error_response(503, "Image test provider is not configured" if
+                              path in ("/images", "/images/models") else
+                              "Inference provider is not configured")
     if op == "generation" and ledger.required and not ledger.available:
         return error_response(503, "Usage accounting unavailable")
     if not await runtime.enter():
@@ -156,7 +176,7 @@ async def provider_request(request: Request, path: str, *, app_id: str, runtime)
             is_stream = payload.get("stream") is True
         model = str((payload or {}).get("model") or "catalog")
         span, trace_id = _start_span(request, app_id, path, request_id, model)
-        headers = {"authorization": "Bearer " + os.environ["OPENROUTER_API_KEY"],
+        headers = {"authorization": "Bearer " + provider_key,
                    "HTTP-Referer": "https://dragonzpyder.xyz",
                    "X-Title": "DragonZpyder Gateway",
                    "X-DragonZpyder-Request-Id": request_id}
