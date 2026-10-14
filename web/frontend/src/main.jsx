@@ -4,6 +4,7 @@ import { Frontend } from "./pages.jsx";
 
 const el = document.getElementById("root");
 const route = document.documentElement.dataset.page || (
+  location.pathname.startsWith("/admin") ? "admin" :
   location.pathname.startsWith("/app") ? "app" :
   location.pathname.startsWith("/account") ? "account" : "home"
 );
