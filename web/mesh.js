@@ -1,4 +1,5 @@
 import { renderMarkdown } from "./frontend/src/markdown.js";
+import { formatImageWait, formatImageDuration } from "./image-progress.mjs";
 // AI Mesh is deliberately separate from the existing permissioned Operly Agent.
 // This browser-preview conversation is ephemeral until durable Mesh persistence lands.
 const el=id=>document.getElementById(id);
@@ -19,10 +20,10 @@ function getCsrf(){
  }
  return "";
 }
-async function fetchMesh(path,payload){
+async function fetchMesh(path,payload,{signal}={}){
  const r=await fetch("/mesh/"+path,{method:payload===undefined?"GET":"POST",credentials:"same-origin",
   headers:payload===undefined?{accept:"application/json"}:{"content-type":"application/json",accept:"application/json","x-csrf-token":getCsrf()},
-  body:payload===undefined?undefined:JSON.stringify(payload),cache:"no-store",redirect:"error"});
+  body:payload===undefined?undefined:JSON.stringify(payload),cache:"no-store",redirect:"error",signal});
  const data=await r.json().catch(()=>({}));
  if(!r.ok)throw Error(data.detail?.message||"AI Mesh error ("+r.status+")");
  return data;
@@ -81,6 +82,38 @@ function addMedia(item,kind,source){
  }else if(kind==="video"){
   const video=document.createElement("video");video.controls=true;video.playsInline=true;video.className="mesh-result-video";video.src=source;item.body.append(video);
  }
+}
+// A live waiting state is honest about what the provider exposes: elapsed
+// time only. It never fabricates a percentage or an intermediate image.
+function showImagePending(item,model,abortController){
+ const started=performance.now();
+ const panel=document.createElement("div");panel.className="mesh-image-pending";
+ panel.setAttribute("role","group");panel.setAttribute("aria-label","Image generation in progress");
+ const art=document.createElement("div");art.className="mesh-image-pending-art";art.setAttribute("aria-hidden","true");
+ const picture=document.createElement("span");picture.textContent="✦";art.append(picture);
+ const detail=document.createElement("div");detail.className="mesh-image-pending-detail";
+ const headline=document.createElement("div");headline.className="mesh-image-pending-title";headline.textContent="Creating image";
+ const sub=document.createElement("div");sub.className="mesh-image-pending-model";sub.textContent=model;
+ const elapsed=document.createElement("div");elapsed.className="mesh-image-pending-elapsed";
+ elapsed.textContent=formatImageWait(0);detail.append(headline,sub,elapsed);
+ const stop=document.createElement("button");stop.type="button";stop.className="mesh-image-stop";
+ stop.textContent="Stop waiting";
+ stop.setAttribute("aria-label","Stop waiting for image generation");
+ stop.title="Stop waiting locally. Provider processing and charges may continue.";
+ stop.addEventListener("click",()=>{
+  if(!confirm("Stop waiting for this image? The provider may continue processing and charge for the request."))return;
+  stop.disabled=true;abortController.abort();
+ });
+ const disclaimer=document.createElement("p");disclaimer.className="mesh-image-pending-disclaimer";
+ disclaimer.textContent="A completed image appears here. Intermediate previews are not available from this endpoint. Stopping the wait may not stop charges.";
+ panel.append(art,detail,stop,disclaimer);
+ item.value.replaceChildren();
+ item.body.append(panel);
+ const render=()=>{elapsed.textContent=formatImageWait(performance.now()-started);};
+ const timer=setInterval(render,1000);
+ return {end:()=>{
+    clearInterval(timer);panel.remove();
+   },duration:()=>performance.now()-started};
 }
 function option(m,selectedValue){
  const node=document.createElement("option");node.value=m.id;node.textContent=m.name||m.id;
@@ -226,6 +259,7 @@ async function submit(text){
   const img=document.createElement("img");img.className="mesh-attachment-preview";img.src=item.data;img.alt="Attached image";user.body.append(img);
  }
  const answer=append("assistant","Working…");
+ let imagePending=null;
  try{
   if(mode==="chat"){
    let cleaned=prompt;
@@ -250,8 +284,16 @@ async function submit(text){
    renderMarkdown(answer.value,result.text);
    const meta=document.createElement("div");meta.className="message-meta";meta.textContent="Model: "+result.model+(result.usage?.cost!=null?" · API cost: $"+Number(result.usage.cost).toFixed(5):"");answer.body.append(meta);
   }else if(mode==="image"){
-   const result=await fetchMesh("image",{model:chosen,prompt,confirmed:true});
-   answer.value.textContent="Image created with "+result.model;addMedia(answer,"image",result.image);
+   const controller=new AbortController();
+   imagePending=showImagePending(answer,chosen,controller);
+   const result=await fetchMesh("image",{model:chosen,prompt,confirmed:true},{signal:controller.signal});
+   const elapsed="Generated in "+formatImageDuration(imagePending.duration());
+   imagePending.end();imagePending=null;
+   answer.value.textContent="Image created with "+result.model;
+   addMedia(answer,"image",result.image);
+   const meta=document.createElement("div");meta.className="message-meta";
+   meta.textContent=elapsed+(result.usage?.cost!=null?" · API cost: $"+Number(result.usage.cost).toFixed(5):"");
+   answer.body.append(meta);
   }else if(mode==="transcribe"){
    const result=await fetchMesh("transcribe",{model:chosen,audio:originals.find(a=>a.mime.startsWith("audio/")).data});
    renderMarkdown(answer.value,result.text||"No words detected.");
@@ -279,8 +321,12 @@ async function submit(text){
   }
   note("Completed · "+chosen);
  }catch(e){
-  answer.value.textContent=e.message||"The model request failed.";answer.value.classList.add("error");note(e.message||"Request failed",true);
+  const stopped=e?.name==="AbortError";
+  answer.value.textContent=stopped?"Stopped waiting. The image provider may still finish and charge for this request.":(e.message||"The model request failed.");
+  if(!stopped)answer.value.classList.add("error");
+  note(stopped?"Stopped waiting · provider charges may still apply":(e.message||"Request failed"),!stopped);
  }finally{
+  imagePending?.end();
   loading=false;field.disabled=false;send.disabled=false;
   clearAssets();
   window.dragonzpyderComposerSync?.();
