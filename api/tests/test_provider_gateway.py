@@ -225,3 +225,50 @@ def test_image_generation_uses_only_dedicated_key_and_is_audited(monkeypatch):
             assert events[0]["response"]["usage"]["cost"] == 0.02
         finally:
             client.app.state.http = old
+
+def test_ai_mesh_transcription_json_is_forwarded_and_audited(monkeypatch):
+    """STT works through AI Mesh but not through Operly's chat-only token."""
+    config(monkeypatch)
+    events = []
+    seen = []
+
+    async def record(**data):
+        events.append(data)
+        return True
+
+    monkeypatch.setattr(ledger, "record", record)
+
+    def transport(request):
+        seen.append((request.url.path, json.loads(request.content)))
+        return httpx.Response(200, json={
+            "text": "Hello from the audio sample",
+            "usage": {"type": "duration", "seconds": 2.1},
+        })
+
+    payload = {
+        "model": "openai/whisper-large-v3",
+        "input_audio": {"data": "UklGRi1tb2NrLWF1ZGlv", "format": "wav"},
+    }
+    with TestClient(app) as client:
+        old = client.app.state.http
+        client.app.state.http = httpx.AsyncClient(transport=httpx.MockTransport(transport))
+        try:
+            mesh = {"Authorization": "Bearer " + MESH_TOKEN}
+            operly = {"Authorization": "Bearer " + OPERLY_TOKEN}
+            response = client.post(
+                "/internal/provider/audio/transcriptions", headers=mesh, json=payload,
+            )
+            assert response.status_code == 200
+            assert response.json()["text"] == "Hello from the audio sample"
+            assert seen == [("/api/v1/audio/transcriptions", payload)]
+            assert len(events) == 1
+            assert events[0]["app_id"] == "ai-mesh"
+            assert events[0]["requested_model"] == payload["model"]
+
+            blocked = client.post(
+                "/internal/provider/audio/transcriptions", headers=operly, json=payload,
+            )
+            assert blocked.status_code == 403
+            assert len(seen) == 1
+        finally:
+            client.app.state.http = old
