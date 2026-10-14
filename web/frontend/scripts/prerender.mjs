@@ -17,7 +17,7 @@ const vite = await createServer({
 });
 try {
   const { Frontend } = await vite.ssrLoadModule("/src/pages.jsx");
-  for (const [file, page] of [["index.html", "home"], ["app.html", "app"], ["account.html", "account"]]) {
+  for (const [file, page] of [["index.html", "home"], ["app.html", "app"], ["account.html", "account"], ["admin.html", "admin"]]) {
     const path = resolve(dist, file);
     const shell = readFileSync(path, "utf8");
     if (!shell.includes('<div id="root"></div>')) {
