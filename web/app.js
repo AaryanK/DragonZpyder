@@ -1,3 +1,4 @@
+import { renderMarkdown } from "./frontend/src/markdown.js";
 const state = {
   session: null,
   conversationId: null,
@@ -240,60 +241,11 @@ function showEmptyState() {
 function renderMessageContent(element, content, role = "assistant") {
   const source = String(content || "").replace(/\r\n?/g, "\n")
     .replace(/^\s*(?:\*\*Operly:\*\*|\*\*Operly\*\*:|Operly:)\s*/i, "");
-  element.replaceChildren();
   if (role === "user") {
     element.textContent = source;
     return;
   }
-
-  // Build formatted content through text nodes: model output is never trusted HTML.
-  function addInline(parent, text) {
-    const pattern = /(\*\*([^*\n]+)\*\*|\*([^*\n]+)\*|`([^`\n]+)`)/g;
-    let cursor = 0;
-    for (const match of text.matchAll(pattern)) {
-      if (match.index > cursor) parent.append(document.createTextNode(text.slice(cursor, match.index)));
-      const node = document.createElement(match[2] ? "strong" : match[3] ? "em" : "code");
-      node.textContent = match[2] || match[3] || match[4];
-      parent.append(node);
-      cursor = match.index + match[0].length;
-    }
-    if (cursor < text.length) parent.append(document.createTextNode(text.slice(cursor)));
-  }
-
-  let list = null;
-  let code = null;
-  for (const line of source.split("\n")) {
-    if (/^\s*```/.test(line)) {
-      if (code) { code = null; } else {
-        const pre = document.createElement("pre");
-        code = document.createElement("code");
-        pre.append(code);
-        element.append(pre);
-      }
-      list = null;
-      continue;
-    }
-    if (code) { code.textContent += (code.textContent ? "\n" : "") + line; continue; }
-    if (!line.trim()) { list = null; continue; }
-    const bullet = line.match(/^\s*[-*]\s+(.+)$/);
-    const numbered = line.match(/^\s*\d+[.)]\s+(.+)$/);
-    if (bullet || numbered) {
-      const tag = bullet ? "ul" : "ol";
-      if (!list || list.tagName.toLowerCase() !== tag) {
-        list = document.createElement(tag);
-        element.append(list);
-      }
-      const li = document.createElement("li");
-      addInline(li, (bullet || numbered)[1]);
-      list.append(li);
-      continue;
-    }
-    list = null;
-    const heading = line.match(/^(#{1,3})\s+(.+)$/);
-    const block = document.createElement(heading ? "h" + Math.min(heading[1].length + 2, 5) : "p");
-    addInline(block, heading ? heading[2] : line);
-    element.append(block);
-  }
+  renderMarkdown(element, source);
 }
 
 function messageNode(role, content, { pending = false, error = false, meta = "", approvalId = null } = {}) {
@@ -368,7 +320,17 @@ function renderConversations() {
     conversationList.appendChild(empty);
     return;
   }
-  for (const item of state.conversations) {
+  const search = ($("conversation-search")?.value || "").trim().toLocaleLowerCase();
+  const filtered = state.conversations.filter(item =>
+    (item.title || "Conversation").toLocaleLowerCase().includes(search));
+  if (!filtered.length) {
+    const empty = document.createElement("p");
+    empty.className = "conversation-empty";
+    empty.textContent = "No matching conversations";
+    conversationList.append(empty);
+    return;
+  }
+  for (const item of filtered) {
     const button = document.createElement("button");
     button.type = "button";
     button.className = `conversation-button${item.id === state.conversationId ? " active" : ""}`;
@@ -730,10 +692,18 @@ messageInput.addEventListener("keydown", (event) => {
 
 for (const chip of document.querySelectorAll(".prompt-chip")) {
   chip.addEventListener("click", () => {
-    if(window.dragonzpyderMesh?.isActive()) { messageInput.value=chip.textContent; autoSizeInput(); messageInput.focus(); }
-    else sendMessage(chip.textContent);
+    const prompt = chip.dataset.prompt || chip.textContent.trim();
+    if (window.dragonzpyderMesh?.isActive()) {
+      messageInput.value = prompt; autoSizeInput(); messageInput.focus();
+    } else sendMessage(prompt);
   });
 }
+$("conversation-search")?.addEventListener("input", renderConversations);
+document.addEventListener("keydown", event => {
+  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+    event.preventDefault(); clearConversationSelection();
+  }
+});
 
 $("new-chat").addEventListener("click", clearConversationSelection);
 $("approvals-button").addEventListener("click", openApprovals);
