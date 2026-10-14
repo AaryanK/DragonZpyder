@@ -105,3 +105,91 @@
  .unified-composer .mesh-file-chip span{max-width:145px}
  .composer-wrap .mesh-status{line-height:1.35}
 }
+
+
+/* Modern compact selectors inspired by lightweight chat composer dropdowns.
+   Native selects are retained for the existing AI Mesh controller only. */
+.unified-composer .mesh-native-select{
+ position:absolute!important;width:1px!important;height:1px!important;padding:0!important;
+ margin:0!important;opacity:0!important;pointer-events:none!important;overflow:hidden!important;
+ border:0!important
+}
+.unified-composer .mesh-picker{position:relative;min-width:0;flex:0 1 auto}
+.unified-composer .mesh-picker-trigger{
+ display:inline-flex;align-items:center;gap:8px;justify-content:space-between;
+ max-width:min(250px,35vw);height:36px;padding:0 10px;border:1px solid transparent;
+ border-radius:11px;background:transparent;color:#bfc5bb;font-size:12px;
+ font-weight:540;letter-spacing:-.01em;cursor:pointer;
+ transition:background-color .16s,color .16s,border-color .16s
+}
+.unified-composer .mesh-picker-trigger:hover,.unified-composer .mesh-picker.open .mesh-picker-trigger{
+ background:rgba(255,255,255,.065);color:#f5f3ed
+}
+.unified-composer .mesh-picker-trigger:focus-visible{outline:2px solid #c79e73;outline-offset:2px}
+.unified-composer .mesh-picker--task .mesh-picker-trigger{max-width:142px;color:#d5dbd0}
+.unified-composer .mesh-picker--model .mesh-picker-trigger{max-width:230px;color:#b1bbae}
+.unified-composer .mesh-picker-value{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.unified-composer .mesh-picker-chevron{flex:none;color:#929e90;font-size:17px;line-height:1;transition:transform .16s}
+.unified-composer .mesh-picker.open .mesh-picker-chevron{transform:rotate(180deg)}
+.unified-composer .mesh-picker-popover{
+ position:absolute;bottom:calc(100% + 12px);left:0;z-index:75;
+ width:min(350px,calc(100vw - 38px));max-height:min(390px,55vh);
+ display:flex;flex-direction:column;overflow:hidden;
+ background:#222620;border:1px solid rgba(214,223,201,.15);border-radius:18px;
+ box-shadow:0 24px 60px rgba(0,0,0,.55),0 8px 22px rgba(0,0,0,.2);
+ padding:7px;backdrop-filter:blur(24px)
+}
+.unified-composer .mesh-picker--task .mesh-picker-popover{width:215px}
+.unified-composer .mesh-picker--model .mesh-picker-popover{left:auto;right:0}
+.unified-composer .mesh-picker-popover[hidden]{display:none!important}
+.unified-composer .mesh-picker-search-wrap{
+ flex:none;display:flex;padding:4px 6px 10px;border-bottom:1px solid rgba(255,255,255,.07)
+}
+.unified-composer .mesh-picker-search{
+ width:100%;height:37px;min-width:0;padding:0 12px;outline:none;
+ border:1px solid rgba(255,255,255,.09);border-radius:10px;
+ background:rgba(255,255,255,.055);color:#f1f2ea;font-size:13px
+}
+.unified-composer .mesh-picker-search::placeholder{color:#8d9b8c}
+.unified-composer .mesh-picker-search:focus{border-color:#927758}
+.unified-composer .mesh-picker-options{overflow-y:auto;overscroll-behavior:contain;min-height:0;padding:2px}
+.unified-composer .mesh-picker-option{
+ display:flex;align-items:center;justify-content:space-between;gap:15px;text-align:left;
+ width:100%;min-height:38px;padding:9px 11px;border:0;border-radius:10px;
+ background:transparent;color:#d1d7cc;font-size:12.5px;line-height:1.4;
+ cursor:pointer;outline:none
+}
+.unified-composer .mesh-picker-option:hover,.unified-composer .mesh-picker-option:focus-visible{
+ background:rgba(255,255,255,.08);color:#fff
+}
+.unified-composer .mesh-picker-option[aria-selected="true"]{
+ background:rgba(214,165,115,.11);color:#f0d2ad
+}
+.unified-composer .mesh-picker-option:disabled{opacity:.4;cursor:default}
+.unified-composer .mesh-picker-option-text{min-width:0;overflow-wrap:anywhere}
+.unified-composer .mesh-picker-check{flex:0 0 17px;color:#e5b78b;font-weight:800}
+.unified-composer .mesh-picker-empty{margin:14px;text-align:center;color:#aeb7ab;font-size:12px}
+.unified-composer .composer-voice{
+ display:inline-flex;align-items:center;justify-content:center;gap:8px;
+ min-width:96px;height:38px;padding:0 12px;border:1px solid rgba(214,165,115,.23);
+ border-radius:12px;background:rgba(214,165,115,.11);
+ color:#eed0ae;font-weight:650;font-size:11.5px;white-space:nowrap;
+ cursor:pointer;transition:background-color .16s,border-color .16s
+}
+.unified-composer .composer-voice:hover{background:rgba(214,165,115,.18);border-color:#b5926d}
+.unified-composer .composer-voice .live-voice-bars{height:15px}
+.unified-composer .composer-voice[hidden],.unified-composer .send-button[hidden]{display:none!important}
+.unified-composer .send-button{background:#eee8dd;border-radius:12px}
+.unified-composer .send-button:hover{background:#f4d0a7}
+@media(max-width:700px){
+ .unified-composer .mesh-picker-trigger{height:35px;padding:0 7px;max-width:155px}
+ .unified-composer .mesh-picker--task .mesh-picker-trigger{max-width:115px}
+ .unified-composer .mesh-picker--model .mesh-picker-trigger{max-width:155px}
+ .unified-composer .mesh-picker-popover{
+  position:fixed;left:12px!important;right:12px!important;width:auto!important;
+  bottom:calc(120px + env(safe-area-inset-bottom));max-height:min(380px,55vh)
+ }
+ .unified-composer .composer-voice{min-width:38px;width:38px;padding:0}
+ .unified-composer .composer-voice>span:last-child{display:none}
+ .unified-composer .composer-voice .live-voice-bars{gap:3px}
+}
