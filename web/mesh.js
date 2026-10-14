@@ -1,3 +1,4 @@
+import { renderMarkdown } from "./frontend/src/markdown.js";
 // AI Mesh is deliberately separate from the existing permissioned Operly Agent.
 // This browser-preview conversation is ephemeral until durable Mesh persistence lands.
 const el=id=>document.getElementById(id);
@@ -67,7 +68,8 @@ function append(role,text,kind=""){
  const body=document.createElement("div");body.className="message-body";
  const label=document.createElement("div");label.className="message-role";label.textContent=role==="user"?"You":"DragonZpyder · AI Mesh";
  const value=document.createElement("div");value.className="message-content";
- value.textContent=text;body.append(label,value);article.append(avatar,body);chat.append(article);
+ if(role==="assistant")renderMarkdown(value,text);else value.textContent=text;
+ body.append(label,value);article.append(avatar,body);chat.append(article);
  requestAnimationFrame(()=>{scroller.scrollTop=scroller.scrollHeight});
  return {article,body,value};
 }
@@ -242,17 +244,17 @@ async function submit(text){
    }
    const history=payloadHistory.slice(-10);
    const content=parts.length>1?parts:cleaned;
-   const result=await streamMeshChat({model:chosen,messages:[...history,{role:"user",content}]},value=>{answer.value.textContent=value;});
+   const result=await streamMeshChat({model:chosen,messages:[...history,{role:"user",content}]},value=>{renderMarkdown(answer.value,value,{streaming:true});});
    const safeText=cleaned+(originals.length?"\n[Attached: "+originals.map(a=>a.name).join(", ")+"]":"");
    payloadHistory=[...history,{role:"user",content:safeText},{role:"assistant",content:result.text}].slice(-10);
-   answer.value.textContent=result.text;
+   renderMarkdown(answer.value,result.text);
    const meta=document.createElement("div");meta.className="message-meta";meta.textContent="Model: "+result.model+(result.usage?.cost!=null?" · API cost: $"+Number(result.usage.cost).toFixed(5):"");answer.body.append(meta);
   }else if(mode==="image"){
    const result=await fetchMesh("image",{model:chosen,prompt,confirmed:true});
    answer.value.textContent="Image created with "+result.model;addMedia(answer,"image",result.image);
   }else if(mode==="transcribe"){
    const result=await fetchMesh("transcribe",{model:chosen,audio:originals.find(a=>a.mime.startsWith("audio/")).data});
-   answer.value.textContent=result.text||"No words detected.";
+   renderMarkdown(answer.value,result.text||"No words detected.");
    field.value=result.text||"";field.dispatchEvent(new Event("input"));
   }else if(mode==="speech"){
    const result=await fetchMesh("speech",{model:chosen,text:prompt});
