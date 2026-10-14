@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Explore Wikipedia and ask questions grounded in the article. Querypedia is powered by DragonZpyder.">
+  <title>Querypedia — Wikipedia, made queryable</title>
+  <link rel="stylesheet" href="/assets/style.css">
+  <script src="/assets/app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a href="/" class="brand" aria-label="Querypedia home"><span class="brand-icon">Q<span>✦</span></span><span>Querypedia<small>by DragonZpyder</small></span></a>
+    <form id="search-form" class="search-form" autocomplete="off">
+      <label class="sr-only" for="search-input">Search Wikipedia</label>
+      <input id="search-input" name="q" placeholder="Search millions of Wikipedia articles…" maxlength="120" required>
+      <button type="submit">Search <span aria-hidden="true">↗</span></button>
+    </form>
+    <a class="parent-link" href="https://dragonzpyder.xyz" target="_blank" rel="noopener">DragonZpyder <span aria-hidden="true">↗</span></a>
+  </header>
+
+  <main id="home-view" class="home-view">
+    <div class="hero">
+      <div class="eyebrow"><span class="status-dot"></span> Wikipedia knowledge · AI-powered exploration</div>
+      <h1>A universe of knowledge.<br><em>Now with answers.</em></h1>
+      <p>Browse Wikipedia as you normally would, then ask questions about any article and explore it through an AI companion.</p>
+      <form id="hero-form" class="hero-form">
+        <label for="hero-input" class="sr-only">What would you like to learn about?</label>
+        <input id="hero-input" placeholder="What would you like to learn about?" required maxlength="120">
+        <button type="submit">Explore <span aria-hidden="true">→</span></button>
+      </form>
+      <div class="prompts"><span>Explore:</span>
+        <a href="/wiki/Artificial_intelligence">Artificial intelligence</a>
+        <a href="/wiki/Quantum_mechanics">Quantum mechanics</a>
+        <a href="/wiki/Nepal">Nepal</a>
+        <a href="/wiki/Leonardo_da_Vinci">Leonardo da Vinci</a>
+      </div>
+    </div>
+    <section class="feature-strip" aria-label="What makes Querypedia different">
+      <div><b>01</b><h3>Real Wikipedia articles</h3><p>Read source articles with familiar links, headings, images, and citations.</p></div>
+      <div><b>02</b><h3>Ask what matters</h3><p>Ask questions about the article without losing your place.</p></div>
+      <div><b>03</b><h3>Trace it to the source</h3><p>Original Wikipedia links and attribution stay one click away.</p></div>
+    </section>
+  </main>
+
+  <main id="article-view" class="article-layout hidden">
+    <aside class="left-rail" aria-label="Table of contents">
+      <div class="rail-label">CONTENTS</div>
+      <nav id="toc"><div class="muted">Loading sections…</div></nav>
+      <div class="rail-note">Articles are sourced from Wikipedia and may be updated by contributors.</div>
+    </aside>
+    <article class="reader">
+      <div class="breadcrumbs"><a href="/">Explore</a><span>›</span><span id="breadcrumb-title">Article</span></div>
+      <div id="loading" class="loading">Loading article from Wikipedia…</div>
+      <div id="article-ready" class="hidden">
+        <div class="article-heading">
+          <div class="eyebrow">WIKIPEDIA ARTICLE</div>
+          <h1 id="article-title"></h1>
+          <div class="article-meta"><span id="last-updated"></span><a id="source-top" href="#" rel="noopener" target="_blank">View original on Wikipedia ↗</a></div>
+        </div>
+        <div id="article-body" class="wiki-body"></div>
+        <footer class="article-footer">
+          <p>Source: <a id="source-bottom" target="_blank" rel="noopener">Wikipedia contributors</a>. Article text is reused from Wikipedia; formatting and navigation have been adapted for Querypedia.</p>
+          <p><a id="license-link" href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="noopener">Content licence</a> · <a id="history-link" href="#" target="_blank" rel="noopener">Article history and contributors</a>. Images and other media can have separate licences.</p>
+          <p>Querypedia is an independent service by DragonZpyder and is not affiliated with the Wikimedia Foundation.</p>
+        </footer>
+      </div>
+    </article>
+    <aside class="assistant-panel" aria-label="Ask this article">
+      <div class="assistant-top"><span class="sparkle">✦</span><span><strong>Ask this article</strong><small>Powered by DragonZpyder</small></span></div>
+      <div class="assistant-intro">Go beyond reading. Ask a question and get an answer grounded in this Wikipedia article.</div>
+      <div id="conversation" class="conversation" aria-live="polite">
+        <div class="assistant-suggestion">Try asking:</div>
+        <button type="button" class="suggestion" data-question="Summarize this article in simple terms.">Summarize this article in simple terms <span>↗</span></button>
+        <button type="button" class="suggestion" data-question="What are the most important facts in this article?">What are the key facts? <span>↗</span></button>
+        <button type="button" class="suggestion" data-question="What should I read next to understand this topic better?">What should I explore next? <span>↗</span></button>
+      </div>
+      <form id="ask-form" class="ask-form">
+        <label for="question-input" class="sr-only">Ask a question about this article</label>
+        <textarea id="question-input" rows="3" placeholder="Ask anything about this article…" maxlength="500" required></textarea>
+        <div class="ask-footer"><span>Answers may be imperfect</span><button id="ask-button" type="submit" aria-label="Ask question">↑</button></div>
+      </form>
+      <div class="assistant-note">AI answers are based on retrieved article excerpts. Check <a id="source-panel" target="_blank" rel="noopener" href="#">the original</a> for verification.</div>
+    </aside>
+  </main>
+
+  <section id="search-results" class="search-results hidden" aria-live="polite">
+    <button id="close-search" type="button" class="close-search" aria-label="Close search">×</button>
+    <h2>Search results</h2>
+    <div id="result-list"></div>
+  </section>
+  <div id="toast" class="toast hidden" role="status"></div>
+</body>
+</html>
