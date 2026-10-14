@@ -12,10 +12,14 @@ from main import app
 def test_static_pages_and_source_not_exposed():
     with TestClient(app) as client:
         assert client.get("/healthz").json() == {"status": "ok", "service": "dragonzpyder-web"}
-        for path in ("/", "/index.html", "/app.html", "/account.html", "/app.js", "/mesh.js"):
+        for path in ("/app.js", "/mesh.js", "/app.css", "/account.css"):
             response = client.get(path)
             assert response.status_code == 200, path
-        for path in ("/server.mjs", "/main.py", "/backend/security.py", "/package.json", "/random"):
+        # Page content is served only from the React build, never old templates.
+        for path in ("/", "/index.html", "/app.html", "/account.html"):
+            response = client.get(path)
+            assert response.status_code in (200, 503), path
+        for path in ("/server.mjs", "/home.js", "/main.py", "/backend/security.py", "/package.json", "/random"):
             assert client.get(path).status_code == 404
 
 

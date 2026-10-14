@@ -8,14 +8,22 @@ for (const page of ["index", "app", "account"]) {
   assert.match(html, /id="root"/, page + ": missing React root");
   assert.match(html, /assets\//, page + ": no compiled React entry");
   assert.doesNotMatch(html, /<script[^>]+src="\/(?:app|account|mesh|home|dictation|companion)\.js"/,
-    page + ": legacy modules executed before React hydration");
+    page + ": legacy modules executed before React mount");
+  assert.ok(html.match(/id="root"[\s\S]{500,}/), page + ": no React prerender");
 }
+const home = readFileSync(resolve(dist, "index.html"), "utf8");
 const app = readFileSync(resolve(dist, "app.html"), "utf8");
 const account = readFileSync(resolve(dist, "account.html"), "utf8");
-assert.match(app, /id="composer"/);
-assert.match(app, /id="auth-modal"/);
-assert.match(app, /id="mesh-switch"/);
-assert.match(account, /id="login-form"/);
-assert.match(account, /id="mode-tabs"/);
+assert.match(home, /Make progress|best of AI|All that intelligence/i);
+assert.match(home, /runtime-dot/);
+assert.match(home, /runtime-text/);
+for (const id of ["composer","auth-modal","mesh-switch","conversation-list",
+                   "companion-open","dictation-toggle","message-input"]) {
+  assert.ok(app.includes('id="' + id + '"'), "Lost Personal UI element: " + id);
+}
+for (const id of ["login-form","mode-tabs","signup-panel","reset-panel",
+                   "linked-identities","profile-panel"]) {
+  assert.ok(account.includes('id="' + id + '"'), "Lost account UI element: " + id);
+}
 assert.ok(readdirSync(resolve(dist, "assets")).some(name => name.endsWith(".js")));
-console.log("React/Vite output and preserved template contracts verified");
+console.log("React JSX pages, prerendered SEO, legacy controller IDs and styles verified");

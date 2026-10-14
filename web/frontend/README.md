@@ -1,26 +1,35 @@
 # DragonZpyder React frontend
 
-The UI is built using React 19, Vite 7 and Node.js 22 for the build pipeline.
-Python FastAPI still serves the production HTTP API and compiled files.
-Do **not** put model keys or session secrets into Vite public environment values.
+React 19 + Vite 7 with Node.js 22 as the build-time toolchain. FastAPI
+continues to serve the compiled frontend and private APIs in production.
 
-- `npm install && npm run build` builds `web/dist/`.
-- `npm run dev` uses the Vite development server; run FastAPI locally on port 8080 for API proxying.
-- `npm run test` validates the built entry points and key account/chat element IDs.
+## Source of truth
 
-## Design and migration strategy
+- `src/HomeTemplate.jsx` — existing landing design, sections, typography, and navigation.
+- `src/PersonalTemplate.jsx` — existing chat, AI Mesh, and voice interface.
+- `src/AccountTemplate.jsx` — existing account, sign-in and signup forms.
+- `src/pages.jsx` — page orchestration and transitional controllers.
+- `src/runtime.jsx` — React runtime status components.
+- `index.html`, `app.html`, `account.html` — **minimal Vite entry shells** with metadata
+  and styles; page layout is NOT duplicated here.
+- `scripts/prerender.mjs` — renders all JSX pages into HTML after Vite compiles them,
+  maintaining meaningful content for first paint, crawlers, and no-JavaScript access.
+- `web/dist` — build output; FastAPI serves only compiled pages/assets.
 
-The legacy `web/{index,app,account}.html` files are canonical layout templates
-for now. The Vite multi-page build preserves their original metadata and
-server-visible body markup. React **hydrates** them and provides the new
-home runtime/status components.
+## Build and test
 
-The existing app, account, AI Mesh and companion JavaScript modules are
-transitional *adapters* loaded after hydration, not duplicated business logic.
-Move each feature to idiomatic React components/hooks behind API contracts
-one at a time. Avoid React state updates that rerender nodes which those
-temporary adapters mutate. Do not change the existing CSS palette/IDs
-without updating contract tests.
+```sh
+cd web/frontend
+npm install
+npm run build
+npm test
+```
 
-API, auth, CSRF, model spending controls and Operly workspace permissions
-remain enforced server-side by FastAPI and the authorised backend.
+The former `web/index.html`, `web/app.html` and `web/account.html`
+files have been removed. Visual styles remain in `web/*.css`, and
+historical authentication/chat/voice logic in `web/{account,app,mesh,companion,dictation}.js`
+is loaded as a compatibility adapter after React hydration. Migrate
+these controllers incrementally to React-owned hooks/components without
+weakening the server-side auth, CSRF or permission controls.
+
+Do not expose provider credentials via `VITE_` variables or browser bundles.

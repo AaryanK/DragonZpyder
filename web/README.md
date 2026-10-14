@@ -2,7 +2,7 @@
 
 ## Current production stack (October 14, 2026)
 
-- **Frontend:** React 19 + Vite 7, built with Node.js 22. The same landing, Personal, and account HTML templates are pre-rendered into the Vite entry pages and hydrated with React. CSS/visual identity and public route names are preserved.
+- **Frontend:** React 19 + Vite 7, built with Node.js 22. The landing, Personal, and account pages are JSX source components in `frontend/src/*Template.jsx`. Vite builds and prerenders them into HTML for fast initial delivery, then React hydrates them. The old root static templates were deleted; CSS/visual identity and public route names are preserved.
 - **Backend:** Python 3.12 + FastAPI + Uvicorn on Railway. `web/main.py` serves compiled pages/assets, securely proxies the existing Operly API, and handles AI Mesh and voice endpoints. `api/main.py` runs the separate inference gateway.
 - **Compatibility:** Existing account/chat/voice modules are loaded after React hydration as temporary adapters; move them incrementally to React hooks/components. Their permission and CSRF boundaries must remain server-enforced.
 - **Build:** `web/Dockerfile` builds frontend assets using Node in a multi-stage Docker build and runs the Python server in production. See `frontend/README.md`.
