@@ -73,3 +73,10 @@ Talk starts a genuine two-way WebRTC audio session on the Personal page (not a v
 ### Independent voice controls
 
 The top-bar **Live voice** control opens a continuous, bidirectional WebRTC companion session (provider credentials required). The small microphone inside the chat composer is a separate **speech-to-text dictation** action. Dictation uses the browser's SpeechRecognition / webkitSpeechRecognition API where available, displays interim and final text in the editable composer, and never submits automatically. Browser support and speech-recognition privacy behaviour vary; some browsers send microphone audio to their speech service. The two microphone experiences are mutually exclusive, and stopping dictation does not initiate live voice. No OpenAI key is required for browser-supported dictation.
+
+
+## DragonZpyder Personal identity (account web shell)
+
+The native /account.html page now contains DragonZpyder-branded email login, sign-up, verification-code entry, password recovery, Google Identity Services (when enabled), account details, linked sign-in identities and a read-only list of business memberships. It uses existing Operly /api/auth/* endpoints through the same-origin server proxy, and after authentication forces Personal-only session scope before returning to /app.html. Credentials are never stored in browser localStorage.
+
+Google login requires https://dragonzpyder.xyz to be an authorised JavaScript origin in the Google OAuth client configured through GOOGLE_AUTH_CLIENT_ID in Operly. Verify the provider console setting before advertising Google login as working. The Discord OAuth callback currently returns users to Operly; it is intentionally not exposed as a DragonZpyder sign-in button until a secure redirect/cookie handoff is implemented. Personal spaces are a separate future entity from business tenants. Do not expose business workspace authority in Personal.
