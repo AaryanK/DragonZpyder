@@ -12,31 +12,43 @@ export function PersonalTemplate() {
         <a className="brand" href="/" aria-label="DragonZpyder home"><img src="https://raw.githubusercontent.com/AaryanK/DragonZpyder-Landing/f18fa6a100eebfa8a43036d7baad5b85d9623785/favicon.png" alt=""/><span>DragonZpyder</span></a>
         <button className="icon-btn mobile-only" id="close-sidebar" aria-label="Close sidebar">×</button>
       </div>
-      <button className="new-chat" id="new-chat">＋ New conversation</button>
-      <div className="sidebar-label">Recent</div>
+      <div className="workspace-switcher" aria-label="Current workspace">
+        <span className="workspace-switcher-icon" aria-hidden="true">✦</span>
+        <span><strong>Personal</strong><small>Your space</small></span>
+        <span className="workspace-switcher-check" aria-hidden="true">✓</span>
+      </div>
+      <div className="sidebar-navigation" aria-label="Navigation">
+        <a className="nav-link selected" href="/app" aria-current="page"><span className="nav-glyph" aria-hidden="true">▣</span> Chat <span className="nav-current">Current</span></a>
+        <a className="nav-link" href="/account"><span className="nav-glyph" aria-hidden="true">◎</span> Account &amp; connections</a>
+      </div>
+      <button className="new-chat" id="new-chat"><span aria-hidden="true">＋</span> New conversation <kbd>⌘ K</kbd></button>
+      <div className="sidebar-search-wrap"><span aria-hidden="true">⌕</span><input type="search" id="conversation-search" placeholder="Find conversations" aria-label="Find conversations" autoComplete="off"/></div>
+      <div className="sidebar-label">Your conversations</div>
       <nav className="conversation-list" id="conversation-list" aria-label="Recent conversations"></nav>
       <div className="sidebar-spacer"></div>
+      <div className="sidebar-footer-label">WORKSPACE</div>
       <button className="side-action" id="approvals-button"><span>Approvals</span><span className="badge-count" id="approval-count" hidden>0</span></button>
-      <a className="side-action" href="/">About DragonZpyder</a>
-      <a className="side-action" href="https://operly.dragonzpyder.xyz/" target="_blank" rel="noreferrer">Open Operly ↗</a>
+      <a className="side-action" href="https://operly.dragonzpyder.xyz/" target="_blank" rel="noreferrer"><span>Open Operly</span><span aria-hidden="true">↗</span></a>
+      <a className="side-action" href="/"><span>About DragonZpyder</span><span aria-hidden="true">↗</span></a>
     </aside>
     <section className="workspace">
       <header className="workspace-head">
         <button className="icon-btn mobile-only" id="open-sidebar" aria-label="Open sidebar">☰</button>
-        <div className="runtime-status"><span className="status-dot" id="status-dot"></span><span id="status-text">Checking runtime…</span></div>
-        <div className="head-actions"><button className="ghost-btn" id="approvals-top">Approvals</button><button className="profile-btn" id="profile-button" aria-label="Account menu"><span id="profile-initial">D</span></button></div>
+        <div className="workspace-heading"><div className="workspace-breadcrumb"><span>Personal</span><span aria-hidden="true">/</span><strong>Chat</strong></div><div className="runtime-status"><span className="status-dot" id="status-dot"></span><span id="status-text">Checking runtime…</span></div></div>
+        <div className="head-actions"><span className="head-privacy"><span aria-hidden="true">◈</span> Private workspace</span><button className="ghost-btn" id="approvals-top">Approvals</button><button className="profile-btn" id="profile-button" aria-label="Account menu"><span id="profile-initial">D</span></button></div>
       </header>
       <main className="chat-main" id="chat-main">
         <section className="empty-state" id="empty-state">
-          <img src="https://raw.githubusercontent.com/AaryanK/DragonZpyder-Landing/f18fa6a100eebfa8a43036d7baad5b85d9623785/favicon.png" alt="" className="hero-logo"/>
-          <div className="eyebrow">DragonZpyder / Personal</div>
-          <h1>Make progress on what matters.</h1>
-          <p>Think through an idea, work with connected information, or prepare your next step. DragonZpyder acts through permissions you control—not invisible authority.</p>
+          <div className="welcome-emblem"><img src="https://raw.githubusercontent.com/AaryanK/DragonZpyder-Landing/f18fa6a100eebfa8a43036d7baad5b85d9623785/favicon.png" alt="" className="hero-logo"/></div>
+          <div className="eyebrow">THE INTELLIGENCE IS CONNECTED</div>
+          <h1>Where should we <em>begin?</em></h1>
+          <p>One place to think, create, explore models, and make progress. Bring a question, an image, or a document.</p>
+          <div className="welcome-section-title">Start with an idea <span aria-hidden="true">↗</span></div>
           <div className="prompt-grid">
-            <button className="prompt-chip">Find a good time next week for a meeting.</button>
-            <button className="prompt-chip">Help me draft an email I can review.</button>
-            <button className="prompt-chip">Show me which connected tools I can use.</button>
-            <button className="prompt-chip">Help me make a clear plan for this week.</button>
+            <button className="prompt-chip"><span className="prompt-icon" aria-hidden="true">✧</span><span><strong>Explore a question</strong><small>Help me understand a new idea.</small></span><span className="prompt-arrow" aria-hidden="true">↗</span></button>
+            <button className="prompt-chip"><span className="prompt-icon" aria-hidden="true">⌘</span><span><strong>Make a plan</strong><small>Help me make a clear plan for this week.</small></span><span className="prompt-arrow" aria-hidden="true">↗</span></button>
+            <button className="prompt-chip"><span className="prompt-icon" aria-hidden="true">✉</span><span><strong>Write something</strong><small>Help me draft an email I can review.</small></span><span className="prompt-arrow" aria-hidden="true">↗</span></button>
+            <button className="prompt-chip"><span className="prompt-icon" aria-hidden="true">◎</span><span><strong>Use connected tools</strong><small>Show me which connected tools I can use.</small></span><span className="prompt-arrow" aria-hidden="true">↗</span></button>
           </div>
         </section>
         <section className="messages" id="messages" aria-live="polite"></section>
@@ -74,7 +86,7 @@ export function PersonalTemplate() {
           </div>
         </form>
         <div id="mesh-status" className="mesh-status" role="status" aria-live="polite" hidden></div>
-        <div className="composer-note" id="composer-note">Agent uses connected tools with your approval · AI Mesh talks directly to models.</div>
+        <div className="composer-note" id="composer-note">DragonZpyder can make mistakes. Review important information and approve significant actions.</div>
       </footer>
     </section>
   </div>
