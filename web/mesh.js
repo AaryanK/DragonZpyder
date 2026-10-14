@@ -202,44 +202,51 @@ function setActive(value,{preserveDraft=false}={}){
 async function submit(text){
  if(!enabled||loading)return;
  const prompt=String(text||"").trim(),mode=task.value;
- if(!prompt&&!asset)return;
+ if(!prompt&&!assets.length)return;
  if(!models){note("Models are still loading.",true);return}
  const chosen=model.value;if(!chosen){note("Choose a model.",true);return}
- if(mode==="transcribe"&&!asset?.mime.startsWith("audio/")){note("Attach an audio recording to transcribe.",true);return}
+ if(mode==="transcribe"&&!assets.some(a=>a.mime.startsWith("audio/"))){note("Attach an audio recording to transcribe.",true);return}
  if(mode==="video"&&!models.videoEnabled){note("Video generation is disabled until a strict provider spending limit is configured.",true);return}
  if(mode==="image"&&!models.imageEnabled){note("Image generation is disabled until a provider key-level spending cap is configured.",true);return}
  if(mode==="image"&&!confirm("Generate ONE image? OpenRouter may charge your prepaid credits."))return;
  if(mode==="video"&&!confirm("Generate one SHORT video? This may cost more than ordinary chat; do you want to spend credits?"))return;
  loading=true;send.disabled=true;field.disabled=true;note("Working with "+chosen+" …");
  field.value="";field.dispatchEvent(new Event("input"));
- const original=asset;
- let userText=prompt||("Audio: "+(original?.name||"recording"));
- const user=append("user",userText+(original?"\nAttached: "+original.name:""));
- if(original?.mime.startsWith("image/")){
-  const img=document.createElement("img");img.className="mesh-attachment-preview";img.src=original.data;img.alt="Attached image preview";user.body.append(img);
+ const originals=[...assets];
+ const userText=prompt||("Attached: "+originals.map(a=>a.name).join(", "));
+ const user=append("user",userText+(originals.length?"\nAttached: "+originals.map(a=>a.name).join(", "):""));
+ for(const item of originals.filter(a=>a.mime.startsWith("image/"))){
+  const img=document.createElement("img");img.className="mesh-attachment-preview";img.src=item.data;img.alt="Attached image";user.body.append(img);
  }
  const answer=append("assistant","Working…");
  try{
   if(mode==="chat"){
    let cleaned=prompt;
-   if(original?.mime.startsWith("audio/")){
+   const audio=originals.find(a=>a.mime.startsWith("audio/"));
+   if(audio){
     const speechModel=models.stt?.find(x=>x.id==="openai/whisper-large-v3")?.id||models.stt?.[0]?.id;
     if(!speechModel)throw Error("No transcription model available");
-    note("Transcribing audio before sending to the chat model…");
-    const speech=await fetchMesh("transcribe",{audio:original.data,model:speechModel});
+    note("Transcribing audio before sending…");
+    const speech=await fetchMesh("transcribe",{audio:audio.data,model:speechModel});
     cleaned=(prompt?prompt+"\n\n":"")+"Audio transcript: "+speech.text;
    }
-   const parts=original?.mime.startsWith("image/")?[{type:"text",text:cleaned||"What is in this image?"},{type:"image_url",image_url:{url:original.data}}]:cleaned;
+   const parts=[{type:"text",text:cleaned||"Please analyse these attachments."}];
+   for(const item of originals){
+    if(item.mime.startsWith("image/"))parts.push({type:"image_url",image_url:{url:item.data}});
+    else if(!item.mime.startsWith("audio/"))parts.push({type:"file",file:{filename:item.name,file_data:item.data}});
+   }
    const history=payloadHistory.slice(-10);
-   const result=await streamMeshChat({model:chosen,messages:[...history,{role:"user",content:parts}]},value=>{answer.value.textContent=value;});
-   payloadHistory=[...history,{role:"user",content:parts},{role:"assistant",content:result.text}].slice(-10);
+   const content=parts.length>1?parts:cleaned;
+   const result=await streamMeshChat({model:chosen,messages:[...history,{role:"user",content}]},value=>{answer.value.textContent=value;});
+   const safeText=cleaned+(originals.length?"\n[Attached: "+originals.map(a=>a.name).join(", ")+"]":"");
+   payloadHistory=[...history,{role:"user",content:safeText},{role:"assistant",content:result.text}].slice(-10);
    answer.value.textContent=result.text;
    const meta=document.createElement("div");meta.className="message-meta";meta.textContent="Model: "+result.model+(result.usage?.cost!=null?" · API cost: $"+Number(result.usage.cost).toFixed(5):"");answer.body.append(meta);
   }else if(mode==="image"){
    const result=await fetchMesh("image",{model:chosen,prompt,confirmed:true});
    answer.value.textContent="Image created with "+result.model;addMedia(answer,"image",result.image);
   }else if(mode==="transcribe"){
-   const result=await fetchMesh("transcribe",{model:chosen,audio:original.data});
+   const result=await fetchMesh("transcribe",{model:chosen,audio:originals.find(a=>a.mime.startsWith("audio/")).data});
    answer.value.textContent=result.text||"No words detected.";
    field.value=result.text||"";field.dispatchEvent(new Event("input"));
   }else if(mode==="speech"){
@@ -268,11 +275,28 @@ async function submit(text){
   answer.value.textContent=e.message||"The model request failed.";answer.value.classList.add("error");note(e.message||"Request failed",true);
  }finally{
   loading=false;field.disabled=false;send.disabled=false;
-  if(asset===original)removeAsset();
+  clearAssets();
   field.focus();requestAnimationFrame(()=>{scroller.scrollTop=scroller.scrollHeight});
  }
 }
 switcher.addEventListener("click",()=>setActive(!enabled));
 task.addEventListener("change",refreshTask);
-upload.addEventListener("change",()=>setFile(upload.files?.[0]).catch(e=>note(e.message,true)));
+upload.addEventListener("change",()=>setFiles(upload.files).catch(e=>note(e.message,true)));
+field.addEventListener("paste",event=>{
+ const files=Array.from(event.clipboardData?.items||[]).filter(x=>x.kind==="file"&&x.type.startsWith("image/")).map(x=>x.getAsFile()).filter(Boolean);
+ if(files.length){event.preventDefault();setFiles(files).catch(e=>note(e.message,true));}
+});
+composer.addEventListener("dragover",event=>{
+ if(event.dataTransfer?.types?.includes("Files")){event.preventDefault();composer.classList.add("dragging");}
+});
+composer.addEventListener("dragleave",event=>{
+ if(!composer.contains(event.relatedTarget))composer.classList.remove("dragging");
+});
+composer.addEventListener("drop",event=>{
+ composer.classList.remove("dragging");
+ if(event.dataTransfer?.files?.length){event.preventDefault();setFiles(event.dataTransfer.files).catch(e=>note(e.message,true));}
+});
+fileLabel.addEventListener("keydown",event=>{
+ if(event.key==="Enter"||event.key===" "){event.preventDefault();upload.click();}
+});
 window.dragonzpyderMesh={isActive:()=>enabled,submit,clear,disable:()=>setActive(false)};
