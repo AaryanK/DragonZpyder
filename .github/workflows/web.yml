@@ -1,0 +1,91 @@
+name: DragonZpyder Web
+
+on:
+  pull_request:
+    paths:
+      - "web/**"
+      - ".github/workflows/web.yml"
+  push:
+    branches: [master, main, codex/consolidate-dragonzpyder-web, codex/react-vite-web-frontend]
+    paths:
+      - "web/**"
+      - ".github/workflows/web.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Check JavaScript syntax
+        working-directory: web
+        run: |
+          node --check app.js
+          node --check mesh.js
+          node --check mesh-picker.js
+          node --check script.js
+          node --check server.mjs
+      - name: Guard governed frontend boundary
+        run: |
+          # Scan only browser assets; the Python backend owns model calls.
+          ! grep -RniE 'proxy\.runpod\.net|Bearer EMPTY|/v1/chat/completions' -- web/app.js web/mesh.js web/script.js web/frontend/src
+          # The Personal client may use the direct chat adapter or the retry-safe submit adapter.
+          grep -Eq '/api/personal-agent/chat|/api/personal-tools/client/submit' web/app.js
+          grep -q '/api/personal-agent/chat' web/app.js
+          grep -q '/api/auth/personal-scope' web/app.js
+          grep -q '/api/personal-tools/approvals' web/app.js
+          grep -q 'https://operly.dragonzpyder.xyz' web/server.mjs
+      - name: Check retained browser controllers and site content
+        run: |
+          test -s web/app.css
+          test -s web/app.js
+          test -s web/mesh.css
+          test -s web/mesh.js
+          test -s web/privacy.html
+          test -s web/terms.html
+          test -s web/frontend/src/HomeTemplate.jsx
+          test -s web/frontend/src/PersonalTemplate.jsx
+          test -s web/frontend/src/AccountTemplate.jsx
+          test ! -e web/index.html
+          test ! -e web/app.html
+          test ! -e web/account.html
+
+  fastapi-web:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r web/requirements.txt pytest
+      - run: python -m compileall -q web/main.py web/backend web/tests
+      - run: pytest -q web/tests/test_fastapi_web.py web/tests/test_chat_demo.py web/tests/test_mesh_attachments.py web/tests/test_mesh_model_catalogue.py web/tests/test_admin_protection.py
+
+  react-vite:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install and build React frontend
+        run: |
+          npm install --prefix web/frontend --no-audit --no-fund --package-lock=false
+          npm run build --prefix web/frontend
+          npm run test --prefix web/frontend
+      - name: Verify Vite output served by Python
+        run: |
+          test -s web/dist/index.html
+          test -s web/dist/app.html
+          test -s web/dist/account.html
+          test -s web/dist/admin.html
+          test -n "$(find web/dist/assets -name '*.js' -print -quit)"
