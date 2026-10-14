@@ -9,12 +9,15 @@ import math
 import os
 import re
 import time
+import uuid
 from contextlib import asynccontextmanager
 from typing import Any
 
 import httpx
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from fastapi.encoders import jsonable_encoder
+from telemetry import ledger, client_identity, configure_otel, model_span, provider_observation
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 MAX_BYTES = 160_000
@@ -63,9 +66,14 @@ runtime = Runtime()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    async with httpx.AsyncClient(timeout=90.0, follow_redirects=False) as client:
-        app.state.http = client
-        yield
+    configure_otel()
+    await ledger.connect()
+    try:
+        async with httpx.AsyncClient(timeout=90.0, follow_redirects=False) as client:
+            app.state.http = client
+            yield
+    finally:
+        await ledger.close()
 
 
 app = FastAPI(title="DragonZpyder API", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
@@ -92,10 +100,14 @@ def models() -> list[str]:
 
 
 def authorized(request: Request) -> bool:
-    secret = os.getenv("DRAGONZPYDER_RUNTIME_TOKEN", "")
+    return bool(client_identity(request))
+
+
+def admin_authorized(request: Request) -> bool:
+    secret = os.getenv("DRAGONZPYDER_ADMIN_TOKEN", "")
     header = request.headers.get("authorization", "")
     return (len(secret) >= 32 and header.startswith("Bearer ") and
-            hmac.compare_digest(header[7:].encode(), secret.encode()))
+            hmac.compare_digest(header[7:], secret))
 
 
 def valid_body(value: Any) -> dict:
@@ -147,6 +159,27 @@ async def healthz():
 @app.api_route("/{prefix:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"])
 async def inference(prefix: str, request: Request):
     path = "/" + prefix
+    if path.startswith("/internal/admin/v1/"):
+        if not admin_authorized(request):
+            return denied(401, "Separate administrator token required")
+        try:
+            if request.method == "GET" and path == "/internal/admin/v1/summary":
+                days = int(request.query_params.get("days", "7"))
+                return JSONResponse(jsonable_encoder(await ledger.summary(days)))
+            if request.method == "GET" and path == "/internal/admin/v1/events":
+                limit = int(request.query_params.get("limit", "50"))
+                app_id = request.query_params.get("app")
+                return JSONResponse(jsonable_encoder({"events": await ledger.events(limit, app_id=app_id)}))
+            if request.method == "GET" and path.startswith("/internal/admin/v1/events/"):
+                request_id = path.rsplit("/", 1)[-1]
+                if not 1 <= len(request_id) <= 80:
+                    return denied(400, "Invalid request ID")
+                reveal = request.query_params.get("reveal") == "true"
+                entry = await ledger.event(request_id, reveal=reveal, actor="admin-service")
+                return JSONResponse(jsonable_encoder(entry)) if entry else denied(404, "Event not found")
+        except (ValueError, PermissionError) as error:
+            return denied(400 if isinstance(error, ValueError) else 403, str(error))
+        return denied(404, "Unknown administrator endpoint")
     if not (path.startswith("/internal/v1/") or path.startswith("/v1/")):
         return JSONResponse({"error": {"message": "Unknown DragonZpyder API route"}}, status_code=404)
     if not authorized(request):
@@ -163,6 +196,8 @@ async def inference(prefix: str, request: Request):
         return denied(415, "JSON request required")
     if not os.getenv("OPENROUTER_API_KEY"):
         return denied(503, "Inference provider is not configured")
+    if (os.getenv("DRAGONZPYDER_REQUIRE_LEDGER") == "true" and not ledger.configured):
+        return denied(503, "Durable usage ledger is not configured")
     if not await runtime.enter():
         return JSONResponse({"error": {"message": "API is busy; retry shortly"}}, status_code=503,
                             headers={"retry-after": "2"})
@@ -179,35 +214,65 @@ async def inference(prefix: str, request: Request):
             raise GatewayError(400, "Invalid JSON request")
         if not await runtime.charge():
             raise GatewayError(429, "DragonZpyder internal inference test quota reached")
-        try:
-            upstream = await request.app.state.http.post(
-                OPENROUTER_URL, json=body,
-                headers={"authorization": "Bearer " + os.environ["OPENROUTER_API_KEY"],
-                         "HTTP-Referer": "https://dragonzpyder.xyz", "X-Title": "DragonZpyder Runtime"})
-        except httpx.HTTPError:
-            raise GatewayError(502, "Inference service unavailable")
-        if upstream.status_code != 200:
-            print("DragonZpyder inference upstream status", upstream.status_code)
-            status = 429 if upstream.status_code == 429 else 400 if upstream.status_code == 400 else 502
-            raise GatewayError(status, "Inference budget or rate limit reached" if status == 429
-                               else "Model provider rejected the request")
-        try:
-            result = upstream.json()
-            choice = result["choices"][0]
-            answer = choice["message"]["content"]
-            if not isinstance(answer, str):
-                raise ValueError("nontext")
-            if len(answer.encode("utf-8")) > 90000:
-                raise GatewayError(502, "Model response exceeded output size limit")
-        except (ValueError, TypeError, KeyError, IndexError):
-            raise GatewayError(502, "Model provider returned unexpected content")
-        payload = {"id": str(result.get("id", "")), "object": "chat.completion",
-                   "model": str(result.get("model") or body["model"]),
-                   "choices": [{"index": 0, "message": {"role": "assistant", "content": answer},
-                                "finish_reason": choice.get("finish_reason") or "stop"}]}
-        if "usage" in result:
-            payload["usage"] = result["usage"]
-        return JSONResponse(payload)
+        app_id = client_identity(request)
+        request_id = uuid.uuid4().hex
+        with model_span(dict(request.headers), app_id=app_id, model=body["model"]) as (span, trace_id):
+            started = time.monotonic()
+            try:
+                # Save a pending record before spending provider tokens.
+                # When configured, a database outage fails closed.
+                try:
+                    await ledger.begin(request_id, trace_id, app_id, body)
+                except Exception:
+                    raise GatewayError(503, "Unable to persist inference request")
+                try:
+                    upstream = await request.app.state.http.post(
+                        OPENROUTER_URL, json=body,
+                        headers={"authorization": "Bearer " + os.environ["OPENROUTER_API_KEY"],
+                                 "HTTP-Referer": "https://dragonzpyder.xyz",
+                                 "X-Title": "DragonZpyder Runtime"})
+                except httpx.HTTPError:
+                    raise GatewayError(502, "Inference service unavailable")
+                if upstream.status_code != 200:
+                    status = 429 if upstream.status_code == 429 else 400 if upstream.status_code == 400 else 502
+                    raise GatewayError(status, "Inference budget or rate limit reached" if status == 429
+                                       else "Model provider rejected the request")
+                try:
+                    result = upstream.json()
+                    choice = result["choices"][0]
+                    answer = choice["message"]["content"]
+                    if not isinstance(answer, str):
+                        raise ValueError("nontext")
+                    if len(answer.encode("utf-8")) > 90000:
+                        raise GatewayError(502, "Model response exceeded output size limit")
+                except (ValueError, TypeError, KeyError, IndexError):
+                    raise GatewayError(502, "Model provider returned unexpected content")
+                elapsed = int((time.monotonic() - started) * 1000)
+                provider_observation(span, model=body["model"], result=result, duration_ms=elapsed)
+                payload = {"id": str(result.get("id", "")), "object": "chat.completion",
+                           "model": str(result.get("model") or body["model"]),
+                           "choices": [{"index": 0, "message": {"role": "assistant", "content": answer},
+                                        "finish_reason": choice.get("finish_reason") or "stop"}]}
+                if "usage" in result:
+                    payload["usage"] = result["usage"]
+                try:
+                    await ledger.complete(request_id, status="completed", duration_ms=elapsed, result=result)
+                except Exception:
+                    # The already-inserted pending record preserves evidence of
+                    # an upstream billable request even if finalisation fails.
+                    print("DragonZpyder ledger finalisation failed", request_id)
+                return JSONResponse(payload, headers={"x-dragonzpyder-request-id": request_id,
+                                                      "x-trace-id": trace_id})
+            except GatewayError as error:
+                span.set_attribute("error.type", "gateway_error")
+                span.set_attribute("http.response.status_code", error.status)
+                try:
+                    await ledger.complete(request_id, status="failed",
+                                          duration_ms=int((time.monotonic() - started) * 1000),
+                                          error_code=str(error.status))
+                except Exception:
+                    print("DragonZpyder ledger failure update failed", request_id)
+                raise
     except GatewayError as error:
         return denied(error.status, error.message)
     except Exception as error:
