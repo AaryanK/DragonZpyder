@@ -125,3 +125,13 @@ node --check web/server.mjs
 DragonZpyder takes the **dragon's fire** as creative power and the **spider's web** as connection without captivity—an inspiration from the image of a spider projecting its web while remaining distinct from it. The point is not to own every source of intelligence. It is to weave independent capabilities into something useful, accessible and under human direction.
 
 **Not every dot belongs to one company. The connections can still belong to the people using them.**
+
+
+## Platform ownership update (October 2026)
+
+DragonZpyder is being established as the **upstream AI inference provider** for
+Operly, not merely a frontend for it. The first authenticated internal model
+API has been deployed and Operly's Runtime 1.0 adapter is configured to use it.
+This does not mean that the personal agent kernel, business data or all Studio
+model calls have migrated yet. The phased ownership and security plan is in
+[DragonZpyder-first infrastructure migration](docs/platform-ownership.md).
