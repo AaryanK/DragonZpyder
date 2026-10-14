@@ -33,3 +33,9 @@ these controllers incrementally to React-owned hooks/components without
 weakening the server-side auth, CSRF or permission controls.
 
 Do not expose provider credentials via `VITE_` variables or browser bundles.
+
+## Usage admin
+
+`/admin` is a React page but the FastAPI server refuses to serve it without a
+verified Operly account whose email is included in `DRAGONZPYDER_ADMIN_EMAILS`.
+It does **not** expose the gateway's private admin token to the browser.
