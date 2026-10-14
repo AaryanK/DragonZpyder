@@ -127,7 +127,7 @@ async def provider_request(request: Request, path: str, *, app_id: str, runtime)
     op = _operation(request.method, path)
     if op is None:
         return error_response(404, "Unsupported provider route")
-    if app_id != "ai-mesh":
+    if not (app_id == "ai-mesh" or (app_id == "chat-lab" and path == "/chat/completions" and request.method == "POST")):
         return error_response(403, "This provider operation is not enabled for the application")
     if not os.getenv("OPENROUTER_API_KEY"):
         return error_response(503, "Inference provider is not configured")
