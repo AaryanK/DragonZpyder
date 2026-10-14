@@ -12,72 +12,7 @@
   <link rel="stylesheet" href="/mesh.css">
 </head>
 <body>
-<div id="root">
-  <div class="app-shell" id="app-shell">
-    <aside class="sidebar" id="sidebar">
-      <div class="sidebar-head">
-        <a class="brand" href="/" aria-label="DragonZpyder home"><img src="https://raw.githubusercontent.com/AaryanK/DragonZpyder-Landing/f18fa6a100eebfa8a43036d7baad5b85d9623785/favicon.png" alt=""><span>DragonZpyder</span></a>
-        <button class="icon-btn mobile-only" id="close-sidebar" aria-label="Close sidebar">×</button>
-      </div>
-      <button class="new-chat" id="new-chat">＋ New conversation</button>
-      <div class="sidebar-label">Recent</div>
-      <nav class="conversation-list" id="conversation-list" aria-label="Recent conversations"></nav>
-      <div class="sidebar-spacer"></div>
-      <button class="side-action" id="approvals-button"><span>Approvals</span><span class="badge-count" id="approval-count" hidden>0</span></button>
-      <a class="side-action" href="/">About DragonZpyder</a>
-      <a class="side-action" href="https://operly.dragonzpyder.xyz/" target="_blank" rel="noreferrer">Open Operly ↗</a>
-    </aside>
-    <section class="workspace">
-      <header class="workspace-head">
-        <button class="icon-btn mobile-only" id="open-sidebar" aria-label="Open sidebar">☰</button>
-        <div class="runtime-status"><span class="status-dot" id="status-dot"></span><span id="status-text">Checking runtime…</span></div>
-        <div class="head-actions"><button class="companion-launch" id="companion-open" type="button" aria-haspopup="dialog" aria-controls="companion-panel" aria-expanded="false" aria-label="Start live AI voice conversation" title="Start a realtime two-way voice conversation"><span class="live-voice-bars" aria-hidden="true"><i></i><i></i><i></i></span><span>Live voice</span></button><button class="ghost-btn" id="approvals-top">Approvals</button><button class="profile-btn" id="profile-button" aria-label="Account menu"><span id="profile-initial">D</span></button></div>
-      </header>
-      <main class="chat-main" id="chat-main">
-        <section class="empty-state" id="empty-state">
-          <img src="https://raw.githubusercontent.com/AaryanK/DragonZpyder-Landing/f18fa6a100eebfa8a43036d7baad5b85d9623785/favicon.png" alt="" class="hero-logo">
-          <div class="eyebrow">DragonZpyder / Personal</div>
-          <h1>Make progress on what matters.</h1>
-          <p>Think through an idea, work with connected information, or prepare your next step. DragonZpyder acts through permissions you control—not invisible authority.</p>
-          <div class="prompt-grid">
-            <button class="prompt-chip">Find a good time next week for a meeting.</button>
-            <button class="prompt-chip">Help me draft an email I can review.</button>
-            <button class="prompt-chip">Show me which connected tools I can use.</button>
-            <button class="prompt-chip">Help me make a clear plan for this week.</button>
-          </div>
-        </section>
-        <section class="messages" id="messages" aria-live="polite"></section>
-      </main>
-      <footer class="composer-wrap">
-      <div class="mesh-tools">
-        <button type="button" id="mesh-switch" class="mesh-switch" aria-pressed="false" title="Switch between tool-using Agent and OpenRouter AI Mesh"><span>✦</span> Agent</button>
-        <div id="mesh-controls" class="mesh-controls" hidden>
-          <select id="mesh-task" class="mesh-select" aria-label="AI Mesh task">
-            <option value="chat">Text & vision</option><option value="image">Create image</option>
-            <option value="transcribe">Transcribe audio</option><option value="speech">Create speech</option><option value="video">Create video</option>
-          </select>
-          <select id="mesh-model" class="mesh-select" aria-label="OpenRouter model"><option value="">Loading models…</option></select>
-          <label id="mesh-file-label" class="mesh-input-label" title="Attach an image or audio file">＋ Attach<input id="mesh-upload" type="file" accept="image/png,image/jpeg,image/webp,audio/*"></label>
-        </div>
-      </div>
-      <div id="mesh-attachments" class="mesh-attachments" hidden></div>
-      <div id="mesh-status" class="mesh-status" role="status" aria-live="polite" hidden></div>
-      <span id="dictation-feedback" class="dictation-feedback" role="status" aria-live="polite" hidden></span><form class="composer" id="composer"><textarea id="message-input" rows="1" maxlength="12000" placeholder="Message DragonZpyder…" aria-label="Message DragonZpyder"></textarea><button class="dictation-button" id="dictation-toggle" type="button" title="Dictate into message" aria-label="Start dictation" aria-pressed="false"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"></rect><path d="M5 10a7 7 0 0 0 14 0M12 17v5m-4 0h8"></path></svg></button><button class="send-button" id="send-button" type="submit" aria-label="Send message">↑</button></form><div class="composer-note">Personal scope · Connected capabilities are permissioned · Review significant actions before approving.</div></footer>
-    </section>
-  </div>
-  <section class="companion-panel" id="companion-panel" role="dialog" aria-modal="true" aria-label="Live companion" hidden>
-    <div class="companion-card"><div class="eyebrow">DragonZpyder / Live companion</div><h2>Let's talk.</h2>
-    <div class="companion-bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
-    <p id="companion-status" role="status" aria-live="polite">Ready</p>
-    <div class="companion-transcript" id="companion-transcript" aria-label="Live transcript"></div>
-    <div class="companion-actions"><button type="button" id="companion-mute" disabled>Mute</button><button type="button" id="companion-end">End conversation</button></div>
-    <p class="companion-foot">Voice is streamed to the provider. Connected actions still require Operly permissions and approvals.</p>
-    </div><audio id="companion-audio" autoplay playsinline></audio></section>
-  <div class="modal-backdrop" id="auth-modal" hidden><section class="modal auth-card" role="dialog" aria-modal="true" aria-labelledby="auth-title"><a class="brand auth-brand" href="/"><img src="https://raw.githubusercontent.com/AaryanK/DragonZpyder-Landing/f18fa6a100eebfa8a43036d7baad5b85d9623785/favicon.png" alt=""><span>DragonZpyder</span></a><div class="eyebrow">Private personal runtime</div><h2 id="auth-title">Sign in to your Personal AI</h2><p class="modal-copy">DragonZpyder uses your existing Operly account and converts the session to Personal-only authority before running tasks.</p><form id="login-form" class="login-form"><label>Email<input id="login-email" type="email" autocomplete="email" required></label><label>Password<input id="login-password" type="password" autocomplete="current-password" required></label><button class="primary-btn" id="login-button" type="submit">Sign in</button></form><div class="form-error" id="login-error" hidden></div><p class="small-copy">New to DragonZpyder? <a href="/account.html?mode=signup">Create an account</a> · <a href="/account.html">Continue with Google</a> · <a href="/account.html?mode=forgot">Forgot password?</a></p></section></div>
-  <div class="drawer-backdrop" id="approvals-drawer" hidden><aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="approvals-title"><div class="drawer-head"><div><div class="eyebrow">Human boundary</div><h2 id="approvals-title">Pending approvals</h2></div><button class="icon-btn" id="close-approvals" aria-label="Close approvals">×</button></div><p class="modal-copy">Review the exact action and content before allowing DragonZpyder to execute it.</p><div id="approval-list" class="approval-list"></div></aside></div>
-  <div class="menu" id="profile-menu" hidden><div class="menu-title" id="session-label">Personal session</div><a class="menu-account-link" href="/account.html">My account & connections ↗</a><button id="logout-button">Sign out</button></div>
-  <div class="toast" id="toast" hidden></div>
-  </div>
+<div id="root"></div>
 <script type="module" src="/src/main.jsx"></script>
 </body>
 </html>
