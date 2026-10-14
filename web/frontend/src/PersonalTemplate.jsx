@@ -35,7 +35,7 @@ export function PersonalTemplate() {
       <header className="workspace-head">
         <button className="icon-btn mobile-only" id="open-sidebar" aria-label="Open sidebar">☰</button>
         <div className="workspace-heading"><div className="workspace-breadcrumb"><span>Personal</span><span aria-hidden="true">/</span><strong>Chat</strong></div><div className="runtime-status"><span className="status-dot" id="status-dot"></span><span id="status-text">Checking runtime…</span></div></div>
-        <div className="head-actions"><span className="head-privacy"><span aria-hidden="true">◈</span> Private workspace</span><button className="ghost-btn" id="approvals-top">Approvals</button><button className="profile-btn" id="profile-button" aria-label="Account menu"><span id="profile-initial">D</span></button></div>
+        <div className="head-actions"><button className="theme-toggle" id="workspace-theme-toggle" type="button" aria-label="Switch to dark appearance" title="Toggle appearance"><span id="workspace-theme-icon" aria-hidden="true">☾</span></button><span className="head-privacy"><span aria-hidden="true">◈</span> Private workspace</span><button className="ghost-btn" id="approvals-top">Approvals</button><button className="profile-btn" id="profile-button" aria-label="Account menu"><span id="profile-initial">D</span></button></div>
       </header>
       <main className="chat-main" id="chat-main">
         <section className="empty-state" id="empty-state">
