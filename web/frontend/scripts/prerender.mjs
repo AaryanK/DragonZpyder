@@ -12,6 +12,9 @@ const dist = resolve(root, "../dist");
 const vite = await createServer({
   configFile: resolve(root, "vite.config.js"),
   server: { middlewareMode: true, hmr: false },
+  // Prerender needs server-side markup only. Avoid background dependency scanning
+  // after the ephemeral Vite server closes when rich Markdown modules are imported.
+  optimizeDeps: { noDiscovery: true, include: [] },
   appType: "custom",
   logLevel: "error",
 });
