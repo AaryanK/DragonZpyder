@@ -45,10 +45,10 @@ export function PersonalTemplate() {
           <p>One place to think, create, explore models, and make progress. Bring a question, an image, or a document.</p>
           <div className="welcome-section-title">Start with an idea <span aria-hidden="true">↗</span></div>
           <div className="prompt-grid">
-            <button className="prompt-chip"><span className="prompt-icon" aria-hidden="true">✧</span><span><strong>Explore a question</strong><small>Help me understand a new idea.</small></span><span className="prompt-arrow" aria-hidden="true">↗</span></button>
-            <button className="prompt-chip"><span className="prompt-icon" aria-hidden="true">⌘</span><span><strong>Make a plan</strong><small>Help me make a clear plan for this week.</small></span><span className="prompt-arrow" aria-hidden="true">↗</span></button>
-            <button className="prompt-chip"><span className="prompt-icon" aria-hidden="true">✉</span><span><strong>Write something</strong><small>Help me draft an email I can review.</small></span><span className="prompt-arrow" aria-hidden="true">↗</span></button>
-            <button className="prompt-chip"><span className="prompt-icon" aria-hidden="true">◎</span><span><strong>Use connected tools</strong><small>Show me which connected tools I can use.</small></span><span className="prompt-arrow" aria-hidden="true">↗</span></button>
+            <button className="prompt-chip" data-prompt="Help me understand a new idea."><span className="prompt-icon" aria-hidden="true">✧</span><span><strong>Explore a question</strong><small>Help me understand a new idea.</small></span><span className="prompt-arrow" aria-hidden="true">↗</span></button>
+            <button className="prompt-chip" data-prompt="Help me make a clear plan for this week."><span className="prompt-icon" aria-hidden="true">⌘</span><span><strong>Make a plan</strong><small>Help me make a clear plan for this week.</small></span><span className="prompt-arrow" aria-hidden="true">↗</span></button>
+            <button className="prompt-chip" data-prompt="Help me draft an email I can review."><span className="prompt-icon" aria-hidden="true">✉</span><span><strong>Write something</strong><small>Help me draft an email I can review.</small></span><span className="prompt-arrow" aria-hidden="true">↗</span></button>
+            <button className="prompt-chip" data-prompt="Show me which connected tools I can use."><span className="prompt-icon" aria-hidden="true">◎</span><span><strong>Use connected tools</strong><small>Show me which connected tools I can use.</small></span><span className="prompt-arrow" aria-hidden="true">↗</span></button>
           </div>
         </section>
         <section className="messages" id="messages" aria-live="polite"></section>
