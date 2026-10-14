@@ -5,6 +5,10 @@ limits, NOT financial controls. Image/video remain off unless explicitly enabled
 """
 import asyncio
 import base64
+import binascii
+from io import BytesIO
+from zipfile import ZipFile, BadZipFile
+from docx import Document
 import hashlib
 import hmac
 import json
@@ -30,7 +34,9 @@ DATA_PATTERN = re.compile(r"^data:([\w.+/-]+);base64,([A-Za-z0-9+/=]+)$")
 VIDEO_ID = re.compile(r"^[-\w]{1,150}$")
 FORMATS = {"audio/webm": "webm", "audio/mpeg": "mp3", "audio/mp4": "m4a",
            "audio/ogg": "ogg", "audio/wav": "wav", "audio/flac": "flac"}
-MAX_BODY = 8 * 1024 * 1024
+MAX_BODY = 12 * 1024 * 1024
+MAX_FILE_BYTES = 3 * 1024 * 1024
+MAX_ALL_FILES = 7 * 1024 * 1024
 SYSTEM = (
     "You are DragonZpyder AI Mesh. Give useful, precise answers. You may "
     "analyse supplied text and images. You have no access to connected "
@@ -147,6 +153,63 @@ def parse_attachment(raw, allowed):
     return {"value": raw, "mime": match.group(1), "data": match.group(2)}
 
 
+def document_part(part):
+    """Convert tightly bounded user files to OpenRouter PDF or plain-text parts."""
+    entry = part.get("file")
+    if not isinstance(entry, dict):
+        fail(400, "Invalid file attachment")
+    filename = entry.get("filename")
+    source = entry.get("file_data")
+    if not isinstance(filename, str) or not 1 <= len(filename) <= 120:
+        fail(400, "Invalid attachment filename")
+    name = filename.replace("\\\\", "/").rsplit("/", 1)[-1]
+    extension = os.path.splitext(name)[-1].lower()
+    if not isinstance(source, str) or len(source) > 4_400_000:
+        fail(413, "Attachment exceeds 3 MB")
+    match = DATA_PATTERN.fullmatch(source)
+    if not match:
+        fail(400, "Attachment must be base64 encoded")
+    mime = match.group(1)
+    try:
+        data = base64.b64decode(match.group(2), validate=True)
+    except (binascii.Error, ValueError):
+        fail(400, "Invalid file encoding")
+    if not data or len(data) > MAX_FILE_BYTES:
+        fail(413, "Attachment exceeds 3 MB")
+    if extension == ".pdf" and mime == "application/pdf":
+        if not data.startswith(b"%PDF-"):
+            fail(400, "Invalid PDF attachment")
+        return {"type": "file", "file": {"filename": name, "file_data": source}}, len(data), True
+    if extension == ".docx" and mime in (
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "application/octet-stream"):
+        if len(data) > 1_000_000:
+            fail(413, "DOCX must be smaller than 1 MB")
+        try:
+            with ZipFile(BytesIO(data)) as archive:
+                if sum(info.file_size for info in archive.infolist()) > 5_000_000:
+                    fail(413, "DOCX expands beyond allowed size")
+            doc = Document(BytesIO(data))
+            content = "\\n".join(p.text for p in doc.paragraphs)
+            for table in doc.tables:
+                for row in table.rows:
+                    content += "\\n" + " | ".join(cell.text for cell in row.cells)
+        except (BadZipFile, ValueError, KeyError, OSError):
+            fail(400, "Invalid DOCX attachment")
+        return {"type": "text", "text": f"Attached document ({name}):\\n{content[:8000]}"}, len(data), False
+    if extension in (".txt", ".md", ".csv", ".json", ".py", ".log") and mime in (
+            "text/plain", "text/markdown", "text/csv", "application/json", "text/x-python",
+            "application/octet-stream"):
+        if len(data) > 250_000:
+            fail(413, "Text file exceeds 250 KB")
+        try:
+            content = data.decode("utf-8-sig")
+        except UnicodeDecodeError:
+            fail(400, "Only UTF-8 text attachments are supported")
+        return {"type": "text", "text": f"Attached file ({name}):\\n{content[:8000]}"}, len(data), False
+    fail(415, "Supported documents: PDF, DOCX, TXT, MD, CSV, JSON, PY and LOG")
+
+
 def messages_from(body):
     incoming = body.get("messages")
     if not isinstance(incoming, list) or not 1 <= len(incoming) <= 12:
@@ -154,6 +217,9 @@ def messages_from(body):
     messages = []
     chars = 0
     images = 0
+    files = 0
+    file_bytes = 0
+    has_pdf = False
     for msg in incoming:
         if not isinstance(msg, dict) or msg.get("role") not in ("user", "assistant"):
             fail(400, "Unsupported role")
@@ -167,6 +233,14 @@ def messages_from(body):
                     txt = str(part.get("text") or "")[:5000]
                     chars += len(txt)
                     out.append({"type": "text", "text": txt})
+                elif part.get("type") == "file" and msg["role"] == "user":
+                    files += 1
+                    parsed, size, pdf = document_part(part)
+                    file_bytes += size
+                    has_pdf = has_pdf or pdf
+                    if parsed["type"] == "text":
+                        chars += len(parsed["text"])
+                    out.append(parsed)
                 elif part.get("type") == "image_url":
                     images += 1
                     image_url = part.get("image_url")
@@ -180,13 +254,13 @@ def messages_from(body):
             out = str(original or "")[:5000]
             chars += len(out)
         messages.append({"role": msg["role"], "content": out})
-    if chars > 14000 or images > 2:
-        fail(413, "Context too large (14,000 characters / 2 images)")
-    return messages, images > 0
+    if chars > 14000 or images > 3 or files > 3 or file_bytes > MAX_ALL_FILES:
+        fail(413, "Context too large (14,000 characters / 3 images / 7 MB of files)")
+    return messages, images > 0, has_pdf
 
 
 async def chat(request, identity, body, streaming=False):
-    incoming, has_image = messages_from(body)
+    incoming, has_image, has_pdf = messages_from(body)
     all_models = await catalogue(request.app.state.http, "chat")
     model = choose(all_models, body.get("model"))
     if not model and body.get("model"):
@@ -212,6 +286,8 @@ async def chat(request, identity, body, streaming=False):
     payload = {"model": model["id"],
                "messages": [{"role": "system", "content": SYSTEM}] + incoming,
                "max_tokens": 700, "temperature": 0.5, "stream": streaming}
+    if has_pdf:
+        payload["plugins"] = [{"id": "file-parser", "pdf": {"engine": "cloudflare-ai"}}]
     client = request.app.state.http
     if not streaming:
         r = await upstream(client, "/chat/completions", "POST", payload, timeout=90)
