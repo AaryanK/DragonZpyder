@@ -75,11 +75,9 @@ by itself, enough to access the admin endpoint.
    credentials, and configure a Langfuse workspace. Verify a real completion
    leaves both one ledger row and a corresponding OTel trace. Then enable
    fail-closed accounting.
-2. Assign individual app credentials and migrate Querypedia, AI Mesh and
-   Operly inference one by one. AI Mesh currently talks to OpenRouter directly;
-   the central gateway needs separate scoped **streaming, image, audio and
-   tool-calling** endpoints before changing these clients. Do not break them
-   by forcing requests through the existing text-only endpoint.
+2. Querypedia, AI Mesh and Chat Lab now have central, scoped gateway paths.
+   Operly remains a separate migration. Add dedicated **tool-calling** APIs
+   when LangChain/LangGraph workflows are introduced.
 3. Add a secure trace explorer with search by request ID, model, app, user,
    workflow, span, timing and usage. Do not expose raw payloads by default.
 4. Instrument LangChain/LangGraph agent steps and future n8n/MCP executions
@@ -97,3 +95,46 @@ python -m pip install -r web/requirements.txt pytest
 pytest -q web/tests/test_admin_protection.py
 cd web/frontend && npm install && npm run build && npm run test
 ```
+
+
+## AI Mesh, Chat Lab and Querypedia central routing (October 2026)
+
+OpenRouter completions and media are now routed through the **DragonZpyder API
+service**, never directly from the Chat Lab or AI Mesh web service. AI Mesh
+keeps its per-user session/CSRF, catalogue validation, low-cost model filter,
+confirmation UI and short-term quotas. The gateway independently verifies
+a dedicated app bearer token, checks a fixed operation allowlist, logs model
+usage and attaches request/trace IDs to responses.
+
+| Application | Railway service variable | Gateway app ID | Allowed API scope |
+| --- | --- | --- | --- |
+| AI Mesh | `DRAGONZPYDER_MESH_GATEWAY_TOKEN` | `ai-mesh` | Model catalogues; chat/vision SSE; image/audio/video jobs and polls |
+| Chat Lab | `DRAGONZPYDER_CHAT_GATEWAY_TOKEN` | `chat-lab` | Chat completions only (including attachments) |
+| Querypedia | `DRAGONZPYDER_QUERYPEDIA_TOKEN` | `querypedia` | Existing filtered `/v1/chat/completions` text endpoint |
+
+The API service has `DRAGONZPYDER_APP_KEYS_JSON` with matching operator-issued
+per-app secrets. Use **random distinct secrets** and do not reuse the
+`DRAGONZPYDER_RUNTIME_TOKEN`, which is kept for existing Operly/internal
+compatibility. Separate `DRAGONZPYDER_MESH_RECEIPT_SECRET` signs expiring
+video-job proofs without relying on the provider key.
+
+The server-side gateway endpoint `/internal/provider/<approved path>` is
+restricted to first-party app credentials. **Do not expose this endpoint or
+these bearer tokens in React/JavaScript.** Operly remains unchanged.
+
+All supported AI Mesh text, vision/PDF, image, audio, video and provider
+catalogue calls now transit the gateway. Paid inference records are written
+by the central ledger *when a database is configured*. Text streaming
+relays SSE while collecting provider final usage data, when supplied.
+Binary media are logged via content hash and size; their raw bytes are not
+stored as prompt/response JSON.
+
+Operational limitations: OpenRouter may omit token breakdowns, costs or
+stream final usage (especially for some media). Unknown values remain null.
+Model catalogues and video polling receive OpenTelemetry spans but are not
+chargeable model generation records. The encrypted prompt/response escrow
+remains optional. Configuring this routing **does not** activate PostgreSQL
+or Langfuse by itself: the infrastructure is deployed separately.
+
+Validation: `api/tests/test_provider_gateway.py`, the existing web Mesh and
+Chat Lab tests, and Querypedia's `tests/test_querypedia.py` must pass.
