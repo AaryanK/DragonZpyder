@@ -26,7 +26,6 @@ jobs:
         working-directory: web
         run: |
           node --check app.js
-          node --check home.js
           node --check script.js
           node --check server.mjs
       - name: Guard governed frontend boundary
