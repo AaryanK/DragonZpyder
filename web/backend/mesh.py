@@ -26,7 +26,8 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from .security import personal_session
 
-BASE = "https://openrouter.ai/api/v1"
+# The Mesh service never talks to OpenRouter directly; only the central gateway does.
+BASE = os.getenv("DRAGONZPYDER_API_ORIGIN", "http://dragonzpyder-api.railway.internal:8080").rstrip("/") + "/internal/provider"
 _cache = {}
 _counts = defaultdict(int)
 _count_lock = asyncio.Lock()
@@ -49,11 +50,10 @@ def fail(code, message):
 
 
 def provider_headers():
-    secret = os.getenv("OPENROUTER_API_KEY")
-    if not secret:
-        fail(503, "OpenRouter credentials are not configured")
-    return {"authorization": "Bearer " + secret, "content-type": "application/json",
-            "HTTP-Referer": "https://dragonzpyder.xyz", "X-Title": "DragonZpyder AI Mesh"}
+    secret = os.getenv("DRAGONZPYDER_MESH_GATEWAY_TOKEN")
+    if not secret or len(secret) < 32:
+        fail(503, "DragonZpyder inference gateway is not configured")
+    return {"authorization": "Bearer " + secret, "content-type": "application/json"}
 
 
 async def upstream(client, path, method="GET", data=None, timeout=60):
@@ -409,7 +409,7 @@ async def speak(request, identity, body):
 
 
 def video_signature(job, session, until):
-    secret = os.environ.get("OPENROUTER_API_KEY", "")
+    secret = os.environ.get("DRAGONZPYDER_MESH_RECEIPT_SECRET", "")
     return hmac.new(secret.encode(), (session + "|" + job + "|" + str(until)).encode(),
                     hashlib.sha256).hexdigest()
 
@@ -492,8 +492,8 @@ async def mesh(request: Request):
     if path not in ("/mesh/chat", "/mesh/chat-stream", "/mesh/image",
                     "/mesh/transcribe", "/mesh/speech", "/mesh/video"):
         fail(404, "Unknown Mesh endpoint")
-    if not os.getenv("OPENROUTER_API_KEY"):
-        fail(503, "OpenRouter is not configured")
+    if not os.getenv("DRAGONZPYDER_MESH_GATEWAY_TOKEN"):
+        fail(503, "DragonZpyder inference gateway is not configured")
     if int(request.headers.get("content-length", "0") or "0") > MAX_BODY:
         fail(413, "Attachment is too large")
     raw = await request.body()
