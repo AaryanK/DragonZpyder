@@ -162,7 +162,7 @@ def document_part(part):
     source = entry.get("file_data")
     if not isinstance(filename, str) or not 1 <= len(filename) <= 120:
         fail(400, "Invalid attachment filename")
-    name = filename.replace("\\\\", "/").rsplit("/", 1)[-1]
+    name = filename.replace(chr(92), "/").rsplit("/", 1)[-1]
     extension = os.path.splitext(name)[-1].lower()
     if not isinstance(source, str) or len(source) > 4_400_000:
         fail(413, "Attachment exceeds 3 MB")
