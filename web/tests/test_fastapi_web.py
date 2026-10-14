@@ -25,14 +25,14 @@ def mock_backend(request):
     if request.url.path == "/api/personal-agent/chat":
         return httpx.Response(200, json={"ok": True}, headers=[("set-cookie", "a=1; Path=/"),
                                                                   ("set-cookie", "b=2; Path=/")])
-    if request.url.path == "/models":
+    if request.url.path == "/api/v1/models":
         return httpx.Response(200, json={"data": [
             {"id": "test/model", "name": "Test model",
              "architecture": {"input_modalities": ["text"], "output_modalities": ["text"]},
              "pricing": {"prompt": "0.0000001", "completion": "0.0000001"}}]})
-    if request.url.path == "/images/models" or request.url.path == "/videos/models":
+    if request.url.path == "/api/v1/images/models" or request.url.path == "/api/v1/videos/models":
         return httpx.Response(200, json={"data": []})
-    if request.url.path == "/chat/completions":
+    if request.url.path == "/api/v1/chat/completions":
         return httpx.Response(200, json={"id": "test", "choices": [
             {"message": {"content": "Hello from Python"}}], "usage": {"total_tokens": 4}})
     return httpx.Response(404)
