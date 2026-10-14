@@ -81,7 +81,10 @@ function cents(m){
   return inp+out;
 }
 async function catalogList(){
-  const [chat,image,video]=await Promise.all([catalogue("chat"),catalogue("image"),catalogue("video")]);
+  const chat=await catalogue("chat");
+  const [imageResult,videoResult]=await Promise.allSettled([catalogue("image"),catalogue("video")]);
+  const image=imageResult.status==="fulfilled"?imageResult.value:[];
+  const video=videoResult.status==="fulfilled"?videoResult.value:[];
   const chats=chat.filter(m=>inputs(m).includes("text")&&outputs(m).includes("text"))
     .sort((a,b)=>cents(a)-cents(b)).slice(0,500).map(m=>({
       id:m.id,name:m.name||m.id,inputs:inputs(m),outputs:outputs(m),
@@ -159,11 +162,13 @@ async function imageGenerate(res,id,body){
   const prompt=String(body.prompt||"").trim();
   if(!prompt||prompt.length>1600)throw {code:400,message:"Image prompt must be 1–1,600 characters"};
   take(id,"image");
-  const r=await upstream("/images",{method:"POST",data:{model:model.id,prompt,n:1,output_format:"png"},timeout:120000});
+  const r=await upstream("/images",{method:"POST",data:{model:model.id,prompt,n:1},timeout:120000});
   const p=await r.json();
   const item=p.data?.[0];const base64=item?.b64_json;
   if(typeof base64!=="string"||base64.length>7*1024*1024)throw {code:502,message:"Provider returned no supported inline image"};
-  response(res,200,{model:model.id,image:"data:image/png;base64,"+base64,usage:p.usage||null});
+  const header=Buffer.from(base64.slice(0,48),"base64");
+  const mime=header[0]===255&&header[1]===216?"image/jpeg":header[0]===82&&header[1]===73&&header[2]===70&&header[3]===70?"image/webp":"image/png";
+  response(res,200,{model:model.id,image:"data:"+mime+";base64,"+base64,usage:p.usage||null});
 }
 async function transcribe(res,id,body){
   const m=selected(await catalogue("chat"),body.model);
