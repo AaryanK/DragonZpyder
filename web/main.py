@@ -18,6 +18,9 @@ API = os.getenv("DRAGONZPYDER_API_ORIGIN", "https://api.dragonzpyder.xyz").rstri
 CHAT_HOST = "chat.dragonspire.xyz"
 CHAT_PATHS = {"/chat", "/chat/app.js", "/chat/app.css", "/demo/session",
               "/demo/login", "/demo/logout", "/demo/chat", "/healthz"}
+# Clean public URLs; Vite uses HTML entry filenames only as internal build artifacts.
+PUBLIC_PAGES = {"/": "/index.html", "/app": "/app.html", "/account": "/account.html"}
+LEGACY_PAGE_ROUTES = {"/app.html": "/app", "/account.html": "/account"}
 STATIC = {
     "/", "/index.html", "/app.html", "/account.html", "/account.css",
     "/account.js", "/app.css", "/app.js", "/companion.js", "/dictation.js",
@@ -115,7 +118,11 @@ async def dispatch(path: str, request: Request):
         return await realtime(request)
     if route.startswith("/mesh/"):
         return await mesh(request)
-    file_route = "/index.html" if route == "/" else route
+    if request.method in ("GET", "HEAD") and route in LEGACY_PAGE_ROUTES:
+        query = ("?" + request.url.query) if request.url.query else ""
+        return RedirectResponse(LEGACY_PAGE_ROUTES[route] + query,
+                                status_code=308, headers={"cache-control": "no-store"})
+    file_route = PUBLIC_PAGES.get(route, route)
     if request.method in ("GET", "HEAD") and route.startswith("/assets/"):
         # Only serve hashed assets emitted by Vite, never arbitrary files.
         assets = (DIST / "assets").resolve()
