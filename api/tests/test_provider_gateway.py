@@ -272,3 +272,38 @@ def test_ai_mesh_transcription_json_is_forwarded_and_audited(monkeypatch):
             assert len(seen) == 1
         finally:
             client.app.state.http = old
+
+def test_audio_model_catalogue_filters_are_forwarded_with_strict_allowlist(monkeypatch):
+    config(monkeypatch)
+    requests = []
+
+    def transport(request):
+        requests.append((request.url.path, dict(request.url.params)))
+        return httpx.Response(200, json={"data": [
+            {"id": "illustrative/audio-model", "architecture": {"output_modalities": ["speech"]}}
+        ]})
+
+    with TestClient(app) as client:
+        old = client.app.state.http
+        client.app.state.http = httpx.AsyncClient(transport=httpx.MockTransport(transport))
+        try:
+            mesh = {"Authorization": "Bearer " + MESH_TOKEN}
+            for modality in ("speech", "transcription", "text"):
+                response = client.get("/internal/provider/models",
+                                      params={"output_modalities": modality},
+                                      headers=mesh)
+                assert response.status_code == 200
+                assert requests[-1] == ("/api/v1/models", {"output_modalities": modality})
+
+            for params in ({"output_modalities": "forbidden"},
+                           {"provider": "unknown"},
+                           {"output_modalities": "speech", "unrelated": "1"}):
+                response = client.get("/internal/provider/models", params=params, headers=mesh)
+                assert response.status_code == 400
+            assert len(requests) == 3
+            assert client.get("/internal/provider/models",
+                              params={"output_modalities": "speech"},
+                              headers={"Authorization": "Bearer " + LAB_TOKEN}).status_code == 403
+            assert len(requests) == 3
+        finally:
+            client.app.state.http = old

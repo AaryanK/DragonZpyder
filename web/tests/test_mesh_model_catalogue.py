@@ -120,3 +120,97 @@ def test_frontend_full_catalogue_contract():
     assert "for (const option of matching.slice(0, visibleLimit))" in picker
     assert "Show more models" in picker
     assert "option.value.toLocaleLowerCase().includes(query)" in picker
+
+def test_stt_and_tts_use_separate_model_catalogues(monkeypatch):
+    """OpenRouter's default text catalogue does not contain audio-only models."""
+    monkeypatch.setenv("DRAGONZPYDER_MESH_GATEWAY_TOKEN", "m" * 48)
+    mesh._cache.clear()
+    seen = []
+    stt = {
+        "id": "illustrative/transcription-only",
+        "name": "Transcriber",
+        "architecture": {"input_modalities": ["audio"],
+                         "output_modalities": ["transcription"]},
+    }
+    tts = {
+        "id": "openai/illustrative-tts",
+        "name": "Speech generator",
+        "architecture": {"input_modalities": ["text"],
+                         "output_modalities": ["speech"]},
+    }
+
+    def mock(request):
+        path = request.url.path
+        if path == "/api/auth/sessions":
+            return httpx.Response(200, json=[
+                {"id": "session", "scope": "personal", "current": True}
+            ])
+        if path == "/internal/provider/models":
+            modality = request.url.params.get("output_modalities", "text")
+            seen.append(("models", modality))
+            return httpx.Response(200, json={"data": {
+                "text": [EXPENSIVE],
+                "speech": [tts],
+                "transcription": [stt],
+            }[modality]})
+        if path in ("/internal/provider/images/models", "/internal/provider/videos/models"):
+            return httpx.Response(200, json={"data": []})
+        if path == "/internal/provider/audio/transcriptions":
+            import json
+            payload = json.loads(request.read())
+            seen.append(("transcribe", payload))
+            return httpx.Response(200, json={"text": "mock spoken words"})
+        if path == "/internal/provider/audio/speech":
+            import json
+            payload = json.loads(request.read())
+            seen.append(("speech", payload))
+            return httpx.Response(200, content=b"ID3test", headers={"content-type": "audio/mpeg"})
+        return httpx.Response(404)
+
+    headers = {
+        "origin": "http://localhost",
+        "host": "localhost",
+        "cookie": "operly_csrf=good",
+        "x-csrf-token": "good",
+    }
+    with TestClient(app) as client:
+        old = client.app.state.http
+        client.app.state.http = httpx.AsyncClient(transport=httpx.MockTransport(mock))
+        try:
+            catalogue = client.get("http://localhost/mesh/models", headers=headers)
+            assert catalogue.status_code == 200
+            data = catalogue.json()
+            assert [m["id"] for m in data["chat"]] == [EXPENSIVE["id"]]
+            assert [m["id"] for m in data["stt"]] == [stt["id"]]
+            assert [m["id"] for m in data["tts"]] == [tts["id"]]
+            assert ("models", "speech") in seen
+            assert ("models", "transcription") in seen
+
+            transcription = client.post("http://localhost/mesh/transcribe",
+                headers=headers, json={
+                    "model": stt["id"],
+                    "audio": "data:audio/wav;base64,UklGRkZBS0U=",
+                })
+            assert transcription.status_code == 200, transcription.text
+            assert transcription.json()["text"] == "mock spoken words"
+            assert ("transcribe", {
+                "model": stt["id"],
+                "input_audio": {"data": "UklGRkZBS0U=", "format": "wav"},
+            }) in seen
+
+            speech = client.post("http://localhost/mesh/speech",
+                headers=headers, json={"model": tts["id"], "text": "Hello"})
+            assert speech.status_code == 200, speech.text
+            assert speech.json()["audio"].startswith("data:audio/mpeg;base64,")
+            assert any(item[0] == "speech" and item[1]["voice"] == "alloy"
+                       for item in seen)
+
+            wrong_model = client.post("http://localhost/mesh/transcribe",
+                headers=headers, json={
+                    "model": EXPENSIVE["id"],
+                    "audio": "data:audio/wav;base64,UklGRkZBS0U=",
+                })
+            assert wrong_model.status_code == 400
+        finally:
+            client.app.state.http = old
+            mesh._cache.clear()
