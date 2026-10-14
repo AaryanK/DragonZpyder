@@ -51,8 +51,9 @@ async function start(){
   if(!navigator.mediaDevices?.getUserMedia||!window.RTCPeerConnection){setStatus("This browser cannot stream live audio","error");return}
   const v=++version;starting=true;controller=new AbortController();history.replaceChildren();rows.clear();calls.clear();setStatus("Requesting microphone…","connecting");
   try{
-    mic=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}});
-    if(v!==version)return;
+    const acquired=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}});
+    if(v!==version){ acquired.getTracks().forEach(track=>track.stop()); return; }
+    mic=acquired;
     peer=new RTCPeerConnection();peer.ontrack=e=>{audio.srcObject=e.streams[0];audio.play().catch(()=>setStatus("Tap to enable audio playback","error"))};
     for(const t of mic.getAudioTracks())peer.addTrack(t,mic);
     channel=peer.createDataChannel("oai-events");channel.onmessage=e=>onEvent(e.data,v);
