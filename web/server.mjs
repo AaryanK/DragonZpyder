@@ -1,6 +1,7 @@
 import { createReadStream } from "node:fs";
 import { handleCompanionRealtime } from "./realtime-server.mjs";
 import { handleMesh } from "./mesh-server.mjs";
+import { handleInternalInference } from "./internal-inference.mjs";
 import { stat } from "node:fs/promises";
 import { createServer } from "node:http";
 import { extname, join } from "node:path";
@@ -156,6 +157,10 @@ createServer(async (req, res) => {
   }
   if (url.pathname === "/companion/realtime") {
     await handleCompanionRealtime(req, res, upstreamOrigin);
+    return;
+  }
+  if (url.pathname.startsWith("/internal/v1/")) {
+    await handleInternalInference(req,res,url);
     return;
   }
   if (url.pathname.startsWith("/mesh/")) {
