@@ -1,5 +1,6 @@
 import { createReadStream } from "node:fs";
 import { handleCompanionRealtime } from "./realtime-server.mjs";
+import { handleMesh } from "./mesh-server.mjs";
 import { stat } from "node:fs/promises";
 import { createServer } from "node:http";
 import { extname, join } from "node:path";
@@ -20,6 +21,8 @@ const publicFiles = new Set([
   "/app.js",
   "/companion.js",
   "/dictation.js",
+  "/mesh.js",
+  "/mesh.css",
   "/home.js",
   "/chat.html",
   "/privacy.html",
@@ -153,6 +156,10 @@ createServer(async (req, res) => {
   }
   if (url.pathname === "/companion/realtime") {
     await handleCompanionRealtime(req, res, upstreamOrigin);
+    return;
+  }
+  if (url.pathname.startsWith("/mesh/")) {
+    await handleMesh(req,res,url,upstreamOrigin);
     return;
   }
   if (url.pathname.startsWith("/api/")) {
