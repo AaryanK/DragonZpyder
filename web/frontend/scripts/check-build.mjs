@@ -22,6 +22,13 @@ for (const [name, markup] of [["home", home], ["app", app], ["account", account]
     name + ": found old static-template navigation");
 }
 assert.match(app, /id="composer"/);
+for (const section of ["workspace-switcher", "conversation-search", "workspace-breadcrumb", "welcome-section-title"]) {
+  assert.ok(app.includes('class="' + section + '"') || app.includes('id="' + section + '"'),
+    "Redesigned Personal workspace missing: " + section);
+}
+assert.match(app, /workspace\.css/, "Personal workspace stylesheet missing");
+assert.match(app, /id="mesh-model"/, "Model selection must remain connected");
+
 assert.equal((app.match(/id="companion-open"/g) || []).length, 1,
   "Live voice should have exactly one launch button");
 const voice = app.indexOf('id="companion-open"');
