@@ -193,3 +193,15 @@
  .unified-composer .composer-voice>span:last-child{display:none}
  .unified-composer .composer-voice .live-voice-bars{gap:3px}
 }
+
+
+/* Make the mode switch a light-weight contextual chip rather than a hard box. */
+.unified-composer .mesh-switch{
+ height:36px;padding:0 10px;border:1px solid transparent;border-radius:11px;
+ background:transparent;color:#c8d0c2;font-weight:600;font-size:12px;
+ transition:background-color .16s,color .16s
+}
+.unified-composer .mesh-switch:hover{background:rgba(255,255,255,.07);color:#f5f2e8}
+.unified-composer .mesh-switch[aria-pressed="true"]{
+ border:1px solid transparent;background:rgba(214,165,115,.09);color:#e8c89f
+}
