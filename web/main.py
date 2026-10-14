@@ -12,6 +12,7 @@ from backend.mesh import mesh
 from backend.security import OPERLY
 
 ROOT = Path(__file__).resolve().parent
+DIST = ROOT / "dist"  # Vite-built React pages and fingerprinted assets
 API = os.getenv("DRAGONZPYDER_API_ORIGIN", "https://api.dragonzpyder.xyz").rstrip("/")
 STATIC = {
     "/", "/index.html", "/app.html", "/account.html", "/account.css",
@@ -85,8 +86,17 @@ async def dispatch(path: str, request: Request):
     if route.startswith("/mesh/"):
         return await mesh(request)
     file_route = "/index.html" if route == "/" else route
+    if request.method in ("GET", "HEAD") and route.startswith("/assets/"):
+        # Only serve hashed assets emitted by Vite, never arbitrary files.
+        assets = (DIST / "assets").resolve()
+        target = (DIST / route.lstrip("/")).resolve()
+        if target.is_relative_to(assets) and target.is_file():
+            return FileResponse(target, headers={"cache-control": "public, max-age=31536000, immutable"})
     if request.method in ("GET", "HEAD") and file_route in STATIC:
-        target = ROOT / file_route.lstrip("/")
+        target = ((DIST / file_route.lstrip("/")) if file_route in
+                  ("/index.html", "/app.html", "/account.html") and
+                  (DIST / file_route.lstrip("/")).is_file()
+                  else ROOT / file_route.lstrip("/"))
         if target.is_file():
             media_types = {".html": "text/html", ".js": "text/javascript", ".css": "text/css",
                            ".xml": "application/xml", ".txt": "text/plain"}

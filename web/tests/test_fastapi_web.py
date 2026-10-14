@@ -72,3 +72,22 @@ def test_api_proxy_preserves_cookies_and_origin():
             assert len(response.headers.get_list("set-cookie")) == 2
         finally:
             client.app.state.http = real_http
+
+
+def test_compiled_react_pages_and_hashed_assets(monkeypatch, tmp_path):
+    import main
+    monkeypatch.setattr(main, "DIST", tmp_path)
+    (tmp_path / "index.html").write_text("<h1>React home build</h1>", encoding="utf8")
+    (tmp_path / "app.html").write_text("<h1>React chat build</h1>", encoding="utf8")
+    (tmp_path / "account.html").write_text("<h1>React account build</h1>", encoding="utf8")
+    (tmp_path / "assets").mkdir()
+    (tmp_path / "assets" / "main-abcd.js").write_text("console.log('react')", encoding="utf8")
+    with TestClient(app) as client:
+        assert "React home build" in client.get("/").text
+        assert "React chat build" in client.get("/app.html").text
+        assert "React account build" in client.get("/account.html").text
+        js = client.get("/assets/main-abcd.js")
+        assert js.status_code == 200
+        assert "immutable" in js.headers["cache-control"]
+        assert client.get("/assets/no-file.js").status_code == 404
+        assert client.get("/main.py").status_code == 404
