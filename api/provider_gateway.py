@@ -189,7 +189,15 @@ async def provider_request(request: Request, path: str, *, app_id: str, runtime)
                 completed = False
                 failed = None
                 try:
-                    async for block in upstream.aiter_raw():
+                    # MockTransport and some middleware pre-consume responses;
+                    # ordinary OpenRouter SSE remains a true byte stream.
+                    async def source_blocks():
+                        if upstream.is_stream_consumed:
+                            yield upstream.content
+                        else:
+                            async for piece in upstream.aiter_raw():
+                                yield piece
+                    async for block in source_blocks():
                         buffer += block
                         while b"\n" in buffer:
                             line, buffer = buffer.split(b"\n", 1)
