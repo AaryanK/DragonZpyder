@@ -41,7 +41,7 @@ def test_admin_requires_verified_operly_identity_and_keeps_token_secret(monkeypa
         original = client.app.state.http
         client.app.state.http = httpx.AsyncClient(transport=httpx.MockTransport(service))
         try:
-            assert client.get("/admin", headers={"x-role": "admin"}).status_code == 403
+            assert client.get("/admin", headers={"x-role": "admin"}, follow_redirects=False).status_code == 303
             h = {"cookie": "__Host-operly_session=valid"}
             response = client.get("/admin", headers=h)
             assert response.status_code == 200
