@@ -72,7 +72,9 @@ async def catalogue(client, kind):
     entry = _cache.get(kind)
     if entry and entry[0] > time.monotonic():
         return entry[1]
-    path = {"chat": "/models", "image": "/images/models", "video": "/videos/models"}[kind]
+    path = {"chat": "/models", "tts": "/models?output_modalities=speech",
+            "stt": "/models?output_modalities=transcription",
+            "image": "/images/models", "video": "/videos/models"}[kind]
     result = await upstream(client, path, timeout=14)
     data = result.json().get("data", [])
     models = data if isinstance(data, list) else []
@@ -103,7 +105,8 @@ async def model_list(client):
             return await catalogue(client, kind)
         except Exception:
             return []
-    images, videos = await asyncio.gather(optional("image"), optional("video"))
+    images, videos, tts, stt = await asyncio.gather(
+        optional("image"), optional("video"), optional("tts"), optional("stt"))
     chats = sorted((m for m in chat if "text" in modalities(m, "input")
                     and "text" in modalities(m, "output")), key=by_name)
     return {
@@ -117,8 +120,8 @@ async def model_list(client):
             "resolutions": m.get("supported_resolutions") or [],
             "ratios": m.get("supported_aspect_ratios") or [],
             "pricing": m.get("pricing_skus") or {}}} for m in sorted(videos, key=by_name)],
-        "tts": [brief(m) for m in sorted(chat, key=by_name) if "speech" in modalities(m, "output")],
-        "stt": [brief(m) for m in sorted(chat, key=by_name) if "transcription" in modalities(m, "output")],
+        "tts": [brief(m) for m in sorted(tts, key=by_name) if "speech" in modalities(m, "output")],
+        "stt": [brief(m) for m in sorted(stt, key=by_name) if "transcription" in modalities(m, "output")],
         "imageEnabled": os.getenv("MESH_ENABLE_IMAGE") == "true",
         "videoEnabled": os.getenv("MESH_ENABLE_VIDEO") == "true",
     }
@@ -376,7 +379,7 @@ async def generate_image(request, identity, body):
 
 
 async def transcribe(request, identity, body):
-    model = choose(await catalogue(request.app.state.http, "chat"), body.get("model"))
+    model = choose(await catalogue(request.app.state.http, "stt"), body.get("model"))
     if not model or "transcription" not in modalities(model, "output"):
         fail(400, "Choose a transcription model")
     audio = parse_attachment(body.get("audio"), list(FORMATS))
@@ -389,7 +392,7 @@ async def transcribe(request, identity, body):
 
 
 async def speak(request, identity, body):
-    model = choose(await catalogue(request.app.state.http, "chat"), body.get("model"))
+    model = choose(await catalogue(request.app.state.http, "tts"), body.get("model"))
     if not model or "speech" not in modalities(model, "output"):
         fail(400, "Choose a speech model")
     text = str(body.get("text") or "").strip()
