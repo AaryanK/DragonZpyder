@@ -111,3 +111,41 @@ def test_legacy_html_urls_redirect_to_clean_react_pages():
         assert client.get("/account", follow_redirects=False).status_code in (200, 503)
         assert client.get("/app", headers={"host": "chat.dragonspire.xyz"},
                           follow_redirects=False).status_code == 404
+
+
+def test_admin_dashboard_is_private_and_proxies_only_server_side(monkeypatch, tmp_path):
+    import base64
+    from backend import admin as admin_module
+
+    monkeypatch.delenv("DRAGONZPYDER_ADMIN_PASSWORD", raising=False)
+    monkeypatch.delenv("DRAGONZPYDER_ADMIN_TOKEN", raising=False)
+    with TestClient(app) as client:
+        assert client.get("/admin").status_code == 503
+
+    monkeypatch.setenv("DRAGONZPYDER_ADMIN_PASSWORD", "p" * 32)
+    monkeypatch.setenv("DRAGONZPYDER_ADMIN_TOKEN", "s" * 40)
+    monkeypatch.setattr(admin_module, "_DIST", tmp_path)
+    (tmp_path / "admin.html").write_text("<main>Model operations</main>", encoding="utf8")
+    basic = "Basic " + base64.b64encode(("admin:" + "p" * 32).encode()).decode()
+
+    def check_admin_request(request):
+        assert request.headers["authorization"] == "Bearer " + "s" * 40
+        assert request.url.path == "/internal/admin/v1/summary"
+        return httpx.Response(200, json={"configured": True, "records": 3})
+
+    with TestClient(app) as client:
+        assert client.get("/admin").status_code == 401
+        assert "Basic" in client.get("/admin").headers["www-authenticate"]
+        assert client.get("/admin", headers={"Authorization": "Basic garbage"}).status_code == 401
+        h = {"Authorization": basic}
+        assert "Model operations" in client.get("/admin", headers=h).text
+        real_http = client.app.state.http
+        client.app.state.http = httpx.AsyncClient(transport=httpx.MockTransport(check_admin_request))
+        try:
+            summary = client.get("/admin/api/summary", headers=h)
+            assert summary.status_code == 200
+            assert summary.json()["records"] == 3
+            assert client.get("/admin/api/secret", headers=h).status_code == 404
+            assert client.get("/admin", headers={"host": "chat.dragonspire.xyz", **h}).status_code == 404
+        finally:
+            client.app.state.http = real_http
