@@ -24,7 +24,7 @@ export function PersonalTemplate() {
       <header className="workspace-head">
         <button className="icon-btn mobile-only" id="open-sidebar" aria-label="Open sidebar">☰</button>
         <div className="runtime-status"><span className="status-dot" id="status-dot"></span><span id="status-text">Checking runtime…</span></div>
-        <div className="head-actions"><button className="companion-launch" id="companion-open" type="button" aria-haspopup="dialog" aria-controls="companion-panel" aria-expanded="false" aria-label="Start live AI voice conversation" title="Start a realtime two-way voice conversation"><span className="live-voice-bars" aria-hidden="true"><i></i><i></i><i></i></span><span>Live voice</span></button><button className="ghost-btn" id="approvals-top">Approvals</button><button className="profile-btn" id="profile-button" aria-label="Account menu"><span id="profile-initial">D</span></button></div>
+        <div className="head-actions"><button className="ghost-btn" id="approvals-top">Approvals</button><button className="profile-btn" id="profile-button" aria-label="Account menu"><span id="profile-initial">D</span></button></div>
       </header>
       <main className="chat-main" id="chat-main">
         <section className="empty-state" id="empty-state">
@@ -68,7 +68,8 @@ export function PersonalTemplate() {
               <button className="dictation-button" id="dictation-toggle" type="button" title="Dictate into message" aria-label="Start dictation" aria-pressed="false">
                 <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"></rect><path d="M5 10a7 7 0 0 0 14 0M12 17v5m-4 0h8"></path></svg>
               </button>
-              <button className="send-button" id="send-button" type="submit" aria-label="Send message">↑</button>
+              <button className="companion-launch composer-voice" id="companion-open" type="button" aria-haspopup="dialog" aria-controls="companion-panel" aria-expanded="false" aria-label="Start live AI voice conversation" title="Start a realtime two-way voice conversation"><span className="live-voice-bars" aria-hidden="true"><i></i><i></i><i></i></span><span>Live voice</span></button>
+              <button className="send-button" id="send-button" type="submit" aria-label="Send message" hidden>↑</button>
             </div>
           </div>
         </form>

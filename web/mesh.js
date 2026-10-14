@@ -134,6 +134,7 @@ function renderAssets(){
   const remove=document.createElement("button");remove.type="button";remove.setAttribute("aria-label","Remove "+item.name);
   remove.textContent="×";remove.addEventListener("click",()=>removeAsset(index));chip.append(remove);preview.append(chip);
  });
+ window.dragonzpyderComposerSync?.();
 }
 function removeAsset(index){
  if(typeof index==="number")assets.splice(index,1);
@@ -183,6 +184,7 @@ function clear(){
  payloadHistory=[];assets=[];upload.value="";preview.hidden=true;preview.replaceChildren();
  chat.replaceChildren();chat.classList.remove("active");empty.hidden=false;empty.style.removeProperty("display");
  field.value="";field.dispatchEvent(new Event("input"));note("");
+ window.dragonzpyderComposerSync?.();
 }
 function setActive(value,{preserveDraft=false}={}){
  const draft=preserveDraft?field.value:"";
@@ -199,6 +201,7 @@ function setActive(value,{preserveDraft=false}={}){
    window.dispatchEvent(new Event("dragonzpyder:mesh-disabled"));
  }
  if(preserveDraft){field.value=draft;field.dispatchEvent(new Event("input"));}
+ window.dragonzpyderComposerSync?.();
 }
 async function submit(text){
  if(!enabled||loading)return;
@@ -212,6 +215,7 @@ async function submit(text){
  if(mode==="image"&&!confirm("Generate ONE image? OpenRouter may charge your prepaid credits."))return;
  if(mode==="video"&&!confirm("Generate one SHORT video? This may cost more than ordinary chat; do you want to spend credits?"))return;
  loading=true;send.disabled=true;field.disabled=true;note("Working with "+chosen+" …");
+ window.dragonzpyderComposerSync?.();
  field.value="";field.dispatchEvent(new Event("input"));
  const originals=[...assets];
  const userText=prompt||("Attached: "+originals.map(a=>a.name).join(", "));
@@ -277,6 +281,7 @@ async function submit(text){
  }finally{
   loading=false;field.disabled=false;send.disabled=false;
   clearAssets();
+  window.dragonzpyderComposerSync?.();
   field.focus();requestAnimationFrame(()=>{scroller.scrollTop=scroller.scrollHeight});
  }
 }
@@ -300,4 +305,5 @@ composer.addEventListener("drop",event=>{
 fileLabel.addEventListener("keydown",event=>{
  if(event.key==="Enter"||event.key===" "){event.preventDefault();upload.click();}
 });
-window.dragonzpyderMesh={isActive:()=>enabled,submit,clear,disable:()=>setActive(false)};
+window.dragonzpyderMesh={isActive:()=>enabled,isBusy:()=>loading,hasAttachments:()=>assets.length>0,submit,clear,disable:()=>setActive(false)};
+window.dragonzpyderComposerSync?.();

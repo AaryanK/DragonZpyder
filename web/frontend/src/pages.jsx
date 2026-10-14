@@ -44,6 +44,7 @@ function CompatibilityAdapters({ page }) {
         await import("../../companion.js");
         await import("../../dictation.js");
         await import("../../mesh.js");
+        await import("../../mesh-picker.js");
       } else if (page === "account") {
         await import("../../account.js");
       }
