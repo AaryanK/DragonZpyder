@@ -1,4 +1,4 @@
-"""Password-gated, limited multimodal OpenRouter demo; no Operly data or shared runtime."""
+"""Password-gated multimodal Chat Lab using DragonZpyder central inference."""
 from __future__ import annotations
 
 import base64
@@ -24,7 +24,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 router = APIRouter()
 ROOT = Path(__file__).parent / "static"
 COOKIE = "dz_demo_session"
-OPENROUTER = "https://openrouter.ai/api/v1/chat/completions"
+GATEWAY = os.getenv("DRAGONZPYDER_API_ORIGIN", "http://dragonzpyder-api.railway.internal:8080").rstrip("/") + "/internal/provider/chat/completions"
 MAX_BODY = 9 * 1024 * 1024
 MAX_SINGLE = 3 * 1024 * 1024
 MAX_TEXT = 65_000
@@ -60,7 +60,7 @@ def models() -> list[str]:
 
 
 def configured() -> bool:
-    return bool(os.getenv("OPENROUTER_API_KEY")) and len(os.getenv("DRAGONZPYDER_CHAT_PASSWORD", "")) >= 16
+    return len(os.getenv("DRAGONZPYDER_CHAT_GATEWAY_TOKEN", "")) >= 32 and len(os.getenv("DRAGONZPYDER_CHAT_PASSWORD", "")) >= 16
 
 
 def _signature(expiry: str) -> str:
@@ -135,7 +135,7 @@ async def session(request: Request) -> dict:
 async def login(request: Request) -> JSONResponse:
     _protect_mutation(request)
     if not configured():
-        raise HTTPException(503, "Set OPENROUTER_API_KEY and DRAGONZPYDER_CHAT_PASSWORD (16+ characters) in Railway")
+        raise HTTPException(503, "Set DRAGONZPYDER_CHAT_GATEWAY_TOKEN and DRAGONZPYDER_CHAT_PASSWORD (16+ characters) in Railway")
     raw = await request.body()
     if len(raw) > 512:
         raise HTTPException(413, "Login request too large")
@@ -263,19 +263,18 @@ async def chat(request: Request) -> dict:
         raise HTTPException(422, "Invalid chat request")
     payload = _payload(body)
     _rate_limit(principal)
-    headers = {"Authorization":"Bearer " + os.environ["OPENROUTER_API_KEY"],
-               "Content-Type":"application/json",
-               "HTTP-Referer":"https://dragonzpyder.xyz", "X-Title":"DragonZpyder Chat Demo"}
+    headers = {"Authorization": "Bearer " + os.environ["DRAGONZPYDER_CHAT_GATEWAY_TOKEN"],
+               "Content-Type": "application/json"}
     try:
-        async with httpx.AsyncClient(timeout=80, follow_redirects=False, trust_env=False) as client:
-            upstream = await client.post(OPENROUTER, json=payload, headers=headers)
+        async with httpx.AsyncClient(timeout=90, follow_redirects=False, trust_env=False) as client:
+            upstream = await client.post(GATEWAY, json=payload, headers=headers)
     except httpx.TimeoutException:
-        raise HTTPException(504, "OpenRouter timed out")
+        raise HTTPException(504, "DragonZpyder inference timed out")
     except httpx.RequestError:
-        raise HTTPException(502, "Could not reach OpenRouter")
+        raise HTTPException(502, "Could not reach DragonZpyder inference gateway")
     if upstream.status_code != 200:
         code = 429 if upstream.status_code == 429 else 502
-        raise HTTPException(code, "OpenRouter rejected the request (verify model, balance or limits)")
+        raise HTTPException(code, "DragonZpyder inference rejected the request (verify model, balance or limits)")
     try:
         item = upstream.json()
         answer = item["choices"][0]["message"]["content"]
@@ -287,4 +286,4 @@ async def chat(request: Request) -> dict:
         safe_usage = {k:int(v) for k,v in usage.items() if k in ("prompt_tokens","completion_tokens","total_tokens") and type(v) is int}
         return {"reply":answer[:50_000], "model":str(item.get("model") or body.model)[:120], "usage":safe_usage}
     except (ValueError, KeyError, IndexError, TypeError):
-        raise HTTPException(502, "OpenRouter returned an unsupported response")
+        raise HTTPException(502, "DragonZpyder inference returned an unsupported response")

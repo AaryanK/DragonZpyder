@@ -20,6 +20,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from observability import setup_telemetry, shutdown_telemetry, inference_span, span_trace_id
 from usage_ledger import ledger, token_usage
+from provider_gateway import provider_request
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 MAX_BYTES = 160_000
@@ -188,6 +189,13 @@ async def inference(prefix: str, request: Request):
     path = "/" + prefix
     # Admin accounting is a distinct service-to-service scope; the inference
     # token must NEVER confer admin privileges.
+    if path.startswith("/internal/provider/"):
+        app_id = caller_identity(request)
+        if app_id is None:
+            return denied(401, "Service authentication required")
+        return await provider_request(request, path.removeprefix("/internal/provider"),
+                                      app_id=app_id, runtime=runtime)
+
     if path == "/internal/admin/usage":
         if not admin_authorized(request):
             return denied(401, "Admin service authentication required")

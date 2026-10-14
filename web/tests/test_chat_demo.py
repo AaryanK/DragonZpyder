@@ -15,7 +15,7 @@ from backend.chat_demo import Attachment, ChatBody, ChatTurn, _payload, _attachm
 class ChatLabTests(unittest.TestCase):
     def setUp(self):
         self.env = patch.dict(os.environ, {
-            "OPENROUTER_API_KEY":"example-provider-key",
+            "DRAGONZPYDER_CHAT_GATEWAY_TOKEN":"c" * 48,
             "DRAGONZPYDER_CHAT_PASSWORD":"super-long-example-demo-password",
             "DRAGONZPYDER_CHAT_MODELS":"google/gemini-2.5-flash,openai/gpt-4o-mini"
         })
@@ -63,10 +63,10 @@ class ChatLabTests(unittest.TestCase):
             async def __aenter__(self): return self
             async def __aexit__(self, *args): return None
             async def post(self, url, *, json, headers):
-                assert url == "https://openrouter.ai/api/v1/chat/completions"
+                assert url.endswith("/internal/provider/chat/completions")
                 assert json["model"] == "google/gemini-2.5-flash"
                 assert json["messages"][-1] == {"role":"user","content":"Hi"}
-                assert headers["Authorization"].startswith("Bearer ")
+                assert headers["Authorization"] == "Bearer " + "c" * 48
                 class Result:
                     status_code = 200
                     def json(self):

@@ -33,21 +33,21 @@ def mock_backend(request):
     if request.url.path == "/api/personal-agent/chat":
         return httpx.Response(200, json={"ok": True}, headers=[("set-cookie", "a=1; Path=/"),
                                                                   ("set-cookie", "b=2; Path=/")])
-    if request.url.path == "/api/v1/models":
+    if request.url.path == "/internal/provider/models":
         return httpx.Response(200, json={"data": [
             {"id": "test/model", "name": "Test model",
              "architecture": {"input_modalities": ["text"], "output_modalities": ["text"]},
              "pricing": {"prompt": "0.0000001", "completion": "0.0000001"}}]})
-    if request.url.path == "/api/v1/images/models" or request.url.path == "/api/v1/videos/models":
+    if request.url.path == "/internal/provider/images/models" or request.url.path == "/internal/provider/videos/models":
         return httpx.Response(200, json={"data": []})
-    if request.url.path == "/api/v1/chat/completions":
+    if request.url.path == "/internal/provider/chat/completions":
         return httpx.Response(200, json={"id": "test", "choices": [
             {"message": {"content": "Hello from Python"}}], "usage": {"total_tokens": 4}})
     return httpx.Response(404)
 
 
 def test_mesh_requires_personal_session_and_csrf(monkeypatch):
-    monkeypatch.setenv("OPENROUTER_API_KEY", "test")
+    monkeypatch.setenv("DRAGONZPYDER_MESH_GATEWAY_TOKEN", "m" * 48)
     with TestClient(app) as client:
         real_http = client.app.state.http
         client.app.state.http = httpx.AsyncClient(transport=httpx.MockTransport(mock_backend))
