@@ -42,20 +42,39 @@ export function PersonalTemplate() {
         <section className="messages" id="messages" aria-live="polite"></section>
       </main>
       <footer className="composer-wrap">
-      <div className="mesh-tools">
-        <button type="button" id="mesh-switch" className="mesh-switch" aria-pressed="false" title="Switch between tool-using Agent and OpenRouter AI Mesh"><span>✦</span> Agent</button>
-        <div id="mesh-controls" className="mesh-controls" hidden>
-          <select id="mesh-task" className="mesh-select" aria-label="AI Mesh task">
-            <option value="chat">Text & vision</option><option value="image">Create image</option>
-            <option value="transcribe">Transcribe audio</option><option value="speech">Create speech</option><option value="video">Create video</option>
-          </select>
-          <select id="mesh-model" className="mesh-select" aria-label="OpenRouter model"><option value="">Loading models…</option></select>
-          <label id="mesh-file-label" className="mesh-input-label" title="Attach an image or audio file">＋ Attach<input id="mesh-upload" type="file" accept="image/png,image/jpeg,image/webp,audio/*"/></label>
-        </div>
-      </div>
-      <div id="mesh-attachments" className="mesh-attachments" hidden></div>
-      <div id="mesh-status" className="mesh-status" role="status" aria-live="polite" hidden></div>
-      <span id="dictation-feedback" className="dictation-feedback" role="status" aria-live="polite" hidden></span><form className="composer" id="composer"><textarea id="message-input" rows="1" maxLength="12000" placeholder="Message DragonZpyder…" aria-label="Message DragonZpyder"></textarea><button className="dictation-button" id="dictation-toggle" type="button" title="Dictate into message" aria-label="Start dictation" aria-pressed="false"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"></rect><path d="M5 10a7 7 0 0 0 14 0M12 17v5m-4 0h8"></path></svg></button><button className="send-button" id="send-button" type="submit" aria-label="Send message">↑</button></form><div className="composer-note">Personal scope · Connected capabilities are permissioned · Review significant actions before approving.</div></footer>
+        <span id="dictation-feedback" className="dictation-feedback" role="status" aria-live="polite" hidden></span>
+        <form className="composer unified-composer" id="composer" aria-label="Chat message composer">
+          <div id="mesh-attachments" className="mesh-attachments" hidden></div>
+          <textarea id="message-input" rows="2" maxLength="12000" placeholder="Message DragonZpyder…" aria-label="Message DragonZpyder"></textarea>
+          <div className="composer-toolbar">
+            <div className="composer-left">
+              <label id="mesh-file-label" className="mesh-input-label composer-plus" title="Attach images or documents" aria-label="Attach images or documents" tabIndex="0" role="button">
+                <span aria-hidden="true">＋</span>
+                <input id="mesh-upload" type="file" multiple accept="image/png,image/jpeg,image/webp,.pdf,.docx,.txt,.md,.csv,.json,.py,.log,audio/*" aria-label="Choose files to attach"/>
+              </label>
+              <button type="button" id="mesh-switch" className="mesh-switch" aria-pressed="false" title="Switch between permissioned Agent and direct AI Mesh"><span aria-hidden="true">✦</span> Agent</button>
+              <div id="mesh-controls" className="mesh-controls" hidden>
+                <select id="mesh-task" className="mesh-select task-select" aria-label="AI Mesh task">
+                  <option value="chat">Text &amp; files</option>
+                  <option value="image">Create image</option>
+                  <option value="transcribe">Transcribe audio</option>
+                  <option value="speech">Create speech</option>
+                  <option value="video">Create video</option>
+                </select>
+                <select id="mesh-model" className="mesh-select model-select" aria-label="OpenRouter model"><option value="">Loading models…</option></select>
+              </div>
+            </div>
+            <div className="composer-right">
+              <button className="dictation-button" id="dictation-toggle" type="button" title="Dictate into message" aria-label="Start dictation" aria-pressed="false">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"></rect><path d="M5 10a7 7 0 0 0 14 0M12 17v5m-4 0h8"></path></svg>
+              </button>
+              <button className="send-button" id="send-button" type="submit" aria-label="Send message">↑</button>
+            </div>
+          </div>
+        </form>
+        <div id="mesh-status" className="mesh-status" role="status" aria-live="polite" hidden></div>
+        <div className="composer-note" id="composer-note">Agent uses connected tools with your approval · AI Mesh talks directly to models.</div>
+      </footer>
     </section>
   </div>
   <section className="companion-panel" id="companion-panel" role="dialog" aria-modal="true" aria-label="Live companion" hidden>
