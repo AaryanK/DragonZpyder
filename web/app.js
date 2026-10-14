@@ -45,6 +45,26 @@ const profileInitial = $("profile-initial");
 const sidebar = $("sidebar");
 const toast = $("toast");
 
+const workspaceThemeToggle = $("workspace-theme-toggle");
+function applyWorkspaceTheme(theme, { persist = true } = {}) {
+  const mode = theme === "dark" ? "dark" : "light";
+  document.documentElement.dataset.workspaceTheme = mode;
+  workspaceThemeToggle.setAttribute("aria-label", mode === "light" ? "Switch to dark appearance" : "Switch to light appearance");
+  workspaceThemeToggle.setAttribute("aria-pressed", String(mode === "dark"));
+  workspaceThemeToggle.title = mode === "light" ? "Dark mode" : "Light mode";
+  $("workspace-theme-icon").textContent = mode === "light" ? "☾" : "☀";
+  if (persist) {
+    try { localStorage.setItem("dragonzpyder:workspace-theme", mode); } catch {}
+  }
+}
+try {
+  applyWorkspaceTheme(localStorage.getItem("dragonzpyder:workspace-theme") || "light", { persist: false });
+} catch { applyWorkspaceTheme("light", { persist: false }); }
+workspaceThemeToggle.addEventListener("click", () => {
+  applyWorkspaceTheme(document.documentElement.dataset.workspaceTheme === "light" ? "dark" : "light");
+});
+
+
 function getCookie(name) {
   const prefix = `${name}=`;
   for (const part of document.cookie.split(";")) {
