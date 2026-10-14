@@ -6,7 +6,7 @@ export function AccountTemplate() {
   return (
     <>
 
-<header className="top"><a href="/" className="brand"><img alt="" src="https://raw.githubusercontent.com/AaryanK/DragonZpyder-Landing/f18fa6a100eebfa8a43036d7baad5b85d9623785/favicon.png"/>DragonZpyder</a><a href="/app.html">Personal AI <span aria-hidden="true">↗</span></a></header>
+<header className="top"><a href="/" className="brand"><img alt="" src="https://raw.githubusercontent.com/AaryanK/DragonZpyder-Landing/f18fa6a100eebfa8a43036d7baad5b85d9623785/favicon.png"/>DragonZpyder</a><a href="/app">Personal AI <span aria-hidden="true">↗</span></a></header>
 <main>
 <section className="intro"><span className="eyebrow">ONE IDENTITY · YOUR INTELLIGENCE</span><h1>Always <em>yours.</em></h1><p>Your conversations, personal AI, and authorised connections—all in one account, without making you use a business workspace.</p></section>
 <section className="account-card" aria-label="DragonZpyder account">
@@ -38,7 +38,7 @@ export function AccountTemplate() {
 <section id="profile-panel" className="account-panel" hidden><span className="eyebrow">PERSONAL IDENTITY</span><h2>Your account.</h2><p className="muted" id="profile-email"></p><form id="profile-form"><label htmlFor="profile-name">Display name</label><input id="profile-name" required maxLength="200"/><button className="submit" type="submit">Save account details</button></form>
 <div className="account-section"><h3>Sign-in methods</h3><div id="linked-identities" className="identity-list"></div><p className="footnote">Signing in with Google or Discord is different from connecting Gmail, Calendar or Discord tools.</p></div>
 <div className="account-section"><h3>Workspaces</h3><p className="muted small">Your personal identity stays separate from business workspace permissions.</p><div id="workspace-list"></div><a className="business-link" href="https://operly.dragonzpyder.xyz/" target="_blank" rel="noopener noreferrer">Manage business workspaces in Operly ↗</a></div>
-<p className="links"><a href="/app.html">Return to Personal AI</a> <button id="account-logout" type="button">Sign out</button></p></section>
+<p className="links"><a href="/app">Return to Personal AI</a> <button id="account-logout" type="button">Sign out</button></p></section>
 </section>
 <aside className="account-note"><strong>One account, clear boundaries.</strong><p>DragonZpyder is your personal AI environment. Operly powers authorised tasks, connectors, and business operations. Personal access does not grant business permissions.</p><p>Discord sign-in will appear here after its secure DragonZpyder callback is configured.</p></aside>
 </main>
