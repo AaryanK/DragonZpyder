@@ -5,15 +5,19 @@ from pathlib import Path
 
 import httpx
 from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response, RedirectResponse
 
 from backend.voice import realtime
 from backend.mesh import mesh
 from backend.security import OPERLY
+from backend.chat_demo import router as chat_router
 
 ROOT = Path(__file__).resolve().parent
 DIST = ROOT / "dist"  # Vite-built React pages and fingerprinted assets
 API = os.getenv("DRAGONZPYDER_API_ORIGIN", "https://api.dragonzpyder.xyz").rstrip("/")
+CHAT_HOST = "chat.dragonspire.xyz"
+CHAT_PATHS = {"/chat", "/chat/app.js", "/chat/app.css", "/demo/session",
+              "/demo/login", "/demo/logout", "/demo/chat", "/healthz"}
 STATIC = {
     "/", "/index.html", "/app.html", "/account.html", "/account.css",
     "/account.js", "/app.css", "/app.js", "/companion.js", "/dictation.js",
@@ -37,6 +41,20 @@ app = FastAPI(title="DragonZpyder Web", docs_url=None, redoc_url=None,
 
 @app.middleware("http")
 async def secure_headers(request: Request, call_next):
+    # A single Web deployment answers both the public site and the private
+    # chat hostname. The latter exposes only its dedicated routes.
+    host = (request.url.hostname or "").lower().rstrip(".")
+    route = request.url.path
+    is_chat = host == CHAT_HOST
+    if is_chat and route in ("/", "/index.html"):
+        return RedirectResponse("/chat", status_code=307)
+    if is_chat and route not in CHAT_PATHS:
+        return JSONResponse({"detail": "Not found"}, status_code=404)
+    # The chat demo is not a public API on the main marketing website.
+    if (route == "/chat" or route.startswith("/chat/") or route.startswith("/demo/")) and (
+        not is_chat and not host.endswith(".up.railway.app")
+    ):
+        return JSONResponse({"detail": "Not found"}, status_code=404)
     response = await call_next(request)
     response.headers["x-content-type-options"] = "nosniff"
     response.headers["referrer-policy"] = "strict-origin-when-cross-origin"
@@ -67,6 +85,9 @@ async def proxy(request: Request, destination: str, rewrite_origin=False):
     for cookie in upstream.headers.get_list("set-cookie"):
         response.raw_headers.append((b"set-cookie", cookie.encode()))
     return response
+
+
+app.include_router(chat_router)
 
 
 @app.get("/healthz")
