@@ -4,8 +4,8 @@ const el=id=>document.getElementById(id);
 const switcher=el("mesh-switch"),controls=el("mesh-controls"),task=el("mesh-task"),model=el("mesh-model");
 const upload=el("mesh-upload"),fileLabel=el("mesh-file-label"),preview=el("mesh-attachments"),status=el("mesh-status");
 const field=el("message-input"),chat=el("messages"),empty=el("empty-state"),scroller=el("chat-main");
-const send=el("send-button"),conversationList=el("conversation-list");
-let enabled=false,loading=false,models=null,asset=null,payloadHistory=[],polling=false;
+const send=el("send-button"),conversationList=el("conversation-list"),composer=el("composer");
+let enabled=false,loading=false,models=null,assets=[],payloadHistory=[],polling=false;
 const allTasks={chat:"Text & vision",image:"Create image",transcribe:"Transcribe audio",speech:"Create speech",video:"Create video"};
 function note(text,isError=false){
  status.textContent=text;status.classList.toggle("error",isError);status.hidden=!text;
@@ -100,7 +100,7 @@ function refreshModels(){
  const list=availableModels();const old=model.value;
  model.replaceChildren();
  if(task.value==="chat"){
-  const cheap=list.filter(m=>Number(m.promptPrice)<=0.0000015&&Number(m.completionPrice)<=0.000004&&m.inputs?.includes("text")&&m.outputs?.includes("text")&&(!asset||!asset.mime.startsWith("image/")||m.inputs?.includes("image")));
+  const cheap=list.filter(m=>Number(m.promptPrice)<=0.0000015&&Number(m.completionPrice)<=0.000004&&m.inputs?.includes("text")&&m.outputs?.includes("text")&&(!assets.some(a=>a.mime.startsWith("image/"))||m.inputs?.includes("image")));
   const first=cheap.find(m=>m.id==="qwen/qwen3.7-flash")||cheap.find(m=>m.id==="google/gemini-3.1-flash-lite")||cheap[0];
   for(const m of cheap.slice(0,80))model.append(option(m,old||first?.id));
  }else{
@@ -110,29 +110,68 @@ function refreshModels(){
  else if(old&&Array.from(model.options).some(o=>o.value===old))model.value=old;
  else if(task.value==="chat"){const q=Array.from(model.options).find(o=>o.value==="qwen/qwen3.7-flash");if(q)model.value=q.value;}
 }
+const IMAGE_TYPES=["image/png","image/jpeg","image/webp"];
+const AUDIO_TYPES=["audio/webm","audio/mpeg","audio/mp4","audio/ogg","audio/wav","audio/flac"];
+const DOC_TYPES={pdf:"application/pdf",docx:"application/vnd.openxmlformats-officedocument.wordprocessingml.document",txt:"text/plain",md:"text/plain",csv:"text/plain",json:"application/json",py:"text/plain",log:"text/plain"};
 function refreshTask(){
  const t=task.value;
- fileLabel.hidden=!(t==="chat"||t==="transcribe");
- upload.accept=t==="transcribe"?"audio/*":"image/png,image/jpeg,image/webp,audio/*";
- if(asset&&(t==="image"||t==="video"||t==="speech"))removeAsset();
- if(t==="video"&&!models?.videoEnabled)note("Video jobs are implemented but disabled until a provider spending limit is configured.");
- else if(t==="image"&&!models?.imageEnabled)note("Image generation requires a provider spending cap to be enabled.");
- else if(!loading)note(t==="chat"?"AI Mesh conversations are currently temporary. Use Agent for authorised app actions.":"");
+ upload.accept=t==="transcribe"?"audio/*":'image/png,image/jpeg,image/webp,.pdf,.docx,.txt,.md,.csv,.json,.py,.log,audio/*';
+ if(assets.length&&!["chat","transcribe"].includes(t))clearAssets();
+ if(t==="video"&&!models?.videoEnabled)note("Video creation is disabled until a provider spending limit is configured.");
+ else if(t==="image"&&!models?.imageEnabled)note("Image creation requires a provider spending limit.");
+ else if(!loading)note(t==="chat"?"AI Mesh: text, images and files. Direct model calls do not access connected tools.":"");
  refreshModels();
 }
-function removeAsset(){asset=null;upload.value="";preview.replaceChildren();preview.hidden=true;refreshModels()}
-async function setFile(file){
- if(!file)return;
- const allowed=["image/png","image/jpeg","image/webp","audio/webm","audio/mpeg","audio/mp4","audio/ogg","audio/wav","audio/flac"];
- if(!allowed.includes(file.type)){note("Use a supported image or audio file.",true);return}
- if(file.size>3*1024*1024){note("Use a file smaller than 3 MB for this testing release.",true);return}
- asset={name:file.name,mime:file.type,data:await new Promise((resolve,reject)=>{
-  const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(file);
- })};
- preview.hidden=false;preview.replaceChildren();
- const chip=document.createElement("span");chip.className="mesh-file-chip";chip.append(document.createTextNode(file.name+" · "+Math.ceil(file.size/1024)+" KB"));
- const remove=document.createElement("button");remove.type="button";remove.setAttribute("aria-label","Remove attachment");remove.textContent="×";remove.addEventListener("click",removeAsset);chip.append(remove);preview.append(chip);
- refreshModels();note("Attachment ready. Your file will be sent only when you submit.");
+function renderAssets(){
+ preview.replaceChildren();
+ preview.hidden=!assets.length;
+ assets.forEach((item,index)=>{
+  const chip=document.createElement("span");chip.className="mesh-file-chip";
+  if(item.mime.startsWith("image/")){
+   const img=document.createElement("img");img.src=item.data;img.alt="";img.className="mesh-file-thumb";chip.append(img);
+  }
+  const label=document.createElement("span");label.textContent=item.name+" · "+Math.max(1,Math.ceil(item.bytes/1024))+" KB";chip.append(label);
+  const remove=document.createElement("button");remove.type="button";remove.setAttribute("aria-label","Remove "+item.name);
+  remove.textContent="×";remove.addEventListener("click",()=>removeAsset(index));chip.append(remove);preview.append(chip);
+ });
+}
+function removeAsset(index){
+ if(typeof index==="number")assets.splice(index,1);
+ else assets=[];
+ upload.value="";renderAssets();refreshModels();
+}
+function clearAssets(){removeAsset();}
+async function asDataUrl(file,mime){
+ return await new Promise((resolve,reject)=>{
+  const reader=new FileReader();
+  reader.onload=()=>resolve("data:"+mime+";base64,"+String(reader.result||"").split(",").slice(1).join(","));
+  reader.onerror=()=>reject(Error("Could not read "+file.name));
+  reader.readAsDataURL(file);
+ });
+}
+async function setFiles(files){
+ if(loading)return;
+ const offered=Array.from(files||[]).filter(Boolean);if(!offered.length)return;
+ const incoming=[];let bytes=assets.reduce((total,a)=>total+a.bytes,0);
+ for(const file of offered){
+  if(assets.length+incoming.length>=3){note("Attach at most three items.",true);break;}
+  const ext=String(file.name||"").split(".").pop().toLowerCase();
+  const mime=IMAGE_TYPES.includes(file.type)||AUDIO_TYPES.includes(file.type)?file.type:DOC_TYPES[ext];
+  if(!mime){note("Supported: images, PDF, Word, text, code and audio.",true);continue;}
+  if(!file.size||file.size>3*1024*1024||bytes+file.size>7*1024*1024){
+    note("Each file must be at most 3 MB (7 MB combined).",true);continue;
+  }
+  bytes+=file.size;
+  incoming.push({name:file.name||"pasted-image.png",mime,data:await asDataUrl(file,mime),bytes:file.size});
+ }
+ if(!incoming.length)return;
+ if(!enabled)setActive(true,{preserveDraft:true});
+ if(task.value!=="chat"&&!(task.value==="transcribe"&&incoming.every(item=>item.mime.startsWith("audio/")))){
+  task.value="chat";refreshTask();
+ }
+ assets.push(...incoming);
+ renderAssets();refreshModels();
+ note("Attached "+assets.length+" file"+(assets.length===1?"":"s")+". Sent only when you submit.");
 }
 async function loadModels(){
  if(models)return;
@@ -141,14 +180,15 @@ async function loadModels(){
  refreshTask();
 }
 function clear(){
- payloadHistory=[];asset=null;upload.value="";preview.hidden=true;preview.replaceChildren();
+ payloadHistory=[];assets=[];upload.value="";preview.hidden=true;preview.replaceChildren();
  chat.replaceChildren();chat.classList.remove("active");empty.hidden=false;empty.style.removeProperty("display");
  field.value="";field.dispatchEvent(new Event("input"));note("");
 }
-function setActive(value){
+function setActive(value,{preserveDraft=false}={}){
+ const draft=preserveDraft?field.value:"";
  if(loading)return;
  enabled=Boolean(value);switcher.setAttribute("aria-pressed",String(enabled));switcher.innerHTML=enabled?"<span>✦</span> AI Mesh":"<span>✦</span> Agent";
- controls.hidden=!enabled;fileLabel.hidden=!enabled;preview.hidden=!enabled||!asset;
+ controls.hidden=!enabled;
  if(enabled){
    // Distinct conversational state from Operly Agent; switching starts a clean view.
    clear();loadModels().catch(e=>note(e.message,true));
