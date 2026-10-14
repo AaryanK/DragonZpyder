@@ -27,6 +27,7 @@ jobs:
         run: |
           node --check app.js
           node --check mesh.js
+          node --check mesh-picker.js
           node --check script.js
           node --check server.mjs
       - name: Guard governed frontend boundary
