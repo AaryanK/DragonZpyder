@@ -23,7 +23,8 @@ async function submitAction(form,action){
  try{await action()}catch(error){report(error?.message||"Something went wrong. Please try again.",true)}
  finally{processing=false;if(button)button.disabled=false}
 }
-function authenticated(){window.location.replace("/app")}
+function adminReturnRequested(){return new URLSearchParams(window.location.search).get("next")==="/admin";}
+function authenticated(){window.location.replace(adminReturnRequested()?"/admin":"/app");}
 async function ensurePersonal(){
  let response=await request("/api/auth/sessions");
  const current=Array.isArray(response)?response.find(item=>item?.current):null;
@@ -97,9 +98,11 @@ async function profile(){
  try{
   const sessions=await request("/api/auth/sessions");
   if(Array.isArray(sessions)&&sessions.some(s=>s?.current)){
+   if(adminReturnRequested()){window.location.replace("/admin");return;}
    await profile();return;
   }
  }catch{}
  show(params.get("mode")||"login");
+ if(adminReturnRequested())report("Sign in to access your DragonZpyder admin dashboard.");
  if(params.get("email")){$("verify-email").value=params.get("email");$("reset-email").value=params.get("email")}
 })().catch(e=>{show("login");report(e.message,true)});
