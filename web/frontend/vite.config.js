@@ -10,7 +10,7 @@ function cleanPageRouteMiddleware(server) {
   server.middlewares.use((request, _response, next) => {
     if (request.method === "GET" || request.method === "HEAD") {
       const path = request.url || "";
-      for (const [route, entry] of [["/app", "/app.html"], ["/account", "/account.html"]]) {
+      for (const [route, entry] of [["/app", "/app.html"], ["/account", "/account.html"], ["/admin", "/admin.html"]]) {
         if (path === route || path.startsWith(route + "?")) {
           request.url = entry + path.slice(route.length);
           break;
