@@ -266,7 +266,8 @@ async def chat(request: Request) -> dict:
     headers = {"Authorization": "Bearer " + os.environ["DRAGONZPYDER_CHAT_GATEWAY_TOKEN"],
                "Content-Type": "application/json"}
     try:
-        upstream = await request.app.state.http.post(GATEWAY, json=payload, headers=headers, timeout=90)
+        async with httpx.AsyncClient(timeout=90, follow_redirects=False, trust_env=False) as client:
+            upstream = await client.post(GATEWAY, json=payload, headers=headers)
     except httpx.TimeoutException:
         raise HTTPException(504, "DragonZpyder inference timed out")
     except httpx.RequestError:
