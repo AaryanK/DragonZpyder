@@ -6,7 +6,7 @@ from pathlib import Path
 
 import httpx
 from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse, JSONResponse, Response, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, Response, RedirectResponse, HTMLResponse
 
 from backend.voice import realtime
 from backend.mesh import mesh
@@ -101,34 +101,83 @@ async def proxy(request: Request, destination: str, rewrite_origin=False):
 
 
 
-async def is_admin(request: Request) -> bool:
-    """Check a signed-in Operly identity against the operator's explicit allowlist."""
+
+async def admin_auth_status(request: Request) -> str:
+    """Resolve rights from an authenticated DragonZpyder browser session.
+
+    Distinguish an expired/missing session from an authenticated non-admin.
+    Neither a browser header nor a query string can elevate privileges.
+    """
     allowed = {entry.strip().casefold() for entry in
                os.getenv("DRAGONZPYDER_ADMIN_EMAILS", "").split(",") if entry.strip()}
     if not allowed:
-        return False
-    cookie = request.headers.get("cookie", "")
-    if not cookie:
-        return False
+        return "forbidden"
+    if not (request.cookies.get("__Host-operly_session") or
+            request.cookies.get("operly_session")):
+        return "signin"
     try:
         response = await request.app.state.http.get(
             OPERLY + "/api/auth/me",
-            headers={"cookie": cookie, "origin": OPERLY, "referer": OPERLY + "/"},
+            headers={"cookie": request.headers.get("cookie", ""),
+                     "origin": OPERLY, "referer": OPERLY + "/",
+                     "accept": "application/json"},
             timeout=10)
-        if response.status_code != 200:
-            return False
+    except httpx.HTTPError:
+        return "unavailable"
+    if response.status_code in (401, 403):
+        return "signin"
+    if response.status_code != 200:
+        return "unavailable"
+    try:
         account = response.json()
         email = account.get("email", "") if isinstance(account, dict) else ""
-        return isinstance(email, str) and email.casefold() in allowed
-    except (httpx.HTTPError, ValueError, TypeError):
-        return False
+    except (ValueError, TypeError):
+        return "unavailable"
+    return "allowed" if isinstance(email, str) and email.casefold() in allowed else "forbidden"
 
+
+def admin_notice(message: str, *, status_code: int) -> HTMLResponse:
+    # Messages are server-authored constants; never interpolate user strings.
+    page = ("""<!doctype html><html lang="en"><head><meta charset="utf-8">"""
+            """<meta name="viewport" content="width=device-width,initial-scale=1">"""
+            """<meta name="robots" content="noindex,nofollow">"""
+            """<title>DragonZpyder Admin</title><style>"""
+            """:root{color-scheme:dark}body{margin:0;background:#0c0e0d;color:#f1f2e9;"""
+            """font:16px system-ui,sans-serif;display:grid;min-height:100vh;place-items:center}"""
+            """main{max-width:520px;padding:32px}h1{font-size:32px;letter-spacing:-.04em}"""
+            """p{color:#b5b9b1;line-height:1.7}a{color:#edb36a}"""
+            """</style></head><body><main><p>DRAGONZPYDER / ADMIN</p>"""
+            """<h1>Access not available</h1><p>""" + message +
+            """</p><a href="/account">Open account settings and sign-in →</a>"""
+            """</main></body></html>""")
+    return HTMLResponse(page, status_code=status_code, headers={
+        "cache-control": "no-store", "x-frame-options": "DENY",
+        "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; "
+                                   "base-uri 'none'; frame-ancestors 'none'",
+    })
 
 async def admin_route(request: Request):
     if request.method != "GET":
         return JSONResponse({"detail": "Not found"}, status_code=404)
-    if not await is_admin(request):
-        return JSONResponse({"detail": "Administrator sign-in required"}, status_code=403,
+    status = await admin_auth_status(request)
+    if status != "allowed":
+        if request.url.path == "/admin":
+            if status == "signin":
+                # Fixed same-origin target; no user-controlled return URL.
+                return RedirectResponse("/account?next=%2Fadmin", status_code=303,
+                                        headers={"cache-control": "no-store"})
+            if status == "forbidden":
+                return admin_notice(
+                    "The signed-in DragonZpyder account is not on the administrator allowlist. "
+                    "Switch to an authorised account and try again.", status_code=403)
+            return admin_notice(
+                "The identity service is temporarily unavailable. Please try again.",
+                status_code=503)
+        return JSONResponse({"detail": "Administrator sign-in required" if status == "signin"
+                             else "Administrator access denied" if status == "forbidden"
+                             else "Account verification unavailable"},
+                            status_code=401 if status == "signin" else
+                                        403 if status == "forbidden" else 503,
                             headers={"cache-control": "no-store"})
     if request.url.path == "/admin":
         target = DIST / "admin.html"
