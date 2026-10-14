@@ -63,3 +63,8 @@ The public landing page also documents a broader **planned** vision alongside th
 **Implementation status:** these are roadmap/research initiatives, not claims that the wallet, partner marketplace, multi-model consumer hub or currency is live. The production runtime and approved-action boundary described above remain unchanged.
 
 **Proposed order:** prototype a provider-connected model selector and usage controls; validate unit economics; pilot an auditable ledger; then explore consenting partner integrations and regulated settlement, before any transferable-credit or compute-backed instrument.
+
+
+## Live realtime companion
+
+Talk starts a genuine two-way WebRTC audio session on the Personal page (not a voice note). Configure OPENAI_API_KEY on the DragonZpyder Web Railway server. Optional settings: OPENAI_REALTIME_MODEL (defaults to gpt-realtime-2.1), REALTIME_SESSIONS_PER_HOUR (defaults to six starts). Browser Ctrl+Space works only while this tab is focused. The /companion/realtime route verifies the current Personal session and CSRF through Operly. Voice task tool calls use the existing /api/personal-agent/chat and approval boundary. Session starts are rate-limited in memory; that is not durable metering or a spending cap. Implement hard per-user usage budgets before public rollout. Live audio requires HTTPS, a microphone, and provider API access. Transcripts are currently ephemeral, not stored as chat history.

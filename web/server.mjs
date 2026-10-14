@@ -1,4 +1,5 @@
 import { createReadStream } from "node:fs";
+import { handleCompanionRealtime } from "./realtime-server.mjs";
 import { stat } from "node:fs/promises";
 import { createServer } from "node:http";
 import { extname, join } from "node:path";
@@ -14,6 +15,7 @@ const publicFiles = new Set([
   "/app.html",
   "/app.css",
   "/app.js",
+  "/companion.js",
   "/home.js",
   "/chat.html",
   "/privacy.html",
@@ -143,6 +145,10 @@ createServer(async (req, res) => {
   const url = new URL(req.url || "/", "http://dragonzpyder.local");
   if (url.pathname === "/healthz") {
     sendJson(res, 200, { status: "ok", service: "dragonzpyder-web" });
+    return;
+  }
+  if (url.pathname === "/companion/realtime") {
+    await handleCompanionRealtime(req, res, upstreamOrigin);
     return;
   }
   if (url.pathname.startsWith("/api/")) {

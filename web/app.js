@@ -426,10 +426,10 @@ async function submitViaClientAdapter(message, requestId) {
   return result;
 }
 
-async function sendMessage(message) {
+async function sendMessage(message, { companion = false } = {}) {
   const clean = String(message || "").trim();
-  if (!clean || state.sending) return;
-  if (!state.session) return showAuth();
+  if (!clean || state.sending) { if (companion) throw Error("Personal agent is busy"); return; }
+  if (!state.session) { showAuth(); if (companion) throw Error("Sign in first"); return; }
 
   state.sending = true;
   sendButton.disabled = true;
@@ -465,6 +465,7 @@ async function sendMessage(message) {
       pending.body.appendChild(inline);
     }
     await Promise.all([loadConversations(), refreshApprovals()]);
+    return { message: text, approval_required: Boolean(result.approval_id), blocked: Boolean(blocker) };
   } catch (error) {
     pending.value.classList.add("error");
     if (error instanceof ApiError && error.code === "execution_outcome_uncertain") {
@@ -481,16 +482,18 @@ async function sendMessage(message) {
       meta.textContent = error.retryable ? `Safe retry identity: ${requestId}` : `Request ID: ${requestId}`;
       pending.body.appendChild(meta);
     }
+    if (companion) throw error;
   } finally {
     state.sending = false;
     sendButton.disabled = false;
     messageInput.disabled = false;
-    messageInput.value = "";
+    if (!companion) messageInput.value = "";
     autoSizeInput();
-    messageInput.focus();
+    if (!companion) messageInput.focus();
     scrollToBottom();
   }
 }
+window.dragonzpyderDelegatePersonalTask = (request) => sendMessage(request, { companion: true });
 
 async function refreshApprovals() {
   try {
@@ -659,6 +662,7 @@ async function logout() {
   } catch (error) {
     if (!(error instanceof ApiError && [401, 409].includes(error.status))) console.warn("Logout failed", error);
   }
+  window.dispatchEvent(new Event("dragonzpyder:logout"));
   setSession(null);
   state.conversationId = null;
   state.conversations = [];
