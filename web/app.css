@@ -86,3 +86,21 @@ textarea{color:#f0f0e9}textarea::placeholder{color:#91998d}
 .companion-foot{font-size:11px;line-height:1.6;color:#8e978a;text-align:center;margin:20px 0 0}
 @media(max-width:560px){.companion-card{padding:22px 17px}.companion-bars{height:120px}.companion-launch{padding:0 10px}}
 @media(prefers-reduced-motion:reduce){.companion-bars i{animation:none!important}}
+
+
+/* Independent speech controls: live voice in header, dictated text in composer. */
+.head-actions .companion-launch{height:36px;padding:0 13px;display:inline-flex;align-items:center;gap:10px;justify-content:center;background:#20251e;border:1px solid #565d4f;color:#e7c7a1;font-size:12px;line-height:1;flex-shrink:0}
+.head-actions .companion-launch:hover{background:#2a3026;border-color:#bd9267}
+.live-voice-bars{height:16px;display:inline-flex;align-items:center;gap:3px}
+.live-voice-bars i{display:block;width:2px;height:7px;background:var(--accent);border-radius:2px}
+.live-voice-bars i:nth-child(2){height:14px}
+.dictation-button{width:42px;height:42px;flex:0 0 42px;display:grid;place-items:center;color:#aeb5a8;background:transparent;border:1px solid transparent;border-radius:7px;cursor:pointer}
+.dictation-button:hover{color:#f0dfc6;background:#282d25}
+.dictation-button.listening{color:#e9bd8e;background:#34291f;border-color:#bd8f61}
+.dictation-button.listening svg{animation:dictation-breathe .9s ease-in-out infinite alternate}
+@keyframes dictation-breathe{to{opacity:.55}}
+.dictation-feedback[hidden]{display:none!important}
+.dictation-feedback{pointer-events:auto;display:block;width:max-content;max-width:min(480px,100%);margin:0 auto 9px;padding:8px 12px;border:1px solid #66553f;border-radius:6px;background:#1c211a;color:#ecc49b;text-align:center;font-size:12px}
+@media(max-width:520px){.head-actions .companion-launch{padding:0 10px;font-size:11px;gap:6px}.composer{gap:4px}.dictation-button{width:38px;height:42px;flex-basis:38px}.workspace-head .runtime-status #status-text{font-size:10px}}
+@media(max-width:380px){.workspace-head .runtime-status #status-text{display:none}}
+@media(prefers-reduced-motion:reduce){.dictation-button.listening svg{animation:none!important}}

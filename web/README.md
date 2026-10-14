@@ -68,3 +68,8 @@ The public landing page also documents a broader **planned** vision alongside th
 ## Live realtime companion
 
 Talk starts a genuine two-way WebRTC audio session on the Personal page (not a voice note). Configure OPENAI_API_KEY on the DragonZpyder Web Railway server. Optional settings: OPENAI_REALTIME_MODEL (defaults to gpt-realtime-2.1), REALTIME_SESSIONS_PER_HOUR (defaults to six starts). Browser Ctrl+Space works only while this tab is focused. The /companion/realtime route verifies the current Personal session and CSRF through Operly. Voice task tool calls use the existing /api/personal-agent/chat and approval boundary. Session starts are rate-limited in memory; that is not durable metering or a spending cap. Implement hard per-user usage budgets before public rollout. Live audio requires HTTPS, a microphone, and provider API access. Transcripts are currently ephemeral, not stored as chat history.
+
+
+### Independent voice controls
+
+The top-bar **Live voice** control opens a continuous, bidirectional WebRTC companion session (provider credentials required). The small microphone inside the chat composer is a separate **speech-to-text dictation** action. Dictation uses the browser's SpeechRecognition / webkitSpeechRecognition API where available, displays interim and final text in the editable composer, and never submits automatically. Browser support and speech-recognition privacy behaviour vary; some browsers send microphone audio to their speech service. The two microphone experiences are mutually exclusive, and stopping dictation does not initiate live voice. No OpenAI key is required for browser-supported dictation.

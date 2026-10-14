@@ -16,6 +16,7 @@ const publicFiles = new Set([
   "/app.css",
   "/app.js",
   "/companion.js",
+  "/dictation.js",
   "/home.js",
   "/chat.html",
   "/privacy.html",

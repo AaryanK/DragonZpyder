@@ -29,7 +29,7 @@
       <header class="workspace-head">
         <button class="icon-btn mobile-only" id="open-sidebar" aria-label="Open sidebar">☰</button>
         <div class="runtime-status"><span class="status-dot" id="status-dot"></span><span id="status-text">Checking runtime…</span></div>
-        <div class="head-actions"><button class="ghost-btn" id="approvals-top">Approvals</button><button class="profile-btn" id="profile-button" aria-label="Account menu"><span id="profile-initial">D</span></button></div>
+        <div class="head-actions"><button class="companion-launch" id="companion-open" type="button" aria-haspopup="dialog" aria-controls="companion-panel" aria-expanded="false" aria-label="Start live AI voice conversation" title="Start a realtime two-way voice conversation"><span class="live-voice-bars" aria-hidden="true"><i></i><i></i><i></i></span><span>Live voice</span></button><button class="ghost-btn" id="approvals-top">Approvals</button><button class="profile-btn" id="profile-button" aria-label="Account menu"><span id="profile-initial">D</span></button></div>
       </header>
       <main class="chat-main" id="chat-main">
         <section class="empty-state" id="empty-state">
@@ -46,7 +46,7 @@
         </section>
         <section class="messages" id="messages" aria-live="polite"></section>
       </main>
-      <footer class="composer-wrap"><form class="composer" id="composer"><textarea id="message-input" rows="1" maxlength="12000" placeholder="Message DragonZpyder…" aria-label="Message DragonZpyder"></textarea><button class="companion-launch" id="companion-open" type="button" aria-haspopup="dialog" aria-controls="companion-panel" aria-expanded="false" title="Start realtime voice">Talk ◉</button><button class="send-button" id="send-button" type="submit" aria-label="Send message">↑</button></form><div class="composer-note">Personal scope · Connected capabilities are permissioned · Review significant actions before approving.</div></footer>
+      <footer class="composer-wrap"><span id="dictation-feedback" class="dictation-feedback" role="status" aria-live="polite" hidden></span><form class="composer" id="composer"><textarea id="message-input" rows="1" maxlength="12000" placeholder="Message DragonZpyder…" aria-label="Message DragonZpyder"></textarea><button class="dictation-button" id="dictation-toggle" type="button" title="Dictate into message" aria-label="Start dictation" aria-pressed="false"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"></rect><path d="M5 10a7 7 0 0 0 14 0M12 17v5m-4 0h8"></path></svg></button><button class="send-button" id="send-button" type="submit" aria-label="Send message">↑</button></form><div class="composer-note">Personal scope · Connected capabilities are permissioned · Review significant actions before approving.</div></footer>
     </section>
   </div>
   <section class="companion-panel" id="companion-panel" role="dialog" aria-modal="true" aria-label="Live companion" hidden>
@@ -63,5 +63,6 @@
   <div class="toast" id="toast" hidden></div>
   <script type="module" src="/app.js"></script>
   <script type="module" src="/companion.js"></script>
+  <script type="module" src="/dictation.js"></script>
 </body>
 </html>

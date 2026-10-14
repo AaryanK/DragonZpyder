@@ -47,6 +47,7 @@ function onEvent(text,v){
 }
 async function start(){
   if(live||starting)return;
+  window.dispatchEvent(new Event("dragonzpyder:live-start"));
   panel.hidden=false;launch.setAttribute("aria-expanded","true");
   if(!navigator.mediaDevices?.getUserMedia||!window.RTCPeerConnection){setStatus("This browser cannot stream live audio","error");return}
   const v=++version;starting=true;controller=new AbortController();history.replaceChildren();rows.clear();calls.clear();setStatus("Requesting microphone…","connecting");
