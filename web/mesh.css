@@ -205,3 +205,48 @@
 .unified-composer .mesh-switch[aria-pressed="true"]{
  border:1px solid transparent;background:rgba(214,165,115,.09);color:#e8c89f
 }
+
+
+/* Image generation is a time-only pending state, not fabricated pixel streaming. */
+.mesh-image-pending{
+ display:grid;grid-template-columns:minmax(160px,250px) minmax(0,1fr);column-gap:18px;row-gap:12px;
+ align-items:center;max-width:610px;margin-top:12px;padding:12px;
+ border:1px solid rgba(223,230,214,.12);border-radius:17px;
+ background:linear-gradient(135deg,rgba(255,255,255,.045),rgba(255,255,255,.012));
+}
+.mesh-image-pending-art{
+ aspect-ratio:4/3;position:relative;overflow:hidden;display:grid;place-items:center;
+ border-radius:12px;border:1px solid rgba(255,255,255,.08);background:
+ radial-gradient(circle at 42% 38%,rgba(177,158,127,.16),transparent 56%),#262b27;
+}
+.mesh-image-pending-art::before{
+ content:"";position:absolute;inset:-60%;
+ background:linear-gradient(110deg,transparent 40%,rgba(255,255,255,.10) 50%,transparent 60%);
+ animation:mesh-image-shimmer 2.8s ease-in-out infinite;
+}
+.mesh-image-pending-art span{font-size:34px;color:#ccb38d;opacity:.86}
+@keyframes mesh-image-shimmer{from{transform:translateX(-45%)}to{transform:translateX(45%)}}
+.mesh-image-pending-detail{min-width:0;align-self:end}
+.mesh-image-pending-title{font-size:14px;font-weight:650;color:#f1f0e6}
+.mesh-image-pending-model{font-size:11px;color:#bbc4b7;margin-top:6px;overflow-wrap:anywhere}
+.mesh-image-pending-elapsed{font-variant-numeric:tabular-nums;font-size:12px;color:#c9ab83;margin-top:14px}
+.mesh-image-stop{
+ justify-self:start;grid-column:2;align-self:start;
+ font-size:12px;color:#e0dfd5;background:rgba(255,255,255,.055);
+ border:1px solid rgba(255,255,255,.10);padding:8px 12px;border-radius:10px;cursor:pointer
+}
+.mesh-image-stop:hover{background:rgba(255,255,255,.11)}
+.mesh-image-stop:focus-visible{outline:2px solid #d6a573;outline-offset:2px}
+.mesh-image-stop:disabled{opacity:.6;cursor:default}
+.mesh-image-pending-disclaimer{
+ grid-column:1/-1;color:#a7afa4;font-size:11px;line-height:1.5;margin:0
+}
+@media(max-width:580px){
+ .mesh-image-pending{grid-template-columns:minmax(0,1fr);gap:12px}
+ .mesh-image-pending-art{width:100%;max-height:220px}
+ .mesh-image-stop,.mesh-image-pending-disclaimer{grid-column:1}
+ .mesh-image-pending-detail{align-self:center}
+}
+@media(prefers-reduced-motion:reduce){
+ .mesh-image-pending-art::before{animation:none}
+}
