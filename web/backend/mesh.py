@@ -190,13 +190,13 @@ def document_part(part):
                 if sum(info.file_size for info in archive.infolist()) > 5_000_000:
                     fail(413, "DOCX expands beyond allowed size")
             doc = Document(BytesIO(data))
-            content = "\\n".join(p.text for p in doc.paragraphs)
+            content = "\n".join(p.text for p in doc.paragraphs)
             for table in doc.tables:
                 for row in table.rows:
-                    content += "\\n" + " | ".join(cell.text for cell in row.cells)
+                    content += "\n" + " | ".join(cell.text for cell in row.cells)
         except (BadZipFile, ValueError, KeyError, OSError):
             fail(400, "Invalid DOCX attachment")
-        return {"type": "text", "text": f"Attached document ({name}):\\n{content[:8000]}"}, len(data), False
+        return {"type": "text", "text": f"Attached document ({name}):\n{content[:8000]}"}, len(data), False
     if extension in (".txt", ".md", ".csv", ".json", ".py", ".log") and mime in (
             "text/plain", "text/markdown", "text/csv", "application/json", "text/x-python",
             "application/octet-stream"):
@@ -206,7 +206,7 @@ def document_part(part):
             content = data.decode("utf-8-sig")
         except UnicodeDecodeError:
             fail(400, "Only UTF-8 text attachments are supported")
-        return {"type": "text", "text": f"Attached file ({name}):\\n{content[:8000]}"}, len(data), False
+        return {"type": "text", "text": f"Attached file ({name}):\n{content[:8000]}"}, len(data), False
     fail(415, "Supported documents: PDF, DOCX, TXT, MD, CSV, JSON, PY and LOG")
 
 
