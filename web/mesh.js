@@ -198,6 +198,7 @@ function setActive(value,{preserveDraft=false}={}){
    // Restore existing Operly history without creating any agent action.
    window.dispatchEvent(new Event("dragonzpyder:mesh-disabled"));
  }
+ if(preserveDraft){field.value=draft;field.dispatchEvent(new Event("input"));}
 }
 async function submit(text){
  if(!enabled||loading)return;
