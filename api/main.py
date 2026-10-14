@@ -238,7 +238,7 @@ async def inference(prefix: str, request: Request):
     response = None
     try:
         with inference_span(request, app_id, "unknown", request_id) as span:
-            trace_id = span_trace_id(span)
+            trace_id = span_trace_id(span) or request_id.replace("-", "")
             try:
                 if request.headers.get("content-length", "0").isdigit() and int(request.headers.get("content-length", "0")) > MAX_BYTES:
                     raise GatewayError(413, "Request payload exceeds 160 KB")
