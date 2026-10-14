@@ -3,7 +3,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 
 const dist = resolve(import.meta.dirname, "../../dist");
-for (const page of ["index", "app", "account"]) {
+for (const page of ["index", "app", "account", "admin"]) {
   const html = readFileSync(resolve(dist, page + ".html"), "utf8");
   assert.match(html, /id="root"/, page + ": missing React root");
   assert.match(html, /assets\//, page + ": no compiled React entry");
@@ -14,6 +14,9 @@ for (const page of ["index", "app", "account"]) {
 const home = readFileSync(resolve(dist, "index.html"), "utf8");
 const app = readFileSync(resolve(dist, "app.html"), "utf8");
 const account = readFileSync(resolve(dist, "account.html"), "utf8");
+const admin = readFileSync(resolve(dist, "admin.html"), "utf8");
+assert.match(admin, /Model operations/);
+assert.match(admin, /Inference Observatory/);
 assert.match(home, /Make progress|best of AI|All that intelligence/i);
 assert.match(home, /runtime-dot/);
 assert.match(home, /href="\/app"/, "Marketing CTA must link to the canonical React page");
