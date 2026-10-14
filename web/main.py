@@ -1,4 +1,4 @@
-"""Python FastAPI gateway; existing browser templates remain untouched."""
+"""Python FastAPI gateway serving compiled, React-owned pages and API routes."""
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -17,7 +17,7 @@ API = os.getenv("DRAGONZPYDER_API_ORIGIN", "https://api.dragonzpyder.xyz").rstri
 STATIC = {
     "/", "/index.html", "/app.html", "/account.html", "/account.css",
     "/account.js", "/app.css", "/app.js", "/companion.js", "/dictation.js",
-    "/mesh.js", "/mesh.css", "/home.js", "/chat.html", "/privacy.html",
+    "/mesh.js", "/mesh.css", "/chat.html", "/privacy.html",
     "/terms.html", "/robots.txt", "/sitemap.xml", "/script.js",
 }
 HOP_HEADERS = {"connection", "transfer-encoding", "content-length", "host",
@@ -93,10 +93,14 @@ async def dispatch(path: str, request: Request):
         if target.is_relative_to(assets) and target.is_file():
             return FileResponse(target, headers={"cache-control": "public, max-age=31536000, immutable"})
     if request.method in ("GET", "HEAD") and file_route in STATIC:
-        target = ((DIST / file_route.lstrip("/")) if file_route in
-                  ("/index.html", "/app.html", "/account.html") and
-                  (DIST / file_route.lstrip("/")).is_file()
-                  else ROOT / file_route.lstrip("/"))
+        if file_route in ("/index.html", "/app.html", "/account.html"):
+            target = DIST / file_route.lstrip("/")
+            if not target.is_file():
+                return JSONResponse({"detail": {"code": "FRONTEND_UNAVAILABLE",
+                                               "message": "React build is unavailable."}},
+                                    status_code=503, headers={"cache-control": "no-store"})
+        else:
+            target = ROOT / file_route.lstrip("/")
         if target.is_file():
             media_types = {".html": "text/html", ".js": "text/javascript", ".css": "text/css",
                            ".xml": "application/xml", ".txt": "text/plain"}
