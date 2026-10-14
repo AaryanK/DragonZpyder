@@ -97,7 +97,7 @@ async function catalogList(){
   }));
   const tts=chat.filter(m=>outputs(m).includes("speech")).map(m=>({id:m.id,name:m.name||m.id})).slice(0,40);
   const stt=chat.filter(m=>outputs(m).includes("transcription")).map(m=>({id:m.id,name:m.name||m.id})).slice(0,40);
-  return {chat:chats,image:images,video:videos,tts,stt,videoEnabled:process.env.MESH_ENABLE_VIDEO==="true"};
+  return {chat:chats,image:images,video:videos,tts,stt,imageEnabled:process.env.MESH_ENABLE_IMAGE==="true",videoEnabled:process.env.MESH_ENABLE_VIDEO==="true"};
 }
 function take(identity,kind){
   const day=new Date().toISOString().slice(0,10),id=day+":"+identity+":"+kind;
@@ -189,6 +189,7 @@ async function chat(req,res,id,body,stream=false){
   response(res,200,{model:m.id,text:text||"No text was returned.",usage:payload.usage||null,generation_id:payload.id});
 }
 async function imageGenerate(res,id,body){
+  if(process.env.MESH_ENABLE_IMAGE!=="true")throw {code:403,message:"Image generation is disabled until a provider key-level spending cap is configured"};
   const model=selected(await catalogue("image"),body.model);
   if(!model)throw {code:400,message:"Choose a currently available image model"};
   if(body.confirmed!==true)throw {code:400,message:"Confirm the image generation charge"};

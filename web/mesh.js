@@ -116,6 +116,7 @@ function refreshTask(){
  upload.accept=t==="transcribe"?"audio/*":"image/png,image/jpeg,image/webp,audio/*";
  if(asset&&(t==="image"||t==="video"||t==="speech"))removeAsset();
  if(t==="video"&&!models?.videoEnabled)note("Video jobs are implemented but disabled until a provider spending limit is configured.");
+ else if(t==="image"&&!models?.imageEnabled)note("Image generation requires a provider spending cap to be enabled.");
  else if(!loading)note(t==="chat"?"AI Mesh conversations are currently temporary. Use Agent for authorised app actions.":"");
  refreshModels();
 }
@@ -166,6 +167,7 @@ async function submit(text){
  const chosen=model.value;if(!chosen){note("Choose a model.",true);return}
  if(mode==="transcribe"&&!asset?.mime.startsWith("audio/")){note("Attach an audio recording to transcribe.",true);return}
  if(mode==="video"&&!models.videoEnabled){note("Video generation is disabled until a strict provider spending limit is configured.",true);return}
+ if(mode==="image"&&!models.imageEnabled){note("Image generation is disabled until a provider key-level spending cap is configured.",true);return}
  if(mode==="image"&&!confirm("Generate ONE image? OpenRouter may charge your prepaid credits."))return;
  if(mode==="video"&&!confirm("Generate one SHORT video? This may cost more than ordinary chat; do you want to spend credits?"))return;
  loading=true;send.disabled=true;field.disabled=true;note("Working with "+chosen+" …");
