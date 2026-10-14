@@ -684,6 +684,7 @@ function syncComposerAction() {
     Boolean(window.dragonzpyderMesh?.hasAttachments?.());
   const voice = $("companion-open");
   voice.hidden = pending;
+  voice.disabled = state.sending || Boolean(window.dragonzpyderMesh?.isBusy?.());
   sendButton.hidden = !pending;
 }
 window.dragonzpyderComposerSync = syncComposerAction;
