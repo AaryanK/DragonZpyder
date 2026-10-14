@@ -27,7 +27,7 @@ globalThis.fetch=async function mockFetch(url,options={}){
     providerCalls++;
     const body=JSON.parse(options.body);
     assert.equal(body.model,"qwen/qwen3.7-flash");
-    assert.equal(body.stream,false);
+    if(body.stream)return new Response('data: {"choices":[{"delta":{"content":"Hello "}}]}\n\ndata: {"choices":[{"delta":{"content":"from stream."}}]}\n\ndata: [DONE]\n\n',{status:200,headers:{"content-type":"text/event-stream"}});
     return Response.json({id:"generation-mock",choices:[{message:{content:"Hello from the mocked model."}}],usage:{total_tokens:24}});
   }
   throw Error("Unexpected external connection: "+target);
@@ -67,21 +67,30 @@ test("Cheap chat uses the selected model and returns clean results",async()=>{
  assert.equal(r.status,200);
  const p=await r.json();
  assert.equal(p.text,"Hello from the mocked model.");
- assert.equal(providerCalls,1);
+ assert.equal(providerCalls,2);
+});
+test("Streams text deltas through the authenticated proxy",async()=>{
+ const r=await call("/mesh/chat-stream",{method:"POST",body:{model:"qwen/qwen3.7-flash",messages:[{role:"user",content:"hi"}]}});
+ assert.equal(r.status,200);
+ const body=await r.text();
+ assert.match(body,/Hello /);
+ assert.match(body,/from stream/);
+ assert.match(body,/"type":"done"/);
+ assert.equal(providerCalls,2);
 });
 test("Expensive models are blocked before provider invocation",async()=>{
  const body={model:"premium/very-costly",messages:[{role:"user",content:"hello"}]};
  const r=await call("/mesh/chat",{method:"POST",body});
- assert.equal(r.status,403);assert.equal(providerCalls,1);
+ assert.equal(r.status,403);assert.equal(providerCalls,2);
 });
 test("Video generation is disabled without financial guardrails",async()=>{
  const r=await call("/mesh/video",{method:"POST",body:{model:"any",prompt:"A small flower",confirmed:true}});
- assert.equal(r.status,403);assert.equal(providerCalls,1);
+ assert.equal(r.status,403);assert.equal(providerCalls,2);
 });
 test("Rejects malformed image and oversized text inputs",async()=>{
  const body={model:"qwen/qwen3.7-flash",messages:[{role:"user",content:[{type:"image_url",image_url:{url:"javascript:alert(1)"}}]}]};
  const r=await call("/mesh/chat",{method:"POST",body});
- assert.equal(r.status,400);assert.equal(providerCalls,1);
+ assert.equal(r.status,400);assert.equal(providerCalls,2);
 });
 test.after(async()=>{
  app.close();await once(app,"close");

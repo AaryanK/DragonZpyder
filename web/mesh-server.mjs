@@ -139,18 +139,51 @@ function conversations(body){
   if(chars>14000||images>2)throw {code:413,message:"Context too large (14,000 characters / 2 images)"};
   return {messages:cleaned,hasImage:images>0};
 }
-async function chat(req,res,id,body){
+async function chat(req,res,id,body,stream=false){
   const messages=conversations(body);
   const all=await catalogue("chat");
   let m=selected(all,body.model);
+  if(!m&&body.model)throw {code:400,message:"Selected model is unavailable; refresh the catalogue"};
   if(!m){m=selected(all,"qwen/qwen3.7-flash")||selected(all,"google/gemini-3.1-flash-lite")||all.filter(m=>inputs(m).includes("text")&&outputs(m).includes("text")).sort((a,b)=>cents(a)-cents(b))[0]}
   if(!m||!outputs(m).includes("text")||!inputs(m).includes("text")||(messages.hasImage&&!inputs(m).includes("image")))
     throw {code:400,message:"Choose a compatible text/vision model"};
   modestChat(m);take(id,"chat");
   const r=await upstream("/chat/completions",{method:"POST",data:{
     model:m.id,messages:[{role:"system",content:"You are DragonZpyder AI Mesh. Give useful, precise answers. You may analyse supplied text and images. You have no access to connected accounts or tools; users should switch to Agent for external actions."},...messages.messages],
-    max_tokens:700,temperature:0.5,stream:false
+    max_tokens:700,temperature:0.5,stream
   },timeout:90000});
+  if(stream){
+    res.writeHead(200,{"content-type":"text/event-stream; charset=utf-8","cache-control":"no-store, no-transform","x-accel-buffering":"no","x-content-type-options":"nosniff"});
+    const push=data=>res.write("data: "+JSON.stringify(data)+"\n\n");
+    push({type:"start",model:m.id});
+    const decoder=new TextDecoder();let carry="",delivered=0,completed=false;
+    try{
+      for await(const chunk of r.body){
+        carry+=decoder.decode(chunk,{stream:true});
+        if(carry.length>250000)throw Error("Unexpected provider stream size");
+        const frames=carry.split(/\r?\n\r?\n/);carry=frames.pop()||"";
+        for(const frame of frames){
+          for(const line of frame.split(/\r?\n/)){
+            const value=line.startsWith("data:")?line.slice(5).trim():"";
+            if(!value)continue;
+            if(value==="[DONE]"){completed=true;break}
+            let event;try{event=JSON.parse(value)}catch{continue}
+            if(event.error){push({type:"error",message:String(event.error.message||"Provider stream error")});completed=true;break}
+            const part=event.choices?.[0]?.delta?.content;
+            if(typeof part==="string"&&part){
+              delivered+=part.length;
+              if(delivered>12500)throw Error("Response size limit exceeded");
+              push({type:"delta",text:part});
+            }
+            if(event.usage)push({type:"usage",usage:event.usage});
+          }
+        }
+      }
+      if(!completed)push({type:"notice",message:"Provider stream closed"});
+      push({type:"done"});
+    }catch(error){push({type:"error",message:"Streaming reply interrupted"});}
+    res.end();return;
+  }
   const payload=await r.json();const answer=payload.choices?.[0]?.message;
   const text=typeof answer?.content==="string"?answer.content:Array.isArray(answer?.content)?answer.content.filter(x=>x.type==="text").map(x=>x.text).join("\n"):"";
   response(res,200,{model:m.id,text:text||"No text was returned.",usage:payload.usage||null,generation_id:payload.id});
@@ -246,10 +279,10 @@ export async function handleMesh(req,res,url,operly){
         return await getVideo(req,res,id,url,parts[2],parts.length===4);
     }
     if(req.method!=="POST")return error(res,405,"Unsupported method");
-    if(!["/mesh/chat","/mesh/image","/mesh/transcribe","/mesh/speech","/mesh/video"].includes(route))return error(res,404,"Unknown Mesh endpoint");
+    if(!["/mesh/chat","/mesh/chat-stream","/mesh/image","/mesh/transcribe","/mesh/speech","/mesh/video"].includes(route))return error(res,404,"Unknown Mesh endpoint");
     if(!process.env.OPENROUTER_API_KEY)return error(res,503,"OpenRouter is not configured");
     const data=await jsonBody(req);
-    if(route==="/mesh/chat")return await chat(req,res,id,data);
+    if(route==="/mesh/chat"||route==="/mesh/chat-stream")return await chat(req,res,id,data,route==="/mesh/chat-stream");
     if(route==="/mesh/image")return await imageGenerate(res,id,data);
     if(route==="/mesh/transcribe")return await transcribe(res,id,data);
     if(route==="/mesh/speech")return await speak(res,id,data);

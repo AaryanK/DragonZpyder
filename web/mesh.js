@@ -26,6 +26,40 @@ async function fetchMesh(path,payload){
  if(!r.ok)throw Error(data.detail?.message||"AI Mesh error ("+r.status+")");
  return data;
 }
+
+async function streamMeshChat(body,onChunk){
+ const response=await fetch("/mesh/chat-stream",{
+   method:"POST",credentials:"same-origin",redirect:"error",cache:"no-store",
+   headers:{"content-type":"application/json",accept:"text/event-stream","x-csrf-token":getCsrf()},
+   body:JSON.stringify(body)
+ });
+ if(!response.ok){
+   let json={};try{json=await response.json()}catch{}
+   throw Error(json.detail?.message||"Stream request failed ("+response.status+")");
+ }
+ const reader=response.body?.getReader();
+ if(!reader)throw Error("Streaming is not supported by this browser");
+ const decoder=new TextDecoder();let buffer="",text="",picked=body.model,usage=null,done=false;
+ while(!done){
+   const piece=await reader.read();
+   if(piece.done)break;
+   buffer+=decoder.decode(piece.value,{stream:true});
+   const frames=buffer.split(/\r?\n\r?\n/);buffer=frames.pop()||"";
+   for(const frame of frames){
+     const line=frame.split(/\r?\n/).find(value=>value.startsWith("data:"));
+     if(!line)continue;
+     let event;try{event=JSON.parse(line.slice(5).trim())}catch{continue}
+     if(event.type==="start")picked=event.model||picked;
+     if(event.type==="delta"){text+=String(event.text||"");onChunk(text);}
+     if(event.type==="usage")usage=event.usage;
+     if(event.type==="error")throw Error(event.message||"Stream stopped unexpectedly");
+     if(event.type==="done"){done=true;break}
+   }
+ }
+ if(!done&&!text)throw Error("No streaming reply was returned");
+ return {text,model:picked,usage};
+}
+
 function append(role,text,kind=""){
  empty.hidden=true;empty.style.setProperty("display","none","important");chat.classList.add("active");
  const article=document.createElement("article");article.className="message "+(role==="user"?"user":"assistant");
@@ -155,7 +189,7 @@ async function submit(text){
    }
    const parts=original?.mime.startsWith("image/")?[{type:"text",text:cleaned||"What is in this image?"},{type:"image_url",image_url:{url:original.data}}]:cleaned;
    const history=payloadHistory.slice(-10);
-   const result=await fetchMesh("chat",{model:chosen,messages:[...history,{role:"user",content:parts}]});
+   const result=await streamMeshChat({model:chosen,messages:[...history,{role:"user",content:parts}]},value=>{answer.value.textContent=value;});
    payloadHistory=[...history,{role:"user",content:parts},{role:"assistant",content:result.text}].slice(-10);
    answer.value.textContent=result.text;
    const meta=document.createElement("div");meta.className="message-meta";meta.textContent="Model: "+result.model+(result.usage?.cost!=null?" · API cost: $"+Number(result.usage.cost).toFixed(5):"");answer.body.append(meta);
