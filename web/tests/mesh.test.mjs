@@ -67,7 +67,7 @@ test("Cheap chat uses the selected model and returns clean results",async()=>{
  assert.equal(r.status,200);
  const p=await r.json();
  assert.equal(p.text,"Hello from the mocked model.");
- assert.equal(providerCalls,2);
+ assert.equal(providerCalls,1);
 });
 test("Streams text deltas through the authenticated proxy",async()=>{
  const r=await call("/mesh/chat-stream",{method:"POST",body:{model:"qwen/qwen3.7-flash",messages:[{role:"user",content:"hi"}]}});
