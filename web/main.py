@@ -11,6 +11,7 @@ from backend.voice import realtime
 from backend.mesh import mesh
 from backend.security import OPERLY
 from backend.chat_demo import router as chat_router
+from backend.admin import admin_dispatch
 
 ROOT = Path(__file__).resolve().parent
 DIST = ROOT / "dist"  # Vite-built React pages and fingerprinted assets
@@ -110,6 +111,8 @@ async def healthz():
 @app.api_route("/{path:path}", methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
 async def dispatch(path: str, request: Request):
     route = "/" + path
+    if route in ("/admin", "/admin/") or route.startswith("/admin/api/"):
+        return await admin_dispatch(request, API)
     if route.startswith("/api/"):
         return await proxy(request, OPERLY, rewrite_origin=True)
     if route.startswith("/internal/v1/"):
