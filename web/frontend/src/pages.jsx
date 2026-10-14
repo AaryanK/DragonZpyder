@@ -3,6 +3,7 @@ import { HomeTemplate } from "./HomeTemplate.jsx";
 import { PersonalTemplate } from "./PersonalTemplate.jsx";
 import { AccountTemplate } from "./AccountTemplate.jsx";
 import { RuntimeContext } from "./runtime.jsx";
+import { AdminPage } from "./AdminPage.jsx";
 
 // Each page's markup is real React JSX. The old standalone HTML templates
 // are no longer imported, parsed, or used by the browser.
@@ -55,6 +56,7 @@ function CompatibilityAdapters({ page }) {
 }
 
 export function Frontend({ page }) {
+  if (page === "admin") return <AdminPage />;
   if (page === "home") return <HomePage />;
   if (page === "app") return <><PersonalTemplate /><CompatibilityAdapters page="app" /></>;
   if (page === "account") return <><AccountTemplate /><CompatibilityAdapters page="account" /></>;
