@@ -16,6 +16,13 @@ const app = readFileSync(resolve(dist, "app.html"), "utf8");
 const account = readFileSync(resolve(dist, "account.html"), "utf8");
 assert.match(home, /Make progress|best of AI|All that intelligence/i);
 assert.match(home, /runtime-dot/);
+assert.match(home, /href="\/app"/, "Marketing CTA must link to the canonical React page");
+for (const [name, markup] of [["home", home], ["app", app], ["account", account]]) {
+  assert.doesNotMatch(markup, /href="\/(?:app|account)\.html(?:[?"#])/,
+    name + ": found old static-template navigation");
+}
+assert.match(app, /id="composer"/);
+assert.match(account, /id="login-form"/);
 assert.match(home, /runtime-text/);
 for (const id of ["composer","auth-modal","mesh-switch","conversation-list",
                    "companion-open","dictation-toggle","message-input"]) {

@@ -16,7 +16,7 @@ def test_static_pages_and_source_not_exposed():
             response = client.get(path)
             assert response.status_code == 200, path
         # Page content is served only from the React build, never old templates.
-        for path in ("/", "/index.html", "/app.html", "/account.html"):
+        for path in ("/", "/index.html", "/app", "/account"):
             response = client.get(path)
             assert response.status_code in (200, 503), path
         for path in ("/server.mjs", "/home.js", "/main.py", "/backend/security.py", "/package.json", "/random"):
@@ -88,10 +88,26 @@ def test_compiled_react_pages_and_hashed_assets(monkeypatch, tmp_path):
     (tmp_path / "assets" / "main-abcd.js").write_text("console.log('react')", encoding="utf8")
     with TestClient(app) as client:
         assert "React home build" in client.get("/").text
-        assert "React chat build" in client.get("/app.html").text
-        assert "React account build" in client.get("/account.html").text
+        assert "React chat build" in client.get("/app").text
+        assert "React account build" in client.get("/account").text
         js = client.get("/assets/main-abcd.js")
         assert js.status_code == 200
         assert "immutable" in js.headers["cache-control"]
         assert client.get("/assets/no-file.js").status_code == 404
         assert client.get("/main.py").status_code == 404
+
+
+def test_legacy_html_urls_redirect_to_clean_react_pages():
+    with TestClient(app) as client:
+        for old, new in (("/app.html", "/app"), ("/account.html", "/account")):
+            response = client.get(old, follow_redirects=False)
+            assert response.status_code == 308
+            assert response.headers["location"] == new
+            assert response.headers["cache-control"] == "no-store"
+        response = client.get("/account.html?mode=signup&next=profile", follow_redirects=False)
+        assert response.status_code == 308
+        assert response.headers["location"] == "/account?mode=signup&next=profile"
+        assert client.get("/app", follow_redirects=False).status_code in (200, 503)
+        assert client.get("/account", follow_redirects=False).status_code in (200, 503)
+        assert client.get("/app", headers={"host": "chat.dragonspire.xyz"},
+                          follow_redirects=False).status_code == 404

@@ -23,7 +23,7 @@ async function submitAction(form,action){
  try{await action()}catch(error){report(error?.message||"Something went wrong. Please try again.",true)}
  finally{processing=false;if(button)button.disabled=false}
 }
-function authenticated(){window.location.replace("/app.html")}
+function authenticated(){window.location.replace("/app")}
 async function ensurePersonal(){
  let response=await request("/api/auth/sessions");
  const current=Array.isArray(response)?response.find(item=>item?.current):null;
@@ -80,7 +80,7 @@ $("reset-form").addEventListener("submit",e=>{e.preventDefault();submitAction(e.
 $("profile-form").addEventListener("submit",e=>{e.preventDefault();submitAction(e.currentTarget,async()=>{
  await request("/api/auth/me",{method:"PATCH",body:{display_name:$("profile-name").value.trim()}});report("Your account has been updated.");
 })});
-$("account-logout").addEventListener("click",async()=>{try{await request("/api/auth/logout",{method:"POST",body:{}});window.location.replace("/account.html")}catch(e){report(e.message,true)}});
+$("account-logout").addEventListener("click",async()=>{try{await request("/api/auth/logout",{method:"POST",body:{}});window.location.replace("/account")}catch(e){report(e.message,true)}});
 async function profile(){
  const p=await request("/api/auth/me");$("profile-email").textContent=p.email||"";$("profile-name").value=p.display_name||"";
  const identities=$("linked-identities");identities.replaceChildren();
