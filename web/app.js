@@ -677,9 +677,21 @@ async function logout() {
   showAuth();
 }
 
+function syncComposerAction() {
+  // The single trailing action is Live voice while the composer is empty,
+  // and Send when text or attachments are ready.
+  const pending = Boolean(messageInput.value.trim()) ||
+    Boolean(window.dragonzpyderMesh?.hasAttachments?.());
+  const voice = $("companion-open");
+  voice.hidden = pending;
+  sendButton.hidden = !pending;
+}
+window.dragonzpyderComposerSync = syncComposerAction;
+
 function autoSizeInput() {
   messageInput.style.height = "auto";
   messageInput.style.height = `${Math.min(messageInput.scrollHeight, 170)}px`;
+  syncComposerAction();
 }
 
 loginForm.addEventListener("submit", async (event) => {
