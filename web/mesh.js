@@ -1,5 +1,5 @@
 import { renderMarkdown } from "./frontend/src/markdown.js";
-import { formatImageWait } from "./image-progress.mjs";
+import { formatImageWait, formatImageDuration } from "./image-progress.mjs";
 // AI Mesh is deliberately separate from the existing permissioned Operly Agent.
 // This browser-preview conversation is ephemeral until durable Mesh persistence lands.
 const el=id=>document.getElementById(id);
@@ -287,7 +287,7 @@ async function submit(text){
    const controller=new AbortController();
    imagePending=showImagePending(answer,chosen,controller);
    const result=await fetchMesh("image",{model:chosen,prompt,confirmed:true},{signal:controller.signal});
-   const elapsed=formatImageWait(imagePending.duration());
+   const elapsed="Generated in "+formatImageDuration(imagePending.duration());
    imagePending.end();imagePending=null;
    answer.value.textContent="Image created with "+result.model;
    addMedia(answer,"image",result.image);
