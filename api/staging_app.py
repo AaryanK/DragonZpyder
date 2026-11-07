@@ -161,7 +161,23 @@ async def run_staging_frontier_canary_once() -> None:
             key,
         )
         if not claimed:
-            logger.warning("Frontier stress canary already reserved; not rerunning")
+            existing = await conn.fetchrow(
+                """SELECT status,metrics FROM dz_staging_frontier_canary
+                   WHERE run_key=$1""", key,
+            )
+            metrics = existing["metrics"] if existing and isinstance(
+                existing["metrics"], dict
+            ) else {}
+            logger.warning(
+                "Frontier stress canary previously recorded status=%s "
+                "failure_type=%s error_phase=%s http_status=%s "
+                "elapsed_s=%s",
+                existing["status"] if existing else "unknown",
+                metrics.get("exception_type", "none"),
+                metrics.get("error_phase", "none"),
+                metrics.get("http_status", "unknown"),
+                metrics.get("elapsed_s", "unknown"),
+            )
             return
     except Exception:
         logger.error("Frontier stress canary reservation failed")
