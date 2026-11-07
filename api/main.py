@@ -278,6 +278,15 @@ async def inference(prefix: str, request: Request):
                         try:
                             body = validate_agent_body(decoded, models())
                         except AgentProtocolError as error:
+                            # Diagnostics contain only roles and value TYPES, never text.
+                            safe_roles = {"system", "developer", "user", "assistant", "tool"}
+                            shapes = [
+                                ((item.get("role") if item.get("role") in safe_roles else "other"),
+                                 type(item.get("content")).__name__)
+                                for item in decoded.get("messages", [])[:20]
+                                if isinstance(item, dict)
+                            ] if isinstance(decoded, dict) and isinstance(decoded.get("messages"), list) else []
+                            log.warning("Agent request shape rejection reason=%s shapes=%s", error.message, shapes)
                             raise GatewayError(error.status, error.message) from None
                     else:
                         body = valid_body(decoded)
