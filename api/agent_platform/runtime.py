@@ -75,7 +75,10 @@ class AgentPipelineError(RuntimeError):
 
 
 def build_agent(model, checkpointer):
-    """Construct exactly the production agent without executing a model call."""
+    """Construct the enabled agent harness without executing a model call."""
+    if os.getenv("DRAGONZPYDER_AGENT_HARNESS_V2") == "1":
+        from .harness import build_frontier_agent
+        return build_frontier_agent(model, checkpointer)
     backend = StateBackend()
     # A replacement filesystem middleware must explicitly use the same backend.
     return create_deep_agent(
@@ -167,9 +170,9 @@ class AgentRuntime:
             {"messages": [{"role": "user", "content": prompt}]},
             config={
                 "configurable": {"thread_id": key},
-                "recursion_limit": 16,
+                "recursion_limit": 32 if os.getenv("DRAGONZPYDER_AGENT_HARNESS_V2") == "1" else 16,
                 "callbacks": telemetry_callbacks(),
-                "metadata": {"service_id": service_id},
+                "metadata": {"service_id": service_id, "harness_version": "v2" if os.getenv("DRAGONZPYDER_AGENT_HARNESS_V2") == "1" else "v1"},
             },
             )
         except Exception as exc:
