@@ -80,7 +80,7 @@ def build_agent(model, checkpointer):
     if os.getenv("DRAGONZPYDER_AGENT_HARNESS_V2") == "1":
         from .harness import build_frontier_agent
         models = {}
-        for role in ("analyst", "verifier", "researcher"):
+        for role in ("analyst", "verifier", "researcher", "builder"):
             configured = os.getenv("DRAGONZPYDER_AGENT_" + role.upper() + "_MODEL_ID", "").strip()
             if configured:
                 models[role] = model_client(model_override=configured)
