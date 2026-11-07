@@ -21,6 +21,7 @@ from fastapi.responses import JSONResponse
 from observability import setup_telemetry, shutdown_telemetry, inference_span, span_trace_id
 from usage_ledger import ledger, token_usage
 from provider_gateway import provider_request
+from agent_platform.router import router as agent_router
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 MAX_BYTES = 160_000
@@ -72,16 +73,25 @@ log = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     setup_telemetry()
     await ledger.open()
+    agent_runtime = None
     try:
+        if os.getenv("DRAGONZPYDER_AGENTS_ENABLED") == "1":
+            from agent_platform.runtime import AgentRuntime
+            agent_runtime = AgentRuntime()
+            await agent_runtime.start()
+            app.state.agent_runtime = agent_runtime
         async with httpx.AsyncClient(timeout=90.0, follow_redirects=False) as client:
             app.state.http = client
             yield
     finally:
+        if agent_runtime is not None:
+            await agent_runtime.close()
         await ledger.close()
         shutdown_telemetry()
 
 
 app = FastAPI(title="DragonZpyder API", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
+app.include_router(agent_router)
 
 
 @app.middleware("http")
