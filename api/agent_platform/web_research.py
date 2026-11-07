@@ -69,7 +69,7 @@ def safe_source_url(value: object) -> bool:
     except ValueError:
         pass
     return "." in host and len(host) <= 253 and all(
-        and re.fullmatch(r"[a-z0-9-]+[.]railway[.]internal", host)
+        part and len(part) <= 63 and re.fullmatch(r"[a-z0-9-]+", part)
         and not part.startswith("-") and not part.endswith("-")
         for part in host.split(".")
     )
@@ -137,7 +137,7 @@ def searxng_search_endpoint() -> str:
         raise SearchUnavailable("Invalid SearXNG origin")
     internal = (
         parsed.scheme == "http" and host.endswith(".railway.internal")
-        and re.fullmatch(r"[a-z0-9-]+\\.railway\\.internal", host)
+        and re.fullmatch(r"[a-z0-9-]+[.]railway[.]internal", host)
     )
     public = parsed.scheme == "https" and safe_source_url(origin)
     if not (internal or public):
