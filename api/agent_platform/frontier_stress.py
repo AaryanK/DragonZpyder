@@ -112,14 +112,25 @@ def score_report(case: dict, report: dict | None, *,
     }
     actual_tools = set(report.get("successful_tools") or [])
     written = "write_file" in actual_tools or "edit_file" in actual_tools
-    read_back = "read_file" in actual_tools
+    # A generic read_file call cannot verify a *different* expected artifact.
+    # Correlate actual LangChain call IDs and successful responses, and require
+    # a read in a later assistant turn after each artifact's final write.
+    observed_readbacks = set(report.get("artifact_readback_paths") or [])
+    read_back_files = {
+        name for name in present
+        if f"{artifact_dir}/{name}" in observed_readbacks
+    }
+    read_back = bool(read_back_files)
     receipts = receipts if isinstance(receipts, list) else []
     proved_kinds = sorted({
         r["kind"] for r in receipts if isinstance(r, dict)
         and r.get("verified") is True and r.get("kind") in EXTERNAL_RECEIPT_KINDS
     })
     parallel = parallel_overlap(spans)
-    has_artifacts = written and read_back and len(present) == len(artifacts)
+    has_artifacts = (
+        written and len(present) == len(artifacts)
+        and len(read_back_files) == len(artifacts)
+    )
     has_oracle = bool(proved_kinds) and not missing_capabilities
     # Source and artifact checks are necessary but not sufficient: a native
     # sandbox/environment-state judge must attest complete objective success.
@@ -144,6 +155,7 @@ def score_report(case: dict, report: dict | None, *,
         ),
         "objective_verified": outcome_proven,
         "artifact_files_created": sorted(present) if written else [],
+        "artifact_files_read_back": sorted(read_back_files),
         "artifact_files_required": artifacts,
         "read_back_observed": read_back,
         "parallelism_observed": parallel,
@@ -151,7 +163,10 @@ def score_report(case: dict, report: dict | None, *,
         "external_receipt_kinds": proved_kinds,
         "missing_capabilities": missing_capabilities,
         "model_run_success_claim": bool(report.get("objective_verified")),
-        "warning": "No file content or external result is credited without independent checks.",
+        "warning": (
+            "Per-artifact tool dispatch/readback is not content validation; "
+            "the independent sandbox/state judge must still verify correctness."
+        ),
     }
 
 
