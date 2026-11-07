@@ -6,6 +6,8 @@ must be invoked through an approved metered AgentRuntime worker.
 """
 from __future__ import annotations
 
+import asyncio
+import math
 import operator
 import re
 from time import monotonic_ns
@@ -17,6 +19,8 @@ from langgraph.types import Send
 _ID = re.compile(r"^[A-Za-z0-9_-]{1,24}$")
 MAX_TRACKS = 3
 MAX_PROMPT_CHARS = 11000
+DEFAULT_TRACK_TIMEOUT_S = 180.0
+MAX_TRACK_TIMEOUT_S = 240.0
 
 
 class ParallelState(TypedDict, total=False):
@@ -40,15 +44,27 @@ def validate_tracks(tracks: list[dict]) -> None:
         seen.add(tid)
 
 
-def build_parallel_graph(worker: Callable[[dict], Awaitable[dict]]):
-    """Explicit Send fan-out, reducer-backed fan-in, and isolated failures."""
+def _valid_timeout(seconds: float) -> float:
+    if type(seconds) not in (int, float) or not math.isfinite(seconds):
+        raise ValueError("Invalid parallel track deadline")
+    if not 0.001 <= seconds <= MAX_TRACK_TIMEOUT_S:
+        raise ValueError("Parallel track deadline must be bounded")
+    return float(seconds)
+
+
+def build_parallel_graph(
+    worker: Callable[[dict], Awaitable[dict]], *,
+    track_timeout_s: float = DEFAULT_TRACK_TIMEOUT_S,
+):
+    """Explicit Send fan-out, bounded fan-in and isolated failures."""
+    track_timeout_s = _valid_timeout(track_timeout_s)
     start_ns = monotonic_ns()
 
     async def investigate(state: ParallelState) -> dict:
         track = state["track"]
         begun = monotonic_ns()
         try:
-            response = await worker(track)
+            response = await asyncio.wait_for(worker(track), timeout=track_timeout_s)
             if not isinstance(response, dict) or not isinstance(response.get("answer"), str):
                 raise ValueError("Worker did not return an answer report")
             # User-facing model prose is untrusted and cannot claim an outcome pass.
@@ -91,10 +107,12 @@ def build_parallel_graph(worker: Callable[[dict], Awaitable[dict]]):
     return graph.compile()
 
 
-async def run_parallel_tracks(tracks: list[dict],
-                              worker: Callable[[dict], Awaitable[dict]]) -> dict:
+async def run_parallel_tracks(
+    tracks: list[dict], worker: Callable[[dict], Awaitable[dict]], *,
+    track_timeout_s: float = DEFAULT_TRACK_TIMEOUT_S,
+) -> dict:
     validate_tracks(tracks)
-    graph = build_parallel_graph(worker)
+    graph = build_parallel_graph(worker, track_timeout_s=track_timeout_s)
     state = await graph.ainvoke({"tracks": tracks, "results": []})
     results = sorted(state["results"], key=lambda row: row["id"])
     completed = [r for r in results if r["status"] == "reported"]
