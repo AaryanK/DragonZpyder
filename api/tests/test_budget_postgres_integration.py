@@ -70,6 +70,21 @@ def test_real_postgres_atomic_parallel_reservations_and_restart():
                 await restarted.settle(
                     job_id=job, tenant_id=tenant, request_id=successful[0],
                     actual_usd=None)
+            async with pool.acquire() as con:
+                hold = await con.fetchrow(
+                    "SELECT status,actual_usd FROM agent_budget_reservations "
+                    "WHERE request_id=$1",
+                    __import__("uuid").UUID(successful[0]),
+                )
+                parent = await con.fetchrow(
+                    "SELECT reserved_usd,settled_usd FROM agent_job_budgets "
+                    "WHERE job_id=$1",
+                    __import__("uuid").UUID(job),
+                )
+            assert hold["status"] == "unknown"
+            assert hold["actual_usd"] is None
+            assert parent["reserved_usd"] == Decimal("0.9")
+            assert parent["settled_usd"] == 0
             assert await restarted.settle(
                 job_id=job, tenant_id=tenant, request_id=successful[0],
                 actual_usd="0.10") is True
