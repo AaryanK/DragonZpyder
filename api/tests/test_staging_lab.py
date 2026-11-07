@@ -13,6 +13,13 @@ def test_offline_lab_is_accessible_and_closed(monkeypatch):
         assert client.get("/healthz").status_code == 200
         assert client.get("/").status_code == 200
         assert client.get("/staging.js").status_code == 200
+        css = client.get("/staging.css")
+        assert css.status_code == 200
+        assert css.headers["content-type"].startswith("text/css")
+        html = client.get("/").text
+        assert 'href="/staging.css"' in html
+        assert "<style>" not in html
+        assert "style-src 'self'" in client.get("/").headers["content-security-policy"]
         status = client.get("/status").json()
         assert status["prod_connected"] is False
         assert status["harness_ready"] is False
