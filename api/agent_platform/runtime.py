@@ -297,7 +297,7 @@ class AgentRuntime:
             await child.start()
             try:
                 key = hashlib.sha256(
-                    (thread_id + "\\x00" + track["id"]).encode("utf-8")
+                    (thread_id + "\x00" + track["id"]).encode("utf-8")
                 ).hexdigest()[:32]
                 return await child.run_report(
                     service_id=service_id,
