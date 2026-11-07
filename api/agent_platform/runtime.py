@@ -11,6 +11,9 @@ import os
 import re
 from contextlib import AsyncExitStack
 
+# Restrict checkpoint deserialization to built-in types before importing LangGraph.
+os.environ.setdefault("LANGGRAPH_STRICT_MSGPACK", "true")
+
 from deepagents import create_deep_agent
 from deepagents.backends import StateBackend
 from deepagents.middleware import FilesystemMiddleware
