@@ -196,7 +196,16 @@ async def run_live_case(case_id: str) -> dict:
                 thread_id="f10-" + uuid4().hex[:20],
                 prompt=case["prompt"],
             ), timeout=240)
-            score = score_report(case, report)
+            score = score_report(
+                case, report, spans=report.get("delegation_spans")
+            )
+            # Only callback-derived invocation metadata, never raw tool arguments.
+            score["delegated_calls_observed"] = report.get(
+                "delegated_calls_observed", 0
+            )
+            score["runtime_parallelism_observed"] = report.get(
+                "parallelism_observed", False
+            )
             # Do not emit private model outputs or prompt text into logs.
             score["successful_tool_count"] = len(report["successful_tools"])
             score["failed_tool_count"] = report["failed_tool_count"]
