@@ -78,6 +78,7 @@ def specialist_specs(models: dict | None = None) -> list[dict]:
             ),
             "system_prompt": REVIEWER_PROMPT,
             "tools": [],
+            "middleware": [ModelCallLimitMiddleware(run_limit=3, exit_behavior="error")],
         },
     ]
     for spec in specs:
