@@ -182,9 +182,17 @@ async def run_live_case(case_id: str) -> dict:
             score["successful_tool_count"] = len(report["successful_tools"])
             score["failed_tool_count"] = report["failed_tool_count"]
         except Exception as exc:
-            score = {"id": case_id, "status": "execution_failed",
-                     "exception_type": type(exc).__name__,
-                     "objective_verified": False}
+            # Safe diagnostic classes and HTTP status only. Never retain
+            # raw exception messages, prompts, tool arguments or secrets.
+            cause = exc.__cause__ or exc
+            http_status = getattr(cause, "status_code", None)
+            score = {
+                "id": case_id, "status": "execution_failed",
+                "exception_type": type(cause).__name__,
+                "error_phase": getattr(exc, "phase", "unknown"),
+                "http_status": http_status if type(http_status) is int else None,
+                "objective_verified": False,
+            }
     finally:
         await runtime.close()
     score["elapsed_s"] = round(monotonic() - started, 2)
