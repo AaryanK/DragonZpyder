@@ -107,6 +107,22 @@ async def verify_provider_key() -> str:
     return "unverified"
 
 
+async def public_web_search_smoke() -> tuple[str, int]:
+    """One bounded external GET with no LLM inference, only when opted in."""
+    if os.getenv("DRAGONZPYDER_STAGING_WEB_SEARCH_LIVE_SMOKE") != "1":
+        return "disabled", 0
+    try:
+        report = await asyncio.wait_for(
+            search_sources("George Washington", provider="wikipedia", limit=1),
+            timeout=14,
+        )
+    except Exception:
+        # Never log provider payloads or exception messages.
+        return "failed", 0
+    count = len(report.get("results", []))
+    return ("verified" if count else "empty"), count
+
+
 @asynccontextmanager
 async def lifespan(app):
     app.state.runtime = None
@@ -120,6 +136,12 @@ async def lifespan(app):
         "Staging infrastructure readiness hatchet=%s pgvector=%s agent_gateway=%s",
         hatchet_state, vector_state, gateway_state,
     )
+    app.state.public_web_smoke, source_count = await public_web_search_smoke()
+    if app.state.public_web_smoke != "disabled":
+        logger.warning(
+            "Staging no-model public-web search smoke result=%s source_count=%d",
+            app.state.public_web_smoke, source_count,
+        )
     flags = configured()
     if flags["deep_agents_langgraph"] and flags["openrouter"]:
         runtime = AgentRuntime()
