@@ -87,3 +87,28 @@ def test_private_personal_gateway_rejects_legacy_auth_and_missing_ledger(monkeyp
         assert client.post("/internal/v1/chat/completions", json=data, headers={
             "Authorization": "Bearer " + "z" * 48,
         }).status_code == 401
+
+
+
+def test_signed_id_tokens_cannot_masquerade_as_access_tokens(monkeypatch):
+    import personal_core.identity as identity
+    monkeypatch.setenv("DRAGONZPYDER_PERSONAL_OIDC_ISSUER", "https://identity.example")
+    monkeypatch.setenv("DRAGONZPYDER_PERSONAL_OIDC_JWKS", "https://identity.example/jwks")
+    monkeypatch.setenv("DRAGONZPYDER_PERSONAL_OIDC_AUDIENCE", "dragonzpyder")
+    class Key:
+        key = object()
+    class Client:
+        def __init__(self, *args, **kwargs):
+            pass
+        def get_signing_key_from_jwt(self, token):
+            return Key()
+    monkeypatch.setattr(identity, "PyJWKClient", Client)
+    monkeypatch.setattr(identity.jwt, "get_unverified_header", lambda _: {"typ": "JWT"})
+    claim = {"iss": "https://identity.example", "sub": "person1",
+             "scope": "dragonzpyder:personal"}
+    monkeypatch.setattr(identity.jwt, "decode", lambda *a, **k: claim)
+    identity._jwks = None
+    with pytest.raises(ValueError, match="OAuth access token"):
+        identity.verify("mock.jwt.token")
+    claim["token_use"] = "access"
+    assert identity.verify("mock.jwt.token").subject == "person1"
