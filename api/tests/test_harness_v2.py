@@ -21,6 +21,11 @@ def test_specialists_cannot_inherit_external_tools():
     specs = specialist_specs()
     assert {p["name"] for p in specs} == {"analyst", "verifier"}
     assert all(p["tools"] == [] for p in specs)
+    assert all(len(p["middleware"]) == 1 for p in specs)
+    supplied = object()
+    overridden = specialist_specs({"verifier": supplied})
+    assert overridden[1]["model"] is supplied
+    assert "model" not in overridden[0]
     assert "write_file" in VIRTUAL_TOOLS
     assert "edit_file" in VIRTUAL_TOOLS
     assert "execute" not in VIRTUAL_TOOLS
@@ -73,3 +78,16 @@ def test_virtual_artifact_written_by_real_langgraph_tool_loop():
     assert any(m.name == "write_file" for m in tool_replies)
     assert not any("error" in str(m.content).lower() for m in tool_replies)
     assert "result.md" in result["messages"][-1].content
+
+
+
+def test_specialist_model_must_use_gateway_allowlist(monkeypatch):
+    import pytest
+    from agent_platform.runtime import model_client
+    monkeypatch.setenv("DRAGONZPYDER_RUNTIME_ALLOWED_MODELS", "openai/gpt-oss-120b")
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_USE_GATEWAY", "1")
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_GATEWAY_TOKEN", "t" * 44)
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_GATEWAY_BASE_URL", "https://gateway.example.org/internal/agent/v1")
+    with pytest.raises(RuntimeError, match="allowlist"):
+        model_client(model_override="unapproved/expensive-model")
+    assert model_client(model_override="openai/gpt-oss-120b") is not None
