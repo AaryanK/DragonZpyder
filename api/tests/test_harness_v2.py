@@ -271,3 +271,52 @@ def test_builder_model_override_fails_closed_when_not_allowlisted(monkeypatch):
                        "https://gateway.example.org/internal/agent/v1")
     with pytest.raises(RuntimeError, match="allowlist"):
         build_agent(object(), MemorySaver())
+
+
+def test_paid_parallel_fanout_fails_closed_even_with_all_operator_flags(monkeypatch):
+    """No parent-atomic gateway reservation exists: env flags cannot fake one."""
+    import asyncio
+    import pytest
+    from agent_platform.runtime import AgentRuntime
+
+    for flag in (
+        "DRAGONZPYDER_AGENT_PARALLEL_EVAL_ENABLED",
+        "DRAGONZPYDER_AGENT_STRESS_EVAL_ENABLED",
+        "DRAGONZPYDER_AGENT_EVAL_ALLOW_PAID",
+        "DRAGONZPYDER_AGENT_USE_GATEWAY",
+        "DRAGONZPYDER_AGENT_PRODUCTION_MODE",
+        "DRAGONZPYDER_AGENT_HARNESS_V2",
+    ):
+        monkeypatch.setenv(flag, "1")
+    runtime = AgentRuntime()
+    runtime._checkpointer = object()  # No DB, network, or model calls.
+    tracks = [{"id": "one", "prompt": "Analyze evidence"},
+              {"id": "two", "prompt": "Verify results"}]
+    with pytest.raises(RuntimeError, match="atomic shared gateway budget"):
+        asyncio.run(runtime.run_parallel_report(
+            service_id="staging", thread_id="budget-test", tracks=tracks,
+        ))
+
+
+def test_parallel_guard_cannot_be_bypassed_by_a_budget_claim_env(monkeypatch):
+    """A self-declared environment variable is not server-side enforcement."""
+    import asyncio
+    import pytest
+    from agent_platform.runtime import AgentRuntime
+    for flag in (
+        "DRAGONZPYDER_AGENT_PARALLEL_EVAL_ENABLED",
+        "DRAGONZPYDER_AGENT_STRESS_EVAL_ENABLED",
+        "DRAGONZPYDER_AGENT_EVAL_ALLOW_PAID",
+        "DRAGONZPYDER_AGENT_USE_GATEWAY",
+        "DRAGONZPYDER_AGENT_PRODUCTION_MODE",
+        "DRAGONZPYDER_AGENT_HARNESS_V2",
+    ):
+        monkeypatch.setenv(flag, "1")
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_SHARED_BUDGET_ENFORCED", "1")
+    runtime = AgentRuntime()
+    runtime._checkpointer = object()
+    with pytest.raises(RuntimeError, match="atomic shared gateway budget"):
+        asyncio.run(runtime.run_parallel_report(
+            service_id="staging", thread_id="claimed-budget",
+            tracks=[{"id": "a", "prompt": "a"}, {"id": "b", "prompt": "b"}],
+        ))
