@@ -328,6 +328,10 @@ async def inference(prefix: str, request: Request):
                 status = "ok"
             except GatewayError as error:
                 failure_code = str(error.status)
+                if agent_protocol:
+                    # Only authored validation labels; never record prompts or schemas.
+                    log.warning("Agent gateway request rejected status=%s reason=%s request_id=%s",
+                                error.status, error.message, request_id)
                 response = denied(error.status, error.message)
             except Exception as error:
                 log.exception("Unexpected inference exception request_id=%s type=%s", request_id, type(error).__name__)
