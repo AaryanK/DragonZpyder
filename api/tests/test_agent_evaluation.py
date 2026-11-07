@@ -29,3 +29,19 @@ def test_virtual_artifact_requires_tool_evidence():
     report = score_case(case, answer, tool_names=["write_file", "read_file"])
     assert report["smoke_passed"]
     assert summarize([report])["passed"] == 1
+
+
+
+def test_paid_eval_never_runs_by_default(monkeypatch):
+    import asyncio
+    import pytest
+    from agent_platform.eval_runner import evaluate
+    for name in (
+        "DRAGONZPYDER_AGENT_EVAL_ALLOW_PAID",
+        "DRAGONZPYDER_AGENT_USE_GATEWAY",
+        "DRAGONZPYDER_AGENT_PRODUCTION_MODE",
+        "DRAGONZPYDER_AGENT_HARNESS_V2",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    with pytest.raises(RuntimeError, match="explicit gateway-only opt-in"):
+        asyncio.run(evaluate(["daily-inbox"]))
