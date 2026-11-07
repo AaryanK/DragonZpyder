@@ -90,7 +90,7 @@ class PersonalMemory:
     def search(self, *, user_id: str, query: str):
         if not query or len(query) > 4000:
             raise ValueError("Invalid memory query")
-        return self._memory.search(query, user_id=self._principal(user_id))
+        return self._memory.search(query, filters={"user_id": self._principal(user_id)})
 
     def delete_user(self, *, user_id: str):
         return self._memory.delete_all(user_id=self._principal(user_id))
