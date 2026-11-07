@@ -129,6 +129,7 @@ def validate_agent_body(value: Any, allowed_models: list[str]) -> dict:
     # A client cannot invent successful tool results or skip results
     # for a prior assistant tool-call turn. Enforce local protocol history.
     pending: set[str] = set()
+    seen_tool_ids: set[str] = set()
     for item in sanitized:
         if pending and item["role"] != "tool":
             _reject("Unresolved assistant tool calls")
@@ -136,6 +137,9 @@ def validate_agent_body(value: Any, allowed_models: list[str]) -> dict:
             identifiers = [call["id"] for call in item["tool_calls"]]
             if len(set(identifiers)) != len(identifiers):
                 _reject("Duplicate tool call IDs")
+            if any(identifier in seen_tool_ids for identifier in identifiers):
+                _reject("Replayed tool call ID across turns")
+            seen_tool_ids.update(identifiers)
             pending = set(identifiers)
         elif item["role"] == "tool":
             call_id = item["tool_call_id"]
@@ -168,14 +172,21 @@ def validate_agent_body(value: Any, allowed_models: list[str]) -> dict:
         body["provider"] = {"require_parameters": True}
     if "tool_choice" in value:
         choice = value["tool_choice"]
+        if "tools" not in body:
+            _reject("Tool choice requires declared tools")
         if choice in ("auto", "none", "required"):
             body["tool_choice"] = choice
         elif (isinstance(choice, dict) and choice.get("type") == "function" and
               isinstance(choice.get("function"), dict) and
               isinstance(choice["function"].get("name"), str) and
               _NAME.fullmatch(choice["function"]["name"])):
+            selected_name = choice["function"]["name"]
+            if selected_name not in {
+                tool["function"]["name"] for tool in body["tools"]
+            }:
+                _reject("Tool choice references undeclared function")
             body["tool_choice"] = {"type": "function", "function": {
-                "name": choice["function"]["name"],
+                "name": selected_name,
             }}
         else:
             _reject("Invalid tool choice")
