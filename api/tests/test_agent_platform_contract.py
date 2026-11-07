@@ -1,6 +1,10 @@
 """Unit-level safety contracts. These do not spend model credits."""
 import hashlib
 import hmac
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import pytest
 from fastapi import HTTPException
