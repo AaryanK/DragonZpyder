@@ -50,6 +50,7 @@ def synthetic_memory_smoke() -> dict:
     written = False
     found = False
     deleted = False
+    vector_empty = False
     try:
         memory.remember(
             user_id=user, consent=True,
@@ -66,7 +67,19 @@ def synthetic_memory_smoke() -> dict:
     finally:
         memory.delete_user(user_id=user)
         deleted = True
-    return {"memory_written": written, "memory_retrieved": found, "synthetic_data_deleted": deleted}
+        # Check vector records only. Mem0's auxiliary message/history store
+        # requires a separate privacy/erasure implementation before launch.
+        remaining = memory._memory.get_all(filters={
+            "user_id": memory._principal(user)
+        })
+        records = remaining.get("results", []) if isinstance(remaining, dict) else remaining
+        vector_empty = isinstance(records, list) and not records
+    return {
+        "memory_written": written,
+        "memory_retrieved": found,
+        "vector_records_deleted": deleted and vector_empty,
+        "history_erasure_verified": False,
+    }
 
 
 async def gateway_readiness() -> str:
