@@ -47,8 +47,15 @@ def verify(token: str) -> Principal:
                             options={"require": ["sub", "exp", "iat", "iss", "aud"]})
     except (jwt.PyJWTError, ValueError) as exc:
         raise ValueError("Access token rejected") from exc
-    if claims.get("token_use") not in (None, "access") or claims.get("typ") in ("id", "id_token"):
-        raise ValueError("ID tokens cannot authorize the personal API")
+    # Scope alone cannot distinguish OAuth access tokens from OIDC ID tokens.
+    # Require a positive access-token discriminator in the signed payload or
+    # JWT header; an issuer without one must be adapted before onboarding.
+    header = jwt.get_unverified_header(token)
+    is_access = (claims.get("token_use") == "access" or
+                 claims.get("typ") in ("access", "at+jwt") or
+                 str(header.get("typ", "")).lower() == "at+jwt")
+    if not is_access or claims.get("token_use") == "id" or claims.get("typ") in ("id", "id_token"):
+        raise ValueError("A scoped OAuth access token is required")
     scope = claims.get("scope", "")
     if not isinstance(scope, str) or "dragonzpyder:personal" not in scope.split():
         raise ValueError("Missing personal API scope")
