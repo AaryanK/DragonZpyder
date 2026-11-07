@@ -270,11 +270,10 @@ class AgentRuntime:
     async def run_parallel_report(
         self, *, service_id: str, thread_id: str, tracks: list[dict],
     ) -> dict:
-        """Explicit LangGraph parallel agents; gated metered STAGING evaluation.
+        """Reject paid fan-out until the gateway atomically enforces parent spend.
 
-        Each track uses its own PostgreSQL checkpoint connection and thread.
-        This is not a personal computer, an approved external write, or a
-        frontier benchmark pass. Global USD caps must be configured separately.
+        Offline LangGraph fan-out remains testable in orchestration.py. Merely
+        setting environment flags must never authorize unbounded paid children.
         """
         if self._checkpointer is None:
             raise RuntimeError("Parent agent runtime is not started")
@@ -290,7 +289,7 @@ class AgentRuntime:
             raise RuntimeError("Paid parallel evaluation is disabled")
         if not _ID.fullmatch(service_id) or not _ID.fullmatch(thread_id):
             raise ValueError("Invalid parent identity or thread")
-        from .orchestration import run_parallel_tracks, validate_tracks
+        from .orchestration import validate_tracks
         validate_tracks(tracks)
         # SECURITY: The gateway currently enforces per-request limits, but
         # cannot reserve one shared USD ceiling atomically across child runs.
@@ -303,25 +302,6 @@ class AgentRuntime:
             "Paid parallel evaluation disabled: atomic shared gateway budget "
             "enforcement is not implemented"
         )
-
-        async def run_one(track: dict) -> dict:
-            # A fresh connection per concurrently executing LangGraph task
-            # avoids sharing one single-connection Postgres saver concurrently.
-            child = AgentRuntime()
-            await child.start()
-            try:
-                key = hashlib.sha256(
-                    (thread_id + "\x00" + track["id"]).encode("utf-8")
-                ).hexdigest()[:32]
-                return await child.run_report(
-                    service_id=service_id,
-                    thread_id="parallel-" + key,
-                    prompt=track["prompt"],
-                )
-            finally:
-                await child.close()
-
-        return await run_parallel_tracks(tracks, run_one)
 
     async def run(self, *, service_id: str, thread_id: str, prompt: str) -> str:
         """Backward-compatible Hatchet/API adapter: plain answer only."""
