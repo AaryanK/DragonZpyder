@@ -1,0 +1,101 @@
+"""Password-gated staging smoke lab. Never grants workspace or computer tools."""
+import asyncio
+import hmac
+import os
+import time
+from collections import deque
+from contextlib import asynccontextmanager
+from pathlib import Path
+from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi.responses import FileResponse
+from pydantic import BaseModel, Field
+from agent_platform.runtime import AgentRuntime
+
+UI = Path(__file__).with_name("staging_ui.html")
+attempts = deque(maxlen=40)
+running = asyncio.Lock()
+
+class Prompt(BaseModel):
+    thread_id: str = Field(min_length=1, max_length=80, pattern=r"^[A-Za-z0-9_.-]+$")
+    prompt: str = Field(min_length=1, max_length=1600)
+
+def configured():
+    env = os.environ
+    return {
+        "deep_agents_langgraph": bool(env.get("DRAGONZPYDER_AGENTS_ENABLED") == "1" and env.get("DRAGONZPYDER_AGENT_DATABASE_URL") and env.get("DRAGONZPYDER_AGENT_MODEL_ID")),
+        "openrouter": bool(env.get("OPENROUTER_API_KEY")),
+        "langfuse": bool(env.get("DRAGONZPYDER_LANGFUSE_PUBLIC_KEY") or env.get("LANGFUSE_PUBLIC_KEY")),
+        "hatchet": bool(env.get("HATCHET_CLIENT_TOKEN")),
+        "mem0_postgres": bool(env.get("DRAGONZPYDER_MEMORY_DATABASE_URL") and env.get("DRAGONZPYDER_EMBEDDING_API_KEY")),
+        "operly_computer": bool(env.get("DRAGONZPYDER_COMPUTER_RUNNER_URL") and env.get("DRAGONZPYDER_COMPUTER_RUNNER_TOKEN")),
+    }
+
+@asynccontextmanager
+async def lifespan(app):
+    app.state.runtime = None
+    app.state.runtime_error = False
+    flags = configured()
+    if flags["deep_agents_langgraph"] and flags["openrouter"]:
+        runtime = AgentRuntime()
+        try:
+            await runtime.start()
+            app.state.runtime = runtime
+        except Exception:
+            app.state.runtime_error = True
+            await runtime.close()
+    try:
+        yield
+    finally:
+        if app.state.runtime:
+            await app.state.runtime.close()
+
+app = FastAPI(title="DragonZpyder Staging", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
+
+@app.middleware("http")
+async def headers(req, call_next):
+    resp = await call_next(req)
+    resp.headers["cache-control"] = "no-store"
+    resp.headers["x-frame-options"] = "DENY"
+    resp.headers["x-content-type-options"] = "nosniff"
+    resp.headers["referrer-policy"] = "no-referrer"
+    resp.headers["content-security-policy"] = "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'"
+    return resp
+
+@app.get("/")
+async def index():
+    return FileResponse(UI, media_type="text/html")
+
+@app.get("/staging.js")
+async def javascript():
+    return FileResponse(UI.with_name("staging.js"), media_type="text/javascript")
+
+@app.get("/healthz")
+async def health():
+    return {"status": "ok", "service": "dragonzpyder-staging"}
+
+@app.get("/status")
+async def status(req: Request):
+    return {"components": {name: ("configured_unverified" if present else "not_configured") for name,present in configured().items()},
+            "harness_ready": req.app.state.runtime is not None,
+            "runtime_start_error": req.app.state.runtime_error,
+            "prod_connected": False}
+
+@app.post("/test")
+async def test(payload: Prompt, req: Request, x_staging_password: str = Header(default="")):
+    password = os.getenv("DRAGONZPYDER_STAGING_PASSWORD", "")
+    if len(password)<24 or not hmac.compare_digest(password,x_staging_password):
+        raise HTTPException(401,"Incorrect staging password")
+    now=time.monotonic()
+    while attempts and attempts[0]<now-3600:
+        attempts.popleft()
+    if len(attempts)>=6: raise HTTPException(429,"Smoke test limit: six runs per hour")
+    if req.app.state.runtime is None: raise HTTPException(503,"Model or checkpoint database is not configured")
+    if running.locked(): raise HTTPException(429,"A staging test is already running")
+    attempts.append(now)
+    async with running:
+        try:
+            answer = await asyncio.wait_for(req.app.state.runtime.run(
+                service_id="agent-smoke", thread_id=payload.thread_id, prompt=payload.prompt), timeout=90)
+            return {"answer": answer[:20000], "thread_id": payload.thread_id}
+        except TimeoutError: raise HTTPException(504,"Test exceeded 90 seconds") from None
+        except Exception: raise HTTPException(502,"Test failed; inspect staging logs") from None
