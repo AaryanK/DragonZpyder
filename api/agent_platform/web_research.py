@@ -25,7 +25,7 @@ USER_AGENT = "DragonZpyderStagingResearch/0.1 (research agent; sources-only)"
 _TAGS = re.compile(r"<[^>]{0,300}>")
 _SPACES = re.compile(r"\s+")
 _UNSAFE = re.compile(r"[\x00-\x1f\x7f]")
-PROVIDERS = frozenset({"wikipedia", "brave"})
+PROVIDERS = frozenset({"wikipedia", "brave", "searxng"})
 
 
 class SearchUnavailable(RuntimeError):
@@ -123,19 +123,77 @@ def _brave_results(payload: dict, limit: int):
     return results
 
 
+def searxng_search_endpoint() -> str:
+    """Only an operator-configured fixed origin, never a model-supplied URL."""
+    origin = os.getenv("DRAGONZPYDER_SEARXNG_ORIGIN", "").rstrip("/")
+    try:
+        parsed = urlsplit(origin)
+        host = (parsed.hostname or "").lower()
+        port = parsed.port
+    except ValueError as exc:
+        raise SearchUnavailable("Invalid SearXNG origin") from exc
+    if (not host or parsed.username or parsed.password or parsed.path or
+            parsed.query or parsed.fragment or port not in (None, 443, 8080)):
+        raise SearchUnavailable("Invalid SearXNG origin")
+    internal = (
+        parsed.scheme == "http" and host.endswith(".railway.internal")
+        and re.fullmatch(r"[a-z0-9-]+\\.railway\\.internal", host)
+    )
+    public = parsed.scheme == "https" and safe_source_url(origin)
+    if not (internal or public):
+        raise SearchUnavailable("SearXNG origin must be trusted HTTPS or private Railway service")
+    return origin + "/search"
+
+
+def _searxng_results(payload: dict, limit: int):
+    results = payload.get("results", [])
+    if not isinstance(results, list):
+        raise SearchUnavailable("Invalid SearXNG search results")
+    out = []
+    for item in results:
+        if not isinstance(item, dict) or not safe_source_url(item.get("url")):
+            continue
+        title = normalize_excerpt(item.get("title"), 200)
+        if not title:
+            continue
+        out.append({
+            "title": title,
+            "url": item["url"],
+            "snippet": normalize_excerpt(item.get("content") or ""),
+            "provider": "searxng",
+        })
+        if len(out) >= limit:
+            break
+    return out
+
+
+def resolve_provider(value: str) -> str:
+    if value != "auto":
+        return value
+    if os.getenv("DRAGONZPYDER_BRAVE_SEARCH_API_KEY"):
+        return "brave"
+    if os.getenv("DRAGONZPYDER_SEARXNG_ORIGIN"):
+        return "searxng"
+    return "wikipedia"
+
+
 async def search_sources(query: str, *, provider: str = "wikipedia",
                          limit: int = 3, client: httpx.AsyncClient | None = None) -> dict:
     query = normalize_query(query)
+    provider = resolve_provider(provider)
     if provider not in PROVIDERS:
         raise ValueError("Unknown web search provider")
     if type(limit) is not int or not 1 <= limit <= 5:
         raise ValueError("Search result limit must be 1–5")
     if provider == "brave" and not os.getenv("DRAGONZPYDER_BRAVE_SEARCH_API_KEY"):
         raise SearchUnavailable("General web search key is not configured")
-    url = WIKIPEDIA_SEARCH if provider == "wikipedia" else BRAVE_SEARCH
-    params = {"q": query, "limit": limit} if provider == "wikipedia" else {
-        "q": query, "count": limit,
-    }
+    url = (WIKIPEDIA_SEARCH if provider == "wikipedia" else
+           BRAVE_SEARCH if provider == "brave" else searxng_search_endpoint())
+    params = (
+        {"q": query, "limit": limit} if provider == "wikipedia" else
+        {"q": query, "count": limit} if provider == "brave" else
+        {"q": query, "format": "json", "safesearch": "1"}
+    )
     headers = {"User-Agent": USER_AGENT, "Accept": "application/json"}
     if provider == "brave":
         headers["X-Subscription-Token"] = os.environ["DRAGONZPYDER_BRAVE_SEARCH_API_KEY"]
@@ -154,14 +212,16 @@ async def search_sources(query: str, *, provider: str = "wikipedia",
         if not isinstance(payload, dict):
             raise SearchUnavailable("Malformed search provider response")
         results = (
-            _wikipedia_results(payload, limit)
-            if provider == "wikipedia" else _brave_results(payload, limit)
+            _wikipedia_results(payload, limit) if provider == "wikipedia"
+            else _brave_results(payload, limit) if provider == "brave"
+            else _searxng_results(payload, limit)
         )
         return {
             "query": query, "provider": provider, "results": results,
             "fetched_at": datetime.now(timezone.utc).isoformat(),
-            "source_scope": ("encyclopedia-only" if provider == "wikipedia"
-                             else "general-web"),
+            "source_scope": (
+                "encyclopedia-only" if provider == "wikipedia" else "general-web"
+            ),
             "warning": "Untrusted external excerpts. Verify important facts at the source.",
         }
     except (httpx.HTTPError, ValueError, json.JSONDecodeError) as exc:
@@ -180,7 +240,7 @@ async def web_search(query: str) -> str:
     """
     if os.getenv("DRAGONZPYDER_AGENT_WEB_SEARCH_ENABLED") != "1":
         return json.dumps({"error": "Web search is disabled in this agent environment"})
-    provider = os.getenv("DRAGONZPYDER_AGENT_SEARCH_PROVIDER", "wikipedia")
+    provider = os.getenv("DRAGONZPYDER_AGENT_SEARCH_PROVIDER", "auto")
     try:
         report = await search_sources(query, provider=provider, limit=3)
     except (SearchUnavailable, ValueError):
