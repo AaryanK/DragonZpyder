@@ -14,7 +14,7 @@ from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from agent_platform.runtime import AgentRuntime, AgentPipelineError
-from agent_platform.staging_smokes import hatchet_readiness, vector_readiness, synthetic_memory_smoke
+from agent_platform.staging_smokes import hatchet_readiness, vector_readiness, gateway_readiness, synthetic_memory_smoke
 
 logger = logging.getLogger("dragonzpyder.staging")
 
@@ -109,12 +109,12 @@ async def lifespan(app):
     app.state.runtime_error = False
     app.state.provider_auth = await verify_provider_key()
     logger.warning("Staging OpenRouter key verification status=%s", app.state.provider_auth)
-    hatchet_state, vector_state = await asyncio.gather(
-        hatchet_readiness(), vector_readiness()
+    hatchet_state, vector_state, gateway_state = await asyncio.gather(
+        hatchet_readiness(), vector_readiness(), gateway_readiness()
     )
     logger.warning(
-        "Staging infrastructure readiness hatchet=%s pgvector=%s",
-        hatchet_state, vector_state,
+        "Staging infrastructure readiness hatchet=%s pgvector=%s agent_gateway=%s",
+        hatchet_state, vector_state, gateway_state,
     )
     flags = configured()
     if flags["deep_agents_langgraph"] and flags["openrouter"]:
@@ -173,9 +173,10 @@ async def status(req: Request):
         "rate_limited": "provider_rate_limited",
         "unreachable": "provider_unreachable",
     }.get(provider_state, "unverified")
-    hatchet_status, memory_status = await asyncio.gather(
-        hatchet_readiness(), vector_readiness()
+    hatchet_status, memory_status, gateway_status = await asyncio.gather(
+        hatchet_readiness(), vector_readiness(), gateway_readiness()
     )
+    components["agent_inference_route"] = gateway_status
     components["hatchet"] = (
         "worker_connected" if hatchet_status == "server_online" and os.getenv("HATCHET_CLIENT_TOKEN")
         else hatchet_status

@@ -67,3 +67,28 @@ def synthetic_memory_smoke() -> dict:
         memory.delete_user(user_id=user)
         deleted = True
     return {"memory_written": written, "memory_retrieved": found, "synthetic_data_deleted": deleted}
+
+
+async def gateway_readiness() -> str:
+    """Check the PRIVATE metered gateway and its persistent usage ledger."""
+    if os.getenv("DRAGONZPYDER_AGENT_USE_GATEWAY") != "1":
+        return "direct_staging_only"
+    base = os.getenv("DRAGONZPYDER_AGENT_GATEWAY_BASE_URL", "")
+    token = os.getenv("DRAGONZPYDER_AGENT_GATEWAY_TOKEN", "")
+    if (not base.startswith("http://dragonzpyder-gateway.railway.internal:8080/")
+            or not base.endswith("/internal/agent/v1") or len(token) < 32):
+        return "gateway_not_configured"
+    url = base.removesuffix("/internal/agent/v1") + "/internal/v1/health"
+    try:
+        async with httpx.AsyncClient(timeout=5, trust_env=False) as http:
+            response = await http.get(
+                url, headers={"Authorization": "Bearer " + token}
+            )
+        if response.status_code != 200:
+            return "gateway_auth_or_health_failed"
+        data = response.json()
+        if data.get("usage_ledger") is True:
+            return "metered_gateway_ready"
+        return "usage_ledger_unavailable"
+    except Exception:
+        return "gateway_unreachable"

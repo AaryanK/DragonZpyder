@@ -54,3 +54,10 @@ def test_synthetic_memory_requires_staging_auth_and_feature_flag(monkeypatch):
         assert client.post("/test-memory").status_code == 401
         r=client.post("/test-memory",headers={"x-staging-password":"r"*40})
         assert r.status_code == 503
+
+
+def test_gateway_readiness_defaults_to_direct_dev(monkeypatch):
+    import asyncio
+    from agent_platform.staging_smokes import gateway_readiness
+    monkeypatch.delenv("DRAGONZPYDER_AGENT_USE_GATEWAY", raising=False)
+    assert asyncio.run(gateway_readiness()) == "direct_staging_only"
