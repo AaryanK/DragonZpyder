@@ -292,6 +292,8 @@ async def test_hatchet(x_staging_password: str = Header(default="")):
                 task.aio_run(PingInput(message="staging-healthcheck")),
                 timeout=35,
             )
+            if hasattr(result, "model_dump"):
+                result = result.model_dump()
             if not isinstance(result, dict) or result.get("ok") is not True:
                 # Synthetic output only; log type and key names, not arbitrary values.
                 root_keys = [str(k)[:72] for k in result.keys()][:8] if isinstance(result, dict) else []
