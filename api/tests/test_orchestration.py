@@ -92,3 +92,33 @@ def test_delegation_trace_excludes_failed_and_unfinished_invocations():
     assert snapshot["parallelism_observed"] is False
     assert snapshot["delegated_calls_observed"] == 1
     assert snapshot["spans"][0]["status"] == "failed"
+
+
+def test_parallel_tracks_have_real_wall_deadlines_and_isolate_timeouts():
+    from agent_platform.orchestration import run_parallel_tracks
+
+    async def worker(track):
+        if track["id"] == "slow":
+            await asyncio.sleep(0.3)
+        return {"answer": track["id"]}
+
+    report = asyncio.run(run_parallel_tracks([
+        {"id": "slow", "prompt": "slow synthetic track"},
+        {"id": "fast", "prompt": "fast synthetic track"},
+    ], worker, track_timeout_s=0.02))
+    assert report["completed"] == 1
+    assert report["failed"] == 1
+    assert report["tracks"][-1]["status"] == "failed"
+    assert report["tracks"][-1]["failure_type"] == "TimeoutError"
+    assert report["objective_verified"] is False
+
+
+@pytest.mark.parametrize("deadline", [0, -1, 241, float("inf"), float("nan"), True])
+def test_parallel_deadlines_fail_closed(deadline):
+    from agent_platform.orchestration import build_parallel_graph
+
+    async def worker(track):
+        return {"answer": "ok"}
+
+    with pytest.raises(ValueError, match="deadline"):
+        build_parallel_graph(worker, track_timeout_s=deadline)
