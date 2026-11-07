@@ -38,7 +38,7 @@ jobs:
           python -c "from deepagents import create_deep_agent; from langchain_openrouter import ChatOpenRouter; from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver; from langfuse.langchain import CallbackHandler; from hatchet_sdk import Hatchet; from mem0 import Memory; from agent_platform.runtime import AgentRuntime; from agent_platform.worker import main; print('agent stack imports OK')"
           python -m agent_platform.ops_benchmark
           python -m agent_platform.frontier_stress
-          pytest -q tests/test_agent_platform_contract.py tests/test_staging_lab.py tests/test_agent_stack_integration.py tests/test_harness_v2.py tests/test_agent_evaluation.py tests/test_agent_web_monitor.py tests/test_ops_benchmark.py tests/test_frontier_stress.py tests/test_orchestration.py tests/test_model_capabilities.py tests/test_artifact_evidence.py
+          pytest -q tests/test_agent_platform_contract.py tests/test_staging_lab.py tests/test_agent_stack_integration.py tests/test_harness_v2.py tests/test_agent_evaluation.py tests/test_agent_web_monitor.py tests/test_ops_benchmark.py tests/test_frontier_stress.py tests/test_orchestration.py tests/test_model_capabilities.py tests/test_artifact_evidence.py tests/test_budget_reservations.py
   personal-core-contracts:
     runs-on: ubuntu-latest
     permissions:
