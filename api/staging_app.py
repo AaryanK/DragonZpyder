@@ -109,6 +109,13 @@ async def lifespan(app):
     app.state.runtime_error = False
     app.state.provider_auth = await verify_provider_key()
     logger.warning("Staging OpenRouter key verification status=%s", app.state.provider_auth)
+    hatchet_state, vector_state = await asyncio.gather(
+        hatchet_readiness(), vector_readiness()
+    )
+    logger.warning(
+        "Staging infrastructure readiness hatchet=%s pgvector=%s",
+        hatchet_state, vector_state,
+    )
     flags = configured()
     if flags["deep_agents_langgraph"] and flags["openrouter"]:
         runtime = AgentRuntime()
