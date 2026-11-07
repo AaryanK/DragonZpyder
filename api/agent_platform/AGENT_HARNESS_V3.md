@@ -104,3 +104,67 @@ limit and approve a one-case experimental budget before triggering it.
 
 **Status:** Feature availability != production acceptance. Keep this branch
 unmerged pending a staged integration review.
+
+
+## November 7 reliability pass: before new real-model stress runs
+
+**GitHub CI evidence:** After gateway history validation, catalog preflight,
+parallel deadlines, and overlap-grading fixes, PR API run
+`42394104067` completed all four jobs successfully: 35 gateway/API
+contracts and 87 agent-stack contracts passed in their respective jobs.
+These are offline integration tests, **not frontier-agent outcome scores**.
+
+- Agent protocol rejects orphan, replayed, duplicated or unresolved tool-call
+  IDs. It rejects unrequested provider tool names and truncated outputs.
+- OpenRouter tool requests now carry `provider.require_parameters=true`.
+  A temperature parameter is passed only when the caller explicitly provided
+  it, so providers are not excluded by an invented default. Incompatibility
+  fails closed rather than silently pretending a tool was called.
+- `model_capabilities.py` performs an **operator-opt-in** catalog preflight
+  from a fixed HTTPS OpenRouter model endpoint: exact slug, advertised
+  `tools` support and minimum context. Enable it with
+  `DRAGONZPYDER_AGENT_REQUIRE_MODEL_PREFLIGHT=1` after confirming the current
+  catalog, gateway budget and test environment. It does not replace a real
+  end-to-end model tool smoke or prove that provider routing will succeed.
+- Parallel track calls now have an independent default 180-second deadline
+  (hard maximum 240 seconds) and report failures without claiming completion.
+- The grader excludes failed and cancelled task spans when scoring concurrency;
+  merely overlapping failed calls cannot earn a parallelism pass.
+- The child-thread hash separator was normalized for consistent isolation.
+
+### Redundancy and deletion audit
+
+**Safe simplification already made:** no duplicate provider-parameter
+defaults for the agent gateway; each explicitly supplied setting has one
+validation path. Reuse Deep Agents and LangGraph primitives instead of
+adding a second queue, planner, or memory engine.
+
+**Keep, not redundant:**
+
+- `TodoListMiddleware` is **opt-in in Deep Agents v0.7+**; removing it
+  would disable `write_todos`. Source:
+  https://github.com/langchain-ai/deepagents/blob/main/libs/deepagents/CHANGELOG.md
+- `FilesystemMiddleware` specifies our explicit limited virtual tools;
+  the Deep Agents replacement inherits our /workspace permissions.
+- Legacy read-only agent path remains an operational rollback switch.
+- A separate LangGraph fan-out path allows explicit independently measured
+  parallel track execution; it is not a substitute for inline Deep Agents
+  subagent tasks.
+
+**Do not delete automatically:** legacy Node backend while consumers
+may still be using it; staging lab acceptance endpoints, older test reports,
+or temporary fallback modes before dependency/traffic audit and rollback
+verification. Database histories, Mem0 auxiliary retention, Hatchet state,
+production secrets, production services, and user data are not cleanup targets.
+
+### Next priority
+
+1. Run an actual model-tool JSON smoke on an operator-approved
+   tool-capable model and confirm catalog + gateway parameter compatibility.
+2. Add a global, atomic multi-child cost reservation budget before enabling
+   parallel paid evaluation; existing model-call ceilings alone are not enough.
+3. Add durable parent retry/cancel recovery, isolated executable sandbox and
+   separately authenticated outcome judges.
+4. Verify real, three-run ten-case outcomes and matched frontier models.
+5. Only then audit dead production dependencies and safely remove them,
+   one reversible change per CI-backed migration.
