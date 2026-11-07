@@ -52,6 +52,12 @@ def amount(value: object) -> Decimal:
     return parsed.quantize(QUANTUM)
 
 
+def nonnegative_amount(value: object) -> Decimal:
+    if value in ("0", Decimal("0")):
+        return Decimal("0").quantize(QUANTUM)
+    return amount(value)
+
+
 def identity(value: str) -> UUID:
     try:
         result = UUID(value)
@@ -133,7 +139,7 @@ class AtomicBudgetStore:
     async def settle(self, *, job_id: str, tenant_id: str, request_id: str,
                      actual_usd: str | None) -> bool:
         job, request = identity(job_id), identity(request_id)
-        actual = amount(actual_usd) if actual_usd is not None else None
+        actual = nonnegative_amount(actual_usd) if actual_usd is not None else None
         async with self.pool.acquire() as con:
             async with con.transaction():
                 parent = await con.fetchrow(
@@ -156,9 +162,6 @@ class AtomicBudgetStore:
                 if actual is None or actual > reservation["estimate_usd"]:
                     # Provider usage unknown or exceeded the reserved bound:
                     # never release money or claim success.
-                    await con.execute(
-                        """UPDATE agent_budget_reservations SET status='unknown'
-                           WHERE request_id=$1""", request)
                     raise BudgetExceeded("Unknown or above-reservation provider cost; hold retained")
                 await con.execute(
                     """UPDATE agent_job_budgets
