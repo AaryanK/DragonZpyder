@@ -7,6 +7,7 @@
 - Default `DRAGONZPYDER_AGENT_SEARCH_PROVIDER=wikipedia` uses the English Wikipedia REST search API: **encyclopedia-only**, useful for background or historical questions, not general breaking news.
 - Optional `DRAGONZPYDER_AGENT_SEARCH_PROVIDER=brave` uses the fixed Brave Web Search HTTPS API and requires `DRAGONZPYDER_BRAVE_SEARCH_API_KEY` added securely to the invoking service; Brave may charge for requests.
 - Results are bounded source-attributed excerpts with URLs and retrieval timestamp. The tool cannot fetch arbitrary pages, make write requests, execute JS, or access private networks.
+- The existing password-protected staging lab has `POST /test-web-search` with `X-Staging-Password` and JSON `{"query":"George Washington"}` to check real retrieval with no model cost; it is rate-limited and not a public search API.
 - Models are instructed to cite the exact provided links, explain limited coverage, and treat all retrieved snippets as untrusted evidence rather than instructions.
 - Each agent run permits at most three `web_search` tool calls. The researcher subagent is restricted to two web searches and three model calls.
 
