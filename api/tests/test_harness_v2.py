@@ -113,3 +113,18 @@ def test_run_report_contains_evidence_but_does_not_claim_objective_verified():
     assert report["successful_tools"] == ["write_file"]
     assert report["virtual_artifact_paths"] == ["/workspace/test.md"]
     assert report["objective_verified"] is False
+
+
+
+def test_stress_output_token_ceiling_requires_both_paid_eval_flags(monkeypatch):
+    from agent_platform.runtime import model_client
+    monkeypatch.setenv("DRAGONZPYDER_RUNTIME_ALLOWED_MODELS", "openai/gpt-oss-120b")
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_USE_GATEWAY", "1")
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_GATEWAY_TOKEN", "t" * 44)
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_GATEWAY_BASE_URL",
+                       "https://gateway.example.org/internal/agent/v1")
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_STRESS_EVAL_ENABLED", "1")
+    monkeypatch.delenv("DRAGONZPYDER_AGENT_EVAL_ALLOW_PAID", raising=False)
+    assert model_client(model_override="openai/gpt-oss-120b").max_tokens == 768
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_EVAL_ALLOW_PAID", "1")
+    assert model_client(model_override="openai/gpt-oss-120b").max_tokens == 2048
