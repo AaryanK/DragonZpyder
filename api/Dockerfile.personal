@@ -3,7 +3,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 WORKDIR /app
 COPY requirements.txt requirements-personal.txt ./
 RUN pip install --no-cache-dir -r requirements-personal.txt && useradd --create-home --uid 10001 personal
-COPY . /app
+COPY personal_core /app/personal_core
+COPY usage_ledger.py /app/usage_ledger.py
 RUN chown -R personal:personal /app
 USER personal
 EXPOSE 8080
