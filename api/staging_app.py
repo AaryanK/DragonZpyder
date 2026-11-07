@@ -1,5 +1,6 @@
 """Password-gated staging smoke lab. Never grants workspace or computer tools."""
 import asyncio
+from datetime import datetime, timedelta, timezone
 import hmac
 import httpx
 import logging
@@ -307,3 +308,50 @@ async def test_hatchet(x_staging_password: str = Header(default="")):
             reference = uuid.uuid4().hex[:12]
             log_safe_failure(exc, reference)
             raise HTTPException(502, "Hatchet smoke test failed; inspect staging logs. Reference: " + reference) from None
+
+
+
+scheduled_attempts = deque(maxlen=10)
+scheduled_lock = asyncio.Lock()
+
+
+@app.post("/test-hatchet-schedule")
+async def test_hatchet_schedule(x_staging_password: str = Header(default="")):
+    """Schedule ONE synthetic ping for 20 seconds later, without an LLM."""
+    password = os.getenv("DRAGONZPYDER_STAGING_PASSWORD", "")
+    if len(password) < 24 or not hmac.compare_digest(password, x_staging_password):
+        raise HTTPException(401, "Incorrect staging password")
+    if os.getenv("DRAGONZPYDER_HATCHET_TEST_ENABLED") != "1" or not os.getenv("HATCHET_CLIENT_TOKEN"):
+        raise HTTPException(503, "Hatchet staging scheduling is disabled")
+    now = time.monotonic()
+    while scheduled_attempts and scheduled_attempts[0] < now - 3600:
+        scheduled_attempts.popleft()
+    if len(scheduled_attempts) >= 2 or scheduled_lock.locked():
+        raise HTTPException(429, "Scheduling test rate limit reached")
+    scheduled_attempts.append(now)
+    async with scheduled_lock:
+        from hatchet_sdk import Hatchet
+        from agent_platform.jobs import PingInput, make_ping_task
+        run_at = datetime.now(tz=timezone.utc) + timedelta(seconds=20)
+        try:
+            task = make_ping_task(Hatchet())
+            await asyncio.wait_for(
+                task.aio_schedule(
+                    run_at=run_at,
+                    input=PingInput(message="delayed-staging-ping"),
+                ),
+                timeout=12,
+            )
+        except Exception as exc:
+            reference = uuid.uuid4().hex[:12]
+            log_safe_failure(exc, reference)
+            raise HTTPException(
+                502, "Hatchet did not accept schedule. Reference: " + reference
+            ) from None
+        return {
+            "task": "dragonzpyder-staging-ping",
+            "accepted_by_scheduler": True,
+            "scheduled_at_utc": run_at.isoformat(),
+            "execution_verified": False,
+            "next_step": "Check Hatchet dashboard under Runs for delayed-staging-ping",
+        }
