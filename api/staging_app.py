@@ -293,6 +293,11 @@ async def test_hatchet(x_staging_password: str = Header(default="")):
                 timeout=35,
             )
             if not isinstance(result, dict) or result.get("ok") is not True:
+                # Synthetic output only; log type and key names, not arbitrary values.
+                root_keys = [str(k)[:72] for k in result.keys()][:8] if isinstance(result, dict) else []
+                child_types = [type(v).__name__ for v in result.values()][:8] if isinstance(result, dict) else []
+                logger.warning("Hatchet ping result shape type=%s keys=%s child_types=%s",
+                               type(result).__name__, root_keys, child_types)
                 raise RuntimeError("Hatchet returned an unexpected ping result")
             return {"task": "dragonzpyder-staging-ping", "worker_executed": True,
                     "result": {"ok": True, "message": result.get("message")}}
