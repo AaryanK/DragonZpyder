@@ -314,6 +314,14 @@ async def inference(prefix: str, request: Request):
                                 raise GatewayError(403, "Personal model not approved")
                             if body["max_tokens"] > 768:
                                 raise GatewayError(400, "Personal output limit exceeded")
+                            # Enforce provider-side ceilings too: catalog-based
+                            # model selection alone cannot cap endpoint prices.
+                            body["provider"] = {
+                                "sort": "price",
+                                "max_price": {"prompt": 0.25, "completion": 1.5},
+                                "data_collection": "deny",
+                            }
+                            body["usage"] = {"include": True}
                 except (ValueError, UnicodeDecodeError):
                     raise GatewayError(400, "Invalid JSON request")
                 span.set_attribute("gen_ai.request.model", body["model"])
