@@ -6,6 +6,8 @@
 - Feature flags: `DRAGONZPYDER_AGENT_HARNESS_V2=1`, `DRAGONZPYDER_AGENT_WEB_SEARCH_ENABLED=1`.
 - Default `DRAGONZPYDER_AGENT_SEARCH_PROVIDER=wikipedia` uses the English Wikipedia REST search API: **encyclopedia-only**, useful for background or historical questions, not general breaking news.
 - Optional `DRAGONZPYDER_AGENT_SEARCH_PROVIDER=brave` uses the fixed Brave Web Search HTTPS API and requires `DRAGONZPYDER_BRAVE_SEARCH_API_KEY` added securely to the invoking service; Brave may charge for requests.
+- Optional `DRAGONZPYDER_AGENT_SEARCH_PROVIDER=searxng` uses an operator-configured fixed origin via `DRAGONZPYDER_SEARXNG_ORIGIN`. This requires a deployed SearXNG server with JSON search responses enabled, but no search-provider API key. It is not yet provisioned in staging.
+- `DRAGONZPYDER_AGENT_SEARCH_PROVIDER=auto` prefers configured Brave, then SearXNG, then Wikipedia. The current staging services explicitly use `wikipedia` for the no-key smoke.
 - Results are bounded source-attributed excerpts with URLs and retrieval timestamp. The tool cannot fetch arbitrary pages, make write requests, execute JS, or access private networks.
 - The existing password-protected staging lab has `POST /test-web-search` with `X-Staging-Password` and JSON `{"query":"George Washington"}` to check real retrieval with no model cost; it is rate-limited and not a public search API.
 - Models are instructed to cite the exact provided links, explain limited coverage, and treat all retrieved snippets as untrusted evidence rather than instructions.
@@ -36,3 +38,9 @@
 - `agent_platform/monitor.py`: SQL-backed comparison and Hatchet task.
 - `agent_platform/monitor_admin.py`: guarded explicit cron registration.
 - `tests/test_agent_web_monitor.py`: zero-cost offline safety and functional contracts.
+
+## Virtual-time benchmark and live retrieval evidence
+
+- `agent_platform/ops_benchmark.py` simulates stream processing, hourly watches and five-day research with injected outages, restart, delivery retries and virtual-time fast-forward. See `BENCHMARK_3_SCENARIOS.md`. This is pattern-level simulation, not a direct Hatchet/Temporal/Windmill throughput test.
+- A live one-time staging startup smoke (operator flag `DRAGONZPYDER_STAGING_WEB_SEARCH_LIVE_SMOKE=1`) successfully retrieved one public Wikipedia result, logging only status/count without any LLM call. The flag was then disabled again.
+- Production behavior, identity, MCP permissions and external actions remain unchanged.
