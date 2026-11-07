@@ -164,6 +164,27 @@ def build_frontier_agent(model, checkpointer, *, specialist_models=None):
         "DRAGONZPYDER_AGENT_USE_GATEWAY",
         "DRAGONZPYDER_AGENT_PRODUCTION_MODE",
     ))
+    # QuickJS is an opt-in in-memory COMPUTE tool, never a host shell.
+    # Programmatic tool bridges and dynamic nested delegation remain disabled
+    # until a unified task-cost budget can bind every spawned operation.
+    quickjs_enabled = os.getenv("DRAGONZPYDER_AGENT_QUICKJS_ENABLED") == "1"
+    interpreter = []
+    if quickjs_enabled:
+        from langchain_quickjs import CodeInterpreterMiddleware
+        interpreter = [
+            CodeInterpreterMiddleware(
+                memory_limit=16 * 1024 * 1024,
+                timeout=2.0,
+                max_ptc_calls=4,
+                max_result_chars=2000,
+                subagents=False,
+                mode="call",
+                ptc=[],
+            ),
+            ToolCallLimitMiddleware(
+                tool_name="eval", run_limit=4, exit_behavior="error"
+            ),
+        ]
     return create_deep_agent(
         model=model,
         tools=search_tools,
@@ -176,6 +197,7 @@ def build_frontier_agent(model, checkpointer, *, specialist_models=None):
                 tool_token_limit_before_evict=8000,
             ),
             TodoListMiddleware(),
+            *interpreter,
             # This is *per agent*; global/account cost ceilings remain a
             # separate responsibility of the metered gateway.
             ModelCallLimitMiddleware(
