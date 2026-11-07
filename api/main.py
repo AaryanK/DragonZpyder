@@ -361,7 +361,31 @@ async def inference(prefix: str, request: Request):
                                                 "finish_reason": choice.get("finish_reason") or "stop"}]}
                         if "usage" in provider_response:
                             payload["usage"] = provider_response["usage"]
-                except (ValueError, TypeError, KeyError, IndexError, AgentProtocolError):
+                except (ValueError, TypeError, KeyError, IndexError, AgentProtocolError) as error:
+                    if agent_protocol and os.getenv("DRAGONZPYDER_AGENT_SHAPE_DIAGNOSTICS") == "1":
+                        # Shape metadata only. No raw output, reasoning tokens,
+                        # message content, request, tool arguments or provider keys.
+                        choice = (provider_response.get("choices") or [None])[0] if isinstance(
+                            provider_response, dict
+                        ) else None
+                        message = choice.get("message") if isinstance(choice, dict) else None
+                        message = message if isinstance(message, dict) else {}
+                        tools = message.get("tool_calls")
+                        output = message.get("content")
+                        finish = choice.get("finish_reason") if isinstance(choice, dict) else None
+                        finish = finish if finish in {"stop", "length", "tool_calls", "content_filter"} else "other"
+                        detail = getattr(error, "message", type(error).__name__)
+                        log.warning(
+                            "Agent provider shape rejected reason=%s "
+                            "finish=%s content_type=%s content_chars=%d "
+                            "tools_type=%s tools_count=%d has_reasoning=%s request_id=%s",
+                            detail, finish, type(output).__name__,
+                            len(output) if isinstance(output, str) else 0,
+                            type(tools).__name__,
+                            len(tools) if isinstance(tools, list) else 0,
+                            bool(message.get("reasoning") or message.get("reasoning_details")),
+                            request_id,
+                        )
                     raise GatewayError(502, "Model provider returned unexpected content")
                 served_model = str(provider_response.get("model") or body["model"])
                 generation_id = str(provider_response.get("id") or "") or None
