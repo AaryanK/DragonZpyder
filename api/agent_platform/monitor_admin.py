@@ -70,7 +70,7 @@ def main():
     parser.add_argument("action", choices=["create"])
     parser.add_argument("--monitor-id", required=True)
     parser.add_argument("--query", required=True)
-    parser.add_argument("--provider", choices=["wikipedia", "brave"], default="wikipedia")
+    parser.add_argument("--provider", choices=["wikipedia", "brave", "searxng"], default="wikipedia")
     parser.add_argument("--cron", required=True)
     parser.add_argument("--max-results", type=int, default=3)
     args = parser.parse_args()
