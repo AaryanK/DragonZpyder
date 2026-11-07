@@ -9,7 +9,10 @@ async function refresh(){
       const b=document.createElement("span");b.className="value";b.textContent=state.replaceAll("_"," ");
       item.append(a,b);list.append(item);
     }
-    $("note").textContent=data.harness_ready?"Harness ready for smoke tests.":"Model test unavailable until test credentials and checkpoint storage are configured.";
+    const harnessNote=data.harness_ready?"Harness initialized.":"Harness cannot start until test configuration is complete.";
+    const keyNote=" OpenRouter key check: "+String(data.openrouter_key_validation||"not checked").replaceAll("_"," ")+".";
+    $("note").textContent=harnessNote+keyNote;
+
   }catch(e){$("note").textContent="Cannot load status: "+e.message}
 }
 $("refresh").addEventListener("click",refresh);
