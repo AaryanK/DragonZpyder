@@ -183,3 +183,25 @@ def test_public_internet_startup_smoke_is_explicit_no_model(monkeypatch):
 
     monkeypatch.setattr(staging_app, "search_sources", fake_search)
     assert asyncio.run(staging_app.public_web_search_smoke()) == ("verified", 1)
+
+
+
+def test_frontier_model_canary_is_off_by_default(monkeypatch):
+    import asyncio
+    import staging_app
+    monkeypatch.delenv("DRAGONZPYDER_STAGING_FRONTIER_CANARY_ONCE", raising=False)
+    async def forbidden(_):
+        raise AssertionError("Paid model call must not run")
+    monkeypatch.setattr(staging_app, "run_live_case", forbidden)
+    assert asyncio.run(staging_app.run_staging_frontier_canary_once()) is None
+
+
+def test_frontier_canary_requires_paid_gateway_approval(monkeypatch):
+    import asyncio
+    import staging_app
+    monkeypatch.setenv("DRAGONZPYDER_STAGING_FRONTIER_CANARY_ONCE", "1")
+    monkeypatch.setattr(staging_app, "live_eval_enabled", lambda: False)
+    async def forbidden(_):
+        raise AssertionError("Model call must be blocked without approval")
+    monkeypatch.setattr(staging_app, "run_live_case", forbidden)
+    assert asyncio.run(staging_app.run_staging_frontier_canary_once()) is None
