@@ -49,3 +49,13 @@ def test_agent_does_not_accept_malformed_tool_outputs():
         validate_agent_response({"choices":[{"message":{"role":"assistant","tool_calls":
           [{"id":"call_1","type":"function","function":{"name":"read_file",
            "arguments":"not-json"}}]}}]},MODEL)
+
+def test_agent_flattens_text_only_content_blocks():
+    body=validate_agent_body({"model":MODEL,"messages":[
+        {"role":"user","content":[{"type":"text","text":"Hello"},{"type":"text","text":"again"}]}
+    ]},[MODEL])
+    assert body["messages"][0]["content"] == "Hello\\nagain"
+    with pytest.raises(AgentProtocolError):
+        validate_agent_body({"model":MODEL,"messages":[
+            {"role":"user","content":[{"type":"image_url","image_url":"https://example.invalid/"}]}
+        ]},[MODEL])
