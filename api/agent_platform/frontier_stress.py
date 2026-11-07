@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 import os
 import re
 from pathlib import Path
@@ -81,7 +82,8 @@ def parallel_overlap(spans: list[dict] | None) -> bool:
         name, start, end = span.get("agent"), span.get("start_ms"), span.get("end_ms")
         if (not isinstance(name, str) or not name or
                 type(start) not in (int, float) or type(end) not in (int, float)
-                or end <= start):
+                or not math.isfinite(start) or not math.isfinite(end)
+                or start < 0 or end <= start):
             continue
         valid.append((name, start, end))
     return any(
