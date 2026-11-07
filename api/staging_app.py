@@ -15,6 +15,7 @@ from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from agent_platform.runtime import AgentRuntime, AgentPipelineError
+from agent_platform.web_research import search_sources, SearchUnavailable
 from agent_platform.staging_smokes import hatchet_readiness, vector_readiness, gateway_readiness, synthetic_memory_smoke
 
 logger = logging.getLogger("dragonzpyder.staging")
@@ -80,6 +81,8 @@ def configured():
             env.get("DRAGONZPYDER_EMBEDDING_API_KEY") or env.get("DRAGONZPYDER_USE_OPENROUTER_EMBEDDINGS") == "1"
         )),
         "operly_computer": bool(env.get("DRAGONZPYDER_COMPUTER_RUNNER_URL") and env.get("DRAGONZPYDER_COMPUTER_RUNNER_TOKEN")),
+        "web_search": env.get("DRAGONZPYDER_AGENT_WEB_SEARCH_ENABLED") == "1",
+        "web_monitor": env.get("DRAGONZPYDER_WEB_MONITOR_ENABLED") == "1",
     }
 
 async def verify_provider_key() -> str:
@@ -222,6 +225,49 @@ async def test(payload: Prompt, req: Request, x_staging_password: str = Header(d
                 status_code,
                 description + " Reference: " + reference,
             ) from None
+
+
+class SearchPrompt(BaseModel):
+    query: str = Field(min_length=3, max_length=240)
+
+
+search_attempts = deque(maxlen=12)
+search_running = asyncio.Lock()
+
+
+@app.post("/test-web-search")
+async def test_web_search(
+    payload: SearchPrompt,
+    x_staging_password: str = Header(default=""),
+):
+    """Authenticated, no-model search smoke; not a public web search API."""
+    password = os.getenv("DRAGONZPYDER_STAGING_PASSWORD", "")
+    if len(password) < 24 or not hmac.compare_digest(password, x_staging_password):
+        raise HTTPException(401, "Incorrect staging password")
+    if os.getenv("DRAGONZPYDER_AGENT_WEB_SEARCH_ENABLED") != "1":
+        raise HTTPException(503, "Staging web search is disabled")
+    now = time.monotonic()
+    while search_attempts and search_attempts[0] < now - 3600:
+        search_attempts.popleft()
+    if len(search_attempts) >= 12 or search_running.locked():
+        raise HTTPException(429, "Web search staging smoke limit reached")
+    search_attempts.append(now)
+    provider = os.getenv("DRAGONZPYDER_AGENT_SEARCH_PROVIDER", "wikipedia")
+    async with search_running:
+        try:
+            data = await asyncio.wait_for(
+                search_sources(payload.query, provider=provider, limit=3),
+                timeout=15,
+            )
+        except (SearchUnavailable, ValueError, TimeoutError):
+            raise HTTPException(502, "Search backend unavailable") from None
+    return {
+        "provider": data["provider"],
+        "source_scope": data["source_scope"],
+        "results": data["results"],
+        "fetched_at": data["fetched_at"],
+        "inference_used": False,
+    }
 
 
 memory_attempts = deque(maxlen=10)
