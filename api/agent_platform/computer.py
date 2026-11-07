@@ -80,12 +80,25 @@ class ComputerTransport:
             raise RuntimeError("Invalid runner response")
         return result
 
-    async def create(self, *, network_policy: str = "off") -> dict:
+    async def create(
+        self, *, client_session_id: str, workspace_id: str,
+        principal_id: str, profile: str = "general", network_policy: str = "off",
+    ) -> dict:
+        # The existing runner is WORKSPACE-scoped. Personal sandboxes need a
+        # separate signed authority contract rather than fake workspace IDs.
+        if not all(_SAFE_ID.fullmatch(v) for v in (
+            client_session_id, workspace_id, principal_id,
+        )):
+            raise ValueError("Signed workspace session identity is required")
+        if profile not in {"general", "coding", "data", "browser"}:
+            raise ValueError("Invalid sandbox profile")
         if network_policy not in {"off", "web"}:
             raise ValueError("Invalid sandbox network policy")
         return await self._call(
             "POST", "/v1/computer/sessions",
-            {"networkPolicy": network_policy},
+            {"clientSessionId": client_session_id, "workspaceId": workspace_id,
+             "principalId": principal_id, "profile": profile,
+             "networkPolicy": network_policy},
         )
 
     async def status(self, sandbox_id: str) -> dict:
