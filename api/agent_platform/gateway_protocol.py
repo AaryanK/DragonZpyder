@@ -126,6 +126,24 @@ def validate_agent_body(value: Any, allowed_models: list[str]) -> dict:
             clean["tool_calls"] = [_tool_call(call) for call in calls]
             total += sum(len(call["function"]["arguments"]) for call in clean["tool_calls"])
         sanitized.append(clean)
+    # A client cannot invent successful tool results or skip results
+    # for a prior assistant tool-call turn. Enforce local protocol history.
+    pending: set[str] = set()
+    for item in sanitized:
+        if pending and item["role"] != "tool":
+            _reject("Unresolved assistant tool calls")
+        if item["role"] == "assistant" and item.get("tool_calls"):
+            identifiers = [call["id"] for call in item["tool_calls"]]
+            if len(set(identifiers)) != len(identifiers):
+                _reject("Duplicate tool call IDs")
+            pending = set(identifiers)
+        elif item["role"] == "tool":
+            call_id = item["tool_call_id"]
+            if call_id not in pending:
+                _reject("Tool result has no outstanding call")
+            pending.remove(call_id)
+    if pending:
+        _reject("Missing tool results")
     if total > 125000:
         _reject("Agent conversation exceeds input budget", 413)
     tokens = value.get("max_tokens", value.get("max_completion_tokens", 1200))
@@ -133,13 +151,21 @@ def validate_agent_body(value: Any, allowed_models: list[str]) -> dict:
         _reject("Invalid output token limit")
     if value.get("stream") is not False and value.get("stream") is not None:
         _reject("Streaming is not enabled for agent gateway")
-    temperature = value.get("temperature", 0.2)
-    if type(temperature) not in (float, int) or not math.isfinite(temperature) or not 0 <= temperature <= 1.5:
-        _reject("Invalid temperature")
     body = {"model": model, "messages": sanitized, "max_tokens": tokens,
-            "temperature": temperature, "stream": False}
+            "stream": False}
+    # Never inject a temperature default. Some providers/models reject it,
+    # particularly when strict parameter routing is enabled.
+    if "temperature" in value:
+        temperature = value["temperature"]
+        if type(temperature) not in (float, int) or not math.isfinite(temperature) or not 0 <= temperature <= 1.5:
+            _reject("Invalid temperature")
+        body["temperature"] = temperature
     if "tools" in value:
         body["tools"] = _tools(value["tools"])
+        # OpenRouter must route ONLY to endpoints honoring our tool schema.
+        # A model without a compatible endpoint fails clearly before
+        # presenting a fake text-only tool response.
+        body["provider"] = {"require_parameters": True}
     if "tool_choice" in value:
         choice = value["tool_choice"]
         if choice in ("auto", "none", "required"):
@@ -160,7 +186,10 @@ def validate_agent_body(value: Any, allowed_models: list[str]) -> dict:
     return body
 
 
-def validate_agent_response(provider_response: Any, requested_model: str) -> dict:
+def validate_agent_response(
+    provider_response: Any, requested_model: str,
+    allowed_tool_names: set[str] | None = None,
+) -> dict:
     if not isinstance(provider_response, dict):
         _reject("Invalid model response", 502)
     choices = provider_response.get("choices")
@@ -170,6 +199,8 @@ def validate_agent_response(provider_response: Any, requested_model: str) -> dic
     message = choice.get("message") if isinstance(choice, dict) else None
     if not isinstance(message, dict) or message.get("role") != "assistant":
         _reject("Invalid model message", 502)
+    if choice.get("finish_reason") == "length":
+        _reject("Model response stopped at output limit", 502)
     content = _bounded_text(message.get("content"), limit=90000, nullable=True)
     out_message = {"role": "assistant", "content": content}
     raw_calls = message.get("tool_calls")
@@ -180,7 +211,16 @@ def validate_agent_response(provider_response: Any, requested_model: str) -> dic
             _reject("Invalid model tool calls", 502)
         if raw_calls:
             try:
-                out_message["tool_calls"] = [_tool_call(call) for call in raw_calls]
+                calls = [_tool_call(call) for call in raw_calls]
+                ids = [call["id"] for call in calls]
+                if len(set(ids)) != len(ids):
+                    _reject("Duplicate model tool call IDs", 502)
+                if allowed_tool_names is not None and any(
+                    call["function"]["name"] not in allowed_tool_names
+                    for call in calls
+                ):
+                    _reject("Model selected unapproved tool", 502)
+                out_message["tool_calls"] = calls
             except AgentProtocolError as error:
                 # Only an authored validation error label; never a tool's
                 # arguments, reasoning content, or external response data.
