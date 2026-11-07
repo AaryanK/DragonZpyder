@@ -59,3 +59,21 @@ def test_agent_flattens_text_only_content_blocks():
         validate_agent_body({"model":MODEL,"messages":[
             {"role":"user","content":[{"type":"image_url","image_url":"https://example.invalid/"}]}
         ]},[MODEL])
+
+
+
+def test_openai_compatible_empty_tool_call_list_is_normal_text():
+    provider = {"choices": [{"message": {"role": "assistant",
+                  "content": "Finished successfully.", "tool_calls": []},
+                  "finish_reason": "stop"}]}
+    res = validate_agent_response(provider, MODEL)
+    assert res["choices"][0]["message"]["content"] == "Finished successfully."
+    assert "tool_calls" not in res["choices"][0]["message"]
+
+
+def test_reasoning_only_output_without_visible_content_is_not_success():
+    provider = {"choices": [{"message": {"role": "assistant",
+                  "content": None, "reasoning": "private reasoning",
+                  "tool_calls": []}, "finish_reason": "length"}]}
+    with pytest.raises(AgentProtocolError, match="Missing model content"):
+        validate_agent_response(provider, MODEL)
