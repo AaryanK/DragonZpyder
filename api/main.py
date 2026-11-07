@@ -346,7 +346,12 @@ async def inference(prefix: str, request: Request):
                 try:
                     provider_response = upstream.json()
                     if agent_protocol:
-                        payload = validate_agent_response(provider_response, body["model"])
+                        payload = validate_agent_response(
+                            provider_response, body["model"],
+                            allowed_tool_names={
+                                tool["function"]["name"] for tool in body.get("tools", [])
+                            },
+                        )
                     else:
                         choice = provider_response["choices"][0]
                         answer = choice["message"]["content"]
