@@ -52,10 +52,14 @@ def normalize_excerpt(value: object, limit: int = 700) -> str:
 def safe_source_url(value: object) -> bool:
     if not isinstance(value, str) or len(value) > 1500 or _UNSAFE.search(value):
         return False
-    url = urlsplit(value)
+    try:
+        url = urlsplit(value)
+        port = url.port  # can raise ValueError on malformed source URLs
+    except ValueError:
+        return False
     host = (url.hostname or "").lower().rstrip(".")
     if (url.scheme != "https" or not host or url.username or url.password or
-            url.port not in (None, 443) or url.fragment or host == "localhost" or
+            port not in (None, 443) or url.fragment or host == "localhost" or
             host.endswith((".local", ".internal", ".localhost"))):
         return False
     try:
