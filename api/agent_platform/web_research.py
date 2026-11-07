@@ -69,7 +69,7 @@ def safe_source_url(value: object) -> bool:
     except ValueError:
         pass
     return "." in host and len(host) <= 253 and all(
-        part and len(part) <= 63 and re.fullmatch(r"[a-z0-9-]+", part)
+        and re.fullmatch(r"[a-z0-9-]+[.]railway[.]internal", host)
         and not part.startswith("-") and not part.endswith("-")
         for part in host.split(".")
     )
