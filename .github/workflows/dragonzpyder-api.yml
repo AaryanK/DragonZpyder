@@ -37,6 +37,21 @@ jobs:
         run: |
           python -c "from deepagents import create_deep_agent; from langchain_openrouter import ChatOpenRouter; from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver; from langfuse.langchain import CallbackHandler; from hatchet_sdk import Hatchet; from mem0 import Memory; from agent_platform.runtime import AgentRuntime; from agent_platform.worker import main; print('agent stack imports OK')"
           pytest -q tests/test_agent_platform_contract.py tests/test_staging_lab.py tests/test_agent_stack_integration.py
+  personal-core-contracts:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install optional personal core dependencies
+        run: pip install -r api/requirements-personal.txt pytest
+      - name: Compile personal service and test contracts
+        run: |
+          python -m compileall -q api/personal_core api/main.py api/tests/test_personal_core.py
+          pytest -q api/tests/test_personal_core.py
   legacy-compatibility:
     runs-on: ubuntu-latest
     permissions:
