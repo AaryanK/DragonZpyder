@@ -226,3 +226,48 @@ def test_virtual_filesystem_denies_escape_outside_workspace(monkeypatch):
     assert responses
     assert any(("permission" in str(m.content).lower()
                 or getattr(m, "status", "") == "error") for m in responses)
+
+
+def test_builder_model_override_is_actually_routed_to_specialist(monkeypatch):
+    """Previously the builder override was preflighted but never instantiated."""
+    from agent_platform import runtime, harness
+    from langgraph.checkpoint.memory import MemorySaver
+
+    calls = []
+    captured = {}
+
+    def fake_model_client(*, model_override=None):
+        calls.append(model_override)
+        if model_override == "unapproved/model":
+            raise RuntimeError("Agent model must be in the DragonZpyder allowlist")
+        return "approved:" + str(model_override)
+
+    def fake_build(model, checkpointer, *, specialist_models=None):
+        captured.update(specialist_models)
+        return object()
+
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_HARNESS_V2", "1")
+    for role in ("ANALYST", "VERIFIER", "RESEARCHER", "BUILDER"):
+        monkeypatch.delenv("DRAGONZPYDER_AGENT_" + role + "_MODEL_ID", raising=False)
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_BUILDER_MODEL_ID", "approved/builder")
+    monkeypatch.setattr(runtime, "model_client", fake_model_client)
+    monkeypatch.setattr(harness, "build_frontier_agent", fake_build)
+    runtime.build_agent(object(), MemorySaver())
+    assert captured["builder"] == "approved:approved/builder"
+    assert calls == ["approved/builder"]
+
+
+def test_builder_model_override_fails_closed_when_not_allowlisted(monkeypatch):
+    import pytest
+    from agent_platform.runtime import build_agent
+    from langgraph.checkpoint.memory import MemorySaver
+
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_HARNESS_V2", "1")
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_BUILDER_MODEL_ID", "unapproved/expensive")
+    monkeypatch.setenv("DRAGONZPYDER_RUNTIME_ALLOWED_MODELS", "openai/gpt-oss-120b")
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_USE_GATEWAY", "1")
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_GATEWAY_TOKEN", "t" * 44)
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_GATEWAY_BASE_URL",
+                       "https://gateway.example.org/internal/agent/v1")
+    with pytest.raises(RuntimeError, match="allowlist"):
+        build_agent(object(), MemorySaver())
