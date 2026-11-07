@@ -47,12 +47,20 @@ def thread_key(service_id: str, thread_id: str) -> str:
 
 
 def telemetry_callbacks() -> list:
-    """Use existing Langfuse project; never log unconfigured secret values."""
-    if not all(os.getenv(k) for k in (
-        "LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY", "LANGFUSE_BASE_URL"
-    )):
+    """Reuse the current gateway's Langfuse project when configured."""
+    aliases = {
+        "LANGFUSE_PUBLIC_KEY": "DRAGONZPYDER_LANGFUSE_PUBLIC_KEY",
+        "LANGFUSE_SECRET_KEY": "DRAGONZPYDER_LANGFUSE_SECRET_KEY",
+        "LANGFUSE_BASE_URL": "DRAGONZPYDER_LANGFUSE_HOST",
+    }
+    for target, existing in aliases.items():
+        if not os.getenv(target) and os.getenv(existing):
+            os.environ[target] = os.environ[existing]
+    if not all(os.getenv(k) for k in aliases):
         return []
+    from langfuse import get_client
     from langfuse.langchain import CallbackHandler
+    get_client()
     return [CallbackHandler()]
 
 
