@@ -138,27 +138,6 @@ def model_client(*, model_override: str | None = None):
     )
 
 
-class AgentRuntime:
-    def __init__(self) -> None:
-        self._stack = AsyncExitStack()
-        self._checkpointer = None
-
-    async def start(self) -> None:
-        if os.getenv("DRAGONZPYDER_AGENTS_ENABLED") != "1":
-            raise RuntimeError("Agent runtime feature flag is disabled")
-        model_client()  # Validate the model and gateway credentials at startup.
-        dsn = os.getenv("DRAGONZPYDER_AGENT_DATABASE_URL", "")
-        if not dsn.startswith(("postgres://", "postgresql://")):
-            raise RuntimeError("A dedicated PostgreSQL checkpoint DSN is required")
-        self._checkpointer = await self._stack.enter_async_context(
-            AsyncPostgresSaver.from_conn_string(dsn)
-        )
-        await self._checkpointer.setup()
-
-    async def close(self) -> None:
-        await self._stack.aclose()
-        self._checkpointer = None
-
 def summarize_agent_result(result: dict) -> dict:
     """Extract UI/evaluator-safe evidence without exposing model tool arguments."""
     messages = result.get("messages", []) if isinstance(result, dict) else []
@@ -197,6 +176,28 @@ def summarize_agent_result(result: dict) -> dict:
         "objective_verified": False,
     }
 
+
+
+class AgentRuntime:
+    def __init__(self) -> None:
+        self._stack = AsyncExitStack()
+        self._checkpointer = None
+
+    async def start(self) -> None:
+        if os.getenv("DRAGONZPYDER_AGENTS_ENABLED") != "1":
+            raise RuntimeError("Agent runtime feature flag is disabled")
+        model_client()  # Validate the model and gateway credentials at startup.
+        dsn = os.getenv("DRAGONZPYDER_AGENT_DATABASE_URL", "")
+        if not dsn.startswith(("postgres://", "postgresql://")):
+            raise RuntimeError("A dedicated PostgreSQL checkpoint DSN is required")
+        self._checkpointer = await self._stack.enter_async_context(
+            AsyncPostgresSaver.from_conn_string(dsn)
+        )
+        await self._checkpointer.setup()
+
+    async def close(self) -> None:
+        await self._stack.aclose()
+        self._checkpointer = None
 
     async def run_report(self, *, service_id: str, thread_id: str, prompt: str) -> dict:
         if self._checkpointer is None:
