@@ -10,6 +10,7 @@ import hashlib
 import os
 import re
 from contextlib import AsyncExitStack
+from urllib.parse import urlsplit
 
 # Restrict checkpoint deserialization to built-in types before importing LangGraph.
 os.environ.setdefault("LANGGRAPH_STRICT_MSGPACK", "true")
@@ -18,6 +19,7 @@ from deepagents import create_deep_agent
 from deepagents.backends import StateBackend
 from deepagents.middleware import FilesystemMiddleware
 from langchain_openrouter import ChatOpenRouter
+from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
 _ID = re.compile(r"^[a-zA-Z0-9_.-]{1,80}$")
@@ -91,6 +93,42 @@ def build_agent(model, checkpointer):
     )
 
 
+def model_client():
+    """Agent inference is metered by DragonZpyder when gateway mode is enabled."""
+    model = configured_model()
+    gateway = os.getenv("DRAGONZPYDER_AGENT_USE_GATEWAY") == "1"
+    if gateway:
+        base = os.getenv("DRAGONZPYDER_AGENT_GATEWAY_BASE_URL", "").rstrip("/")
+        parsed = urlsplit(base)
+        token = os.getenv("DRAGONZPYDER_AGENT_GATEWAY_TOKEN", "")
+        valid_origin = (parsed.scheme == "https" or
+                        (parsed.scheme == "http" and
+                         parsed.hostname and parsed.hostname.endswith(".railway.internal")))
+        if (not valid_origin or not parsed.hostname or parsed.username or parsed.password or
+                parsed.query or parsed.fragment or not parsed.path.endswith("/internal/agent/v1") or
+                len(token) < 32):
+            raise RuntimeError("A private, authenticated DragonZpyder agent gateway is required")
+        return ChatOpenAI(
+            base_url=base,
+            api_key=token,
+            model=model,
+            max_tokens=768,
+            max_retries=0,
+            timeout=60,
+        )
+    if os.getenv("DRAGONZPYDER_AGENT_PRODUCTION_MODE") == "1":
+        raise RuntimeError("Direct OpenRouter inference is forbidden in production mode")
+    key = os.getenv("OPENROUTER_API_KEY", "")
+    if not key:
+        raise RuntimeError("OpenRouter credential is missing")
+    return ChatOpenRouter(
+        model=model,
+        api_key=key,
+        max_tokens=768,
+        max_retries=0,
+    )
+
+
 class AgentRuntime:
     def __init__(self) -> None:
         self._stack = AsyncExitStack()
@@ -99,9 +137,7 @@ class AgentRuntime:
     async def start(self) -> None:
         if os.getenv("DRAGONZPYDER_AGENTS_ENABLED") != "1":
             raise RuntimeError("Agent runtime feature flag is disabled")
-        if not os.getenv("OPENROUTER_API_KEY"):
-            raise RuntimeError("OpenRouter credential is missing")
-        configured_model()
+        model_client()  # Validate the model and gateway credentials at startup.
         dsn = os.getenv("DRAGONZPYDER_AGENT_DATABASE_URL", "")
         if not dsn.startswith(("postgres://", "postgresql://")):
             raise RuntimeError("A dedicated PostgreSQL checkpoint DSN is required")
@@ -120,12 +156,7 @@ class AgentRuntime:
         if not isinstance(prompt, str) or not 1 <= len(prompt.strip()) <= 12000:
             raise ValueError("Prompt must be 1–12000 characters")
         key = thread_key(service_id, thread_id)
-        model = ChatOpenRouter(
-            model=configured_model(),
-            api_key=os.environ["OPENROUTER_API_KEY"],
-            max_tokens=768,
-            max_retries=0,
-        )
+        model = model_client()
         # Separate construction from execution for no-credit CI contract checks.
         try:
             agent = build_agent(model, self._checkpointer)

@@ -3,6 +3,7 @@
 -r requirements.txt
 deepagents>=0.7,<1
 langchain-openrouter>=0.2,<1
+langchain-openai>=0.3,<2
 langgraph-checkpoint-postgres>=2,<5
 psycopg[binary]>=3,<4
 langfuse>=3,<5
