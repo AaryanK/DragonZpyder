@@ -105,6 +105,15 @@ def build_agent(model, checkpointer):
 def model_client(*, model_override: str | None = None):
     """Agent inference is metered by DragonZpyder when gateway mode is enabled."""
     model = configured_model(model_override)
+    # Reasoning-capable providers may use the first hundreds of output tokens
+    # before producing visible tool calls. Only a paid, operator-approved
+    # stress test increases this *per call* ceiling; it does not relax model
+    # allowlists, gateway price caps or supervisor/delegation limits.
+    stress_mode = (
+        os.getenv("DRAGONZPYDER_AGENT_STRESS_EVAL_ENABLED") == "1"
+        and os.getenv("DRAGONZPYDER_AGENT_EVAL_ALLOW_PAID") == "1"
+    )
+    output_tokens = 2048 if stress_mode else 768
     gateway = os.getenv("DRAGONZPYDER_AGENT_USE_GATEWAY") == "1"
     if gateway:
         base = os.getenv("DRAGONZPYDER_AGENT_GATEWAY_BASE_URL", "").rstrip("/")
@@ -121,7 +130,7 @@ def model_client(*, model_override: str | None = None):
             base_url=base,
             api_key=token,
             model=model,
-            max_tokens=768,
+            max_tokens=output_tokens,
             max_retries=0,
             timeout=60,
         )
@@ -133,7 +142,7 @@ def model_client(*, model_override: str | None = None):
     return ChatOpenRouter(
         model=model,
         api_key=key,
-        max_tokens=768,
+        max_tokens=output_tokens,
         max_retries=0,
     )
 
