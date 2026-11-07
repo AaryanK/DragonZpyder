@@ -104,3 +104,32 @@ def test_hatchet_ping_success_without_real_network(monkeypatch):
         result = client.post("/test-hatchet", headers={"x-staging-password":"r"*40})
         assert result.status_code == 200
         assert result.json()["worker_executed"] is True
+
+
+
+def test_scheduled_hatchet_requires_password_and_flag(monkeypatch):
+    monkeypatch.setenv("DRAGONZPYDER_STAGING_PASSWORD", "r" * 40)
+    monkeypatch.delenv("DRAGONZPYDER_HATCHET_TEST_ENABLED", raising=False)
+    with TestClient(app) as client:
+        assert client.post("/test-hatchet-schedule").status_code == 401
+        assert client.post("/test-hatchet-schedule", headers={"x-staging-password":"r"*40}).status_code == 503
+
+
+def test_hatchet_scheduling_acceptance_does_not_claim_execution(monkeypatch):
+    from datetime import datetime, timezone
+    monkeypatch.setenv("DRAGONZPYDER_STAGING_PASSWORD", "r" * 40)
+    monkeypatch.setenv("DRAGONZPYDER_HATCHET_TEST_ENABLED", "1")
+    monkeypatch.setenv("HATCHET_CLIENT_TOKEN", "test")
+    class FakeTask:
+        async def aio_schedule(self, *, run_at, input):
+            assert isinstance(run_at, datetime) and run_at.tzinfo == timezone.utc
+            assert input.message == "delayed-staging-ping"
+            return object()
+    monkeypatch.setattr("agent_platform.jobs.make_ping_task", lambda client: FakeTask())
+    monkeypatch.setattr("hatchet_sdk.Hatchet", lambda: object())
+    with TestClient(app) as client:
+        response=client.post("/test-hatchet-schedule",headers={"x-staging-password":"r"*40})
+        assert response.status_code == 200
+        body=response.json()
+        assert body["accepted_by_scheduler"] is True
+        assert body["execution_verified"] is False
