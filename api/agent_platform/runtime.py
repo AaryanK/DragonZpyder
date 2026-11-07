@@ -25,8 +25,9 @@ from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 _ID = re.compile(r"^[a-zA-Z0-9_.-]{1,80}$")
 
 
-def configured_model() -> str:
-    model = os.getenv("DRAGONZPYDER_AGENT_MODEL_ID", "").strip()
+def configured_model(model_override: str | None = None) -> str:
+    model = (model_override if model_override is not None else
+             os.getenv("DRAGONZPYDER_AGENT_MODEL_ID", "")).strip()
     allowed = {
         item.strip()
         for item in os.getenv(
@@ -78,7 +79,12 @@ def build_agent(model, checkpointer):
     """Construct the enabled agent harness without executing a model call."""
     if os.getenv("DRAGONZPYDER_AGENT_HARNESS_V2") == "1":
         from .harness import build_frontier_agent
-        return build_frontier_agent(model, checkpointer)
+        models = {}
+        for role in ("analyst", "verifier"):
+            configured = os.getenv("DRAGONZPYDER_AGENT_" + role.upper() + "_MODEL_ID", "").strip()
+            if configured:
+                models[role] = model_client(model_override=configured)
+        return build_frontier_agent(model, checkpointer, specialist_models=models)
     backend = StateBackend()
     # A replacement filesystem middleware must explicitly use the same backend.
     return create_deep_agent(
@@ -96,9 +102,9 @@ def build_agent(model, checkpointer):
     )
 
 
-def model_client():
+def model_client(*, model_override: str | None = None):
     """Agent inference is metered by DragonZpyder when gateway mode is enabled."""
-    model = configured_model()
+    model = configured_model(model_override)
     gateway = os.getenv("DRAGONZPYDER_AGENT_USE_GATEWAY") == "1"
     if gateway:
         base = os.getenv("DRAGONZPYDER_AGENT_GATEWAY_BASE_URL", "").rstrip("/")
