@@ -150,3 +150,48 @@ def test_truncated_model_response_is_not_success():
             "message": {"role": "assistant", "content": "unfinished"},
             "finish_reason": "length",
         }]}, MODEL)
+
+
+def test_reused_tool_call_id_across_completed_turns_is_rejected():
+    call = {"id": "call_replay", "type": "function",
+            "function": {"name": "read_file", "arguments": "{}"}}
+    messages = [
+        {"role": "user", "content": "read two files"},
+        {"role": "assistant", "content": None, "tool_calls": [call]},
+        {"role": "tool", "content": "first", "tool_call_id": "call_replay"},
+        {"role": "assistant", "content": None, "tool_calls": [call]},
+        {"role": "tool", "content": "second", "tool_call_id": "call_replay"},
+    ]
+    with pytest.raises(AgentProtocolError, match="Replayed"):
+        validate_agent_body({"model": MODEL, "messages": messages, "tools": [FUNCTION]}, [MODEL])
+    messages[3] = {"role": "assistant", "content": None, "tool_calls": [{
+        **call, "id": "call_second",
+    }]}
+    messages[4] = {"role": "tool", "content": "second", "tool_call_id": "call_second"}
+    assert len(validate_agent_body({
+        "model": MODEL, "messages": messages, "tools": [FUNCTION],
+    }, [MODEL])["messages"]) == 5
+
+
+def test_forced_tool_choice_must_be_declared_and_toolset_present():
+    base = {"model": MODEL, "messages": [{"role": "user", "content": "read"}]}
+    forced = {"type": "function", "function": {"name": "read_file"}}
+    with pytest.raises(AgentProtocolError, match="requires declared tools"):
+        validate_agent_body({**base, "tool_choice": forced}, [MODEL])
+    with pytest.raises(AgentProtocolError, match="undeclared"):
+        validate_agent_body({**base, "tools": [FUNCTION],
+                             "tool_choice": {"type": "function",
+                                             "function": {"name": "delete_file"}}}, [MODEL])
+    accepted = validate_agent_body({
+        **base, "tools": [FUNCTION], "tool_choice": forced,
+    }, [MODEL])
+    assert accepted["tool_choice"] == forced
+
+
+@pytest.mark.parametrize("choice", ["auto", "none", "required"])
+def test_tool_choice_requires_tools_for_all_modes(choice):
+    with pytest.raises(AgentProtocolError, match="requires declared tools"):
+        validate_agent_body({
+            "model": MODEL, "messages": [{"role": "user", "content": "hello"}],
+            "tool_choice": choice,
+        }, [MODEL])
