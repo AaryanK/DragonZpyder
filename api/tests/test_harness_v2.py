@@ -91,3 +91,25 @@ def test_specialist_model_must_use_gateway_allowlist(monkeypatch):
     with pytest.raises(RuntimeError, match="allowlist"):
         model_client(model_override="unapproved/expensive-model")
     assert model_client(model_override="openai/gpt-oss-120b") is not None
+
+
+
+def test_run_report_contains_evidence_but_does_not_claim_objective_verified():
+    from langchain_core.messages import AIMessage, ToolMessage
+    from agent_platform.runtime import summarize_agent_result
+    result = {
+        "messages": [
+            AIMessage(content="", tool_calls=[{"name": "write_file", "args": {
+                "file_path": "/workspace/test.md", "content": "hello"}, "id": "tc1"}]),
+            ToolMessage(content="File written", tool_call_id="tc1",
+                        name="write_file", status="success"),
+            AIMessage(content="Drafted a virtual artifact."),
+        ],
+        "files": {"/workspace/test.md": object()},
+        "todos": [{"content": "Draft a note", "status": "completed"}],
+    }
+    report = summarize_agent_result(result)
+    assert report["answer"] == "Drafted a virtual artifact."
+    assert report["successful_tools"] == ["write_file"]
+    assert report["virtual_artifact_paths"] == ["/workspace/test.md"]
+    assert report["objective_verified"] is False
