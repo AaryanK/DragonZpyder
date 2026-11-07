@@ -70,7 +70,9 @@ def test_artifact_presence_and_write_read_evidence_are_only_partial():
     paths = ["/workspace/school/" + n for n in case["expected_artifacts"]]
     evidence = score_report(case, {
         "answer": "Files complete", "virtual_artifact_paths": paths,
-        "successful_tools": ["write_file", "read_file"], "objective_verified": True,
+        "successful_tools": ["write_file", "read_file"],
+        "artifact_readback_paths": paths,
+        "objective_verified": True,
     }, supported=set(case["required_capabilities"]), receipts=[{
         "kind": "sandbox_test", "verified": True,
     }])
@@ -150,6 +152,8 @@ def test_agent_self_claim_cannot_replace_independent_outcome_oracle():
         "virtual_artifact_paths": [case["artifact_dir"] + "/" + n
                                    for n in case["expected_artifacts"]],
         "successful_tools": ["write_file", "read_file"],
+        "artifact_readback_paths": [case["artifact_dir"] + "/" + n
+                                    for n in case["expected_artifacts"]],
         "objective_verified": True,
     }
     kwargs = {
@@ -193,3 +197,51 @@ def test_failed_or_cancelled_spans_cannot_earn_parallel_credit():
     assert parallel_overlap(spans) is False
     spans[2]["status"] = "completed"
     assert parallel_overlap(spans) is True
+
+
+def test_unrelated_tool_readback_cannot_earn_100_percent_artifact_score():
+    case = next(c for c in load_suite() if c["id"] == "F08")
+    expected = [case["artifact_dir"] + "/" + n for n in case["expected_artifacts"]]
+    report = {
+        "virtual_artifact_paths": expected,
+        "successful_tools": ["write_file", "read_file"],
+        # Two requested files were read; the third remains unverified even
+        # though all required filenames exist and a read tool was called.
+        "artifact_readback_paths": expected[:-1] + ["/workspace/unrelated.md"],
+        "objective_verified": True,
+    }
+    result = score_report(
+        case, report,
+        supported=set(case["required_capabilities"]),
+        receipts=[{"kind": "sandbox_test", "verified": True}],
+        spans=[
+            {"agent": "teacher", "start_ms": 10, "end_ms": 110},
+            {"agent": "reviewer", "start_ms": 20, "end_ms": 120},
+        ],
+        oracle={"case_id": "F08", "passed": True},
+    )
+    assert result["objective_verified"] is False
+    assert len(result["artifact_files_read_back"]) == len(expected) - 1
+    assert result["independent_outcome_oracle_passed"] is True
+
+
+def test_generic_read_call_without_path_correlated_receipts_is_not_readback():
+    case = next(c for c in load_suite() if c["id"] == "F08")
+    report = {
+        "virtual_artifact_paths": [
+            case["artifact_dir"] + "/" + n for n in case["expected_artifacts"]
+        ],
+        "successful_tools": ["write_file", "read_file"],
+    }
+    score = score_report(
+        case, report,
+        supported=set(case["required_capabilities"]),
+        receipts=[{"kind": "sandbox_test", "verified": True}],
+        spans=[
+            {"agent": "a", "start_ms": 0, "end_ms": 100},
+            {"agent": "b", "start_ms": 1, "end_ms": 101},
+        ],
+        oracle={"case_id": "F08", "passed": True},
+    )
+    assert score["objective_verified"] is False
+    assert not score["read_back_observed"]
