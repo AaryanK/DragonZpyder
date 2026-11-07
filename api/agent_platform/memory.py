@@ -21,8 +21,12 @@ def memory_config() -> dict:
         raise RuntimeError("Mem0 requires explicit LLM and embedding API keys")
     llm_model = os.getenv("DRAGONZPYDER_MEM0_LLM_MODEL", "").strip()
     embed_model = os.getenv("DRAGONZPYDER_MEM0_EMBED_MODEL", "").strip()
-    if not llm_model or not embed_model:
-        raise RuntimeError("Configure both Mem0 extraction and embedding models")
+    dims_raw = os.getenv("DRAGONZPYDER_EMBEDDING_DIMENSIONS", "").strip()
+    if not llm_model or not embed_model or not dims_raw.isdigit():
+        raise RuntimeError("Configure memory extraction model, embedding model and dimensions")
+    dims = int(dims_raw)
+    if not 1 <= dims <= 8192:
+        raise RuntimeError("Invalid embedding dimensions")
     return {
         "llm": {
             "provider": "openai",
@@ -54,6 +58,7 @@ def memory_config() -> dict:
                 "password": unquote(parsed.password or ""),
                 "dbname": parsed.path.lstrip("/") or "postgres",
                 "collection_name": "dragonzpyder_personal_memories",
+                "embedding_model_dims": dims,
             },
         },
     }
