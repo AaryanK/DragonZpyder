@@ -113,6 +113,7 @@ def test_run_report_contains_evidence_but_does_not_claim_objective_verified():
     assert report["answer"] == "Drafted a virtual artifact."
     assert report["successful_tools"] == ["write_file"]
     assert report["virtual_artifact_paths"] == ["/workspace/test.md"]
+    assert report["artifact_readback_paths"] == []
     assert report["objective_verified"] is False
 
 
