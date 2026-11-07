@@ -260,3 +260,43 @@ async def test_memory(x_staging_password: str = Header(default="")):
                 502,
                 "Synthetic memory smoke failed; check staging logs. Reference: " + reference
             ) from None
+
+
+hatchet_attempts = deque(maxlen=10)
+hatchet_running = asyncio.Lock()
+
+
+@app.post("/test-hatchet")
+async def test_hatchet(x_staging_password: str = Header(default="")):
+    """Execute exactly one synthetic ping through Hatchet, never a model task."""
+    password = os.getenv("DRAGONZPYDER_STAGING_PASSWORD", "")
+    if len(password) < 24 or not hmac.compare_digest(password, x_staging_password):
+        raise HTTPException(401, "Incorrect staging password")
+    if os.getenv("DRAGONZPYDER_HATCHET_TEST_ENABLED") != "1":
+        raise HTTPException(503, "Hatchet acceptance test is disabled")
+    if not os.getenv("HATCHET_CLIENT_TOKEN"):
+        raise HTTPException(503, "Hatchet worker credential unavailable")
+    now = time.monotonic()
+    while hatchet_attempts and hatchet_attempts[0] < now - 3600:
+        hatchet_attempts.popleft()
+    if len(hatchet_attempts) >= 3 or hatchet_running.locked():
+        raise HTTPException(429, "Hatchet smoke test rate limit reached")
+    hatchet_attempts.append(now)
+    async with hatchet_running:
+        try:
+            from hatchet_sdk import Hatchet
+            from agent_platform.jobs import PingInput, make_ping_task
+            client = Hatchet()
+            task = make_ping_task(client)
+            result = await asyncio.wait_for(
+                task.aio_run(PingInput(message="staging-healthcheck")),
+                timeout=35,
+            )
+            if not isinstance(result, dict) or result.get("ok") is not True:
+                raise RuntimeError("Hatchet returned an unexpected ping result")
+            return {"task": "dragonzpyder-staging-ping", "worker_executed": True,
+                    "result": {"ok": True, "message": result.get("message")}}
+        except Exception as exc:
+            reference = uuid.uuid4().hex[:12]
+            log_safe_failure(exc, reference)
+            raise HTTPException(502, "Hatchet smoke test failed; inspect staging logs. Reference: " + reference) from None
