@@ -178,7 +178,7 @@ def test_deepagents_web_tool_is_opt_in(monkeypatch):
     from agent_platform.web_research import web_search
     monkeypatch.setenv("DRAGONZPYDER_AGENT_WEB_SEARCH_ENABLED", "1")
     specs = specialist_specs(search_tools=[web_search])
-    assert {spec["name"] for spec in specs} == {"analyst", "verifier", "researcher"}
+    assert {spec["name"] for spec in specs} == {"analyst", "builder", "verifier", "researcher"}
     assert specs[-1]["tools"] == [web_search]
     model = ChatOpenRouter(model="openai/gpt-oss-120b", api_key="test")
     graph = build_frontier_agent(model, MemorySaver())
