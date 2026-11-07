@@ -75,7 +75,7 @@ def test_reasoning_only_output_without_visible_content_is_not_success():
     provider = {"choices": [{"message": {"role": "assistant",
                   "content": None, "reasoning": "private reasoning",
                   "tool_calls": []}, "finish_reason": "length"}]}
-    with pytest.raises(AgentProtocolError, match="Missing model content"):
+    with pytest.raises(AgentProtocolError, match="output limit"):
         validate_agent_response(provider, MODEL)
 
 
