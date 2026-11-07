@@ -197,6 +197,20 @@ class AgentRuntime:
         if os.getenv("DRAGONZPYDER_AGENTS_ENABLED") != "1":
             raise RuntimeError("Agent runtime feature flag is disabled")
         model_client()  # Validate the model and gateway credentials at startup.
+        if os.getenv("DRAGONZPYDER_AGENT_REQUIRE_MODEL_PREFLIGHT") == "1":
+            # Operator-enabled fail-closed catalog preflight BEFORE opening a
+            # checkpoint or paying for inference. This only checks advertised
+            # capabilities; an actual model tool loop must still be smoke-tested.
+            from .model_capabilities import preflight_tool_model
+            selected = {configured_model()}
+            for role in ("analyst", "verifier", "researcher", "builder"):
+                override = os.getenv(
+                    "DRAGONZPYDER_AGENT_" + role.upper() + "_MODEL_ID", ""
+                ).strip()
+                if override:
+                    selected.add(configured_model(override))
+            for candidate in sorted(selected):
+                await preflight_tool_model(candidate)
         dsn = os.getenv("DRAGONZPYDER_AGENT_DATABASE_URL", "")
         if not dsn.startswith(("postgres://", "postgresql://")):
             raise RuntimeError("A dedicated PostgreSQL checkpoint DSN is required")
