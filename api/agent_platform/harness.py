@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import os
 
-from deepagents import create_deep_agent
+from deepagents import FilesystemPermission, create_deep_agent
 from deepagents.backends import StateBackend
 from deepagents.middleware import FilesystemMiddleware
 from langchain.agents.middleware import TodoListMiddleware, ModelCallLimitMiddleware, ToolCallLimitMiddleware
@@ -190,6 +190,21 @@ def build_frontier_agent(model, checkpointer, *, specialist_models=None):
         tools=search_tools,
         backend=virtual_state,
         checkpointer=checkpointer,
+        # First match wins; default is otherwise permissive. These rules
+        # enforce that all built-in virtual filesystem tools stay in workspace.
+        # This is NOT a policy for custom tools, MCP, or sandbox shell.
+        permissions=[
+            FilesystemPermission(
+                operations=["read", "write"],
+                paths=["/workspace", "/workspace/**"],
+                mode="allow",
+            ),
+            FilesystemPermission(
+                operations=["read", "write"],
+                paths=["/**"],
+                mode="deny",
+            ),
+        ],
         middleware=[
             FilesystemMiddleware(
                 backend=virtual_state,
