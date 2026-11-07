@@ -76,3 +76,30 @@ def test_memory_smoke_rejects_partial_success_without_paid_calls(monkeypatch):
         assert response.status_code == 502
         assert "Synthetic memory smoke failed" in response.json()["detail"]
 
+
+
+def test_hatchet_ping_requires_access_and_feature_flag(monkeypatch):
+    monkeypatch.setenv("DRAGONZPYDER_STAGING_PASSWORD", "r" * 40)
+    monkeypatch.delenv("DRAGONZPYDER_HATCHET_TEST_ENABLED", raising=False)
+    with TestClient(app) as client:
+        assert client.post("/test-hatchet").status_code == 401
+        result = client.post("/test-hatchet", headers={"x-staging-password":"r"*40})
+        assert result.status_code == 503
+
+
+def test_hatchet_ping_success_without_real_network(monkeypatch):
+    import sys
+    from types import SimpleNamespace
+    monkeypatch.setenv("DRAGONZPYDER_STAGING_PASSWORD", "r" * 40)
+    monkeypatch.setenv("DRAGONZPYDER_HATCHET_TEST_ENABLED", "1")
+    monkeypatch.setenv("HATCHET_CLIENT_TOKEN", "test")
+    class FakeTask:
+        async def aio_run(self, value):
+            assert value.message == "staging-healthcheck"
+            return {"ok":True,"message":value.message}
+    monkeypatch.setattr("agent_platform.jobs.make_ping_task", lambda client: FakeTask())
+    monkeypatch.setattr("hatchet_sdk.Hatchet", lambda: object())
+    with TestClient(app) as client:
+        result = client.post("/test-hatchet", headers={"x-staging-password":"r"*40})
+        assert result.status_code == 200
+        assert result.json()["worker_executed"] is True
