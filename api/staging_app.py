@@ -16,6 +16,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from agent_platform.runtime import AgentRuntime, AgentPipelineError
 from agent_platform.web_research import search_sources, SearchUnavailable
+from agent_platform.frontier_stress import run_live_case, live_eval_enabled
 from agent_platform.staging_smokes import hatchet_readiness, vector_readiness, gateway_readiness, synthetic_memory_smoke
 
 logger = logging.getLogger("dragonzpyder.staging")
@@ -123,6 +124,78 @@ async def public_web_search_smoke() -> tuple[str, int]:
     return ("verified" if count else "empty"), count
 
 
+async def run_staging_frontier_canary_once() -> None:
+    """One bounded operator-approved model test, exactly once across redeploys."""
+    if os.getenv("DRAGONZPYDER_STAGING_FRONTIER_CANARY_ONCE") != "1":
+        return
+    if not live_eval_enabled():
+        logger.warning("Frontier stress canary skipped: missing metered evaluation opt-in")
+        return
+    from asyncpg import connect
+    dsn = os.getenv("DRAGONZPYDER_AGENT_DATABASE_URL", "")
+    if not dsn.startswith(("postgres://", "postgresql://")):
+        logger.warning("Frontier stress canary skipped: no dedicated database")
+        return
+    # The versioned key is fixed in source. Never let user input select paid
+    # prompts, number of cases or pricing limits through this boot hook.
+    key = "stress-canary-v1-20261107-F08"
+    try:
+        conn = await connect(dsn, timeout=7, command_timeout=7)
+    except Exception:
+        logger.error("Frontier stress canary reservation database unavailable")
+        return
+    try:
+        await conn.execute(
+            """CREATE TABLE IF NOT EXISTS dz_staging_frontier_canary (
+                run_key text PRIMARY KEY,
+                case_id text NOT NULL,
+                started_at timestamptz NOT NULL DEFAULT now(),
+                finished_at timestamptz,
+                status text NOT NULL DEFAULT 'reserved',
+                metrics jsonb
+            )"""
+        )
+        claimed = await conn.fetchval(
+            """INSERT INTO dz_staging_frontier_canary(run_key, case_id)
+               VALUES($1,'F08') ON CONFLICT DO NOTHING RETURNING run_key""",
+            key,
+        )
+        if not claimed:
+            logger.warning("Frontier stress canary already reserved; not rerunning")
+            return
+    except Exception:
+        logger.error("Frontier stress canary reservation failed")
+        return
+    finally:
+        await conn.close()
+    result = {"id": "F08", "status": "aborted", "objective_verified": False}
+    try:
+        result = await run_live_case("F08")
+    except Exception as exc:
+        result["exception_type"] = type(exc).__name__
+    # Persist only sanitized evaluator metrics, never raw prompts or model text.
+    try:
+        conn = await connect(dsn, timeout=7, command_timeout=7)
+        try:
+            import json as _json
+            await conn.execute(
+                """UPDATE dz_staging_frontier_canary SET
+                   status=$2, metrics=$3::jsonb, finished_at=now()
+                   WHERE run_key=$1""",
+                key, result.get("status", "unknown"), _json.dumps(result),
+            )
+        finally:
+            await conn.close()
+    except Exception:
+        logger.error("Frontier stress canary metrics persistence failed")
+    logger.warning(
+        "Staging frontier canary case=F08 status=%s verified=%s "
+        "tools=%s elapsed_s=%s",
+        result.get("status"), bool(result.get("objective_verified")),
+        result.get("successful_tool_count", 0), result.get("elapsed_s", "unknown"),
+    )
+
+
 @asynccontextmanager
 async def lifespan(app):
     app.state.runtime = None
@@ -151,9 +224,18 @@ async def lifespan(app):
         except Exception:
             app.state.runtime_error = True
             await runtime.close()
+    stress_task = None
+    if os.getenv("DRAGONZPYDER_STAGING_FRONTIER_CANARY_ONCE") == "1":
+        stress_task = asyncio.create_task(run_staging_frontier_canary_once())
     try:
         yield
     finally:
+        if stress_task and not stress_task.done():
+            stress_task.cancel()
+            try:
+                await stress_task
+            except asyncio.CancelledError:
+                pass
         if app.state.runtime:
             await app.state.runtime.close()
 
