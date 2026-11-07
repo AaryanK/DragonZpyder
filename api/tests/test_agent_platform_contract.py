@@ -75,3 +75,14 @@ def test_memory_openrouter_fallback_requires_explicit_flag(monkeypatch):
     monkeypatch.setenv("DRAGONZPYDER_EMBEDDING_BASE_URL", "https://example.org")
     with pytest.raises(RuntimeError):
         memory_config()
+
+
+def test_memory_search_uses_v3_scoped_filters():
+    class Store:
+        def search(self, query, **kwargs):
+            assert query == "test lighthouse"
+            assert kwargs["filters"] == {"user_id": "dz:synthetic-test"}
+            return {"results": []}
+    instance = PersonalMemory.__new__(PersonalMemory)
+    instance._memory = Store()
+    assert instance.search(user_id="synthetic-test", query="test lighthouse") == {"results": []}
