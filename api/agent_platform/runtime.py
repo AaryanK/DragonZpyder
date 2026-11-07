@@ -216,6 +216,8 @@ class AgentRuntime:
             raise ValueError("Prompt must be 1–12000 characters")
         key = thread_key(service_id, thread_id)
         model = model_client()
+        from .delegation_trace import DelegationTrace
+        delegation_trace = DelegationTrace()
         try:
             agent = build_agent(model, self._checkpointer)
         except Exception as exc:
@@ -228,7 +230,7 @@ class AgentRuntime:
                     "recursion_limit": (
                         32 if os.getenv("DRAGONZPYDER_AGENT_HARNESS_V2") == "1" else 16
                     ),
-                    "callbacks": telemetry_callbacks(),
+                    "callbacks": [delegation_trace, *telemetry_callbacks()],
                     "metadata": {
                         "service_id": service_id,
                         "harness_version": (
@@ -240,7 +242,58 @@ class AgentRuntime:
             )
         except Exception as exc:
             raise AgentPipelineError("execution") from exc
-        return summarize_agent_result(result)
+        report = summarize_agent_result(result)
+        trace = delegation_trace.snapshot()
+        report["delegation_spans"] = trace["spans"]
+        report["parallelism_observed"] = trace["parallelism_observed"]
+        report["delegated_calls_observed"] = trace["delegated_calls_observed"]
+        report["unfinished_delegation_calls"] = trace["unfinished_calls"]
+        return report
+
+    async def run_parallel_report(
+        self, *, service_id: str, thread_id: str, tracks: list[dict],
+    ) -> dict:
+        """Explicit LangGraph parallel agents; gated metered STAGING evaluation.
+
+        Each track uses its own PostgreSQL checkpoint connection and thread.
+        This is not a personal computer, an approved external write, or a
+        frontier benchmark pass. Global USD caps must be configured separately.
+        """
+        if self._checkpointer is None:
+            raise RuntimeError("Parent agent runtime is not started")
+        required = (
+            "DRAGONZPYDER_AGENT_PARALLEL_EVAL_ENABLED",
+            "DRAGONZPYDER_AGENT_STRESS_EVAL_ENABLED",
+            "DRAGONZPYDER_AGENT_EVAL_ALLOW_PAID",
+            "DRAGONZPYDER_AGENT_USE_GATEWAY",
+            "DRAGONZPYDER_AGENT_PRODUCTION_MODE",
+            "DRAGONZPYDER_AGENT_HARNESS_V2",
+        )
+        if any(os.getenv(flag) != "1" for flag in required):
+            raise RuntimeError("Paid parallel evaluation is disabled")
+        if not _ID.fullmatch(service_id) or not _ID.fullmatch(thread_id):
+            raise ValueError("Invalid parent identity or thread")
+        from .orchestration import run_parallel_tracks, validate_tracks
+        validate_tracks(tracks)
+
+        async def run_one(track: dict) -> dict:
+            # A fresh connection per concurrently executing LangGraph task
+            # avoids sharing one single-connection Postgres saver concurrently.
+            child = AgentRuntime()
+            await child.start()
+            try:
+                key = hashlib.sha256(
+                    (thread_id + "\\x00" + track["id"]).encode("utf-8")
+                ).hexdigest()[:32]
+                return await child.run_report(
+                    service_id=service_id,
+                    thread_id="parallel-" + key,
+                    prompt=track["prompt"],
+                )
+            finally:
+                await child.close()
+
+        return await run_parallel_tracks(tracks, run_one)
 
     async def run(self, *, service_id: str, thread_id: str, prompt: str) -> str:
         """Backward-compatible Hatchet/API adapter: plain answer only."""
