@@ -114,6 +114,7 @@ def model_client(*, model_override: str | None = None):
         and os.getenv("DRAGONZPYDER_AGENT_EVAL_ALLOW_PAID") == "1"
     )
     output_tokens = 2048 if stress_mode else 768
+    retry_count = 1 if stress_mode else 0  # Only inference; no tool action yet.
     gateway = os.getenv("DRAGONZPYDER_AGENT_USE_GATEWAY") == "1"
     if gateway:
         base = os.getenv("DRAGONZPYDER_AGENT_GATEWAY_BASE_URL", "").rstrip("/")
@@ -131,7 +132,7 @@ def model_client(*, model_override: str | None = None):
             api_key=token,
             model=model,
             max_tokens=output_tokens,
-            max_retries=0,
+            max_retries=retry_count,
             timeout=60,
         )
     if os.getenv("DRAGONZPYDER_AGENT_PRODUCTION_MODE") == "1":
@@ -143,7 +144,7 @@ def model_client(*, model_override: str | None = None):
         model=model,
         api_key=key,
         max_tokens=output_tokens,
-        max_retries=0,
+        max_retries=retry_count,
     )
 
 
