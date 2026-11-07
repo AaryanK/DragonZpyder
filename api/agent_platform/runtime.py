@@ -292,6 +292,17 @@ class AgentRuntime:
             raise ValueError("Invalid parent identity or thread")
         from .orchestration import run_parallel_tracks, validate_tracks
         validate_tracks(tracks)
+        # SECURITY: The gateway currently enforces per-request limits, but
+        # cannot reserve one shared USD ceiling atomically across child runs.
+        # Multiple independent metered calls may exhaust a parent budget even
+        # with all opt-in flags set. Do not enable paid fan-out on flags alone.
+        # Remove this guard ONLY in the same reviewed change that binds every
+        # child inference request to an authenticated, gateway-enforced atomic
+        # parent reservation (including retry/timeout and unknown-cost cases).
+        raise RuntimeError(
+            "Paid parallel evaluation disabled: atomic shared gateway budget "
+            "enforcement is not implemented"
+        )
 
         async def run_one(track: dict) -> dict:
             # A fresh connection per concurrently executing LangGraph task
