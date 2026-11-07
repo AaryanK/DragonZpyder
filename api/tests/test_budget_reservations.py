@@ -100,6 +100,8 @@ class FakeConnection:
         elif "SET reserved_usd=reserved_usd-$3" in sql:
             self.reserved -= args[2]
             self.settled += args[3]
+        elif "SET status='unknown'" in sql:
+            self.reservations[args[0]]["status"] = "unknown"
         elif "SET status='settled'" in sql:
             self.reservations[args[0]]["status"] = "settled"
             self.reservations[args[0]]["actual_usd"] = args[1]
@@ -140,6 +142,7 @@ def test_reservation_replay_ceiling_and_settlement():
                 job_id=job, tenant_id=tenant, request_id=req1,
                 actual_usd=None)
         assert con.reserved == Decimal("0.40")
+        assert con.reservations[__import__("uuid").UUID(req1)]["status"] == "unknown"
         assert await store.settle(
             job_id=job, tenant_id=tenant, request_id=req1,
             actual_usd="0.10") is True
