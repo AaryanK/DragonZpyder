@@ -41,8 +41,10 @@ def _bounded_text(value: Any, *, limit: int = 30000, nullable: bool = False):
                 _reject("Unsupported nontext message block")
             text_parts.append(item["text"])
         value = "\n".join(text_parts)
-    if not isinstance(value, str) or len(value) > limit:
-        _reject("Unsupported message content")
+    if not isinstance(value, str):
+        _reject("Unsupported text field type")
+    if len(value) > limit:
+        _reject("Text field exceeded size limit", 413)
     return value
 
 
