@@ -29,6 +29,18 @@ def _reject(message: str, status: int = 400):
 def _bounded_text(value: Any, *, limit: int = 30000, nullable: bool = False):
     if nullable and value is None:
         return None
+    # LangChain's OpenAI client can send text-only content as structured blocks.
+    # Flatten text blocks, but reject image/audio/file or arbitrary object blocks.
+    if isinstance(value, list):
+        if not 1 <= len(value) <= 12:
+            _reject("Unsupported message content")
+        text_parts = []
+        for item in value:
+            if (not isinstance(item, dict) or item.get("type") != "text"
+                    or not isinstance(item.get("text"), str)):
+                _reject("Unsupported nontext message block")
+            text_parts.append(item["text"])
+        value = "\n".join(text_parts)
     if not isinstance(value, str) or len(value) > limit:
         _reject("Unsupported message content")
     return value
