@@ -222,17 +222,31 @@ async def inference(prefix: str, request: Request):
         return JSONResponse(summary) if summary else denied(503, "Usage ledger not configured")
 
     agent_protocol = path == "/internal/agent/v1/chat/completions"
-    if not (agent_protocol or path.startswith("/internal/v1/") or path.startswith("/v1/")):
+    personal_protocol = path == "/internal/personal/v1/chat/completions"
+    if not (agent_protocol or personal_protocol or path.startswith("/internal/v1/") or path.startswith("/v1/")):
         return JSONResponse({"error": {"message": "Unknown DragonZpyder API route"}}, status_code=404)
-    app_id = caller_identity(request)
-    if app_id is None:
-        return denied(401, "Service authentication required")
+    if personal_protocol:
+        # Dedicated service credential, distinct from Operly, legacy and agent
+        # bearer credentials. No browser or user-supplied identity is accepted.
+        bearer = request.headers.get("authorization", "")
+        expected = os.getenv("DRAGONZPYDER_PERSONAL_BACKEND_TOKEN", "")
+        if (os.getenv("DRAGONZPYDER_PERSONAL_GATEWAY_ENABLED") != "1"
+                or len(expected) < 40):
+            return denied(503, "Personal inference gateway disabled")
+        if not (bearer.startswith("Bearer ") and
+                hmac.compare_digest(bearer[7:], expected)):
+            return denied(401, "Personal service authentication required")
+        app_id = "personal-core"
+    else:
+        app_id = caller_identity(request)
+        if app_id is None:
+            return denied(401, "Service authentication required")
     if agent_protocol and (
         app_id != "agent-runtime" or
         os.getenv("DRAGONZPYDER_AGENT_TOOL_CALLS_ENABLED") != "1"
     ):
         return denied(403, "Agent gateway is disabled for this caller")
-    route = "/v1/chat/completions" if agent_protocol else path.removeprefix("/internal")
+    route = "/v1/chat/completions" if (agent_protocol or personal_protocol) else path.removeprefix("/internal")
     if request.method == "GET" and route == "/v1/health":
         return {"service": "dragonzpyder-inference",
                 "status": "ready" if os.getenv("OPENROUTER_API_KEY") else "unconfigured",
@@ -246,8 +260,8 @@ async def inference(prefix: str, request: Request):
         return denied(415, "JSON request required")
     if not os.getenv("OPENROUTER_API_KEY"):
         return denied(503, "Inference provider is not configured")
-    if agent_protocol and not ledger.available:
-        return denied(503, "Agent inference requires persistent usage accounting")
+    if (agent_protocol or personal_protocol) and not ledger.available:
+        return denied(503, "Metered inference requires persistent usage accounting")
     if not ledger.available and ledger.required:
         return denied(503, "Usage accounting unavailable")
     if not await runtime.enter():
@@ -290,6 +304,16 @@ async def inference(prefix: str, request: Request):
                             raise GatewayError(error.status, error.message) from None
                     else:
                         body = valid_body(decoded)
+                        if personal_protocol:
+                            allowlist = {
+                                x.strip() for x in os.getenv(
+                                    "DRAGONZPYDER_PERSONAL_ALLOWED_MODELS", ""
+                                ).split(",") if x.strip()
+                            }
+                            if not allowlist or body["model"] not in allowlist:
+                                raise GatewayError(403, "Personal model not approved")
+                            if body["max_tokens"] > 768:
+                                raise GatewayError(400, "Personal output limit exceeded")
                 except (ValueError, UnicodeDecodeError):
                     raise GatewayError(400, "Invalid JSON request")
                 span.set_attribute("gen_ai.request.model", body["model"])
