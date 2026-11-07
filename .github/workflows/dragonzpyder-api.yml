@@ -39,6 +39,36 @@ jobs:
           python -m agent_platform.ops_benchmark
           python -m agent_platform.frontier_stress
           pytest -q tests/test_agent_platform_contract.py tests/test_staging_lab.py tests/test_agent_stack_integration.py tests/test_harness_v2.py tests/test_agent_evaluation.py tests/test_agent_web_monitor.py tests/test_ops_benchmark.py tests/test_frontier_stress.py tests/test_orchestration.py tests/test_model_capabilities.py tests/test_artifact_evidence.py tests/test_budget_reservations.py
+  budget-postgres-integration:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: budget_test
+          POSTGRES_PASSWORD: disposable_ci_only
+          POSTGRES_DB: budget_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U budget_test -d budget_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DRAGONZPYDER_BUDGET_TEST_DSN: postgresql://budget_test:disposable_ci_only@localhost:5432/budget_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install test-only dependencies
+        run: pip install asyncpg pytest
+      - name: Verify real PostgreSQL concurrency, restart and isolation
+        run: pytest -q api/tests/test_budget_postgres_integration.py
+
   personal-core-contracts:
     runs-on: ubuntu-latest
     permissions:
