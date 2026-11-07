@@ -19,13 +19,14 @@ def test_harness_uses_real_deepagents_and_is_agentic():
 def test_specialists_cannot_inherit_external_tools():
     from agent_platform.harness import specialist_specs, VIRTUAL_TOOLS
     specs = specialist_specs()
-    assert {p["name"] for p in specs} == {"analyst", "verifier"}
+    assert {p["name"] for p in specs} == {"analyst", "verifier", "builder"}
     assert all(p["tools"] == [] for p in specs)
     assert all(len(p["middleware"]) == 1 for p in specs)
     supplied = object()
     overridden = specialist_specs({"verifier": supplied})
     assert overridden[1]["model"] is supplied
     assert "model" not in overridden[0]
+    assert all("execute" not in str(p["tools"]) for p in specs)
     assert "write_file" in VIRTUAL_TOOLS
     assert "edit_file" in VIRTUAL_TOOLS
     assert "execute" not in VIRTUAL_TOOLS
