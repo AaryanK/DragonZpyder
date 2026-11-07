@@ -183,3 +183,47 @@ def test_deepagents_web_tool_is_opt_in(monkeypatch):
     model = ChatOpenRouter(model="openai/gpt-oss-120b", api_key="test")
     graph = build_frontier_agent(model, MemorySaver())
     assert hasattr(graph, "ainvoke")
+
+
+def test_searxng_general_search_uses_fixed_operator_origin(monkeypatch):
+    from agent_platform.web_research import searxng_search_endpoint, resolve_provider
+    monkeypatch.setenv("DRAGONZPYDER_SEARXNG_ORIGIN", "http://search.railway.internal:8080")
+    assert searxng_search_endpoint() == "http://search.railway.internal:8080/search"
+    monkeypatch.delenv("DRAGONZPYDER_BRAVE_SEARCH_API_KEY", raising=False)
+    assert resolve_provider("auto") == "searxng"
+
+    def fake(request):
+        assert str(request.url).startswith("http://search.railway.internal:8080/search?")
+        assert request.url.params["format"] == "json"
+        assert request.url.params["q"] == "breaking developments in Nepal"
+        return httpx.Response(200, json={"results": [
+            {"title": "Current Nepal updates", "url": "https://example.org/nepal",
+             "content": "Public current developments."},
+            {"title": "Unsafe", "url": "http://127.0.0.1/admin", "content": "Nope"},
+        ]})
+
+    async def go():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(fake)) as client:
+            return await search_sources(
+                "breaking developments in Nepal", provider="searxng",
+                limit=3, client=client
+            )
+    result = asyncio.run(go())
+    assert result["source_scope"] == "general-web"
+    assert len(result["results"]) == 1
+    assert result["results"][0]["provider"] == "searxng"
+
+
+def test_searxng_operator_origin_must_be_trusted(monkeypatch):
+    from agent_platform.web_research import searxng_search_endpoint
+    for bad in (
+        "http://127.0.0.1:8080",
+        "http://untrusted.example.org:8080",
+        "http://search.railway.internal:8080/other",
+        "http://evil@example.org",
+        "file:///etc/passwd",
+        "https://10.0.0.1",
+    ):
+        monkeypatch.setenv("DRAGONZPYDER_SEARXNG_ORIGIN", bad)
+        with pytest.raises(SearchUnavailable):
+            searxng_search_endpoint()
