@@ -105,7 +105,7 @@ async def lifespan(app):
     app.state.runtime = None
     app.state.runtime_error = False
     app.state.provider_auth = await verify_provider_key()
-    logger.info("Staging OpenRouter key verification status=%s", app.state.provider_auth)
+    logger.warning("Staging OpenRouter key verification status=%s", app.state.provider_auth)
     flags = configured()
     if flags["deep_agents_langgraph"] and flags["openrouter"]:
         runtime = AgentRuntime()
