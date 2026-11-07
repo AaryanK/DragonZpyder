@@ -9,7 +9,7 @@ from __future__ import annotations
 from deepagents import create_deep_agent
 from deepagents.backends import StateBackend
 from deepagents.middleware import FilesystemMiddleware
-from langchain.agents.middleware import TodoListMiddleware, ModelCallLimitMiddleware
+from langchain.agents.middleware import TodoListMiddleware, ModelCallLimitMiddleware, ToolCallLimitMiddleware
 
 VIRTUAL_TOOLS = ("ls", "read_file", "write_file", "edit_file", "glob", "grep")
 
@@ -56,9 +56,10 @@ tool evidence. Return actionable corrections and a clear pass/fail/unknown.
 """
 
 
-def specialist_specs() -> list[dict]:
-    """Delegation profiles. No external user/account tools are inherited."""
-    return [
+def specialist_specs(models: dict | None = None) -> list[dict]:
+    """Delegation profiles. Optional operator-approved model specialization."""
+    models = models or {}
+    specs = [
         {
             "name": "analyst",
             "description": (
@@ -67,6 +68,7 @@ def specialist_specs() -> list[dict]:
             ),
             "system_prompt": ANALYST_PROMPT,
             "tools": [],
+            "middleware": [ModelCallLimitMiddleware(run_limit=3, exit_behavior="error")],
         },
         {
             "name": "verifier",
@@ -78,9 +80,13 @@ def specialist_specs() -> list[dict]:
             "tools": [],
         },
     ]
+    for spec in specs:
+        if spec["name"] in models:
+            spec["model"] = models[spec["name"]]
+    return specs
 
 
-def build_frontier_agent(model, checkpointer):
+def build_frontier_agent(model, checkpointer, *, specialist_models=None):
     """Compose real LangChain primitives without making a provider request."""
     virtual_state = StateBackend()
     return create_deep_agent(
@@ -96,8 +102,9 @@ def build_frontier_agent(model, checkpointer):
             TodoListMiddleware(),
             # This is *per agent*; global/account cost ceilings remain a
             # separate responsibility of the metered gateway.
-            ModelCallLimitMiddleware(run_limit=8),
+            ModelCallLimitMiddleware(run_limit=8, exit_behavior="error"),
+            ToolCallLimitMiddleware(tool_name="task", run_limit=3, exit_behavior="error"),
         ],
-        subagents=specialist_specs(),
+        subagents=specialist_specs(specialist_models),
         system_prompt=SUPERVISOR_PROMPT,
     )
