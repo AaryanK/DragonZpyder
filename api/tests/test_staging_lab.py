@@ -168,3 +168,18 @@ def test_staging_web_search_can_run_without_inference(monkeypatch):
         assert response.status_code == 200
         assert response.json()["inference_used"] is False
         assert response.json()["results"][0]["title"] == "George Washington"
+
+
+def test_public_internet_startup_smoke_is_explicit_no_model(monkeypatch):
+    import asyncio
+    import staging_app
+    monkeypatch.delenv("DRAGONZPYDER_STAGING_WEB_SEARCH_LIVE_SMOKE", raising=False)
+    assert asyncio.run(staging_app.public_web_search_smoke()) == ("disabled", 0)
+    monkeypatch.setenv("DRAGONZPYDER_STAGING_WEB_SEARCH_LIVE_SMOKE", "1")
+
+    async def fake_search(query, *, provider, limit):
+        assert query == "George Washington" and provider == "wikipedia" and limit == 1
+        return {"results": [{"url": "https://en.wikipedia.org/wiki/George_Washington"}]}
+
+    monkeypatch.setattr(staging_app, "search_sources", fake_search)
+    assert asyncio.run(staging_app.public_web_search_smoke()) == ("verified", 1)
