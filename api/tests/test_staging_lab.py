@@ -36,12 +36,12 @@ def test_failure_details_do_not_leak_secrets():
     from staging_app import safe_failure, log_safe_failure
     from agent_platform.runtime import AgentPipelineError
     try:
-        raise RuntimeError("sk-secret-never-log")
+        raise RuntimeError("PRIVATE_EXCEPTION_TEXT_NEVER_LOG")
     except RuntimeError as cause:
         try:
             raise AgentPipelineError("construction") from cause
         except AgentPipelineError as error:
             message, code = safe_failure(error)
             assert code == 502
-            assert "sk-secret-never-log" not in message
+            assert "PRIVATE_EXCEPTION_TEXT_NEVER_LOG" not in message
             log_safe_failure(error, "testref")
