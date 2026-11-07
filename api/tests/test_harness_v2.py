@@ -38,3 +38,38 @@ def test_legacy_remains_default_and_feature_flag_selects_v2(monkeypatch):
     monkeypatch.setenv("DRAGONZPYDER_AGENT_HARNESS_V2", "1")
     frontier = build_agent(model, MemorySaver())
     assert hasattr(frontier, "ainvoke")
+
+
+
+def test_virtual_artifact_written_by_real_langgraph_tool_loop():
+    """Exercise actual tool dispatch without a hosted model or real filesystem."""
+    import asyncio
+    from typing import Any
+
+    from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
+    from langchain_core.messages import AIMessage, ToolMessage
+    from langgraph.checkpoint.memory import MemorySaver
+    from agent_platform.harness import build_frontier_agent
+
+    class Scripted(FakeMessagesListChatModel):
+        def bind_tools(self, tools: Any, **kwargs: Any):
+            return self
+
+    fake = Scripted(responses=[
+        AIMessage(content="", tool_calls=[{
+            "name": "write_file",
+            "args": {"file_path": "/workspace/result.md", "content": "a useful artifact"},
+            "id": "write-1",
+        }]),
+        AIMessage(content="I created a virtual artifact at /workspace/result.md."),
+    ])
+    agent = build_frontier_agent(fake, MemorySaver())
+    config = {"configurable": {"thread_id": "synthetic-artifact-test"}}
+    result = asyncio.run(agent.ainvoke(
+        {"messages": [{"role": "user", "content": "Create a working-note artifact"}]},
+        config=config,
+    ))
+    tool_replies = [m for m in result["messages"] if isinstance(m, ToolMessage)]
+    assert any(m.name == "write_file" for m in tool_replies)
+    assert not any("error" in str(m.content).lower() for m in tool_replies)
+    assert "result.md" in result["messages"][-1].content
