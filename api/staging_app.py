@@ -138,7 +138,7 @@ async def run_staging_frontier_canary_once() -> None:
         return
     # The versioned key is fixed in source. Never let user input select paid
     # prompts, number of cases or pricing limits through this boot hook.
-    key = "stress-canary-v4-20261107-F08-free"
+    key = "stress-canary-v5-20261107-F08-gemini"
     try:
         conn = await connect(dsn, timeout=7, command_timeout=7)
     except Exception:
