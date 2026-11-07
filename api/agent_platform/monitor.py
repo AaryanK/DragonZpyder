@@ -22,7 +22,7 @@ from .web_research import search_sources
 class MonitorInput(BaseModel):
     monitor_id: str = Field(pattern=r"^[a-zA-Z0-9_-]{3,64}$")
     query: str = Field(min_length=3, max_length=240)
-    provider: Literal["wikipedia", "brave"] = "wikipedia"
+    provider: Literal["wikipedia", "brave", "searxng"] = "wikipedia"
     max_results: int = Field(default=3, ge=1, le=5)
 
 
