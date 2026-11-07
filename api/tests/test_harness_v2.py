@@ -125,6 +125,10 @@ def test_stress_output_token_ceiling_requires_both_paid_eval_flags(monkeypatch):
                        "https://gateway.example.org/internal/agent/v1")
     monkeypatch.setenv("DRAGONZPYDER_AGENT_STRESS_EVAL_ENABLED", "1")
     monkeypatch.delenv("DRAGONZPYDER_AGENT_EVAL_ALLOW_PAID", raising=False)
-    assert model_client(model_override="openai/gpt-oss-120b").max_tokens == 768
+    normal = model_client(model_override="openai/gpt-oss-120b")
+    assert normal.max_tokens == 768
+    assert normal.max_retries == 0
     monkeypatch.setenv("DRAGONZPYDER_AGENT_EVAL_ALLOW_PAID", "1")
-    assert model_client(model_override="openai/gpt-oss-120b").max_tokens == 2048
+    stress = model_client(model_override="openai/gpt-oss-120b")
+    assert stress.max_tokens == 2048
+    assert stress.max_retries == 1
