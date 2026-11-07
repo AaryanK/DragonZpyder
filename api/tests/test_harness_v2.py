@@ -133,3 +133,54 @@ def test_stress_output_token_ceiling_requires_both_paid_eval_flags(monkeypatch):
     stress = model_client(model_override="openai/gpt-oss-120b")
     assert stress.max_tokens == 2048
     assert stress.max_retries == 1
+
+
+def test_quickjs_interpreter_is_opt_in_and_has_no_host_or_external_bridges(monkeypatch):
+    import asyncio
+    from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
+    from langchain_core.messages import AIMessage
+    from langgraph.checkpoint.memory import MemorySaver
+    from agent_platform.harness import build_frontier_agent
+
+    class ToolCapture(FakeMessagesListChatModel):
+        captured = None
+
+        def bind_tools(self, tools, **kwargs):
+            self.captured = {getattr(tool, "name", None) for tool in tools}
+            return self
+
+    def run(enabled):
+        monkeypatch.setenv("DRAGONZPYDER_AGENT_QUICKJS_ENABLED", "1" if enabled else "0")
+        model = ToolCapture(responses=[AIMessage(content="Finished the synthetic test.")])
+        graph = build_frontier_agent(model, MemorySaver())
+        result = asyncio.run(graph.ainvoke(
+            {"messages": [{"role": "user", "content": "Do nothing; report finished"}]},
+            config={"configurable": {"thread_id": "quickjs-on" if enabled else "quickjs-off"}},
+        ))
+        assert "Finished" in result["messages"][-1].content
+        return model.captured
+
+    off = run(False)
+    on = run(True)
+    assert off is not None and "eval" not in off
+    assert on is not None and "eval" in on
+    assert "execute" not in on
+
+
+def test_parallel_paid_mode_is_off_by_default_even_with_parent_runtime(monkeypatch):
+    import asyncio
+    import pytest
+    from agent_platform.runtime import AgentRuntime
+    for key in (
+        "DRAGONZPYDER_AGENT_PARALLEL_EVAL_ENABLED",
+        "DRAGONZPYDER_AGENT_STRESS_EVAL_ENABLED",
+        "DRAGONZPYDER_AGENT_EVAL_ALLOW_PAID",
+    ):
+        monkeypatch.delenv(key, raising=False)
+    runtime = AgentRuntime()
+    runtime._checkpointer = object()  # no Postgres side effects
+    with pytest.raises(RuntimeError, match="disabled"):
+        asyncio.run(runtime.run_parallel_report(
+            service_id="offline-synthetic", thread_id="test",
+            tracks=[{"id": "a", "prompt": "a"}, {"id": "b", "prompt": "b"}],
+        ))
