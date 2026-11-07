@@ -80,7 +80,7 @@ def _tools(value: Any) -> list:
         if fn["name"] in seen:
             _reject("Duplicate tool name")
         seen.add(fn["name"])
-        desc = _bounded_text(fn.get("description", ""), limit=1200)
+        desc = _bounded_text(fn.get("description") or "", limit=8000)
         schema = fn.get("parameters", {"type": "object", "properties": {}})
         if not isinstance(schema, dict) or schema.get("type") != "object":
             _reject("Function parameters must be a JSON object schema")
