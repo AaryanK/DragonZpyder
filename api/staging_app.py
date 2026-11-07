@@ -151,11 +151,25 @@ async def health():
 
 @app.get("/status")
 async def status(req: Request):
-    return {"components": {name: ("configured_unverified" if present else "not_configured") for name,present in configured().items()},
-            "harness_ready": req.app.state.runtime is not None,
-            "openrouter_key_validation": req.app.state.provider_auth,
-            "runtime_start_error": req.app.state.runtime_error,
-            "prod_connected": False}
+    components = {
+        name: ("configured_unverified" if present else "not_configured")
+        for name, present in configured().items()
+    }
+    provider_state = req.app.state.provider_auth
+    components["openrouter"] = {
+        "verified": "key_verified",
+        "rejected": "key_rejected",
+        "missing": "missing_key",
+        "rate_limited": "provider_rate_limited",
+        "unreachable": "provider_unreachable",
+    }.get(provider_state, "unverified")
+    return {
+        "components": components,
+        "harness_ready": req.app.state.runtime is not None and provider_state == "verified",
+        "openrouter_key_validation": provider_state,
+        "runtime_start_error": req.app.state.runtime_error,
+        "prod_connected": False,
+    }
 
 @app.post("/test")
 async def test(payload: Prompt, req: Request, x_staging_password: str = Header(default="")):
@@ -166,6 +180,10 @@ async def test(payload: Prompt, req: Request, x_staging_password: str = Header(d
     while attempts and attempts[0]<now-3600:
         attempts.popleft()
     if len(attempts)>=6: raise HTTPException(429,"Smoke test limit: six runs per hour")
+    if req.app.state.provider_auth == "rejected":
+        raise HTTPException(503, "OpenRouter rejected the staging key. Replace OPENROUTER_API_KEY in Railway and redeploy.")
+    if req.app.state.provider_auth == "rate_limited":
+        raise HTTPException(503, "OpenRouter key validation was rate limited. Try again later.")
     if req.app.state.runtime is None: raise HTTPException(503,"Model or checkpoint database is not configured")
     if running.locked(): raise HTTPException(429,"A staging test is already running")
     attempts.append(now)
