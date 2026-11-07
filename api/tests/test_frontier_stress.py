@@ -121,3 +121,64 @@ def test_real_deepagent_can_accept_all_ten_long_prompts_without_provider(monkeyp
     result = asyncio.run(evaluate())
     assert len(result) == 10
     assert all("Insufficient tools" in r for r in result)
+
+
+def test_artifact_basenames_in_wrong_workspace_cannot_be_credited():
+    case = next(c for c in load_suite() if c["id"] == "F08")
+    report = {
+        "virtual_artifact_paths": ["/workspace/unrelated/" + n
+                                   for n in case["expected_artifacts"]],
+        "successful_tools": ["write_file", "read_file"],
+        "objective_verified": True,
+    }
+    score = score_report(
+        case, report, supported=set(case["required_capabilities"]),
+        receipts=[{"kind": "sandbox_test", "verified": True}],
+        spans=[
+            {"agent": "teacher", "start_ms": 10, "end_ms": 110},
+            {"agent": "reviewer", "start_ms": 20, "end_ms": 120},
+        ],
+        oracle={"case_id": "F08", "passed": True},
+    )
+    assert score["artifact_files_created"] == []
+    assert score["objective_verified"] is False
+
+
+def test_agent_self_claim_cannot_replace_independent_outcome_oracle():
+    case = next(c for c in load_suite() if c["id"] == "F08")
+    report = {
+        "virtual_artifact_paths": [case["artifact_dir"] + "/" + n
+                                   for n in case["expected_artifacts"]],
+        "successful_tools": ["write_file", "read_file"],
+        "objective_verified": True,
+    }
+    kwargs = {
+        "supported": set(case["required_capabilities"]),
+        "receipts": [{"kind": "sandbox_test", "verified": True}],
+        "spans": [
+            {"agent": "teacher", "start_ms": 10, "end_ms": 110},
+            {"agent": "reviewer", "start_ms": 20, "end_ms": 120},
+        ],
+    }
+    score = score_report(case, report, **kwargs)
+    assert score["objective_verified"] is False
+    assert score["model_run_success_claim"] is True
+    assert score["independent_outcome_oracle_passed"] is False
+    wrong_case = score_report(case, report, oracle={
+        "case_id": "F07", "passed": True,
+    }, **kwargs)
+    assert wrong_case["objective_verified"] is False
+    correct_case = score_report(case, report, oracle={
+        "case_id": "F08", "passed": True,
+    }, **kwargs)
+    assert correct_case["objective_verified"] is True
+
+
+def test_all_expected_artifacts_have_exact_paths_and_f02_numeric_tolerance_is_not_a_file():
+    for case in load_suite():
+        assert case["artifact_dir"].startswith("/workspace/")
+        assert all(case["artifact_dir"] + "/" + name in case["prompt"]
+                   for name in case["expected_artifacts"])
+    f02 = next(c for c in load_suite() if c["id"] == "F02")
+    assert "0.005" not in f02["expected_artifacts"]
+    assert "0.005" in f02["pass_requirements"]
