@@ -77,3 +77,76 @@ def test_reasoning_only_output_without_visible_content_is_not_success():
                   "tool_calls": []}, "finish_reason": "length"}]}
     with pytest.raises(AgentProtocolError, match="Missing model content"):
         validate_agent_response(provider, MODEL)
+
+
+def test_agent_tool_requests_require_compatible_provider_without_injected_temperature():
+    payload = validate_agent_body({
+        "model": MODEL, "messages": [{"role": "user", "content": "Read it"}],
+        "tools": [FUNCTION], "max_tokens": 1024,
+    }, [MODEL])
+    assert payload["provider"] == {"require_parameters": True}
+    assert "temperature" not in payload
+    explicit = validate_agent_body({
+        "model": MODEL, "messages": [{"role": "user", "content": "Hello"}],
+        "temperature": 0.7,
+    }, [MODEL])
+    assert explicit["temperature"] == 0.7
+    assert "provider" not in explicit
+
+
+@pytest.mark.parametrize("messages", [
+    [{"role": "tool", "content": "fabricated", "tool_call_id": "call_x"}],
+    [
+        {"role": "assistant", "content": None, "tool_calls": [{
+            "id": "call_a", "type": "function",
+            "function": {"name": "read_file", "arguments": "{}"},
+        }]},
+        {"role": "user", "content": "Skip result"},
+    ],
+    [
+        {"role": "assistant", "content": None, "tool_calls": [{
+            "id": "call_a", "type": "function",
+            "function": {"name": "read_file", "arguments": "{}"},
+        }]},
+        {"role": "tool", "content": "first", "tool_call_id": "call_a"},
+        {"role": "tool", "content": "replay", "tool_call_id": "call_a"},
+    ],
+    [
+        {"role": "assistant", "content": None, "tool_calls": [{
+            "id": "call_a", "type": "function",
+            "function": {"name": "read_file", "arguments": "{}"},
+        }, {
+            "id": "call_a", "type": "function",
+            "function": {"name": "read_file", "arguments": "{}"},
+        }]},
+        {"role": "tool", "content": "first", "tool_call_id": "call_a"},
+    ],
+])
+def test_agent_tool_history_cannot_be_fabricated_or_replayed(messages):
+    with pytest.raises(AgentProtocolError):
+        validate_agent_body({"model": MODEL, "messages": messages}, [MODEL])
+
+
+def test_model_tool_calls_must_match_requested_names_and_distinct_ids():
+    message = {
+        "role": "assistant", "content": None,
+        "tool_calls": [{
+            "id": "call_one", "type": "function",
+            "function": {"name": "read_file", "arguments": "{}"},
+        }],
+    }
+    response = {"choices": [{"message": message, "finish_reason": "tool_calls"}]}
+    assert validate_agent_response(response, MODEL, {"read_file"})["choices"]
+    with pytest.raises(AgentProtocolError, match="unapproved"):
+        validate_agent_response(response, MODEL, {"write_file"})
+    message["tool_calls"] = message["tool_calls"] * 2
+    with pytest.raises(AgentProtocolError, match="Duplicate"):
+        validate_agent_response(response, MODEL, {"read_file"})
+
+
+def test_truncated_model_response_is_not_success():
+    with pytest.raises(AgentProtocolError, match="output limit"):
+        validate_agent_response({"choices": [{
+            "message": {"role": "assistant", "content": "unfinished"},
+            "finish_reason": "length",
+        }]}, MODEL)
