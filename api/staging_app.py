@@ -242,9 +242,17 @@ async def test_memory(x_staging_password: str = Header(default="")):
     memory_attempts.append(now)
     async with memory_running:
         try:
-            return await asyncio.wait_for(
+            result = await asyncio.wait_for(
                 asyncio.to_thread(synthetic_memory_smoke), timeout=70,
             )
+            required = ("memory_written", "memory_retrieved", "vector_records_deleted")
+            if not all(result.get(field) is True for field in required):
+                logger.warning(
+                    "Synthetic memory verification incomplete: %s",
+                    ",".join(field for field in required if result.get(field) is not True),
+                )
+                raise RuntimeError("Synthetic memory verification failed")
+            return result
         except Exception as exc:
             reference = uuid.uuid4().hex[:12]
             log_safe_failure(exc, reference)
