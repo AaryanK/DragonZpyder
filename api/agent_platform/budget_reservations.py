@@ -160,17 +160,33 @@ class AtomicBudgetStore:
                         raise BudgetExceeded("Conflicting settlement replay")
                     return False
                 if actual is None or actual > reservation["estimate_usd"]:
-                    # Provider usage unknown or exceeded the reserved bound:
-                    # never release money or claim success.
-                    raise BudgetExceeded("Unknown or above-reservation provider cost; hold retained")
-                await con.execute(
-                    """UPDATE agent_job_budgets
-                       SET reserved_usd=reserved_usd-$3,
-                           settled_usd=settled_usd+$4
-                       WHERE job_id=$1 AND tenant_id=$2""",
-                    job, tenant_id, reservation["estimate_usd"], actual)
-                await con.execute(
-                    """UPDATE agent_budget_reservations
-                       SET status='settled',actual_usd=$2 WHERE request_id=$1""",
-                    request, actual)
-                return True
+                    # Record unresolved provider outcomes durably, including
+                    # across worker restarts. Keep the entire hold in place.
+                    # A later trusted reconciliation may settle the same
+                    # reservation once an authoritative cost is available.
+                    await con.execute(
+                        """UPDATE agent_budget_reservations
+                           SET status='unknown'
+                           WHERE request_id=$1 AND job_id=$2 AND tenant_id=$3
+                             AND status IN ('reserved','unknown')""",
+                        request, job, tenant_id,
+                    )
+                    raise_unresolved = True
+                else:
+                    raise_unresolved = False
+                if not raise_unresolved:
+                    await con.execute(
+                        """UPDATE agent_job_budgets
+                           SET reserved_usd=reserved_usd-$3,
+                               settled_usd=settled_usd+$4
+                           WHERE job_id=$1 AND tenant_id=$2""",
+                        job, tenant_id, reservation["estimate_usd"], actual)
+                    await con.execute(
+                        """UPDATE agent_budget_reservations
+                           SET status='settled',actual_usd=$2 WHERE request_id=$1""",
+                        request, actual)
+            # Raise AFTER transaction commit so unknown state persists.
+            if raise_unresolved:
+                raise BudgetExceeded("Unknown or above-reservation provider cost; hold retained")
+            return True
+
