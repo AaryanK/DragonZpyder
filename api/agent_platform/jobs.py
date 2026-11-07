@@ -15,6 +15,25 @@ class AgentJobInput(BaseModel):
     prompt: str = Field(min_length=1, max_length=12000)
 
 
+
+class PingInput(BaseModel):
+    message: str = Field(default="hello", min_length=1, max_length=64)
+
+
+def make_ping_task(hatchet):
+    """Small, zero-inference acceptance task for Hatchet scheduling."""
+    @hatchet.task(
+        name="dragonzpyder-staging-ping",
+        input_validator=PingInput,
+        retries=0,
+        concurrency=1,
+    )
+    async def ping(input: PingInput, ctx):
+        return {"ok": True, "message": input.message}
+
+    return ping
+
+
 def make_agent_task(hatchet):
     """Return a Hatchet task that can run, schedule, or create a cron."""
     from .runtime import AgentRuntime

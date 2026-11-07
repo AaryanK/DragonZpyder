@@ -66,6 +66,50 @@ Postgres database, `DRAGONZPYDER_EMBEDDING_API_KEY`,
 properly authorized migration. Standard PostgreSQL images may not contain
 pgvector. Do not store user memories until identity, consent and erasure work.
 
+## Isolated Railway staging provisioned on November 7, 2026
+
+- **Agent Test Lab**: password-protected browser harness, backed by the
+  existing staging PostgreSQL checkpoint service.
+- **Hatchet Lite**: independent Hatchet control plane, an independent Postgres,
+  and a generated-secret dashboard at
+  `https://hatchet-staging.up.railway.app/`. Sign-up is disabled. An administrator
+  still needs to create an unrestricted worker token under **Settings → API Tokens**.
+  Store it in the dedicated worker service as `HATCHET_CLIENT_TOKEN`.
+  Do not paste it into an issue, chat, or browser test page.
+- **Memory Postgres**: separate PostgreSQL 18 instance with pgvector installed;
+  the staging lab uses a Railway variable reference, not copied credentials.
+  The memory smoke endpoint writes only synthetic data, searches it and deletes it.
+- **OpenRouter embeddings**: explicitly enabled in staging, reuses the
+  already rate/spend-limited staging OpenRouter key for
+  `openai/text-embedding-3-small` at dimension 1536.
+- **Langfuse**: agent callback integration is ready, but requires Langfuse
+  project public/secret keys and base URL in staging before traces can be verified.
+- **Operly computer**: retained as an adapter only; do not cross the production
+  workspace trust boundary from this staging project.
+
+### Staging acceptance
+
+Open the lab and inspect the Hatchet and pgvector readiness indicators.
+Use **Run synthetic memory test** only with fictional/test data; it verifies
+add/search/delete and may make a small charged inference and embedding request.
+
+A dedicated worker should use:
+- `HATCHET_CLIENT_TOKEN` (created inside Hatchet Dashboard)
+- `HATCHET_CLIENT_HOST_PORT=${{hatchet.HATCHET_CLIENT_HOST_PORT}}`
+- `HATCHET_CLIENT_TLS_STRATEGY=none` (Railway-private network only)
+- `DRAGONZPYDER_AGENT_WORKER_ALLOWED=1`
+- `DRAGONZPYDER_AGENTS_ENABLED=1`
+- staging PostgreSQL checkpoint DSN and OpenRouter test key as Railway references.
+
+Only then test the zero-model-cost `dragonzpyder-staging-ping` task, followed
+by one bounded agent job. Neither personal cron creation nor workspace
+execution is exposed to untrusted users.
+
+Mem0 OSS uses SQLite for some history by default. Staging can test pgvector
+storage, but production requires a durable history/retention and erasure
+design. Agent outputs must be billed through the shared DragonZpyder
+accounting boundary before multi-tenant release.
+
 ## Release gates
 
 - Repair and verify the November 7 OpenRouter 401 → gateway 502 incident.

@@ -3,7 +3,7 @@ import os
 
 from hatchet_sdk import Hatchet
 
-from .jobs import make_agent_task
+from .jobs import make_agent_task, make_ping_task
 
 
 def main() -> None:
@@ -15,7 +15,7 @@ def main() -> None:
         raise RuntimeError("Hatchet client token missing")
     hatchet = Hatchet()
     task = make_agent_task(hatchet)
-    worker = hatchet.worker("dragonzpyder-agent-worker", slots=2, workflows=[task])
+    worker = hatchet.worker("dragonzpyder-agent-worker", slots=2, workflows=[make_ping_task(hatchet), task])
     worker.start()
 
 
