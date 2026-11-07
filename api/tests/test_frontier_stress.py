@@ -245,3 +245,19 @@ def test_generic_read_call_without_path_correlated_receipts_is_not_readback():
     )
     assert score["objective_verified"] is False
     assert not score["read_back_observed"]
+
+
+def test_nonfinite_and_negative_delegation_timestamps_never_prove_parallelism():
+    """Reject NaN/Infinity: Python comparisons with NaN can silently bypass guards."""
+    valid = {"agent": "analyst", "start_ms": 10, "end_ms": 100}
+    for invalid in (
+        {"agent": "reviewer", "start_ms": float("nan"), "end_ms": 90},
+        {"agent": "reviewer", "start_ms": 20, "end_ms": float("nan")},
+        {"agent": "reviewer", "start_ms": float("-inf"), "end_ms": 90},
+        {"agent": "reviewer", "start_ms": 20, "end_ms": float("inf")},
+        {"agent": "reviewer", "start_ms": -1, "end_ms": 90},
+    ):
+        assert parallel_overlap([valid, invalid]) is False
+    assert parallel_overlap([valid, {
+        "agent": "reviewer", "start_ms": 20, "end_ms": 90,
+    }]) is True
