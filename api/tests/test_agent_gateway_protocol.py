@@ -54,7 +54,7 @@ def test_agent_flattens_text_only_content_blocks():
     body=validate_agent_body({"model":MODEL,"messages":[
         {"role":"user","content":[{"type":"text","text":"Hello"},{"type":"text","text":"again"}]}
     ]},[MODEL])
-    assert body["messages"][0]["content"] == "Hello\\nagain"
+    assert body["messages"][0]["content"] == "Hello\nagain"
     with pytest.raises(AgentProtocolError):
         validate_agent_body({"model":MODEL,"messages":[
             {"role":"user","content":[{"type":"image_url","image_url":"https://example.invalid/"}]}
