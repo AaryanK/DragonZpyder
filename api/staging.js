@@ -55,3 +55,19 @@ $("hatchet-test").addEventListener("click",async()=>{
   } catch(e) { $("hatchet-output").textContent="Network problem: "+e.message }
   finally { $("hatchet-test").disabled=false }
 });
+
+
+$("hatchet-schedule").addEventListener("click",async()=>{
+  $("hatchet-schedule").disabled=true;
+  $("hatchet-schedule-output").textContent="Creating a delayed Hatchet run…";
+  try {
+    const r=await fetch("/test-hatchet-schedule",{
+      method:"POST",headers:{"x-staging-password":$("password").value}
+    });
+    const data=await r.json();
+    $("hatchet-schedule-output").textContent=r.ok
+      ?JSON.stringify(data,null,2)
+      :(data.detail||"Schedule failed");
+  }catch(e){$("hatchet-schedule-output").textContent="Network problem: "+e.message}
+  finally {$("hatchet-schedule").disabled=false}
+});
