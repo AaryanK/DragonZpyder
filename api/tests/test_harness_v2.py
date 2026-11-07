@@ -67,7 +67,12 @@ def test_virtual_artifact_written_by_real_langgraph_tool_loop():
             "args": {"file_path": "/workspace/result.md", "content": "a useful artifact"},
             "id": "write-1",
         }]),
-        AIMessage(content="I created a virtual artifact at /workspace/result.md."),
+        AIMessage(content="", tool_calls=[{
+            "name": "read_file",
+            "args": {"file_path": "/workspace/result.md"},
+            "id": "read-1",
+        }]),
+        AIMessage(content="I created and re-read /workspace/result.md."),
     ])
     agent = build_frontier_agent(fake, MemorySaver())
     config = {"configurable": {"thread_id": "synthetic-artifact-test"}}
@@ -79,6 +84,9 @@ def test_virtual_artifact_written_by_real_langgraph_tool_loop():
     assert any(m.name == "write_file" for m in tool_replies)
     assert not any("error" in str(m.content).lower() for m in tool_replies)
     assert "result.md" in result["messages"][-1].content
+    from agent_platform.runtime import summarize_agent_result
+    report = summarize_agent_result(result)
+    assert report["artifact_readback_paths"] == ["/workspace/result.md"]
 
 
 
