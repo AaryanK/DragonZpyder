@@ -174,6 +174,8 @@ def summarize_agent_result(result: dict) -> dict:
             successful.append(name)
     files = result.get("files", {})
     artifacts = list(files.keys())[:30] if isinstance(files, dict) else []
+    from .artifact_evidence import artifact_readback_paths
+    readback_paths = artifact_readback_paths(messages, files)
     raw_todos = result.get("todos", [])
     todos = raw_todos[:30] if isinstance(raw_todos, list) else []
     return {
@@ -181,6 +183,7 @@ def summarize_agent_result(result: dict) -> dict:
         "successful_tools": successful[:80],
         "failed_tool_count": failures,
         "virtual_artifact_paths": artifacts,
+        "artifact_readback_paths": readback_paths,
         "todos": todos,
         # External effects and objective correctness require separate checks.
         "objective_verified": False,
