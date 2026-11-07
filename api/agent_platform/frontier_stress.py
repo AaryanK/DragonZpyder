@@ -16,7 +16,7 @@ from uuid import uuid4
 SUITE = Path(__file__).with_name("evals") / "frontier_stress_v1.json"
 
 # Capabilities verified wired into the V2 *agent*, not present elsewhere in Railway.
-CAPABILITIES = frozenset({"filesystem", "web_search", "parallel_subagents"})
+CAPABILITIES = frozenset({"filesystem", "web_search", "inline_subagents"})
 EXTERNAL_RECEIPT_KINDS = frozenset({
     "sandbox_test", "browser_state", "authorized_portal", "live_source",
     "scheduled_run", "published_artifact",
