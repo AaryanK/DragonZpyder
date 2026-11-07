@@ -143,7 +143,7 @@ def test_quickjs_interpreter_is_opt_in_and_has_no_host_or_external_bridges(monke
     from agent_platform.harness import build_frontier_agent
 
     class ToolCapture(FakeMessagesListChatModel):
-        captured = None
+        captured: set[str] | None = None
 
         def bind_tools(self, tools, **kwargs):
             self.captured = {getattr(tool, "name", None) for tool in tools}
