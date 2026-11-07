@@ -172,14 +172,19 @@ def validate_agent_response(provider_response: Any, requested_model: str) -> dic
         _reject("Invalid model message", 502)
     content = _bounded_text(message.get("content"), limit=90000, nullable=True)
     out_message = {"role": "assistant", "content": content}
-    if message.get("tool_calls") is not None:
-        calls = message["tool_calls"]
-        if not isinstance(calls, list) or not 1 <= len(calls) <= 12:
+    raw_calls = message.get("tool_calls")
+    if raw_calls is not None:
+        # Some OpenAI-compatible providers send tool_calls=[] on normal text
+        # completions. An empty array is no call; preserve content if present.
+        if not isinstance(raw_calls, list) or len(raw_calls) > 12:
             _reject("Invalid model tool calls", 502)
-        try:
-            out_message["tool_calls"] = [_tool_call(call) for call in calls]
-        except AgentProtocolError:
-            _reject("Invalid model tool call format", 502)
+        if raw_calls:
+            try:
+                out_message["tool_calls"] = [_tool_call(call) for call in raw_calls]
+            except AgentProtocolError:
+                _reject("Invalid model tool call format", 502)
+        elif content is None:
+            _reject("Missing model content", 502)
     elif content is None:
         _reject("Missing model content", 502)
     return {
