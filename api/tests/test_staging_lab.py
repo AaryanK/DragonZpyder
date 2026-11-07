@@ -93,10 +93,11 @@ def test_hatchet_ping_success_without_real_network(monkeypatch):
     monkeypatch.setenv("DRAGONZPYDER_STAGING_PASSWORD", "r" * 40)
     monkeypatch.setenv("DRAGONZPYDER_HATCHET_TEST_ENABLED", "1")
     monkeypatch.setenv("HATCHET_CLIENT_TOKEN", "test")
+    from agent_platform.jobs import PingOutput
     class FakeTask:
         async def aio_run(self, value):
             assert value.message == "staging-healthcheck"
-            return {"ok":True,"message":value.message}
+            return PingOutput(ok=True, message=value.message)
     monkeypatch.setattr("agent_platform.jobs.make_ping_task", lambda client: FakeTask())
     monkeypatch.setattr("hatchet_sdk.Hatchet", lambda: object())
     with TestClient(app) as client:
