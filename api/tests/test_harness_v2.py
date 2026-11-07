@@ -184,3 +184,36 @@ def test_parallel_paid_mode_is_off_by_default_even_with_parent_runtime(monkeypat
             service_id="offline-synthetic", thread_id="test",
             tracks=[{"id": "a", "prompt": "a"}, {"id": "b", "prompt": "b"}],
         ))
+
+
+def test_virtual_filesystem_denies_escape_outside_workspace(monkeypatch):
+    """Actual LangGraph tool call: outside-workspace writes stay forbidden."""
+    import asyncio
+    from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
+    from langchain_core.messages import AIMessage, ToolMessage
+    from langgraph.checkpoint.memory import MemorySaver
+    from agent_platform.harness import build_frontier_agent
+
+    class Scripted(FakeMessagesListChatModel):
+        def bind_tools(self, tools, **kwargs):
+            return self
+
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_QUICKJS_ENABLED", "0")
+    model = Scripted(responses=[
+        AIMessage(content="", tool_calls=[{
+            "name": "write_file",
+            "args": {"file_path": "/private/blocked.md", "content": "not allowed"},
+            "id": "write-outside",
+        }]),
+        AIMessage(content="The attempted write was not authorized."),
+    ])
+    graph = build_frontier_agent(model, MemorySaver())
+    result = asyncio.run(graph.ainvoke(
+        {"messages": [{"role": "user", "content": "Write a private file"}]},
+        config={"configurable": {"thread_id": "permission-check"}},
+    ))
+    assert "/private/blocked.md" not in result.get("files", {})
+    responses = [m for m in result["messages"] if isinstance(m, ToolMessage)]
+    assert responses
+    assert any(("permission" in str(m.content).lower()
+                or getattr(m, "status", "") == "error") for m in responses)
