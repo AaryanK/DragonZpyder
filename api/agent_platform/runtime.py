@@ -159,35 +159,81 @@ class AgentRuntime:
         await self._stack.aclose()
         self._checkpointer = None
 
-    async def run(self, *, service_id: str, thread_id: str, prompt: str) -> str:
+def summarize_agent_result(result: dict) -> dict:
+    """Extract UI/evaluator-safe evidence without exposing model tool arguments."""
+    messages = result.get("messages", []) if isinstance(result, dict) else []
+    if not messages:
+        raise RuntimeError("Agent produced no messages")
+    last = messages[-1]
+    if getattr(last, "type", None) != "ai":
+        raise RuntimeError("Agent run did not produce a final assistant message")
+    content = getattr(last, "content", "")
+    if not isinstance(content, str):
+        content = str(content)
+    if not content.strip():
+        raise RuntimeError("Agent returned an empty final answer")
+    successful = []
+    failures = 0
+    for message in messages:
+        if getattr(message, "type", None) != "tool":
+            continue
+        if getattr(message, "status", "success") == "error":
+            failures += 1
+            continue
+        name = getattr(message, "name", "")
+        if isinstance(name, str) and name:
+            successful.append(name)
+    files = result.get("files", {})
+    artifacts = list(files.keys())[:30] if isinstance(files, dict) else []
+    raw_todos = result.get("todos", [])
+    todos = raw_todos[:30] if isinstance(raw_todos, list) else []
+    return {
+        "answer": content,
+        "successful_tools": successful[:80],
+        "failed_tool_count": failures,
+        "virtual_artifact_paths": artifacts,
+        "todos": todos,
+        # External effects and objective correctness require separate checks.
+        "objective_verified": False,
+    }
+
+
+    async def run_report(self, *, service_id: str, thread_id: str, prompt: str) -> dict:
         if self._checkpointer is None:
             raise RuntimeError("Agent runtime is not started")
         if not isinstance(prompt, str) or not 1 <= len(prompt.strip()) <= 12000:
             raise ValueError("Prompt must be 1–12000 characters")
         key = thread_key(service_id, thread_id)
         model = model_client()
-        # Separate construction from execution for no-credit CI contract checks.
         try:
             agent = build_agent(model, self._checkpointer)
         except Exception as exc:
             raise AgentPipelineError("construction") from exc
         try:
             result = await agent.ainvoke(
-            {"messages": [{"role": "user", "content": prompt}]},
-            config={
-                "configurable": {"thread_id": key},
-                "recursion_limit": 32 if os.getenv("DRAGONZPYDER_AGENT_HARNESS_V2") == "1" else 16,
-                "callbacks": telemetry_callbacks(),
-                "metadata": {"service_id": service_id, "harness_version": "v2" if os.getenv("DRAGONZPYDER_AGENT_HARNESS_V2") == "1" else "v1"},
-            },
+                {"messages": [{"role": "user", "content": prompt}]},
+                config={
+                    "configurable": {"thread_id": key},
+                    "recursion_limit": (
+                        32 if os.getenv("DRAGONZPYDER_AGENT_HARNESS_V2") == "1" else 16
+                    ),
+                    "callbacks": telemetry_callbacks(),
+                    "metadata": {
+                        "service_id": service_id,
+                        "harness_version": (
+                            "v2" if os.getenv("DRAGONZPYDER_AGENT_HARNESS_V2") == "1"
+                            else "v1"
+                        ),
+                    },
+                },
             )
         except Exception as exc:
             raise AgentPipelineError("execution") from exc
-        messages = result.get("messages", [])
-        if not messages:
-            raise RuntimeError("Agent produced no messages")
-        last = messages[-1]
-        content = getattr(last, "content", "")
-        if isinstance(content, str):
-            return content
-        return str(content)
+        return summarize_agent_result(result)
+
+    async def run(self, *, service_id: str, thread_id: str, prompt: str) -> str:
+        """Backward-compatible Hatchet/API adapter: plain answer only."""
+        report = await self.run_report(
+            service_id=service_id, thread_id=thread_id, prompt=prompt
+        )
+        return report["answer"]
