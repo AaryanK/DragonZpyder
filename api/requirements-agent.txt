@@ -1,0 +1,10 @@
+# Opt-in dependencies for DragonZpyder's internal agent runtime and workers.
+# Not installed in the public inference gateway unless deliberately enabled.
+-r requirements.txt
+deepagents>=0.7,<1
+langchain-openrouter>=0.2,<1
+langgraph-checkpoint-postgres>=2,<5
+psycopg[binary]>=3,<4
+langfuse>=3,<5
+hatchet-sdk>=1,<3
+mem0ai>=1,<3
