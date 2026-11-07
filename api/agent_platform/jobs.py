@@ -20,6 +20,11 @@ class PingInput(BaseModel):
     message: str = Field(default="hello", min_length=1, max_length=64)
 
 
+class PingOutput(BaseModel):
+    ok: bool
+    message: str
+
+
 def make_ping_task(hatchet):
     """Small, zero-inference acceptance task for Hatchet scheduling."""
     @hatchet.task(
@@ -28,8 +33,8 @@ def make_ping_task(hatchet):
         retries=0,
         concurrency=1,
     )
-    async def ping(input: PingInput, ctx):
-        return {"ok": True, "message": input.message}
+    async def ping(input: PingInput, ctx) -> PingOutput:
+        return PingOutput(ok=True, message=input.message)
 
     return ping
 
@@ -45,7 +50,7 @@ def make_agent_task(hatchet):
         retries=0,
         execution_timeout=timedelta(minutes=5),
     )
-    async def execute(input: AgentJobInput, ctx):
+    async def execute(input: AgentJobInput, ctx) -> dict[str, str]:
         runtime = AgentRuntime()
         await runtime.start()
         try:
