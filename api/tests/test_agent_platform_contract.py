@@ -59,3 +59,19 @@ def test_memory_fails_closed_without_config(monkeypatch):
     with pytest.raises(ValueError):
         PersonalMemory._principal("../another-user")
 
+
+
+def test_memory_openrouter_fallback_requires_explicit_flag(monkeypatch):
+    monkeypatch.setenv("DRAGONZPYDER_MEMORY_DATABASE_URL", "postgresql://user:pwd@localhost/testdb")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test")
+    monkeypatch.setenv("DRAGONZPYDER_USE_OPENROUTER_EMBEDDINGS", "1")
+    monkeypatch.setenv("DRAGONZPYDER_EMBEDDING_BASE_URL", "https://openrouter.ai/api/v1")
+    monkeypatch.setenv("DRAGONZPYDER_MEM0_LLM_MODEL", "openai/gpt-oss-120b")
+    monkeypatch.setenv("DRAGONZPYDER_MEM0_EMBED_MODEL", "openai/text-embedding-3-small")
+    monkeypatch.setenv("DRAGONZPYDER_EMBEDDING_DIMENSIONS", "1536")
+    cfg = memory_config()
+    assert cfg["embedder"]["config"]["api_key"] == "test"
+    assert cfg["vector_store"]["config"]["embedding_model_dims"] == 1536
+    monkeypatch.setenv("DRAGONZPYDER_EMBEDDING_BASE_URL", "https://example.org")
+    with pytest.raises(RuntimeError):
+        memory_config()

@@ -45,3 +45,12 @@ def test_failure_details_do_not_leak_secrets():
             assert code == 502
             assert "PRIVATE_EXCEPTION_TEXT_NEVER_LOG" not in message
             log_safe_failure(error, "testref")
+
+
+def test_synthetic_memory_requires_staging_auth_and_feature_flag(monkeypatch):
+    monkeypatch.setenv("DRAGONZPYDER_STAGING_PASSWORD", "r" * 40)
+    monkeypatch.delenv("DRAGONZPYDER_MEMORY_TEST_ENABLED", raising=False)
+    with TestClient(app) as client:
+        assert client.post("/test-memory").status_code == 401
+        r=client.post("/test-memory",headers={"x-staging-password":"r"*40})
+        assert r.status_code == 503

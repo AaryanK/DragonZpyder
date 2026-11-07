@@ -16,9 +16,16 @@ def memory_config() -> dict:
     if parsed.scheme not in {"postgres", "postgresql"} or not parsed.hostname:
         raise RuntimeError("Mem0 requires a PostgreSQL DSN")
     llm_key = os.getenv("OPENROUTER_API_KEY", "")
+    embedding_base = os.getenv(
+        "DRAGONZPYDER_EMBEDDING_BASE_URL", "https://api.openai.com/v1"
+    )
     embeddings_key = os.getenv("DRAGONZPYDER_EMBEDDING_API_KEY", "")
+    if os.getenv("DRAGONZPYDER_USE_OPENROUTER_EMBEDDINGS") == "1":
+        if embedding_base != "https://openrouter.ai/api/v1":
+            raise RuntimeError("OpenRouter embedding fallback requires its verified base URL")
+        embeddings_key = llm_key
     if not llm_key or not embeddings_key:
-        raise RuntimeError("Mem0 requires explicit LLM and embedding API keys")
+        raise RuntimeError("Mem0 requires configured model and embedding credentials")
     llm_model = os.getenv("DRAGONZPYDER_MEM0_LLM_MODEL", "").strip()
     embed_model = os.getenv("DRAGONZPYDER_MEM0_EMBED_MODEL", "").strip()
     dims_raw = os.getenv("DRAGONZPYDER_EMBEDDING_DIMENSIONS", "").strip()
@@ -43,10 +50,7 @@ def memory_config() -> dict:
                 "model": embed_model,
                 "api_key": embeddings_key,
                 # Embeddings provider may differ from OpenRouter on purpose.
-                "openai_base_url": os.getenv(
-                    "DRAGONZPYDER_EMBEDDING_BASE_URL",
-                    "https://api.openai.com/v1",
-                ),
+                "openai_base_url": embedding_base,
             },
         },
         "vector_store": {

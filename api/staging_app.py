@@ -14,6 +14,7 @@ from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from agent_platform.runtime import AgentRuntime, AgentPipelineError
+from agent_platform.staging_smokes import hatchet_readiness, vector_readiness, synthetic_memory_smoke
 
 logger = logging.getLogger("dragonzpyder.staging")
 
@@ -74,7 +75,9 @@ def configured():
         "openrouter": bool(env.get("OPENROUTER_API_KEY")),
         "langfuse": bool(env.get("DRAGONZPYDER_LANGFUSE_PUBLIC_KEY") or env.get("LANGFUSE_PUBLIC_KEY")),
         "hatchet": bool(env.get("HATCHET_CLIENT_TOKEN")),
-        "mem0_postgres": bool(env.get("DRAGONZPYDER_MEMORY_DATABASE_URL") and env.get("DRAGONZPYDER_EMBEDDING_API_KEY")),
+        "mem0_postgres": bool(env.get("DRAGONZPYDER_MEMORY_DATABASE_URL") and (
+            env.get("DRAGONZPYDER_EMBEDDING_API_KEY") or env.get("DRAGONZPYDER_USE_OPENROUTER_EMBEDDINGS") == "1"
+        )),
         "operly_computer": bool(env.get("DRAGONZPYDER_COMPUTER_RUNNER_URL") and env.get("DRAGONZPYDER_COMPUTER_RUNNER_TOKEN")),
     }
 
@@ -163,6 +166,14 @@ async def status(req: Request):
         "rate_limited": "provider_rate_limited",
         "unreachable": "provider_unreachable",
     }.get(provider_state, "unverified")
+    hatchet_status, memory_status = await asyncio.gather(
+        hatchet_readiness(), vector_readiness()
+    )
+    components["hatchet"] = (
+        "worker_connected" if hatchet_status == "server_online" and os.getenv("HATCHET_CLIENT_TOKEN")
+        else hatchet_status
+    )
+    components["mem0_postgres"] = memory_status
     return {
         "components": components,
         "harness_ready": req.app.state.runtime is not None and provider_state == "verified",
@@ -201,4 +212,35 @@ async def test(payload: Prompt, req: Request, x_staging_password: str = Header(d
             raise HTTPException(
                 status_code,
                 description + " Reference: " + reference,
+            ) from None
+
+
+memory_attempts = deque(maxlen=10)
+memory_running = asyncio.Lock()
+
+
+@app.post("/test-memory")
+async def test_memory(x_staging_password: str = Header(default="")):
+    password = os.getenv("DRAGONZPYDER_STAGING_PASSWORD", "")
+    if len(password) < 24 or not hmac.compare_digest(password, x_staging_password):
+        raise HTTPException(401, "Incorrect staging password")
+    if os.getenv("DRAGONZPYDER_MEMORY_TEST_ENABLED") != "1":
+        raise HTTPException(503, "Synthetic memory test is disabled")
+    now = time.monotonic()
+    while memory_attempts and memory_attempts[0] < now - 3600:
+        memory_attempts.popleft()
+    if len(memory_attempts) >= 2 or memory_running.locked():
+        raise HTTPException(429, "Synthetic memory smoke limit reached")
+    memory_attempts.append(now)
+    async with memory_running:
+        try:
+            return await asyncio.wait_for(
+                asyncio.to_thread(synthetic_memory_smoke), timeout=70,
+            )
+        except Exception as exc:
+            reference = uuid.uuid4().hex[:12]
+            log_safe_failure(exc, reference)
+            raise HTTPException(
+                502,
+                "Synthetic memory smoke failed; check staging logs. Reference: " + reference
             ) from None

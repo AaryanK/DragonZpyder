@@ -25,3 +25,19 @@ $("run").addEventListener("click",async()=>{
   finally{$("run").disabled=false}
 });
 refresh();
+
+$("memory-test").addEventListener("click",async()=>{
+  $("memory-test").disabled=true;
+  $("memory-output").textContent="Checking synthetic memory persistence and deletion…";
+  try{
+    const r=await fetch("/test-memory",{
+      method:"POST",
+      headers:{"x-staging-password":$("password").value}
+    });
+    const data=await r.json();
+    $("memory-output").textContent=r.ok
+      ?JSON.stringify(data,null,2)
+      :(data.detail||"Synthetic memory test failed");
+  }catch(e){$("memory-output").textContent="Network problem: "+e.message}
+  finally{$("memory-test").disabled=false}
+});
