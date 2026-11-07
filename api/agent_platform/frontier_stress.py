@@ -89,8 +89,6 @@ def score_report(case: dict, report: dict | None, *,
             "missing_capabilities": missing_capabilities, "objective_verified": False,
         }
     state_paths = set(report.get("virtual_artifact_paths") or [])
-    desired = {"/workspace/" + case["id"].lower().replace("f", "") + "/" + n
-               for n in []}  # No guessing directory: actual paths are in case prompt.
     # Never credit an artifact from a model's statement alone: it must be
     # present in checkpoint state and accompanied by a real writing tool.
     artifacts = case["expected_artifacts"]
