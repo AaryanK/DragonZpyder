@@ -181,8 +181,10 @@ def validate_agent_response(provider_response: Any, requested_model: str) -> dic
         if raw_calls:
             try:
                 out_message["tool_calls"] = [_tool_call(call) for call in raw_calls]
-            except AgentProtocolError:
-                _reject("Invalid model tool call format", 502)
+            except AgentProtocolError as error:
+                # Only an authored validation error label; never a tool's
+                # arguments, reasoning content, or external response data.
+                _reject("Invalid model tool call format: " + error.message, 502)
         elif content is None:
             _reject("Missing model content", 502)
     elif content is None:
