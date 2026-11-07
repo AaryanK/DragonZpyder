@@ -21,6 +21,7 @@ from fastapi.responses import JSONResponse
 from observability import setup_telemetry, shutdown_telemetry, inference_span, span_trace_id
 from usage_ledger import ledger, token_usage
 from provider_gateway import provider_request
+from agent_platform.gateway_protocol import validate_agent_body, validate_agent_response, AgentProtocolError
 from agent_platform.router import router as agent_router
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
@@ -220,12 +221,18 @@ async def inference(prefix: str, request: Request):
         summary = await ledger.summary(days=int(raw_days), app_id=app_id)
         return JSONResponse(summary) if summary else denied(503, "Usage ledger not configured")
 
-    if not (path.startswith("/internal/v1/") or path.startswith("/v1/")):
+    agent_protocol = path == "/internal/agent/v1/chat/completions"
+    if not (agent_protocol or path.startswith("/internal/v1/") or path.startswith("/v1/")):
         return JSONResponse({"error": {"message": "Unknown DragonZpyder API route"}}, status_code=404)
     app_id = caller_identity(request)
     if app_id is None:
         return denied(401, "Service authentication required")
-    route = path.removeprefix("/internal")
+    if agent_protocol and (
+        app_id != "agent-runtime" or
+        os.getenv("DRAGONZPYDER_AGENT_TOOL_CALLS_ENABLED") != "1"
+    ):
+        return denied(403, "Agent gateway is disabled for this caller")
+    route = "/v1/chat/completions" if agent_protocol else path.removeprefix("/internal")
     if request.method == "GET" and route == "/v1/health":
         return {"service": "dragonzpyder-inference",
                 "status": "ready" if os.getenv("OPENROUTER_API_KEY") else "unconfigured",
@@ -239,6 +246,8 @@ async def inference(prefix: str, request: Request):
         return denied(415, "JSON request required")
     if not os.getenv("OPENROUTER_API_KEY"):
         return denied(503, "Inference provider is not configured")
+    if agent_protocol and not ledger.available:
+        return denied(503, "Agent inference requires persistent usage accounting")
     if not ledger.available and ledger.required:
         return denied(503, "Usage accounting unavailable")
     if not await runtime.enter():
@@ -264,7 +273,14 @@ async def inference(prefix: str, request: Request):
                 if len(raw) > MAX_BYTES:
                     raise GatewayError(413, "Request payload exceeds 160 KB")
                 try:
-                    body = valid_body(json.loads(raw))
+                    decoded = json.loads(raw)
+                    if agent_protocol:
+                        try:
+                            body = validate_agent_body(decoded, models())
+                        except AgentProtocolError as error:
+                            raise GatewayError(error.status, error.message) from None
+                    else:
+                        body = valid_body(decoded)
                 except (ValueError, UnicodeDecodeError):
                     raise GatewayError(400, "Invalid JSON request")
                 span.set_attribute("gen_ai.request.model", body["model"])
@@ -288,22 +304,26 @@ async def inference(prefix: str, request: Request):
                                        else "Model provider rejected the request")
                 try:
                     provider_response = upstream.json()
-                    choice = provider_response["choices"][0]
-                    answer = choice["message"]["content"]
-                    if not isinstance(answer, str):
-                        raise ValueError("nontext")
-                    if len(answer.encode("utf-8")) > 90000:
-                        raise GatewayError(502, "Model response exceeded output size limit")
-                except (ValueError, TypeError, KeyError, IndexError):
+                    if agent_protocol:
+                        payload = validate_agent_response(provider_response, body["model"])
+                    else:
+                        choice = provider_response["choices"][0]
+                        answer = choice["message"]["content"]
+                        if not isinstance(answer, str):
+                            raise ValueError("nontext")
+                        if len(answer.encode("utf-8")) > 90000:
+                            raise GatewayError(502, "Model response exceeded output size limit")
+                        payload = {"id": str(provider_response.get("id") or ""),
+                                   "object": "chat.completion",
+                                   "model": str(provider_response.get("model") or body["model"]),
+                                   "choices": [{"index": 0, "message": {"role": "assistant", "content": answer},
+                                                "finish_reason": choice.get("finish_reason") or "stop"}]}
+                        if "usage" in provider_response:
+                            payload["usage"] = provider_response["usage"]
+                except (ValueError, TypeError, KeyError, IndexError, AgentProtocolError):
                     raise GatewayError(502, "Model provider returned unexpected content")
                 served_model = str(provider_response.get("model") or body["model"])
                 generation_id = str(provider_response.get("id") or "") or None
-                payload = {"id": generation_id or "", "object": "chat.completion",
-                           "model": served_model,
-                           "choices": [{"index": 0, "message": {"role": "assistant", "content": answer},
-                                        "finish_reason": choice.get("finish_reason") or "stop"}]}
-                if "usage" in provider_response:
-                    payload["usage"] = provider_response["usage"]
                 response = JSONResponse(payload)
                 status = "ok"
             except GatewayError as error:
