@@ -84,6 +84,13 @@ pgvector. Do not store user memories until identity, consent and erasure work.
   `openai/text-embedding-3-small` at dimension 1536.
 - **Langfuse**: agent callback integration is ready, but requires Langfuse
   project public/secret keys and base URL in staging before traces can be verified.
+- **Mem0 SDK compatibility:** recent OSS releases require `filters={"user_id": scope}`
+  in `search()`. The v3 signature is covered by a no-credit unit test.
+  Synthetic add/search/delete can be executed from the password-gated
+  staging lab; **passing a vector-record deletion check does not prove
+  complete erasure of Mem0's separate raw session/history records**.
+  This remains a production privacy blocker; see upstream
+  [Mem0 issue #7452](https://github.com/mem0ai/mem0/issues/7452).
 - **Operly computer**: retained as an adapter only; do not cross the production
   workspace trust boundary from this staging project.
 
