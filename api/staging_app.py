@@ -65,6 +65,10 @@ async def headers(req, call_next):
 async def index():
     return FileResponse(UI, media_type="text/html")
 
+@app.get("/staging.css")
+async def stylesheet():
+    return FileResponse(UI.with_name("staging.css"), media_type="text/css")
+
 @app.get("/staging.js")
 async def javascript():
     return FileResponse(UI.with_name("staging.js"), media_type="text/javascript")
