@@ -47,7 +47,8 @@
         "patch.py",
         "tests.md"
       ],
-      "evaluator_version": 1
+      "evaluator_version": 1,
+      "artifact_dir": "/workspace/checkout"
     },
     {
       "id": "F02",
@@ -81,10 +82,10 @@
       "expected_artifacts": [
         "validation_plan.md",
         "mapper.py",
-        "test_vectors.json",
-        "0.005"
+        "test_vectors.json"
       ],
-      "evaluator_version": 1
+      "evaluator_version": 1,
+      "artifact_dir": "/workspace/field"
     },
     {
       "id": "F03",
@@ -121,7 +122,8 @@
         "evidence_table.md",
         "unresolved.md"
       ],
-      "evaluator_version": 1
+      "evaluator_version": 1,
+      "artifact_dir": "/workspace/air"
     },
     {
       "id": "F04",
@@ -157,7 +159,8 @@
         "exceptions.md",
         "closing_entries.md"
       ],
-      "evaluator_version": 1
+      "evaluator_version": 1,
+      "artifact_dir": "/workspace/ledger"
     },
     {
       "id": "F05",
@@ -193,7 +196,8 @@
         "research_plan.md",
         "claims_audit.md"
       ],
-      "evaluator_version": 1
+      "evaluator_version": 1,
+      "artifact_dir": "/workspace/archive"
     },
     {
       "id": "F06",
@@ -230,7 +234,8 @@
         "risk_register.md",
         "decision.md"
       ],
-      "evaluator_version": 1
+      "evaluator_version": 1,
+      "artifact_dir": "/workspace/travel"
     },
     {
       "id": "F07",
@@ -266,7 +271,8 @@
         "policy_patch.py",
         "acceptance_tests.md"
       ],
-      "evaluator_version": 1
+      "evaluator_version": 1,
+      "artifact_dir": "/workspace/security"
     },
     {
       "id": "F08",
@@ -301,7 +307,8 @@
         "diagnostic.json",
         "rubric.md"
       ],
-      "evaluator_version": 1
+      "evaluator_version": 1,
+      "artifact_dir": "/workspace/school"
     },
     {
       "id": "F09",
@@ -337,7 +344,8 @@
         "runbook.md",
         "failure_tests.md"
       ],
-      "evaluator_version": 1
+      "evaluator_version": 1,
+      "artifact_dir": "/workspace/incident"
     },
     {
       "id": "F10",
@@ -377,7 +385,8 @@
         "event_log.json",
         "portal_drafts.md"
       ],
-      "evaluator_version": 1
+      "evaluator_version": 1,
+      "artifact_dir": "/workspace/nepal"
     }
   ]
 }
