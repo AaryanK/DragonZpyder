@@ -1,6 +1,7 @@
 """Password-gated staging smoke lab. Never grants workspace or computer tools."""
 import asyncio
 import hmac
+import httpx
 import logging
 import os
 import time
@@ -77,10 +78,33 @@ def configured():
         "operly_computer": bool(env.get("DRAGONZPYDER_COMPUTER_RUNNER_URL") and env.get("DRAGONZPYDER_COMPUTER_RUNNER_TOKEN")),
     }
 
+async def verify_provider_key() -> str:
+    """Verify key validity without an inference call or exposing account data."""
+    key = os.getenv("OPENROUTER_API_KEY", "")
+    if not key:
+        return "missing"
+    try:
+        async with httpx.AsyncClient(timeout=8, follow_redirects=False) as client:
+            response = await client.get(
+                "https://openrouter.ai/api/v1/key",
+                headers={"Authorization": "Bearer " + key},
+            )
+    except httpx.HTTPError:
+        return "unreachable"
+    if response.status_code == 200:
+        return "verified"
+    if response.status_code in (401, 403):
+        return "rejected"
+    if response.status_code == 429:
+        return "rate_limited"
+    return "unverified"
+
+
 @asynccontextmanager
 async def lifespan(app):
     app.state.runtime = None
     app.state.runtime_error = False
+    app.state.provider_auth = await verify_provider_key()
     flags = configured()
     if flags["deep_agents_langgraph"] and flags["openrouter"]:
         runtime = AgentRuntime()
@@ -128,6 +152,7 @@ async def health():
 async def status(req: Request):
     return {"components": {name: ("configured_unverified" if present else "not_configured") for name,present in configured().items()},
             "harness_ready": req.app.state.runtime is not None,
+            "openrouter_key_validation": req.app.state.provider_auth,
             "runtime_start_error": req.app.state.runtime_error,
             "prod_connected": False}
 
