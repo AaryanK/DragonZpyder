@@ -82,9 +82,9 @@ def test_monitor_diff_is_stable_for_reorder_and_evidence_changes():
         {"title": "First", "url": "https://example.org/a", "snippet": "A"},
     ]}
     first = canonical_sources(report)
-    assert fingerprint(first) == fingerprint(list(reversed(first))) if False else True
     report["results"].reverse()
     assert first == canonical_sources(report)
+    assert fingerprint(first) == fingerprint(canonical_sources(report))
     changed = [*first, {"title": "Third", "url": "https://example.org/c", "snippet": "C"}]
     diff = compare_sources(first, changed)
     assert diff["new"] == ["https://example.org/c"]
