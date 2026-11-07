@@ -133,3 +133,38 @@ def test_hatchet_scheduling_acceptance_does_not_claim_execution(monkeypatch):
         body=response.json()
         assert body["accepted_by_scheduler"] is True
         assert body["execution_verified"] is False
+
+
+
+def test_staging_web_search_requires_password_and_feature_flag(monkeypatch):
+    monkeypatch.setenv("DRAGONZPYDER_STAGING_PASSWORD", "s" * 40)
+    monkeypatch.delenv("DRAGONZPYDER_AGENT_WEB_SEARCH_ENABLED", raising=False)
+    with TestClient(app) as client:
+        assert client.post("/test-web-search", json={"query": "George Washington"}).status_code == 401
+        denied = client.post("/test-web-search", json={"query": "George Washington"},
+                             headers={"x-staging-password": "s" * 40})
+        assert denied.status_code == 503
+
+
+def test_staging_web_search_can_run_without_inference(monkeypatch):
+    import staging_app
+    monkeypatch.setenv("DRAGONZPYDER_STAGING_PASSWORD", "s" * 40)
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_WEB_SEARCH_ENABLED", "1")
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_SEARCH_PROVIDER", "wikipedia")
+    async def fake_search(query, *, provider, limit):
+        assert query == "George Washington"
+        assert provider == "wikipedia" and limit == 3
+        return {"provider": provider, "source_scope": "encyclopedia-only",
+                "results": [{"title": "George Washington",
+                             "url": "https://en.wikipedia.org/wiki/George_Washington",
+                             "snippet": "First president", "provider": "wikipedia"}],
+                "fetched_at": "2026-11-07T12:00:00+00:00"}
+    monkeypatch.setattr(staging_app, "search_sources", fake_search)
+    with TestClient(app) as client:
+        response = client.post(
+            "/test-web-search", json={"query": "George Washington"},
+            headers={"x-staging-password": "s" * 40},
+        )
+        assert response.status_code == 200
+        assert response.json()["inference_used"] is False
+        assert response.json()["results"][0]["title"] == "George Washington"
