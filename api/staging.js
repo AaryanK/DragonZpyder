@@ -41,3 +41,17 @@ $("memory-test").addEventListener("click",async()=>{
   }catch(e){$("memory-output").textContent="Network problem: "+e.message}
   finally{$("memory-test").disabled=false}
 });
+
+
+$("hatchet-test").addEventListener("click",async()=>{
+  $("hatchet-test").disabled=true;
+  $("hatchet-output").textContent="Dispatching ping through Hatchet…";
+  try {
+    const r=await fetch("/test-hatchet",{
+      method:"POST",headers:{"x-staging-password":$("password").value}
+    });
+    const data=await r.json();
+    $("hatchet-output").textContent=r.ok?JSON.stringify(data,null,2):(data.detail||"Hatchet test failed");
+  } catch(e) { $("hatchet-output").textContent="Network problem: "+e.message }
+  finally { $("hatchet-test").disabled=false }
+});
