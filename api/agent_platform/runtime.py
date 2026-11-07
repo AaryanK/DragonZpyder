@@ -64,6 +64,33 @@ def telemetry_callbacks() -> list:
     return [CallbackHandler()]
 
 
+class AgentPipelineError(RuntimeError):
+    """Internal phase label; original exception is retained as __cause__."""
+
+    def __init__(self, phase: str):
+        super().__init__("Agent pipeline failed")
+        self.phase = phase
+
+
+def build_agent(model, checkpointer):
+    """Construct exactly the production agent without executing a model call."""
+    backend = StateBackend()
+    # A replacement filesystem middleware must explicitly use the same backend.
+    return create_deep_agent(
+        model=model,
+        backend=backend,
+        middleware=[FilesystemMiddleware(
+            backend=backend,
+            tools=["read_file", "ls", "glob", "grep"],
+        )],
+        checkpointer=checkpointer,
+        system_prompt=(
+            "You are DragonZpyder's general-purpose assistant. "
+            "Do not claim to have executed actions without tool results."
+        ),
+    )
+
+
 class AgentRuntime:
     def __init__(self) -> None:
         self._stack = AsyncExitStack()
@@ -99,21 +126,13 @@ class AgentRuntime:
             max_tokens=768,
             max_retries=0,
         )
-        # StateBackend is checkpointed virtual files, NOT the host filesystem.
-        # No write, execute, browser, network, or real-world tool is exposed.
-        agent = create_deep_agent(
-            model=model,
-            backend=StateBackend(),
-            middleware=[FilesystemMiddleware(
-                tools=["read_file", "ls", "glob", "grep"]
-            )],
-            checkpointer=self._checkpointer,
-            system_prompt=(
-                "You are DragonZpyder's general-purpose assistant. "
-                "Do not claim to have executed actions without tool results."
-            ),
-        )
-        result = await agent.ainvoke(
+        # Separate construction from execution for no-credit CI contract checks.
+        try:
+            agent = build_agent(model, self._checkpointer)
+        except Exception as exc:
+            raise AgentPipelineError("construction") from exc
+        try:
+            result = await agent.ainvoke(
             {"messages": [{"role": "user", "content": prompt}]},
             config={
                 "configurable": {"thread_id": key},
@@ -121,7 +140,9 @@ class AgentRuntime:
                 "callbacks": telemetry_callbacks(),
                 "metadata": {"service_id": service_id},
             },
-        )
+            )
+        except Exception as exc:
+            raise AgentPipelineError("execution") from exc
         messages = result.get("messages", [])
         if not messages:
             raise RuntimeError("Agent produced no messages")

@@ -31,3 +31,17 @@ def test_test_password_is_not_sufficient_without_runtime(monkeypatch):
     with TestClient(app) as client:
         response = client.post("/test", json={"thread_id":"t-1","prompt":"hello"},headers={"X-Staging-Password":"s"*40})
         assert response.status_code == 503
+
+def test_failure_details_do_not_leak_secrets():
+    from staging_app import safe_failure, log_safe_failure
+    from agent_platform.runtime import AgentPipelineError
+    try:
+        raise RuntimeError("sk-secret-never-log")
+    except RuntimeError as cause:
+        try:
+            raise AgentPipelineError("construction") from cause
+        except AgentPipelineError as error:
+            message, code = safe_failure(error)
+            assert code == 502
+            assert "sk-secret-never-log" not in message
+            log_safe_failure(error, "testref")

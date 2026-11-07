@@ -1,15 +1,62 @@
 """Password-gated staging smoke lab. Never grants workspace or computer tools."""
 import asyncio
 import hmac
+import logging
 import os
 import time
+import traceback
+import uuid
 from collections import deque
 from contextlib import asynccontextmanager
 from pathlib import Path
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
-from agent_platform.runtime import AgentRuntime
+from agent_platform.runtime import AgentRuntime, AgentPipelineError
+
+logger = logging.getLogger("dragonzpyder.staging")
+
+
+def safe_failure(error: Exception) -> tuple[str, int]:
+    """Classify without exposing provider messages, prompts or secret values."""
+    root = error.__cause__ if isinstance(error, AgentPipelineError) and error.__cause__ else error
+    code = getattr(root, "status_code", None)
+    response = getattr(root, "response", None)
+    if not isinstance(code, int):
+        code = getattr(response, "status_code", None)
+    phase = error.phase if isinstance(error, AgentPipelineError) else "unknown"
+    if code == 401 or code == 403:
+        return "Model provider rejected authentication or access.", 502
+    if code == 402:
+        return "Model provider reported insufficient credits.", 502
+    if code == 429:
+        return "Model provider rate limit reached.", 502
+    if code in (400, 404, 422):
+        return "Selected model or request format was rejected by provider.", 502
+    if phase == "construction":
+        return "Agent graph construction failed. See staging diagnostics.", 502
+    if phase == "execution":
+        return "Agent execution failed. See staging diagnostics.", 502
+    return "Staging agent failed. See staging diagnostics.", 502
+
+
+def log_safe_failure(error: Exception, reference: str) -> None:
+    root = error.__cause__ if isinstance(error, AgentPipelineError) and error.__cause__ else error
+    code = getattr(root, "status_code", None)
+    if not isinstance(code, int):
+        code = getattr(getattr(root, "response", None), "status_code", None)
+    # Do not print exception messages: some SDK errors contain request text.
+    frames = traceback.extract_tb(root.__traceback__)
+    summary = [f"{frame.name}:{frame.lineno}" for frame in frames[-6:]]
+    logger.error(
+        "Agent smoke failure ref=%s phase=%s type=%s http_code=%s frames=%s",
+        reference,
+        getattr(error, "phase", "unknown"),
+        type(root).__name__,
+        code if isinstance(code, int) else "unknown",
+        ",".join(summary),
+    )
+
 
 UI = Path(__file__).with_name("staging_ui.html")
 attempts = deque(maxlen=40)
@@ -101,5 +148,13 @@ async def test(payload: Prompt, req: Request, x_staging_password: str = Header(d
             answer = await asyncio.wait_for(req.app.state.runtime.run(
                 service_id="agent-smoke", thread_id=payload.thread_id, prompt=payload.prompt), timeout=90)
             return {"answer": answer[:20000], "thread_id": payload.thread_id}
-        except TimeoutError: raise HTTPException(504,"Test exceeded 90 seconds") from None
-        except Exception: raise HTTPException(502,"Test failed; inspect staging logs") from None
+        except TimeoutError:
+            raise HTTPException(504, "Test exceeded 90 seconds") from None
+        except Exception as exc:
+            reference = uuid.uuid4().hex[:12]
+            log_safe_failure(exc, reference)
+            description, status_code = safe_failure(exc)
+            raise HTTPException(
+                status_code,
+                description + " Reference: " + reference,
+            ) from None
