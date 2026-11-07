@@ -165,9 +165,14 @@ async def run_staging_frontier_canary_once() -> None:
                 """SELECT status,metrics FROM dz_staging_frontier_canary
                    WHERE run_key=$1""", key,
             )
-            metrics = existing["metrics"] if existing and isinstance(
-                existing["metrics"], dict
-            ) else {}
+            raw_metrics = existing["metrics"] if existing else None
+            if isinstance(raw_metrics, str):
+                try:
+                    import json as _json
+                    raw_metrics = _json.loads(raw_metrics)
+                except ValueError:
+                    raw_metrics = None
+            metrics = raw_metrics if isinstance(raw_metrics, dict) else {}
             logger.warning(
                 "Frontier stress canary previously recorded status=%s "
                 "failure_type=%s error_phase=%s http_status=%s "
