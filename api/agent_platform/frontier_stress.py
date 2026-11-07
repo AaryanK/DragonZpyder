@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 from pathlib import Path
 from time import monotonic
 from uuid import uuid4
@@ -55,6 +56,13 @@ def load_suite() -> list[dict]:
             raise ValueError("Case must name three safe relative artifact files")
         if not isinstance(capabilities, list) or not capabilities:
             raise ValueError("Missing declared capability contracts")
+        artifact_dir = case.get("artifact_dir")
+        if not isinstance(artifact_dir, str) or not re.fullmatch(
+            r"/workspace/[a-zA-Z0-9_-]+", artifact_dir
+        ):
+            raise ValueError("Missing or unsafe exact artifact directory")
+        if any(f"{artifact_dir}/{name}" not in prompt for name in artifacts):
+            raise ValueError("Prompt must specify each artifact's exact path")
     return cases
 
 
@@ -81,7 +89,8 @@ def parallel_overlap(spans: list[dict] | None) -> bool:
 def score_report(case: dict, report: dict | None, *,
                  supported: set[str] | frozenset[str] = CAPABILITIES,
                  receipts: list[dict] | None = None,
-                 spans: list[dict] | None = None) -> dict:
+                 spans: list[dict] | None = None,
+                 oracle: dict | None = None) -> dict:
     missing_capabilities = sorted(set(case["required_capabilities"]) - set(supported))
     if not report:
         return {
@@ -92,10 +101,11 @@ def score_report(case: dict, report: dict | None, *,
     # Never credit an artifact from a model's statement alone: it must be
     # present in checkpoint state and accompanied by a real writing tool.
     artifacts = case["expected_artifacts"]
-    present = {name for name in artifacts if any(
-        isinstance(path, str) and path.startswith("/workspace/")
-        and path.rsplit("/", 1)[-1] == name for path in state_paths
-    )}
+    # A same-named file in the wrong workspace is NOT the requested artifact.
+    artifact_dir = case["artifact_dir"]
+    present = {
+        name for name in artifacts if f"{artifact_dir}/{name}" in state_paths
+    }
     actual_tools = set(report.get("successful_tools") or [])
     written = "write_file" in actual_tools or "edit_file" in actual_tools
     read_back = "read_file" in actual_tools
@@ -109,9 +119,17 @@ def score_report(case: dict, report: dict | None, *,
     has_oracle = bool(proved_kinds) and not missing_capabilities
     # Source and artifact checks are necessary but not sufficient: a native
     # sandbox/environment-state judge must attest complete objective success.
+    # Agent self-reporting cannot certify its own success. The caller must
+    # supply a separate trusted outcome judge's verdict, keyed to this case.
+    # An arbitrary caller-provided "passed" flag is not itself a signed
+    # certificate; live infrastructure must authenticate the judge.
+    oracle_ok = bool(
+        isinstance(oracle, dict) and oracle.get("case_id") == case["id"]
+        and oracle.get("passed") is True
+    )
     outcome_proven = bool(
-        report.get("objective_verified") is True and has_artifacts and
-        has_oracle and parallel and not missing_capabilities
+        oracle_ok and has_artifacts and has_oracle and parallel
+        and not missing_capabilities
     )
     return {
         "id": case["id"],
@@ -125,6 +143,7 @@ def score_report(case: dict, report: dict | None, *,
         "artifact_files_required": artifacts,
         "read_back_observed": read_back,
         "parallelism_observed": parallel,
+        "independent_outcome_oracle_passed": oracle_ok,
         "external_receipt_kinds": proved_kinds,
         "missing_capabilities": missing_capabilities,
         "model_run_success_claim": bool(report.get("objective_verified")),
