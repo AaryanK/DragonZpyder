@@ -61,3 +61,18 @@ def test_gateway_readiness_defaults_to_direct_dev(monkeypatch):
     from agent_platform.staging_smokes import gateway_readiness
     monkeypatch.delenv("DRAGONZPYDER_AGENT_USE_GATEWAY", raising=False)
     assert asyncio.run(gateway_readiness()) == "direct_staging_only"
+
+
+def test_memory_smoke_rejects_partial_success_without_paid_calls(monkeypatch):
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.setenv("DRAGONZPYDER_STAGING_PASSWORD", "r" * 40)
+    monkeypatch.setenv("DRAGONZPYDER_MEMORY_TEST_ENABLED", "1")
+    monkeypatch.setattr(
+        "staging_app.synthetic_memory_smoke",
+        lambda: {"memory_written": True, "memory_retrieved": False, "vector_records_deleted": True},
+    )
+    with TestClient(app) as client:
+        response = client.post("/test-memory", headers={"x-staging-password": "r" * 40})
+        assert response.status_code == 502
+        assert "Synthetic memory smoke failed" in response.json()["detail"]
+
