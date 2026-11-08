@@ -122,3 +122,25 @@ def test_parallel_deadlines_fail_closed(deadline):
 
     with pytest.raises(ValueError, match="deadline"):
         build_parallel_graph(worker, track_timeout_s=deadline)
+
+
+def test_incomplete_child_is_not_counted_as_successful_parallel_track():
+    from agent_platform.orchestration import run_parallel_tracks
+    async def worker(track):
+        if track["id"]=="stuck":
+            return {"answer":"Partial artifact",
+                    "status":"incomplete",
+                    "termination_reason":"repeated_tool_cycle",
+                    "checkpoint_recovered":True}
+        return {"answer":"Actual report", "status":"completed"}
+    report=asyncio.run(run_parallel_tracks([
+        {"id":"stuck","prompt":"Synthetic stuck child"},
+        {"id":"done","prompt":"Synthetic completed child"},
+    ], worker))
+    assert report["completed"]==1
+    assert report["failed"]==1
+    partial=next(x for x in report["tracks"] if x["id"]=="stuck")
+    assert partial["status"]=="incomplete"
+    assert partial["termination_reason"]=="repeated_tool_cycle"
+    assert partial["checkpoint_recovered"] is True
+    assert report["objective_verified"] is False
