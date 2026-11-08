@@ -148,6 +148,9 @@ def score_report(case: dict, report: dict | None, *,
     # Only an explicitly injected, authenticated run-bound judge may do so.
     oracle_ok = False
     if (isinstance(oracle, dict) and oracle.get("case_id") == case["id"]
+            and isinstance(report.get("execution_id"), str)
+            and bool(report["execution_id"])
+            and oracle.get("execution_id") == report["execution_id"]
             and oracle.get("passed") is True and callable(oracle_verifier)):
         try:
             oracle_ok = oracle_verifier(case, oracle) is True
