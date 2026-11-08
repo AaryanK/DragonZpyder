@@ -205,9 +205,9 @@ def test_all_expected_artifacts_have_exact_paths_and_f02_numeric_tolerance_is_no
 
 def test_failed_or_cancelled_spans_cannot_earn_parallel_credit():
     spans = [
-        {"agent": "a", "start_ms": 10, "end_ms": 100, "status": "completed", "status": "completed"},
-        {"agent": "b", "start_ms": 20, "end_ms": 110, "status": "completed", "status": "failed"},
-        {"agent": "c", "start_ms": 30, "end_ms": 120, "status": "completed", "status": "cancelled"},
+        {"agent": "a", "start_ms": 10, "end_ms": 100, "status": "completed"},
+        {"agent": "b", "start_ms": 20, "end_ms": 110, "status": "failed"},
+        {"agent": "c", "start_ms": 30, "end_ms": 120, "status": "cancelled"},
     ]
     assert parallel_overlap(spans) is False
     spans[2]["status"] = "completed"
