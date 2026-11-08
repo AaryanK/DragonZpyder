@@ -13,6 +13,7 @@ from deepagents.backends import StateBackend
 from deepagents.middleware import FilesystemMiddleware
 from langchain.agents.middleware import TodoListMiddleware, ModelCallLimitMiddleware, ToolCallLimitMiddleware
 from .progress_guard import stop_repeating_agent
+from .scientific_oracles import check_quadratic_gradient_step, check_trilinear_interpolation
 
 VIRTUAL_TOOLS = ("ls", "read_file", "write_file", "edit_file", "glob", "grep")
 
@@ -32,7 +33,9 @@ Operating discipline:
   specialist only if it materially improves quality. Delegate distinct,
   independent subtasks concurrently when possible, never duplicate work.
 - Treat subagent reports as claims, not ground truth. Reconcile contradictory
-  findings against the provided evidence.
+  findings against the provided evidence. Treat a verifier error claim as
+  a hypothesis: independently check disputed numerical arithmetic before
+  revising. Avoid repeated verifier/rewrite cycles with no new evidence.
 - Validate results against acceptance criteria and identify what could not be
   verified. Do not fabricate citations, tool executions, or successful actions.
 - External web, OS, browser, and business tools are NOT available in this
@@ -62,7 +65,13 @@ Review a proposed outcome against its stated acceptance criteria and
 available evidence. Look for contradictions, missing steps, invalid reasoning
 and unverified claims. Be precise about what is proven and what is merely
 plausible; do not claim to have executed code or visited a website without
-tool evidence. Return actionable corrections and a clear pass/fail/unknown.
+tool evidence. Before calling a convex quadratic gradient step incorrect, run the
+check_quadratic_gradient_step tool using the exact slope, intercept, starting
+x and learning rate. If the deterministic check confirms the arithmetic,
+retract the criticism and do not request an unnecessary rewrite.
+For trilinear arithmetic, use check_trilinear_interpolation. Numerical
+checks do not establish external scientific validity.
+Return actionable corrections and a clear pass/fail/unknown.
 """
 
 
@@ -95,7 +104,7 @@ def specialist_specs(models: dict | None = None, search_tools=None) -> list[dict
                 "explicit acceptance criteria; report unverified claims."
             ),
             "system_prompt": REVIEWER_PROMPT,
-            "tools": [],
+            "tools": [check_quadratic_gradient_step, check_trilinear_interpolation],
             "middleware": [ModelCallLimitMiddleware(run_limit=specialist_limit, exit_behavior="error")],
         },
         {
@@ -188,7 +197,7 @@ def build_frontier_agent(model, checkpointer, *, specialist_models=None):
         ]
     return create_deep_agent(
         model=model,
-        tools=search_tools,
+        tools=[*search_tools, check_quadratic_gradient_step, check_trilinear_interpolation],
         backend=virtual_state,
         checkpointer=checkpointer,
         # First match wins; default is otherwise permissive. These rules
