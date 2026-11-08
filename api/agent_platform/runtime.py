@@ -261,6 +261,7 @@ class AgentRuntime:
             raise AgentPipelineError("execution") from exc
         report = summarize_agent_result(result)
         trace = delegation_trace.snapshot()
+        report["execution_id"] = trace["execution_id"]
         report["delegation_spans"] = trace["spans"]
         report["parallelism_observed"] = trace["parallelism_observed"]
         report["delegated_calls_observed"] = trace["delegated_calls_observed"]
