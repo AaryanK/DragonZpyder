@@ -84,6 +84,12 @@ class ParentBudgetGateway:
         ):
             return
         dsn = os.getenv("DRAGONZPYDER_AGENT_SHARED_BUDGET_DATABASE_URL", "")
+        # Staging may explicitly choose the same trusted PostgreSQL cluster
+        # as the gateway usage ledger. Both ledgers use distinct table names;
+        # the browser and model never supply the DSN.
+        if (not dsn
+                and os.getenv("DRAGONZPYDER_AGENT_PARALLEL_USE_USAGE_DB") == "1"):
+            dsn = os.getenv("DRAGONZPYDER_USAGE_DATABASE_URL", "")
         if not dsn.startswith(("postgres://","postgresql://")):
             return
         import asyncpg
@@ -95,7 +101,9 @@ class ParentBudgetGateway:
             self.store = AtomicBudgetStore(self.pool)
         except Exception:
             await self.close()
-            raise RuntimeError("Parent budget gateway database unavailable") from None
+            # Fail closed for paid fan-out without taking ordinary staging
+            # inference offline when the reservation database is unavailable.
+            return
 
     async def close(self):
         self.store = None
