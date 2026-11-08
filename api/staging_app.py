@@ -403,6 +403,7 @@ async def test(payload: Prompt, req: Request, x_staging_password: str = Header(d
         raise HTTPException(503, "OpenRouter key validation was rate limited. Try again later.")
     if req.app.state.runtime is None: raise HTTPException(503,"Model or checkpoint database is not configured")
     if running.locked(): raise HTTPException(429,"A staging test is already running")
+    await paid_gateway_ui_preflight()
     attempts.append(now)
     async with running:
         try:
@@ -423,6 +424,49 @@ async def test(payload: Prompt, req: Request, x_staging_password: str = Header(d
 
 class SearchPrompt(BaseModel):
     query: str = Field(min_length=3, max_length=240)
+
+
+async def paid_gateway_ui_preflight() -> None:
+    """Give password-authenticated testers a safe, actionable budget error.
+
+    Checks the gateway's provider key, not the staging lab's possibly separate
+    key. No model request, provider mutation or budget bypass is performed.
+    """
+    base = os.getenv("DRAGONZPYDER_AGENT_GATEWAY_BASE_URL", "").rstrip("/")
+    token = os.getenv("DRAGONZPYDER_AGENT_GATEWAY_TOKEN", "")
+    expected = "http://dragonzpyder-gateway.railway.internal:8080/internal/agent/v1"
+    if (os.getenv("DRAGONZPYDER_AGENT_USE_GATEWAY") != "1"
+            or base != expected or len(token) < 32):
+        raise HTTPException(503, "Paid tests require the authenticated private staging gateway.")
+    try:
+        async with httpx.AsyncClient(timeout=9, trust_env=False, follow_redirects=False) as client:
+            response = await client.get(
+                base + "/key-budget",
+                headers={"Authorization": "Bearer " + token},
+            )
+        if response.status_code != 200:
+            raise HTTPException(503, "Gateway budget verification unavailable; no model call was made.")
+        payload = response.json()
+        if not isinstance(payload, dict):
+            raise ValueError("Invalid gateway cap report")
+    except (httpx.HTTPError, ValueError, TypeError):
+        raise HTTPException(503, "Gateway budget verification unavailable; no model call was made.") from None
+    if payload.get("approved") is True:
+        return
+    reason = payload.get("reason")
+    if reason == "key_hard_cap_exceeds_approved_total":
+        message = ("Paid test blocked: the OpenRouter key used by DragonZpyder Gateway "
+                   "Staging has a spending limit above $0.50. Set that key's non-resetting "
+                   "per-key limit to $0.50 or less, then retry.")
+    elif reason == "resettable_key_cap_not_permitted":
+        message = "Paid test blocked: the staging OpenRouter key spending cap must not reset."
+    elif reason in ("key_has_no_verified_hard_cap", "invalid_provider_budget_response"):
+        message = "Paid test blocked: no enforceable OpenRouter $0.50 per-key cap was verified."
+    elif reason == "key_budget_exhausted":
+        message = "Paid test blocked: the staging OpenRouter key's approved budget is exhausted."
+    else:
+        message = "Paid test blocked: the gateway could not verify the approved $0.50 OpenRouter key cap."
+    raise HTTPException(503, message)
 
 
 search_attempts = deque(maxlen=12)

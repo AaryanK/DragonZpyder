@@ -222,3 +222,52 @@ def test_budget_diagnostic_blocks_external_gateway_without_network(monkeypatch):
                        "https://outside.example/internal/agent/v1")
     monkeypatch.setenv("DRAGONZPYDER_AGENT_GATEWAY_TOKEN", "t" * 40)
     assert asyncio.run(log_paid_key_budget_preflight()) is None
+
+
+def test_paid_gateway_ui_preflight_reports_key_cap_instead_of_generic_failure(monkeypatch):
+    import asyncio
+    import staging_app
+    from fastapi import HTTPException
+
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_USE_GATEWAY", "1")
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_GATEWAY_BASE_URL",
+        "http://dragonzpyder-gateway.railway.internal:8080/internal/agent/v1")
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_GATEWAY_TOKEN", "t" * 40)
+
+    class FakeResponse:
+        status_code = 200
+        def json(self):
+            return {"approved": False, "reason": "key_hard_cap_exceeds_approved_total"}
+
+    class FakeClient:
+        def __init__(self, **kwargs): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *args): return None
+        async def get(self, url, *, headers):
+            assert url.endswith("/internal/agent/v1/key-budget")
+            assert headers["Authorization"].startswith("Bearer ")
+            return FakeResponse()
+
+    monkeypatch.setattr(staging_app.httpx, "AsyncClient", FakeClient)
+    try:
+        asyncio.run(staging_app.paid_gateway_ui_preflight())
+        assert False, "Expected budget refusal"
+    except HTTPException as exc:
+        assert exc.status_code == 503
+        assert "above $0.50" in exc.detail
+
+
+def test_paid_gateway_ui_preflight_rejects_external_origin_without_network(monkeypatch):
+    import asyncio
+    import staging_app
+    from fastapi import HTTPException
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_USE_GATEWAY", "1")
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_GATEWAY_BASE_URL",
+                       "https://external.example/internal/agent/v1")
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_GATEWAY_TOKEN", "t" * 40)
+    try:
+        asyncio.run(staging_app.paid_gateway_ui_preflight())
+        assert False, "Expected private-gateway refusal"
+    except HTTPException as exc:
+        assert exc.status_code == 503
+        assert "private staging gateway" in exc.detail
