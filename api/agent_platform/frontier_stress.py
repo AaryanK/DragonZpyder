@@ -96,7 +96,8 @@ def score_report(case: dict, report: dict | None, *,
                  supported: set[str] | frozenset[str] = CAPABILITIES,
                  receipts: list[dict] | None = None,
                  spans: list[dict] | None = None,
-                 oracle: dict | None = None) -> dict:
+                 oracle: dict | None = None,
+                 oracle_verifier=None) -> dict:
     missing_capabilities = sorted(set(case["required_capabilities"]) - set(supported))
     if not report:
         return {
@@ -140,10 +141,15 @@ def score_report(case: dict, report: dict | None, *,
     # supply a separate trusted outcome judge's verdict, keyed to this case.
     # An arbitrary caller-provided "passed" flag is not itself a signed
     # certificate; live infrastructure must authenticate the judge.
-    oracle_ok = bool(
-        isinstance(oracle, dict) and oracle.get("case_id") == case["id"]
-        and oracle.get("passed") is True
-    )
+    # Untrusted verdict dictionaries never authorize benchmark success.
+    # Only an explicitly injected, authenticated run-bound judge may do so.
+    oracle_ok = False
+    if (isinstance(oracle, dict) and oracle.get("case_id") == case["id"]
+            and oracle.get("passed") is True and callable(oracle_verifier)):
+        try:
+            oracle_ok = oracle_verifier(case, oracle) is True
+        except Exception:
+            oracle_ok = False
     outcome_proven = bool(
         oracle_ok and has_artifacts and has_oracle and parallel
         and not missing_capabilities
