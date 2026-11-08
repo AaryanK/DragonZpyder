@@ -177,3 +177,17 @@ def test_langfuse_callback_cannot_attach_to_user_prompt_smoke(monkeypatch):
     assert telemetry_callbacks("personal-chat") == []
     monkeypatch.setenv("DRAGONZPYDER_STAGING_LANGFUSE_ENABLED", "0")
     assert telemetry_callbacks("frontier-stress") == []
+
+
+
+def test_subagent_stops_after_five_ai_turns_without_model_spend():
+    from agent_platform.progress_guard import (
+        MAX_SPECIALIST_TURNS, specialist_progress_decision,
+    )
+    assert MAX_SPECIALIST_TURNS == 5
+    messages=[AIMessage(content="progress") for _ in range(5)]
+    decision=specialist_progress_decision({"messages":messages})
+    assert decision["jump_to"]=="end"
+    assert decision["messages"][0].content.startswith(STOP_PREFIX)
+    assert "specialist_step_budget_exhausted" in decision["messages"][0].content
+    assert specialist_progress_decision({"messages":messages[:4]}) is None
