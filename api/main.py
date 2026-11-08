@@ -82,6 +82,8 @@ async def lifespan(app: FastAPI):
     setup_telemetry()
     await ledger.open()
     await parent_budget.open()
+    log.warning("Staging atomic parent-budget gateway status=%s",
+                "ready" if parent_budget.active else "disabled")
     agent_runtime = None
     try:
         if os.getenv("DRAGONZPYDER_AGENTS_ENABLED") == "1":
@@ -327,7 +329,8 @@ async def inference(prefix: str, request: Request):
         return {"service": "dragonzpyder-inference",
                 "status": "ready" if os.getenv("OPENROUTER_API_KEY") else "unconfigured",
                 "models": len(models()), "usage_ledger": ledger.available,
-                 "paid_test_cap_guard": os.getenv("DRAGONZPYDER_STAGING_PAID_TEST_CAP_USD") == "0.50"}
+                 "paid_test_cap_guard": os.getenv("DRAGONZPYDER_STAGING_PAID_TEST_CAP_USD") == "0.50",
+                 "atomic_parent_budget_ready": parent_budget.active}
     if request.method == "GET" and route == "/v1/models":
         return {"object": "list", "data": [{"id": model, "object": "model",
                                             "owned_by": "dragonzpyder"} for model in models()]}
