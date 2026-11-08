@@ -4,10 +4,10 @@ import asyncio
 from agent_platform.frontier_batch import validated_budget, safe_metrics, run_frontier_batch_once, ORDER
 
 
-def test_batch_keeps_all_ten_unique_original_ids():
-    assert len(ORDER) == len(set(ORDER)) == 10
-    assert set(ORDER) == {"F01", "F02", "F03", "F04", "F05", "F06",
-                          "F07", "F08", "F09", "F10"}
+def test_batch_covers_remaining_nine_case_ids_after_prior_f07_trial():
+    assert len(ORDER) == len(set(ORDER)) == 9
+    assert set(ORDER) | {"F07"} == {"F01", "F02", "F03", "F04", "F05",
+                                   "F06", "F07", "F08", "F09", "F10"}
 
 
 def test_provider_cap_is_upstream_nonresetting_and_strict():

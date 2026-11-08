@@ -19,8 +19,8 @@ import httpx
 from .frontier_stress import load_suite, live_eval_enabled, run_live_case
 
 log = logging.getLogger("dragonzpyder.frontier_batch")
-RUN_KEY = "frontier-ten-20261108-real-v1"
-ORDER = ("F07", "F02", "F08", "F01", "F09", "F04", "F03", "F05", "F06", "F10")
+RUN_KEY = "frontier-nine-20261108-real-v2"
+ORDER = ("F02", "F08", "F01", "F09", "F04", "F03", "F05", "F06", "F10")
 MIN_REMAINING_USD = Decimal("0.075")
 MAX_CASE_SECONDS = 115
 MAX_BATCH_SECONDS = 690
@@ -86,7 +86,7 @@ async def run_frontier_batch_once() -> None:
         log.warning("Frontier batch blocked: credential or durable database unavailable")
         return
     suite = {c["id"]: c for c in load_suite()}
-    if set(suite) != set(ORDER):
+    if set(suite) != (set(ORDER) | {"F07"}):
         log.error("Frontier batch blocked: fixture identity mismatch")
         return
 
@@ -130,6 +130,29 @@ async def run_frontier_batch_once() -> None:
         if not claimed:
             log.warning("Frontier batch already claimed; refusing duplicate paid work")
             return
+        # The earlier F07 attempt is already part of this ten-case study.
+        # Inspect its sanitized diagnostic, never prompt or provider output.
+        try:
+            con = await connect(dsn, timeout=8, command_timeout=10)
+            try:
+                old = await con.fetchval(
+                    """SELECT metrics FROM dz_frontier_batch_case
+                       WHERE run_key=$1 AND case_id='F07'""",
+                    "frontier-ten-20261108-real-v1",
+                )
+            finally:
+                await con.close()
+            if isinstance(old, str):
+                old = json.loads(old)
+            if isinstance(old, dict):
+                log.warning(
+                    "Frontier earlier F07 diagnostic status=%s exception_type=%s "
+                    "error_phase=%s http_status=%s",
+                    old.get("status"), old.get("exception_type"),
+                    old.get("error_phase"), old.get("http_status"),
+                )
+        except Exception:
+            log.warning("Frontier earlier F07 diagnostic unavailable")
     except Exception:
         log.error("Frontier batch refused: durable exactly-once claim unavailable")
         return
@@ -188,6 +211,11 @@ async def run_frontier_batch_once() -> None:
                     "objective_verified": False,
                     "exception_type": type(exc).__name__,
                 }
+            from .frontier_stress import CAPABILITIES
+            report.setdefault(
+                "missing_capabilities",
+                sorted(set(suite[case_id]["required_capabilities"]) - CAPABILITIES),
+            )
             after = await gateway_balance(client, token)
             report["provider_remaining_before_usd"] = str(before)
             if after is not None:
@@ -214,7 +242,8 @@ async def run_frontier_batch_once() -> None:
             log.warning(
                 "Frontier live case result id=%s status=%s verified=%s "
                 "tools=%s delegated=%s parallel=%s created=%s read_back=%s "
-                "seconds=%s observed_key_delta_usd=%s",
+                "seconds=%s observed_key_delta_usd=%s exception_type=%s "
+                "error_phase=%s http_status=%s missing_capabilities=%s",
                 case_id, report["status"], report["objective_verified"],
                 report.get("successful_tool_count", 0),
                 report.get("delegated_calls_observed", 0),
@@ -223,15 +252,21 @@ async def run_frontier_batch_once() -> None:
                 len(report.get("artifact_files_read_back", [])),
                 report.get("elapsed_s", "unknown"),
                 report.get("observed_key_delta_usd", "unknown"),
+                report.get("exception_type", "none"),
+                report.get("error_phase", "none"),
+                report.get("http_status", "none"),
+                ",".join(report.get("missing_capabilities", [])) or "none",
             )
             if after is None:
                 overall_status = "provider_balance_unavailable_after_case"
                 break
             # Timeouts, upstream provider failures and unknown-cost outcomes
             # stop this batch; never continue from an ambiguous paid outcome.
-            if report["status"] in ("deadline_exceeded", "execution_failed"):
-                overall_status = "stopped_after_execution_failure"
+            if report["status"] == "deadline_exceeded":
+                overall_status = "stopped_after_unresolved_timeout"
                 break
+            # An observed graph/model error is a benchmark result. Resume
+            # unrelated cases only after checking the immutable upstream cap.
     if complete != len(ORDER) and overall_status == "completed":
         overall_status = "partial"
     try:
