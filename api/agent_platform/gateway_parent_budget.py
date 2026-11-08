@@ -53,7 +53,7 @@ def audited_provider_cost(response: object) -> str | None:
         return None
     if not value.is_finite() or value < 0 or value > MAX_PARENT_USD:
         return None
-    return str(value.quantize(QUANTUM, rounding=ROUND_CEILING))
+    return "0" if value == 0 else str(value.quantize(QUANTUM, rounding=ROUND_CEILING))
 
 
 def _id(raw: str) -> str:
