@@ -209,9 +209,9 @@ def test_failed_or_cancelled_spans_cannot_earn_parallel_credit():
         {"agent": "b", "start_ms": 20, "end_ms": 110, "status": "failed", "execution_id": "eval-run"},
         {"agent": "c", "start_ms": 30, "end_ms": 120, "status": "cancelled", "execution_id": "eval-run"},
     ]
-    assert parallel_overlap(spans) is False
+    assert parallel_overlap(spans, execution_id="eval-run") is False
     spans[2]["status"] = "completed"
-    assert parallel_overlap(spans) is True
+    assert parallel_overlap(spans, execution_id="eval-run") is True
 
 
 def test_unrelated_tool_readback_cannot_earn_100_percent_artifact_score():
@@ -281,7 +281,7 @@ def test_nonfinite_and_negative_delegation_timestamps_never_prove_parallelism():
 
 def test_missing_delegation_status_never_earns_parallel_credit():
     completed = {"agent": "analyst", "start_ms": 10, "end_ms": 100, "status": "completed", "execution_id": "eval-run"}
-    missing = {"agent": "reviewer", "start_ms": 20, "end_ms": 110}
+    missing = {"agent": "reviewer", "start_ms": 20, "end_ms": 110, "execution_id": "eval-run"}
     assert parallel_overlap([completed, missing], execution_id="eval-run") is False
     assert parallel_overlap([missing, dict(missing, agent="third")], execution_id="eval-run") is False
     assert parallel_overlap([completed, dict(missing, status="completed")], execution_id="eval-run") is True
