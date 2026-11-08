@@ -237,7 +237,8 @@ def test_unrelated_tool_readback_cannot_earn_100_percent_artifact_score():
     )
     assert result["objective_verified"] is False
     assert len(result["artifact_files_read_back"]) == len(expected) - 1
-    assert result["independent_outcome_oracle_passed"] is True
+    # A caller-supplied verdict cannot cross the independent oracle trust boundary.
+    assert result["independent_outcome_oracle_passed"] is False
 
 
 def test_generic_read_call_without_path_correlated_receipts_is_not_readback():
