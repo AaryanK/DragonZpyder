@@ -31,10 +31,14 @@ def checked_limit(data: object) -> tuple[Decimal, Decimal]:
         remaining = Decimal(str(raw_remaining))
     except InvalidOperation as exc:
         raise PaidTestBudgetError("Invalid provider budget") from exc
-    if not (limit.is_finite() and remaining.is_finite() and
-            Decimal("0") < limit <= APPROVED_CAP_USD and
-            Decimal("0") < remaining <= limit):
-        raise PaidTestBudgetError("Provider key limit is not within the approved $0.50 cap")
+    if not (limit.is_finite() and remaining.is_finite()):
+        raise PaidTestBudgetError("invalid_key_limit_fields")
+    if limit <= 0 or limit > APPROVED_CAP_USD:
+        raise PaidTestBudgetError("key_limit_above_approved_cap_or_invalid")
+    if remaining <= 0:
+        raise PaidTestBudgetError("key_limit_exhausted")
+    if remaining > limit:
+        raise PaidTestBudgetError("inconsistent_provider_remaining_cap")
     return limit, remaining
 
 
