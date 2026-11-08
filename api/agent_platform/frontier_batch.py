@@ -19,11 +19,11 @@ import httpx
 from .frontier_stress import load_suite, live_eval_enabled, run_live_case
 
 log = logging.getLogger("dragonzpyder.frontier_batch")
-RUN_KEY = "frontier-improved-20261108-real-v3"
-ORDER = ("F08", "F02")
-MIN_REMAINING_USD = Decimal("0.16")
-MAX_CASE_SECONDS = 160
-MAX_BATCH_SECONDS = 420
+RUN_KEY = "frontier-progress-guard-f08-20261108-v4"
+ORDER = ("F08",)
+MIN_REMAINING_USD = Decimal("0.12")
+MAX_CASE_SECONDS = 115
+MAX_BATCH_SECONDS = 150
 GATEWAY = "http://dragonzpyder-gateway.railway.internal:8080/internal/agent/v1"
 
 
@@ -37,7 +37,7 @@ def safe_metrics(case_id: str, report: dict) -> dict:
         "delegated_calls_observed", "successful_tool_count", "failed_tool_count",
         "elapsed_s", "exception_type", "error_phase", "http_status",
         "comparison_with_frontier_labs", "termination_reason",
-        "checkpoint_recovered",
+        "checkpoint_recovered", "langfuse_trace_id",
     )
     return {"id": case_id, **{
         field: report[field] for field in keep if field in report
@@ -87,7 +87,7 @@ async def run_frontier_batch_once() -> None:
         log.warning("Frontier batch blocked: credential or durable database unavailable")
         return
     suite = {c["id"]: c for c in load_suite()}
-    if set(suite) != {"F01", "F02", "F03", "F04", "F05", "F06", "F07", "F08", "F09", "F10"} or len(ORDER) != 2:
+    if set(suite) != {"F01", "F02", "F03", "F04", "F05", "F06", "F07", "F08", "F09", "F10"} or ORDER != ("F08",):
         log.error("Frontier batch blocked: fixture identity mismatch")
         return
 

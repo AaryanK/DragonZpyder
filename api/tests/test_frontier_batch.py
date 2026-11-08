@@ -4,9 +4,9 @@ import asyncio
 from agent_platform.frontier_batch import validated_budget, safe_metrics, run_frontier_batch_once, ORDER
 
 
-def test_improved_paid_stress_retries_two_original_long_horizon_cases():
-    assert len(ORDER) == len(set(ORDER)) == 2
-    assert ORDER == ("F08", "F02")
+def test_one_shot_loopguard_retest_is_only_f08():
+    assert len(ORDER) == len(set(ORDER)) == 1
+    assert ORDER == ("F08",)
 
 
 def test_provider_cap_is_upstream_nonresetting_and_strict():
@@ -49,5 +49,5 @@ def test_batch_rejects_nonprivate_gateway_before_paid_call(monkeypatch):
 
 def test_improved_mode_is_gated_and_base_mode_remains_bounded():
     from agent_platform.frontier_batch import MIN_REMAINING_USD, MAX_CASE_SECONDS
-    assert MIN_REMAINING_USD == Decimal("0.16")
-    assert 60 < MAX_CASE_SECONDS <= 180
+    assert MIN_REMAINING_USD == Decimal("0.12")
+    assert 60 < MAX_CASE_SECONDS <= 120

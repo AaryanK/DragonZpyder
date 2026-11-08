@@ -163,3 +163,17 @@ def test_runtime_recovers_checkpointed_evidence_on_real_graph_recursion_error(mo
     assert report["successful_tools"] == ["write_file"]
     assert path in report["virtual_artifact_paths"]
     assert report["objective_verified"] is False
+
+
+
+def test_langfuse_callback_cannot_attach_to_user_prompt_smoke(monkeypatch):
+    """Even with credentials, only synthetic benchmark services opt in."""
+    from agent_platform.runtime import telemetry_callbacks
+    monkeypatch.setenv("DRAGONZPYDER_STAGING_LANGFUSE_ENABLED", "1")
+    monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-lf-offline")
+    monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-lf-offline")
+    monkeypatch.setenv("LANGFUSE_BASE_URL", "https://us.cloud.langfuse.com")
+    assert telemetry_callbacks("agent-smoke") == []
+    assert telemetry_callbacks("personal-chat") == []
+    monkeypatch.setenv("DRAGONZPYDER_STAGING_LANGFUSE_ENABLED", "0")
+    assert telemetry_callbacks("frontier-stress") == []

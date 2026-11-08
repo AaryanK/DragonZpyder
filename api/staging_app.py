@@ -382,9 +382,13 @@ async def status(req: Request):
     components["langfuse"] = (
         "configured_unverified"
         if os.getenv("DRAGONZPYDER_STAGING_LANGFUSE_ENABLED") == "1"
-        and all(os.getenv(k) for k in (
-            "LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY", "LANGFUSE_BASE_URL"
-        ))
+        and all(
+            os.getenv(k) or os.getenv(alias) for k, alias in (
+                ("LANGFUSE_PUBLIC_KEY", "DRAGONZPYDER_LANGFUSE_PUBLIC_KEY"),
+                ("LANGFUSE_SECRET_KEY", "DRAGONZPYDER_LANGFUSE_SECRET_KEY"),
+                ("LANGFUSE_BASE_URL", "DRAGONZPYDER_LANGFUSE_HOST"),
+            )
+        )
         else "not_configured"
     )
     components["hatchet"] = (

@@ -307,6 +307,7 @@ class AgentRuntime:
             agent = build_agent(model, self._checkpointer)
         except Exception as exc:
             raise AgentPipelineError("construction") from exc
+        langfuse_handlers = telemetry_callbacks(service_id)
         config = {
             "configurable": {"thread_id": key},
             "recursion_limit": (
@@ -319,7 +320,7 @@ class AgentRuntime:
                 )) else
                 32 if os.getenv("DRAGONZPYDER_AGENT_HARNESS_V2") == "1" else 16
             ),
-            "callbacks": [delegation_trace, *telemetry_callbacks(service_id)],
+            "callbacks": [delegation_trace, *langfuse_handlers],
             "metadata": {
                 "service_id": service_id,
                 "harness_version": "v2" if os.getenv(
@@ -356,6 +357,12 @@ class AgentRuntime:
         report["parallelism_observed"] = trace["parallelism_observed"]
         report["delegated_calls_observed"] = trace["delegated_calls_observed"]
         report["unfinished_delegation_calls"] = trace["unfinished_calls"]
+        for handler in langfuse_handlers:
+            trace_id = getattr(handler, "last_trace_id", None)
+            if isinstance(trace_id, str) and re.fullmatch(r"[a-fA-F0-9]{32}", trace_id):
+                # Trace ID only, never prompt, model output, or credentials.
+                report["langfuse_trace_id"] = trace_id.lower()
+                break
         return report
 
     async def run_parallel_report(

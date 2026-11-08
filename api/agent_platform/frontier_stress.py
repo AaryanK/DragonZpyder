@@ -249,6 +249,8 @@ async def run_live_case(case_id: str) -> dict:
             # Do not emit private model outputs or prompt text into logs.
             score["successful_tool_count"] = len(report["successful_tools"])
             score["failed_tool_count"] = report["failed_tool_count"]
+            if report.get("langfuse_trace_id"):
+                score["langfuse_trace_id"] = report["langfuse_trace_id"]
         except Exception as exc:
             # Safe diagnostic classes and HTTP status only. Never retain
             # raw exception messages, prompts, tool arguments or secrets.
