@@ -193,6 +193,34 @@ def test_agent_self_claim_cannot_replace_independent_outcome_oracle():
     assert crashed["objective_verified"] is False
 
 
+
+def test_incomplete_or_failed_run_cannot_earn_verified_success():
+    case = next(c for c in load_suite() if c["id"] == "F08")
+    paths = [case["artifact_dir"] + "/" + name for name in case["expected_artifacts"]]
+    report = {
+        "virtual_artifact_paths": paths,
+        "artifact_readback_paths": paths,
+        "successful_tools": ["write_file", "read_file"],
+        "execution_id": "eval-run",
+    }
+    kwargs = {
+        "supported": set(case["required_capabilities"]),
+        "receipts": [{"kind": "sandbox_test", "verified": True}],
+        "spans": [
+            {"agent": "a", "start_ms": 10, "end_ms": 110, "status": "completed", "execution_id": "eval-run"},
+            {"agent": "b", "start_ms": 20, "end_ms": 120, "status": "completed", "execution_id": "eval-run"},
+        ],
+        "oracle": {"case_id": "F08", "execution_id": "eval-run", "passed": True},
+        "oracle_verifier": lambda *_: True,
+    }
+    control = score_report(case, dict(report, status="completed"), **kwargs)
+    assert control["status"] == "verified_success"
+    for status in ("incomplete", "failed", "cancelled", "execution_failed"):
+        result = score_report(case, dict(report, status=status), **kwargs)
+        assert result["objective_verified"] is False
+        assert result["status"] != "verified_success"
+
+
 def test_all_expected_artifacts_have_exact_paths_and_f02_numeric_tolerance_is_not_a_file():
     for case in load_suite():
         assert case["artifact_dir"].startswith("/workspace/")
