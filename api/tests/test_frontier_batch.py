@@ -4,10 +4,9 @@ import asyncio
 from agent_platform.frontier_batch import validated_budget, safe_metrics, run_frontier_batch_once, ORDER
 
 
-def test_batch_covers_remaining_nine_case_ids_after_prior_f07_trial():
-    assert len(ORDER) == len(set(ORDER)) == 9
-    assert set(ORDER) | {"F07"} == {"F01", "F02", "F03", "F04", "F05",
-                                   "F06", "F07", "F08", "F09", "F10"}
+def test_improved_paid_stress_retries_two_original_long_horizon_cases():
+    assert len(ORDER) == len(set(ORDER)) == 2
+    assert ORDER == ("F08", "F02")
 
 
 def test_provider_cap_is_upstream_nonresetting_and_strict():
@@ -45,3 +44,10 @@ def test_batch_rejects_nonprivate_gateway_before_paid_call(monkeypatch):
     monkeypatch.setattr("agent_platform.frontier_batch.live_eval_enabled", lambda: True)
     monkeypatch.setenv("DRAGONZPYDER_STAGING_FRONTIER_CANARY_ONCE", "0")
     asyncio.run(run_frontier_batch_once())
+
+
+
+def test_improved_mode_is_gated_and_base_mode_remains_bounded():
+    from agent_platform.frontier_batch import MIN_REMAINING_USD, MAX_CASE_SECONDS
+    assert MIN_REMAINING_USD == Decimal("0.16")
+    assert 60 < MAX_CASE_SECONDS <= 180

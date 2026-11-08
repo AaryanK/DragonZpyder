@@ -245,7 +245,15 @@ class AgentRuntime:
                 config={
                     "configurable": {"thread_id": key},
                     "recursion_limit": (
-                        32 if os.getenv("DRAGONZPYDER_AGENT_HARNESS_V2") == "1" else 16
+                        96 if all(os.getenv(key) == "1" for key in (
+                            "DRAGONZPYDER_AGENT_HARNESS_V2",
+                            "DRAGONZPYDER_AGENT_STRESS_EVAL_ENABLED",
+                            "DRAGONZPYDER_AGENT_EVAL_ALLOW_PAID",
+                            "DRAGONZPYDER_AGENT_USE_GATEWAY",
+                            "DRAGONZPYDER_AGENT_PRODUCTION_MODE",
+                        )) else
+                        32 if os.getenv("DRAGONZPYDER_AGENT_HARNESS_V2") == "1"
+                        else 16
                     ),
                     "callbacks": [delegation_trace, *telemetry_callbacks()],
                     "metadata": {

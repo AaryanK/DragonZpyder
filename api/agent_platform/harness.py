@@ -75,7 +75,7 @@ def specialist_specs(models: dict | None = None, search_tools=None) -> list[dict
         "DRAGONZPYDER_AGENT_USE_GATEWAY",
         "DRAGONZPYDER_AGENT_PRODUCTION_MODE",
     ))
-    specialist_limit = 5 if stress_mode else 3
+    specialist_limit = 7 if stress_mode else 3
     specs = [
         {
             "name": "analyst",
@@ -216,9 +216,9 @@ def build_frontier_agent(model, checkpointer, *, specialist_models=None):
             # This is *per agent*; global/account cost ceilings remain a
             # separate responsibility of the metered gateway.
             ModelCallLimitMiddleware(
-                run_limit=12 if stress_mode else 8, exit_behavior="error"
+                run_limit=24 if stress_mode else 8, exit_behavior="error"
             ),
-            ToolCallLimitMiddleware(tool_name="task", run_limit=3, exit_behavior="error"),
+            ToolCallLimitMiddleware(tool_name="task", run_limit=4 if stress_mode else 3, exit_behavior="error"),
             *([
                 ToolCallLimitMiddleware(
                     tool_name="web_search", run_limit=3, exit_behavior="error"

@@ -19,11 +19,11 @@ import httpx
 from .frontier_stress import load_suite, live_eval_enabled, run_live_case
 
 log = logging.getLogger("dragonzpyder.frontier_batch")
-RUN_KEY = "frontier-nine-20261108-real-v2"
-ORDER = ("F02", "F08", "F01", "F09", "F04", "F03", "F05", "F06", "F10")
-MIN_REMAINING_USD = Decimal("0.075")
-MAX_CASE_SECONDS = 115
-MAX_BATCH_SECONDS = 690
+RUN_KEY = "frontier-improved-20261108-real-v3"
+ORDER = ("F08", "F02")
+MIN_REMAINING_USD = Decimal("0.16")
+MAX_CASE_SECONDS = 160
+MAX_BATCH_SECONDS = 420
 GATEWAY = "http://dragonzpyder-gateway.railway.internal:8080/internal/agent/v1"
 
 
@@ -86,7 +86,7 @@ async def run_frontier_batch_once() -> None:
         log.warning("Frontier batch blocked: credential or durable database unavailable")
         return
     suite = {c["id"]: c for c in load_suite()}
-    if set(suite) != (set(ORDER) | {"F07"}):
+    if set(suite) != {"F01", "F02", "F03", "F04", "F05", "F06", "F07", "F08", "F09", "F10"} or len(ORDER) != 2:
         log.error("Frontier batch blocked: fixture identity mismatch")
         return
 
@@ -163,6 +163,10 @@ async def run_frontier_batch_once() -> None:
     overall_status = "completed"
     async with httpx.AsyncClient(trust_env=False, follow_redirects=False) as client:
         for case_id in ORDER:
+            # Avoid firing consecutive provider bursts after the baseline 429s.
+            # No inference occurs during this cooldown.
+            if attempted:
+                await asyncio.sleep(45)
             if monotonic() - started > MAX_BATCH_SECONDS:
                 overall_status = "time_budget_exhausted"
                 break
@@ -264,6 +268,9 @@ async def run_frontier_batch_once() -> None:
             # stop this batch; never continue from an ambiguous paid outcome.
             if report["status"] == "deadline_exceeded":
                 overall_status = "stopped_after_unresolved_timeout"
+                break
+            if report.get("http_status") == 429:
+                overall_status = "stopped_after_provider_rate_limit"
                 break
             # An observed graph/model error is a benchmark result. Resume
             # unrelated cases only after checking the immutable upstream cap.
