@@ -9,8 +9,11 @@ from __future__ import annotations
 import hashlib
 import os
 import re
+from uuid import UUID, uuid4
 from contextlib import AsyncExitStack
 from typing import Any
+
+import httpx
 from urllib.parse import urlsplit
 
 # Restrict checkpoint deserialization to built-in types before importing LangGraph.
@@ -84,7 +87,7 @@ class AgentPipelineError(RuntimeError):
         self.phase = phase
 
 
-def build_agent(model, checkpointer):
+def build_agent(model, checkpointer, *, parent_job_id: str | None = None):
     """Construct the enabled agent harness without executing a model call."""
     if os.getenv("DRAGONZPYDER_AGENT_HARNESS_V2") == "1":
         from .harness import build_frontier_agent
@@ -92,7 +95,7 @@ def build_agent(model, checkpointer):
         for role in ("analyst", "verifier", "researcher", "builder"):
             configured = os.getenv("DRAGONZPYDER_AGENT_" + role.upper() + "_MODEL_ID", "").strip()
             if configured:
-                models[role] = model_client(model_override=configured)
+                models[role] = model_client(model_override=configured, parent_job_id=parent_job_id)
         return build_frontier_agent(model, checkpointer, specialist_models=models)
     backend = StateBackend()
     # A replacement filesystem middleware must explicitly use the same backend.
@@ -111,7 +114,8 @@ def build_agent(model, checkpointer):
     )
 
 
-def model_client(*, model_override: str | None = None):
+def model_client(*, model_override: str | None = None,
+                 parent_job_id: str | None = None):
     """Agent inference is metered by DragonZpyder when gateway mode is enabled."""
     model = configured_model(model_override)
     # Reasoning-capable providers may use the first hundreds of output tokens
@@ -136,6 +140,14 @@ def model_client(*, model_override: str | None = None):
                 parsed.query or parsed.fragment or not parsed.path.endswith("/internal/agent/v1") or
                 len(token) < 32):
             raise RuntimeError("A private, authenticated DragonZpyder agent gateway is required")
+        if parent_job_id is not None:
+            if os.getenv("DRAGONZPYDER_AGENT_PARALLEL_GATEWAY_ENABLED") != "1":
+                raise RuntimeError("Atomic parent budget gateway is not enabled")
+            try:
+                if str(UUID(parent_job_id)) != parent_job_id:
+                    raise ValueError("Noncanonical job ID")
+            except (ValueError,TypeError,AttributeError):
+                raise RuntimeError("Invalid parent budget job ID") from None
         return ChatOpenAI(
             base_url=base,
             api_key=token,
@@ -143,7 +155,13 @@ def model_client(*, model_override: str | None = None):
             max_tokens=output_tokens,
             max_retries=retry_count,
             timeout=60,
+            default_headers=(
+                {"X-DragonZpyder-Parent-Job-Id":parent_job_id}
+                if parent_job_id is not None else None
+            ),
         )
+    if parent_job_id is not None:
+        raise RuntimeError("Paid parent job cannot use direct OpenRouter inference")
     if os.getenv("DRAGONZPYDER_AGENT_PRODUCTION_MODE") == "1":
         raise RuntimeError("Direct OpenRouter inference is forbidden in production mode")
     key = os.getenv("OPENROUTER_API_KEY", "")
@@ -294,17 +312,22 @@ class AgentRuntime:
         self._checkpointer = None
 
     async def run_report(self, *, service_id: str, thread_id: str, prompt: str,
-                         recover_partial_on_failure: bool = False) -> dict:
+                         recover_partial_on_failure: bool = False,
+                         parent_job_id: str | None = None) -> dict:
         if self._checkpointer is None:
             raise RuntimeError("Agent runtime is not started")
         if not isinstance(prompt, str) or not 1 <= len(prompt.strip()) <= 12000:
             raise ValueError("Prompt must be 1–12000 characters")
         key = thread_key(service_id, thread_id)
-        model = model_client()
+        model = model_client(parent_job_id=parent_job_id)
         from .delegation_trace import DelegationTrace
         delegation_trace = DelegationTrace()
         try:
-            agent = build_agent(model, self._checkpointer)
+            agent = (
+                build_agent(model, self._checkpointer, parent_job_id=parent_job_id)
+                if parent_job_id is not None else
+                build_agent(model, self._checkpointer)
+            )
         except Exception as exc:
             raise AgentPipelineError("construction") from exc
         langfuse_handlers = telemetry_callbacks(service_id)
@@ -389,17 +412,66 @@ class AgentRuntime:
             raise ValueError("Invalid parent identity or thread")
         from .orchestration import validate_tracks
         validate_tracks(tracks)
-        # SECURITY: The gateway currently enforces per-request limits, but
-        # cannot reserve one shared USD ceiling atomically across child runs.
-        # Multiple independent metered calls may exhaust a parent budget even
-        # with all opt-in flags set. Do not enable paid fan-out on flags alone.
-        # Remove this guard ONLY in the same reviewed change that binds every
-        # child inference request to an authenticated, gateway-enforced atomic
-        # parent reservation (including retry/timeout and unknown-cost cases).
-        raise RuntimeError(
-            "Paid parallel evaluation disabled: atomic shared gateway budget "
-            "enforcement is not implemented"
-        )
+        if os.getenv("DRAGONZPYDER_AGENT_PARALLEL_GATEWAY_ENABLED") != "1":
+            raise RuntimeError(
+                "Paid parallel evaluation disabled: atomic shared gateway budget "
+                "enforcement is not enabled"
+            )
+        if (os.getenv("DRAGONZPYDER_AGENT_GATEWAY_BASE_URL", "").rstrip("/")
+                != "http://dragonzpyder-gateway.railway.internal:8080/internal/agent/v1"):
+            raise RuntimeError("Parallel budget requires the private staging gateway")
+        token = os.getenv("DRAGONZPYDER_AGENT_GATEWAY_TOKEN", "")
+        if len(token) < 32:
+            raise RuntimeError("Parallel budget requires an authenticated gateway")
+        from .budget_reservations import amount
+        try:
+            ceiling = amount(
+                os.getenv("DRAGONZPYDER_AGENT_PARALLEL_PARENT_CEILING_USD", "")
+            )
+        except ValueError:
+            raise RuntimeError("Explicit valid parent USD ceiling required") from None
+        if ceiling > amount("0.50"):
+            raise RuntimeError("Shared parent ceiling exceeds upstream $0.50 cap")
+
+        parent_id = str(uuid4())
+        # Create an authenticated, immutable budget in the real gateway.
+        # Failure means ZERO paid child requests. This endpoint checks the
+        # upstream key cap and remaining allowance before creating the job.
+        try:
+            async with httpx.AsyncClient(
+                timeout=10,trust_env=False,follow_redirects=False
+            ) as client:
+                opened = await client.post(
+                    "http://dragonzpyder-gateway.railway.internal:8080"
+                    "/internal/agent/v1/parallel-budget",
+                    headers={"Authorization":"Bearer "+token},
+                    json={"job_id":parent_id,"ceiling_usd":str(ceiling)},
+                )
+            if opened.status_code != 200:
+                raise RuntimeError("Gateway rejected shared parent budget")
+        except httpx.HTTPError:
+            raise RuntimeError("Authenticated gateway budget unavailable") from None
+
+        from .orchestration import run_parallel_tracks
+
+        async def child(track: dict) -> dict:
+            # Each child's fresh thread remains isolated, but ALL model
+            # requests (including its verifier specialists) carry parent_id.
+            child_thread = thread_id[:30] + "-" + track["id"] + "-" + uuid4().hex[:10]
+            report = await self.run_report(
+                service_id=service_id,
+                thread_id=child_thread,
+                prompt=track["prompt"],
+                recover_partial_on_failure=True,
+                parent_job_id=parent_id,
+            )
+            return report
+
+        result = await run_parallel_tracks(tracks, child, track_timeout_s=120)
+        result["parent_budget_job_id"] = parent_id
+        result["objective_verified"] = False
+        result["budget_ceiling_usd"] = str(ceiling)
+        return result
 
     async def run(self, *, service_id: str, thread_id: str, prompt: str) -> str:
         """Backward-compatible Hatchet/API adapter: plain answer only."""
