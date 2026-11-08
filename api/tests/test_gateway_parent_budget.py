@@ -133,6 +133,7 @@ def test_model_client_attaches_parent_header_only_when_gated(monkeypatch):
     monkeypatch.setenv("DRAGONZPYDER_AGENT_GATEWAY_BASE_URL",
         "https://gateway.example/internal/agent/v1")
     monkeypatch.setenv("DRAGONZPYDER_RUNTIME_ALLOWED_MODELS","openai/gpt-oss-120b")
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_MODEL_ID","openai/gpt-oss-120b")
     captured={}
     monkeypatch.setattr(runtime,"ChatOpenAI",lambda **kw:captured.update(kw) or object())
     job=str(uuid4())
