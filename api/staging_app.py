@@ -18,6 +18,7 @@ from agent_platform.runtime import AgentRuntime, AgentPipelineError
 from agent_platform.web_research import search_sources, SearchUnavailable
 from agent_platform.frontier_stress import run_live_case, live_eval_enabled
 from agent_platform.staging_smokes import hatchet_readiness, vector_readiness, gateway_readiness, synthetic_memory_smoke
+from agent_platform.paid_tool_smoke import run_paid_tool_smoke_once
 
 logger = logging.getLogger("dragonzpyder.staging")
 
@@ -248,15 +249,19 @@ async def lifespan(app):
     stress_task = None
     if os.getenv("DRAGONZPYDER_STAGING_FRONTIER_CANARY_ONCE") == "1":
         stress_task = asyncio.create_task(run_staging_frontier_canary_once())
+    paid_smoke_task = None
+    if os.getenv("DRAGONZPYDER_STAGING_PAID_TOOL_SMOKE_ONCE") == "1":
+        paid_smoke_task = asyncio.create_task(run_paid_tool_smoke_once())
     try:
         yield
     finally:
-        if stress_task and not stress_task.done():
-            stress_task.cancel()
-            try:
-                await stress_task
-            except asyncio.CancelledError:
-                pass
+        for task in (stress_task, paid_smoke_task):
+            if task and not task.done():
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
         if app.state.runtime:
             await app.state.runtime.close()
 
