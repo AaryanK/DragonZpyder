@@ -67,13 +67,16 @@ def load_suite() -> list[dict]:
     return cases
 
 
-def parallel_overlap(spans: list[dict] | None) -> bool:
+def parallel_overlap(spans: list[dict] | None, *, execution_id: str | None = None) -> bool:
     """Parallelism requires measured overlapping time intervals, not claims."""
-    if not isinstance(spans, list):
+    if (not isinstance(spans, list) or not isinstance(execution_id, str)
+            or not execution_id):
         return False
     valid = []
     for span in spans:
         if not isinstance(span, dict):
+            continue
+        if span.get("execution_id") != execution_id:
             continue
         if span.get("status") != "completed":
             # A failed or cancelled delegation is not evidence of successful
@@ -129,7 +132,7 @@ def score_report(case: dict, report: dict | None, *,
         r["kind"] for r in receipts if isinstance(r, dict)
         and r.get("verified") is True and r.get("kind") in EXTERNAL_RECEIPT_KINDS
     })
-    parallel = parallel_overlap(spans)
+    parallel = parallel_overlap(spans, execution_id=report.get("execution_id"))
     has_artifacts = (
         written and len(present) == len(artifacts)
         and len(read_back_files) == len(artifacts)
