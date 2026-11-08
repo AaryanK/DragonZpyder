@@ -175,7 +175,22 @@ def test_agent_self_claim_cannot_replace_independent_outcome_oracle():
     correct_case = score_report(case, report, oracle={
         "case_id": "F08", "passed": True,
     }, **kwargs)
-    assert correct_case["objective_verified"] is True
+    assert correct_case["objective_verified"] is False
+    assert correct_case["independent_outcome_oracle_passed"] is False
+    accepted = score_report(case, report, oracle={
+        "case_id": "F08", "passed": True,
+    }, oracle_verifier=lambda expected, verdict: (
+        expected["id"] == verdict["case_id"]
+    ), **kwargs)
+    assert accepted["objective_verified"] is True
+    rejected = score_report(case, report, oracle={
+        "case_id": "F08", "passed": True,
+    }, oracle_verifier=lambda *_: False, **kwargs)
+    assert rejected["objective_verified"] is False
+    crashed = score_report(case, report, oracle={
+        "case_id": "F08", "passed": True,
+    }, oracle_verifier=lambda *_: 1 / 0, **kwargs)
+    assert crashed["objective_verified"] is False
 
 
 def test_all_expected_artifacts_have_exact_paths_and_f02_numeric_tolerance_is_not_a_file():
