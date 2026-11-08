@@ -84,6 +84,21 @@ async def lifespan(app: FastAPI):
             app.state.agent_runtime = agent_runtime
         async with httpx.AsyncClient(timeout=90.0, follow_redirects=False) as client:
             app.state.http = client
+            if (os.getenv("RAILWAY_ENVIRONMENT_NAME") == "staging" and
+                    os.getenv("DRAGONZPYDER_STAGING_PAID_TEST_CAP_USD") == "0.50"):
+                try:
+                    cap, remaining = await require_paid_test_cap(
+                        client, os.getenv("OPENROUTER_API_KEY", "")
+                    )
+                except PaidTestBudgetError as error:
+                    # This is a static, authored reason code: no key, provider
+                    # payload, provider user ID or prompt is emitted.
+                    log.warning("Staging OpenRouter cap preflight=%s", str(error))
+                else:
+                    log.warning(
+                        "Staging OpenRouter cap preflight=verified limit_usd=%s remaining_usd=%s",
+                        cap, remaining,
+                    )
             yield
     finally:
         if agent_runtime is not None:
@@ -366,8 +381,11 @@ async def inference(prefix: str, request: Request):
                             request.app.state.http,
                             os.environ["OPENROUTER_API_KEY"],
                         )
-                    except PaidTestBudgetError:
-                        log.warning("Paid agent request denied: provider $0.50 cap unverified")
+                    except PaidTestBudgetError as error:
+                        log.warning(
+                            "Paid agent request denied: provider $0.50 cap unverified reason=%s",
+                            str(error),
+                        )
                         raise GatewayError(503, "Provider $0.50 spending cap not verified") from None
                     log.warning(
                         "Paid agent provider cap verified limit_usd=%s remaining_usd=%s",
