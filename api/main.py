@@ -12,7 +12,7 @@ import os
 import re
 import time
 from uuid import uuid4
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, nullcontext
 from typing import Any
 
 import httpx
@@ -24,6 +24,7 @@ from provider_gateway import provider_request
 from agent_platform.gateway_protocol import validate_agent_body, validate_agent_response, AgentProtocolError
 from agent_platform.router import router as agent_router
 from agent_platform.openrouter_spend_guard import PaidTestBudgetError, require_paid_test_cap
+from agent_platform.provider_pacing import AgentProviderPacer
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 MAX_BYTES = 160_000
@@ -31,9 +32,10 @@ MODEL_PATTERN = re.compile(r"^[a-zA-Z0-9_.:/-]{3,100}$")
 
 
 class GatewayError(Exception):
-    def __init__(self, status: int, message: str):
+    def __init__(self, status: int, message: str, *, retry_after: int | None = None):
         self.status = status
         self.message = message
+        self.retry_after = retry_after
 
 
 class Runtime:
@@ -68,6 +70,7 @@ class Runtime:
 
 
 runtime = Runtime()
+agent_pacer = AgentProviderPacer(concurrency=2, spacing_s=0.4)
 log = logging.getLogger(__name__)
 
 
@@ -394,20 +397,31 @@ async def inference(prefix: str, request: Request):
                 if not await runtime.charge():
                     raise GatewayError(429, "DragonZpyder internal inference test quota reached")
                 try:
-                    upstream = await request.app.state.http.post(
-                        OPENROUTER_URL, json=body,
-                        headers={"authorization": "Bearer " + os.environ["OPENROUTER_API_KEY"],
-                                 "HTTP-Referer": "https://dragonzpyder.xyz",
-                                 "X-Title": "DragonZpyder Runtime",
-                                 "X-DragonZpyder-Request-Id": request_id})
+                    # Only the agent protocol receives local admission pacing.
+                    # One upstream request per attempt; never automatically
+                    # retry ambiguous HTTP timeouts or network failures.
+                    async with (agent_pacer.slot() if agent_protocol else nullcontext()):
+                        upstream = await request.app.state.http.post(
+                            OPENROUTER_URL, json=body,
+                            headers={"authorization": "Bearer " + os.environ["OPENROUTER_API_KEY"],
+                                     "HTTP-Referer": "https://dragonzpyder.xyz",
+                                     "X-Title": "DragonZpyder Runtime",
+                                     "X-DragonZpyder-Request-Id": request_id})
                 except httpx.HTTPError:
                     raise GatewayError(502, "Inference service unavailable")
                 if upstream.status_code != 200:
                     log.warning("Inference upstream returned status %s request_id=%s",
                                 upstream.status_code, request_id)
                     code = 429 if upstream.status_code == 429 else 400 if upstream.status_code == 400 else 502
-                    raise GatewayError(code, "Inference budget or rate limit reached" if code == 429
-                                       else "Model provider rejected the request")
+                    delay = (
+                        await agent_pacer.cooldown(upstream.headers.get("retry-after"))
+                        if code == 429 and agent_protocol else None
+                    )
+                    raise GatewayError(
+                        code, "Inference budget or rate limit reached" if code == 429
+                              else "Model provider rejected the request",
+                        retry_after=delay,
+                    )
                 try:
                     provider_response = upstream.json()
                     if agent_protocol:
@@ -468,6 +482,8 @@ async def inference(prefix: str, request: Request):
                     log.warning("Agent gateway request rejected status=%s reason=%s request_id=%s",
                                 error.status, error.message, request_id)
                 response = denied(error.status, error.message)
+                if error.retry_after is not None:
+                    response.headers["retry-after"] = str(error.retry_after)
             except Exception as error:
                 log.exception("Unexpected inference exception request_id=%s type=%s", request_id, type(error).__name__)
                 failure_code = "502"
