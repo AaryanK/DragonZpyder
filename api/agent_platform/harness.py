@@ -12,6 +12,7 @@ from deepagents import FilesystemPermission, create_deep_agent
 from deepagents.backends import StateBackend
 from deepagents.middleware import FilesystemMiddleware
 from langchain.agents.middleware import TodoListMiddleware, ModelCallLimitMiddleware, ToolCallLimitMiddleware
+from .progress_guard import stop_repeating_agent
 
 VIRTUAL_TOOLS = ("ls", "read_file", "write_file", "edit_file", "glob", "grep")
 
@@ -212,6 +213,7 @@ def build_frontier_agent(model, checkpointer, *, specialist_models=None):
                 tool_token_limit_before_evict=8000,
             ),
             TodoListMiddleware(),
+            stop_repeating_agent,
             *interpreter,
             # This is *per agent*; global/account cost ceilings remain a
             # separate responsibility of the metered gateway.

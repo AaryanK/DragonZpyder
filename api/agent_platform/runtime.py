@@ -10,6 +10,7 @@ import hashlib
 import os
 import re
 from contextlib import AsyncExitStack
+from typing import Any
 from urllib.parse import urlsplit
 
 # Restrict checkpoint deserialization to built-in types before importing LangGraph.
@@ -49,8 +50,16 @@ def thread_key(service_id: str, thread_id: str) -> str:
     ).hexdigest()
 
 
-def telemetry_callbacks() -> list:
-    """Reuse the current gateway's Langfuse project when configured."""
+def telemetry_callbacks(service_id: str = "") -> list:
+    """Only trace *synthetic staging evaluations* with explicit Langfuse opt-in.
+
+    The LangChain handler includes prompts/outputs. Do not enable it on
+    passworded, user-supplied /test prompts or personal chat by accident.
+    No credentials are logged and no trace-delivery claim is made here.
+    """
+    if (os.getenv("DRAGONZPYDER_STAGING_LANGFUSE_ENABLED") != "1"
+            or service_id not in ("frontier-stress", "paid-tool-smoke")):
+        return []
     aliases = {
         "LANGFUSE_PUBLIC_KEY": "DRAGONZPYDER_LANGFUSE_PUBLIC_KEY",
         "LANGFUSE_SECRET_KEY": "DRAGONZPYDER_LANGFUSE_SECRET_KEY",
@@ -148,6 +157,57 @@ def model_client(*, model_override: str | None = None):
     )
 
 
+def summarize_checkpoint_evidence(values: Any, *, termination_reason: str) -> dict:
+    """Recover observable tool receipts from LangGraph's last checkpoint.
+
+    This is an INCOMPLETE result, never a successful task or content oracle.
+    No prompt, model text, tool arguments, or raw tool results leave this API.
+    """
+    from .artifact_evidence import artifact_readback_paths
+    state = values if isinstance(values, dict) else {}
+    messages = state.get("messages", [])
+    if not isinstance(messages, list):
+        messages = []
+    files = state.get("files", {})
+    files = files if isinstance(files, dict) else {}
+    successful: list[str] = []
+    failed = 0
+    for msg in messages:
+        if getattr(msg, "type", None) != "tool":
+            continue
+        if getattr(msg, "status", "success") == "error":
+            failed += 1
+        else:
+            name = getattr(msg, "name", "")
+            if isinstance(name, str) and name:
+                successful.append(name)
+    try:
+        readbacks = artifact_readback_paths(messages, files)
+    except (ValueError, TypeError, KeyError):
+        readbacks = []
+    return {
+        "answer": "Agent stopped before completing the task; checkpoint evidence is partial.",
+        "status": "incomplete",
+        "termination_reason": termination_reason,
+        "successful_tools": successful[:80],
+        "failed_tool_count": failed,
+        "virtual_artifact_paths": list(files.keys())[:30],
+        "artifact_readback_paths": readbacks,
+        "objective_verified": False,
+        "checkpoint_recovered": bool(state),
+    }
+
+
+def controlled_termination_reason(exc: Exception) -> str | None:
+    """Only recognized bounded agent loops qualify for partial recovery."""
+    name = type(exc).__name__
+    return {
+        "GraphRecursionError": "graph_recursion_limit",
+        "ModelCallLimitExceededError": "model_call_limit",
+        "ToolCallLimitExceededError": "tool_call_limit",
+    }.get(name)
+
+
 def summarize_agent_result(result: dict) -> dict:
     """Extract UI/evaluator-safe evidence without exposing model tool arguments."""
     messages = result.get("messages", []) if isinstance(result, dict) else []
@@ -161,6 +221,8 @@ def summarize_agent_result(result: dict) -> dict:
         content = str(content)
     if not content.strip():
         raise RuntimeError("Agent returned an empty final answer")
+    from .progress_guard import STOP_PREFIX
+    incomplete = content.startswith(STOP_PREFIX)
     successful = []
     failures = 0
     for message in messages:
@@ -180,6 +242,11 @@ def summarize_agent_result(result: dict) -> dict:
     todos = raw_todos[:30] if isinstance(raw_todos, list) else []
     return {
         "answer": content,
+        "status": "incomplete" if incomplete else "completed",
+        "termination_reason": (
+            content[len(STOP_PREFIX):].split(";", 1)[0].strip()
+            if incomplete else None
+        ),
         "successful_tools": successful[:80],
         "failed_tool_count": failures,
         "virtual_artifact_paths": artifacts,
@@ -226,7 +293,8 @@ class AgentRuntime:
         await self._stack.aclose()
         self._checkpointer = None
 
-    async def run_report(self, *, service_id: str, thread_id: str, prompt: str) -> dict:
+    async def run_report(self, *, service_id: str, thread_id: str, prompt: str,
+                         recover_partial_on_failure: bool = False) -> dict:
         if self._checkpointer is None:
             raise RuntimeError("Agent runtime is not started")
         if not isinstance(prompt, str) or not 1 <= len(prompt.strip()) <= 12000:
@@ -239,35 +307,49 @@ class AgentRuntime:
             agent = build_agent(model, self._checkpointer)
         except Exception as exc:
             raise AgentPipelineError("construction") from exc
+        config = {
+            "configurable": {"thread_id": key},
+            "recursion_limit": (
+                96 if all(os.getenv(flag) == "1" for flag in (
+                    "DRAGONZPYDER_AGENT_HARNESS_V2",
+                    "DRAGONZPYDER_AGENT_STRESS_EVAL_ENABLED",
+                    "DRAGONZPYDER_AGENT_EVAL_ALLOW_PAID",
+                    "DRAGONZPYDER_AGENT_USE_GATEWAY",
+                    "DRAGONZPYDER_AGENT_PRODUCTION_MODE",
+                )) else
+                32 if os.getenv("DRAGONZPYDER_AGENT_HARNESS_V2") == "1" else 16
+            ),
+            "callbacks": [delegation_trace, *telemetry_callbacks(service_id)],
+            "metadata": {
+                "service_id": service_id,
+                "harness_version": "v2" if os.getenv(
+                    "DRAGONZPYDER_AGENT_HARNESS_V2") == "1" else "v1",
+                "langfuse_tags": ["dragonzpyder", "staging", service_id],
+                "langfuse_session_id": key,
+            },
+        }
         try:
             result = await agent.ainvoke(
                 {"messages": [{"role": "user", "content": prompt}]},
-                config={
-                    "configurable": {"thread_id": key},
-                    "recursion_limit": (
-                        96 if all(os.getenv(key) == "1" for key in (
-                            "DRAGONZPYDER_AGENT_HARNESS_V2",
-                            "DRAGONZPYDER_AGENT_STRESS_EVAL_ENABLED",
-                            "DRAGONZPYDER_AGENT_EVAL_ALLOW_PAID",
-                            "DRAGONZPYDER_AGENT_USE_GATEWAY",
-                            "DRAGONZPYDER_AGENT_PRODUCTION_MODE",
-                        )) else
-                        32 if os.getenv("DRAGONZPYDER_AGENT_HARNESS_V2") == "1"
-                        else 16
-                    ),
-                    "callbacks": [delegation_trace, *telemetry_callbacks()],
-                    "metadata": {
-                        "service_id": service_id,
-                        "harness_version": (
-                            "v2" if os.getenv("DRAGONZPYDER_AGENT_HARNESS_V2") == "1"
-                            else "v1"
-                        ),
-                    },
-                },
+                config=config,
             )
         except Exception as exc:
-            raise AgentPipelineError("execution") from exc
-        report = summarize_agent_result(result)
+            reason = controlled_termination_reason(exc)
+            if not recover_partial_on_failure or not reason:
+                raise AgentPipelineError("execution") from exc
+            # Persisted checkpoints can survive a model-call / recursion
+            # limit. A read failure degrades evidence; it does NOT certify
+            # failure as success or trigger another paid model request.
+            try:
+                snapshot = await agent.aget_state(config)
+                state = getattr(snapshot, "values", None)
+            except Exception:
+                state = None
+            report = summarize_checkpoint_evidence(
+                state, termination_reason=reason
+            )
+        else:
+            report = summarize_agent_result(result)
         trace = delegation_trace.snapshot()
         report["execution_id"] = trace["execution_id"]
         report["delegation_spans"] = trace["spans"]

@@ -228,10 +228,17 @@ async def run_live_case(case_id: str) -> dict:
                 service_id="frontier-stress",
                 thread_id="f10-" + uuid4().hex[:20],
                 prompt=case["prompt"],
+                recover_partial_on_failure=True,
             ), timeout=240)
             score = score_report(
                 case, report, spans=report.get("delegation_spans")
             )
+            if report.get("status") == "incomplete":
+                # No independent outcome oracle can pass an unfinished run.
+                score["status"] = "execution_incomplete"
+                score["objective_verified"] = False
+                score["termination_reason"] = report.get("termination_reason")
+                score["checkpoint_recovered"] = bool(report.get("checkpoint_recovered"))
             # Only callback-derived invocation metadata, never raw tool arguments.
             score["delegated_calls_observed"] = report.get(
                 "delegated_calls_observed", 0

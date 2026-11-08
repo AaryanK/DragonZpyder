@@ -379,6 +379,14 @@ async def status(req: Request):
         hatchet_readiness(), vector_readiness(), gateway_readiness()
     )
     components["agent_inference_route"] = gateway_status
+    components["langfuse"] = (
+        "configured_unverified"
+        if os.getenv("DRAGONZPYDER_STAGING_LANGFUSE_ENABLED") == "1"
+        and all(os.getenv(k) for k in (
+            "LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY", "LANGFUSE_BASE_URL"
+        ))
+        else "not_configured"
+    )
     components["hatchet"] = (
         "worker_connected" if hatchet_status == "server_online" and os.getenv("HATCHET_CLIENT_TOKEN")
         else hatchet_status

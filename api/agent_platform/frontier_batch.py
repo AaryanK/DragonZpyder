@@ -36,7 +36,8 @@ def safe_metrics(case_id: str, report: dict) -> dict:
         "runtime_parallelism_observed", "independent_outcome_oracle_passed",
         "delegated_calls_observed", "successful_tool_count", "failed_tool_count",
         "elapsed_s", "exception_type", "error_phase", "http_status",
-        "comparison_with_frontier_labs",
+        "comparison_with_frontier_labs", "termination_reason",
+        "checkpoint_recovered",
     )
     return {"id": case_id, **{
         field: report[field] for field in keep if field in report
@@ -247,7 +248,8 @@ async def run_frontier_batch_once() -> None:
                 "Frontier live case result id=%s status=%s verified=%s "
                 "tools=%s delegated=%s parallel=%s created=%s read_back=%s "
                 "seconds=%s observed_key_delta_usd=%s exception_type=%s "
-                "error_phase=%s http_status=%s missing_capabilities=%s",
+                "error_phase=%s http_status=%s missing_capabilities=%s "
+                "termination_reason=%s checkpoint_recovered=%s",
                 case_id, report["status"], report["objective_verified"],
                 report.get("successful_tool_count", 0),
                 report.get("delegated_calls_observed", 0),
@@ -260,6 +262,8 @@ async def run_frontier_batch_once() -> None:
                 report.get("error_phase", "none"),
                 report.get("http_status", "none"),
                 ",".join(report.get("missing_capabilities", [])) or "none",
+                report.get("termination_reason") or "none",
+                report.get("checkpoint_recovered", False),
             )
             if after is None:
                 overall_status = "provider_balance_unavailable_after_case"
