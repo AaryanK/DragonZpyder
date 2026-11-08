@@ -89,3 +89,77 @@ def test_only_supported_termination_exceptions_trigger_recovery():
     assert controlled_termination_reason(GraphRecursionError()) == "graph_recursion_limit"
     assert controlled_termination_reason(ModelCallLimitExceededError()) == "model_call_limit"
     assert controlled_termination_reason(ValueError("not a limit")) is None
+
+
+
+def test_real_langgraph_stops_repeated_virtual_tool_cycle_without_hosted_model(monkeypatch):
+    """Actual DeepAgents graph, fake model, real virtual tool dispatch."""
+    import asyncio
+    from typing import Any
+    from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
+    from langgraph.checkpoint.memory import MemorySaver
+    from agent_platform.harness import build_frontier_agent
+
+    class Scripted(FakeMessagesListChatModel):
+        def bind_tools(self, tools: Any, **kwargs: Any):
+            return self
+
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_STRESS_EVAL_ENABLED", "0")
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_EVAL_ALLOW_PAID", "0")
+    fake = Scripted(responses=[
+        _model_tool("ls", {"path": "/workspace"}, i) for i in range(7)
+    ])
+    graph = build_frontier_agent(fake, MemorySaver())
+    answer = asyncio.run(graph.ainvoke(
+        {"messages": [{"role": "user", "content": "Inspect the workspace."}]},
+        config={"configurable": {"thread_id": "live-graph-repetition-guard"},
+                "recursion_limit": 64},
+    ))
+    assert answer["messages"][-1].content.startswith(STOP_PREFIX)
+    assert "repeated_tool_cycle" in answer["messages"][-1].content
+    assert len([m for m in answer["messages"] if getattr(m, "type", "") == "tool"]) >= 4
+
+
+def test_runtime_recovers_checkpointed_evidence_on_real_graph_recursion_error(monkeypatch):
+    """No model provider, but exercise AgentRuntime's full catch/recovery path."""
+    import asyncio
+    from types import SimpleNamespace
+    from agent_platform import runtime
+
+    GraphRecursionError = type("GraphRecursionError", (Exception,), {})
+    path = "/workspace/partial-result.md"
+
+    class FakeAgent:
+        async def ainvoke(self, *args, **kwargs):
+            raise GraphRecursionError("bounded fake execution")
+
+        async def aget_state(self, config):
+            assert "configurable" in config and "thread_id" in config["configurable"]
+            return SimpleNamespace(values={
+                "messages": [
+                    AIMessage(content="", tool_calls=[{
+                        "id": "t1", "name": "write_file",
+                        "args": {"file_path": path, "content": "offline test"}
+                    }]),
+                    ToolMessage(content="wrote", name="write_file",
+                                tool_call_id="t1", status="success"),
+                ],
+                "files": {path: "offline test"},
+            })
+
+    monkeypatch.setattr(runtime, "model_client", lambda: object())
+    monkeypatch.setattr(runtime, "build_agent", lambda model, cp: FakeAgent())
+    monkeypatch.delenv("DRAGONZPYDER_STAGING_LANGFUSE_ENABLED", raising=False)
+    runner = runtime.AgentRuntime()
+    runner._checkpointer = object()  # No database or network
+    report = asyncio.run(runner.run_report(
+        service_id="frontier-stress", thread_id="simulated-recovery",
+        prompt="Complete the task.",
+        recover_partial_on_failure=True,
+    ))
+    assert report["status"] == "incomplete"
+    assert report["termination_reason"] == "graph_recursion_limit"
+    assert report["checkpoint_recovered"]
+    assert report["successful_tools"] == ["write_file"]
+    assert path in report["virtual_artifact_paths"]
+    assert report["objective_verified"] is False
