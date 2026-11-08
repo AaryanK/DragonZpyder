@@ -158,9 +158,7 @@ def score_report(case: dict, report: dict | None, *,
             oracle_ok = False
     # A failed or interrupted execution cannot earn verified completion even
     # when earlier checkpoints contain favorable artifact/oracle evidence.
-    execution_complete = report.get("status") not in {
-        "incomplete", "failed", "cancelled", "execution_failed"
-    }
+    execution_complete = report.get("status") == "completed"
     outcome_proven = bool(
         execution_complete and oracle_ok and has_artifacts and has_oracle
         and parallel and not missing_capabilities
