@@ -207,6 +207,22 @@ async def inference(prefix: str, request: Request):
         return await provider_request(request, path.removeprefix("/internal/provider"),
                                       app_id=app_id, runtime=runtime)
 
+    # Only the private agent runtime may inspect whether its actual GATEWAY
+    # provider key has an immutable <=$0.50 cap. Never trust the lab's key.
+    if path == "/internal/agent/v1/key-budget":
+        if request.method != "GET":
+            return denied(405, "Method not allowed")
+        if (caller_identity(request) != "agent-runtime" or
+                os.getenv("DRAGONZPYDER_AGENT_TOOL_CALLS_ENABLED") != "1"):
+            return denied(403, "Agent runtime authentication required")
+        if os.getenv("DRAGONZPYDER_AGENT_PAID_TEST_MAX_KEY_LIMIT_USD") != "0.50":
+            return denied(503, "Paid staging budget guard is not enabled")
+        from agent_platform.key_budget import verify_key_budget
+        report = await verify_key_budget(
+            request.app.state.http, os.getenv("OPENROUTER_API_KEY", "")
+        )
+        return JSONResponse(report)
+
     if path == "/internal/admin/usage":
         if not admin_authorized(request):
             return denied(401, "Admin service authentication required")
@@ -326,6 +342,16 @@ async def inference(prefix: str, request: Request):
                     raise GatewayError(400, "Invalid JSON request")
                 span.set_attribute("gen_ai.request.model", body["model"])
                 span.set_attribute("gen_ai.request.max_tokens", body["max_tokens"])
+                if agent_protocol and os.getenv("DRAGONZPYDER_AGENT_PAID_TEST_MAX_KEY_LIMIT_USD"):
+                    if os.getenv("DRAGONZPYDER_AGENT_PAID_TEST_MAX_KEY_LIMIT_USD") != "0.50":
+                        raise GatewayError(503, "Invalid staging paid-test budget guard")
+                    from agent_platform.key_budget import verify_key_budget
+                    budget = await verify_key_budget(
+                        request.app.state.http, os.getenv("OPENROUTER_API_KEY", "")
+                    )
+                    if budget.get("approved") is not True:
+                        log.warning("Agent paid-test preflight denied reason=%s", budget.get("reason"))
+                        raise GatewayError(503, "Provider-enforced $0.50 key cap not verified")
                 if not await runtime.charge():
                     raise GatewayError(429, "DragonZpyder internal inference test quota reached")
                 try:
