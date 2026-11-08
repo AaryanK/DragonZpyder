@@ -34,20 +34,20 @@ def test_readiness_is_not_a_claim_of_ten_passes():
 
 
 def test_parallelism_requires_two_measured_overlapping_distinct_agents():
-    assert not parallel_overlap(None)
-    assert not parallel_overlap([{"agent": "analyst", "start_ms": 0, "end_ms": 100, "status": "completed"}])
+    assert not parallel_overlap(None, execution_id="eval-run")
+    assert not parallel_overlap([{"agent": "analyst", "start_ms": 0, "end_ms": 100, "status": "completed", "execution_id": "eval-run"}], execution_id="eval-run")
     assert not parallel_overlap([
-        {"agent": "analyst", "start_ms": 0, "end_ms": 100, "status": "completed"},
-        {"agent": "reviewer", "start_ms": 100, "end_ms": 180, "status": "completed"},
-    ])
+        {"agent": "analyst", "start_ms": 0, "end_ms": 100, "status": "completed", "execution_id": "eval-run"},
+        {"agent": "reviewer", "start_ms": 100, "end_ms": 180, "status": "completed", "execution_id": "eval-run"},
+    ], execution_id="eval-run")
     assert not parallel_overlap([
-        {"agent": "analyst", "start_ms": 0, "end_ms": 100, "status": "completed"},
-        {"agent": "analyst", "start_ms": 30, "end_ms": 80, "status": "completed"},
-    ])
+        {"agent": "analyst", "start_ms": 0, "end_ms": 100, "status": "completed", "execution_id": "eval-run"},
+        {"agent": "analyst", "start_ms": 30, "end_ms": 80, "status": "completed", "execution_id": "eval-run"},
+    ], execution_id="eval-run")
     assert parallel_overlap([
-        {"agent": "analyst", "start_ms": 0, "end_ms": 100, "status": "completed"},
-        {"agent": "reviewer", "start_ms": 40, "end_ms": 110, "status": "completed"},
-    ])
+        {"agent": "analyst", "start_ms": 0, "end_ms": 100, "status": "completed", "execution_id": "eval-run"},
+        {"agent": "reviewer", "start_ms": 40, "end_ms": 110, "status": "completed", "execution_id": "eval-run"},
+    ], execution_id="eval-run")
 
 
 def test_hallucinated_artifacts_and_tool_names_do_not_pass():
@@ -56,7 +56,7 @@ def test_hallucinated_artifacts_and_tool_names_do_not_pass():
         "answer": "I wrote all files and had three parallel agents verify them.",
         "virtual_artifact_paths": [],
         "successful_tools": [],
-        "objective_verified": True,
+        "objective_verified": True, "execution_id": "eval-run",
     }
     score = score_report(case, report)
     assert score["objective_verified"] is False
@@ -72,7 +72,7 @@ def test_artifact_presence_and_write_read_evidence_are_only_partial():
         "answer": "Files complete", "virtual_artifact_paths": paths,
         "successful_tools": ["write_file", "read_file"],
         "artifact_readback_paths": paths,
-        "objective_verified": True,
+        "objective_verified": True, "execution_id": "eval-run",
     }, supported=set(case["required_capabilities"]), receipts=[{
         "kind": "sandbox_test", "verified": True,
     }])
@@ -131,14 +131,14 @@ def test_artifact_basenames_in_wrong_workspace_cannot_be_credited():
         "virtual_artifact_paths": ["/workspace/unrelated/" + n
                                    for n in case["expected_artifacts"]],
         "successful_tools": ["write_file", "read_file"],
-        "objective_verified": True,
+        "objective_verified": True, "execution_id": "eval-run",
     }
     score = score_report(
         case, report, supported=set(case["required_capabilities"]),
         receipts=[{"kind": "sandbox_test", "verified": True}],
         spans=[
-            {"agent": "teacher", "start_ms": 10, "end_ms": 110, "status": "completed"},
-            {"agent": "reviewer", "start_ms": 20, "end_ms": 120, "status": "completed"},
+            {"agent": "teacher", "start_ms": 10, "end_ms": 110, "status": "completed", "execution_id": "eval-run"},
+            {"agent": "reviewer", "start_ms": 20, "end_ms": 120, "status": "completed", "execution_id": "eval-run"},
         ],
         oracle={"case_id": "F08", "passed": True},
     )
@@ -154,14 +154,14 @@ def test_agent_self_claim_cannot_replace_independent_outcome_oracle():
         "successful_tools": ["write_file", "read_file"],
         "artifact_readback_paths": [case["artifact_dir"] + "/" + n
                                     for n in case["expected_artifacts"]],
-        "objective_verified": True,
+        "objective_verified": True, "execution_id": "eval-run",
     }
     kwargs = {
         "supported": set(case["required_capabilities"]),
         "receipts": [{"kind": "sandbox_test", "verified": True}],
         "spans": [
-            {"agent": "teacher", "start_ms": 10, "end_ms": 110, "status": "completed"},
-            {"agent": "reviewer", "start_ms": 20, "end_ms": 120, "status": "completed"},
+            {"agent": "teacher", "start_ms": 10, "end_ms": 110, "status": "completed", "execution_id": "eval-run"},
+            {"agent": "reviewer", "start_ms": 20, "end_ms": 120, "status": "completed", "execution_id": "eval-run"},
         ],
     }
     score = score_report(case, report, **kwargs)
@@ -205,9 +205,9 @@ def test_all_expected_artifacts_have_exact_paths_and_f02_numeric_tolerance_is_no
 
 def test_failed_or_cancelled_spans_cannot_earn_parallel_credit():
     spans = [
-        {"agent": "a", "start_ms": 10, "end_ms": 100, "status": "completed"},
-        {"agent": "b", "start_ms": 20, "end_ms": 110, "status": "failed"},
-        {"agent": "c", "start_ms": 30, "end_ms": 120, "status": "cancelled"},
+        {"agent": "a", "start_ms": 10, "end_ms": 100, "status": "completed", "execution_id": "eval-run"},
+        {"agent": "b", "start_ms": 20, "end_ms": 110, "status": "failed", "execution_id": "eval-run"},
+        {"agent": "c", "start_ms": 30, "end_ms": 120, "status": "cancelled", "execution_id": "eval-run"},
     ]
     assert parallel_overlap(spans) is False
     spans[2]["status"] = "completed"
@@ -223,15 +223,15 @@ def test_unrelated_tool_readback_cannot_earn_100_percent_artifact_score():
         # Two requested files were read; the third remains unverified even
         # though all required filenames exist and a read tool was called.
         "artifact_readback_paths": expected[:-1] + ["/workspace/unrelated.md"],
-        "objective_verified": True,
+        "objective_verified": True, "execution_id": "eval-run",
     }
     result = score_report(
         case, report,
         supported=set(case["required_capabilities"]),
         receipts=[{"kind": "sandbox_test", "verified": True}],
         spans=[
-            {"agent": "teacher", "start_ms": 10, "end_ms": 110, "status": "completed"},
-            {"agent": "reviewer", "start_ms": 20, "end_ms": 120, "status": "completed"},
+            {"agent": "teacher", "start_ms": 10, "end_ms": 110, "status": "completed", "execution_id": "eval-run"},
+            {"agent": "reviewer", "start_ms": 20, "end_ms": 120, "status": "completed", "execution_id": "eval-run"},
         ],
         oracle={"case_id": "F08", "passed": True},
     )
@@ -254,8 +254,8 @@ def test_generic_read_call_without_path_correlated_receipts_is_not_readback():
         supported=set(case["required_capabilities"]),
         receipts=[{"kind": "sandbox_test", "verified": True}],
         spans=[
-            {"agent": "a", "start_ms": 0, "end_ms": 100, "status": "completed"},
-            {"agent": "b", "start_ms": 1, "end_ms": 101, "status": "completed"},
+            {"agent": "a", "start_ms": 0, "end_ms": 100, "status": "completed", "execution_id": "eval-run"},
+            {"agent": "b", "start_ms": 1, "end_ms": 101, "status": "completed", "execution_id": "eval-run"},
         ],
         oracle={"case_id": "F08", "passed": True},
     )
@@ -265,23 +265,53 @@ def test_generic_read_call_without_path_correlated_receipts_is_not_readback():
 
 def test_nonfinite_and_negative_delegation_timestamps_never_prove_parallelism():
     """Reject NaN/Infinity: Python comparisons with NaN can silently bypass guards."""
-    valid = {"agent": "analyst", "start_ms": 10, "end_ms": 100, "status": "completed"}
+    valid = {"agent": "analyst", "start_ms": 10, "end_ms": 100, "status": "completed", "execution_id": "eval-run"}
     for invalid in (
-        {"agent": "reviewer", "start_ms": float("nan"), "end_ms": 90, "status": "completed"},
-        {"agent": "reviewer", "start_ms": 20, "end_ms": float("nan"), "status": "completed"},
-        {"agent": "reviewer", "start_ms": float("-inf"), "end_ms": 90, "status": "completed"},
-        {"agent": "reviewer", "start_ms": 20, "end_ms": float("inf"), "status": "completed"},
-        {"agent": "reviewer", "start_ms": -1, "end_ms": 90, "status": "completed"},
+        {"agent": "reviewer", "start_ms": float("nan"), "end_ms": 90, "status": "completed", "execution_id": "eval-run"},
+        {"agent": "reviewer", "start_ms": 20, "end_ms": float("nan"), "status": "completed", "execution_id": "eval-run"},
+        {"agent": "reviewer", "start_ms": float("-inf"), "end_ms": 90, "status": "completed", "execution_id": "eval-run"},
+        {"agent": "reviewer", "start_ms": 20, "end_ms": float("inf"), "status": "completed", "execution_id": "eval-run"},
+        {"agent": "reviewer", "start_ms": -1, "end_ms": 90, "status": "completed", "execution_id": "eval-run"},
     ):
-        assert parallel_overlap([valid, invalid]) is False
+        assert parallel_overlap([valid, invalid], execution_id="eval-run") is False
     assert parallel_overlap([valid, {
-        "agent": "reviewer", "start_ms": 20, "end_ms": 90, "status": "completed",
-    }]) is True
+        "agent": "reviewer", "start_ms": 20, "end_ms": 90, "status": "completed", "execution_id": "eval-run",
+    }], execution_id="eval-run") is True
 
 
 def test_missing_delegation_status_never_earns_parallel_credit():
-    completed = {"agent": "analyst", "start_ms": 10, "end_ms": 100, "status": "completed"}
+    completed = {"agent": "analyst", "start_ms": 10, "end_ms": 100, "status": "completed", "execution_id": "eval-run"}
     missing = {"agent": "reviewer", "start_ms": 20, "end_ms": 110}
-    assert parallel_overlap([completed, missing]) is False
-    assert parallel_overlap([missing, dict(missing, agent="third")]) is False
-    assert parallel_overlap([completed, dict(missing, status="completed")]) is True
+    assert parallel_overlap([completed, missing], execution_id="eval-run") is False
+    assert parallel_overlap([missing, dict(missing, agent="third")], execution_id="eval-run") is False
+    assert parallel_overlap([completed, dict(missing, status="completed")], execution_id="eval-run") is True
+
+
+def test_parallel_evidence_rejects_cross_execution_spans():
+    a = {"agent": "writer", "start_ms": 0, "end_ms": 100,
+         "status": "completed", "execution_id": "run-a"}
+    b = {"agent": "reviewer", "start_ms": 20, "end_ms": 120,
+         "status": "completed", "execution_id": "run-b"}
+    assert not parallel_overlap([a, b], execution_id="run-a")
+    assert not parallel_overlap([a, b], execution_id="run-b")
+    assert not parallel_overlap([a, b])
+    assert parallel_overlap([a, dict(b, execution_id="run-a")], execution_id="run-a")
+
+
+def test_score_report_rejects_cross_execution_parallel_evidence():
+    case = next(c for c in load_suite() if c["id"] == "F08")
+    paths = [case["artifact_dir"] + "/" + n for n in case["expected_artifacts"]]
+    report = {"virtual_artifact_paths": paths, "successful_tools": ["write_file", "read_file"],
+              "artifact_readback_paths": paths, "execution_id": "run-a"}
+    spans = [
+        {"agent": "writer", "start_ms": 0, "end_ms": 100,
+         "status": "completed", "execution_id": "run-a"},
+        {"agent": "reviewer", "start_ms": 10, "end_ms": 110,
+         "status": "completed", "execution_id": "run-b"},
+    ]
+    score = score_report(case, report, supported=set(case["required_capabilities"]),
+        receipts=[{"kind": "sandbox_test", "verified": True}], spans=spans,
+        oracle={"case_id": "F08", "passed": True},
+        oracle_verifier=lambda *_: True)
+    assert score["parallelism_observed"] is False
+    assert score["objective_verified"] is False
