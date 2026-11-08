@@ -95,7 +95,8 @@ def build_agent(model, checkpointer, *, parent_job_id: str | None = None):
         for role in ("analyst", "verifier", "researcher", "builder"):
             configured = os.getenv("DRAGONZPYDER_AGENT_" + role.upper() + "_MODEL_ID", "").strip()
             if configured:
-                models[role] = model_client(model_override=configured, parent_job_id=parent_job_id)
+                models[role] = (model_client(model_override=configured, parent_job_id=parent_job_id)
+                                if parent_job_id is not None else model_client(model_override=configured))
         return build_frontier_agent(model, checkpointer, specialist_models=models)
     backend = StateBackend()
     # A replacement filesystem middleware must explicitly use the same backend.
@@ -319,7 +320,8 @@ class AgentRuntime:
         if not isinstance(prompt, str) or not 1 <= len(prompt.strip()) <= 12000:
             raise ValueError("Prompt must be 1–12000 characters")
         key = thread_key(service_id, thread_id)
-        model = model_client(parent_job_id=parent_job_id)
+        model = (model_client(parent_job_id=parent_job_id)
+                 if parent_job_id is not None else model_client())
         from .delegation_trace import DelegationTrace
         delegation_trace = DelegationTrace()
         try:
