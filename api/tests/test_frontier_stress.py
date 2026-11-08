@@ -178,7 +178,7 @@ def test_agent_self_claim_cannot_replace_independent_outcome_oracle():
     assert correct_case["objective_verified"] is False
     assert correct_case["independent_outcome_oracle_passed"] is False
     accepted = score_report(case, report, oracle={
-        "case_id": "F08", "passed": True,
+        "case_id": "F08", "execution_id": "eval-run", "passed": True,
     }, oracle_verifier=lambda expected, verdict: (
         expected["id"] == verdict["case_id"]
     ), **kwargs)
@@ -315,3 +315,29 @@ def test_score_report_rejects_cross_execution_parallel_evidence():
         oracle_verifier=lambda *_: True)
     assert score["parallelism_observed"] is False
     assert score["objective_verified"] is False
+
+
+def test_oracle_replay_and_missing_run_binding_fail_closed():
+    case = next(c for c in load_suite() if c["id"] == "F08")
+    paths = [case["artifact_dir"] + "/" + name for name in case["expected_artifacts"]]
+    report = {"execution_id": "run-b", "virtual_artifact_paths": paths,
+              "artifact_readback_paths": paths, "successful_tools": ["write_file", "read_file"]}
+    kwargs = {"supported": set(case["required_capabilities"]),
+              "receipts": [{"kind": "sandbox_test", "verified": True}],
+              "spans": [
+                  {"agent": "writer", "start_ms": 0, "end_ms": 100,
+                   "status": "completed", "execution_id": "run-b"},
+                  {"agent": "reviewer", "start_ms": 20, "end_ms": 120,
+                   "status": "completed", "execution_id": "run-b"}],
+              "oracle_verifier": lambda *_: True}
+    for oracle in (
+        {"case_id": "F08", "execution_id": "run-a", "passed": True},
+        {"case_id": "F08", "passed": True},
+        {"case_id": "F08", "execution_id": "", "passed": True},
+    ):
+        result = score_report(case, report, oracle=oracle, **kwargs)
+        assert result["objective_verified"] is False
+        assert result["independent_outcome_oracle_passed"] is False
+    valid = score_report(case, report, oracle={
+        "case_id": "F08", "execution_id": "run-b", "passed": True}, **kwargs)
+    assert valid["objective_verified"] is True
