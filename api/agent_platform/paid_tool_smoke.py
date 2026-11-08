@@ -18,7 +18,7 @@ from .runtime import AgentRuntime
 from .staging_smokes import gateway_readiness
 
 logger = logging.getLogger("dragonzpyder.paid_tool_smoke")
-RUN_KEY = "paid-tool-smoke-20261108-v1"
+RUN_KEY = "paid-tool-smoke-20261108-v2-verified-cap"
 ARTIFACT = "/workspace/tool_smoke_20261108.txt"
 
 
@@ -96,7 +96,7 @@ async def run_paid_tool_smoke_once() -> None:
         report = await asyncio.wait_for(
             runtime.run_report(
                 service_id="paid-tool-smoke",
-                thread_id="one-shot-20261108-v1",
+                thread_id="one-shot-20261108-v2-cap-verified",
                 prompt=prompt,
             ),
             timeout=85,
