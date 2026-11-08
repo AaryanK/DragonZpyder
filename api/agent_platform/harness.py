@@ -12,7 +12,7 @@ from deepagents import FilesystemPermission, create_deep_agent
 from deepagents.backends import StateBackend
 from deepagents.middleware import FilesystemMiddleware
 from langchain.agents.middleware import TodoListMiddleware, ModelCallLimitMiddleware, ToolCallLimitMiddleware
-from .progress_guard import stop_repeating_agent
+from .progress_guard import stop_repeating_agent, stop_repeating_specialist
 from .scientific_oracles import check_quadratic_gradient_step, check_trilinear_interpolation
 
 VIRTUAL_TOOLS = ("ls", "read_file", "write_file", "edit_file", "glob", "grep")
@@ -36,6 +36,8 @@ Operating discipline:
   findings against the provided evidence. Treat a verifier error claim as
   a hypothesis: independently check disputed numerical arithmetic before
   revising. Avoid repeated verifier/rewrite cycles with no new evidence.
+- If a specialist returns DRAGONZPYDER_INCOMPLETE, do not interpret that
+  as a successful verification or repeat the same delegated assignment.
 - Validate results against acceptance criteria and identify what could not be
   verified. Do not fabricate citations, tool executions, or successful actions.
 - External web, OS, browser, and business tools are NOT available in this
@@ -95,7 +97,7 @@ def specialist_specs(models: dict | None = None, search_tools=None) -> list[dict
             ),
             "system_prompt": ANALYST_PROMPT,
             "tools": [],
-            "middleware": [ModelCallLimitMiddleware(run_limit=specialist_limit, exit_behavior="error")],
+            "middleware": [stop_repeating_specialist, ModelCallLimitMiddleware(run_limit=specialist_limit, exit_behavior="error")],
         },
         {
             "name": "verifier",
@@ -105,7 +107,7 @@ def specialist_specs(models: dict | None = None, search_tools=None) -> list[dict
             ),
             "system_prompt": REVIEWER_PROMPT,
             "tools": [check_quadratic_gradient_step, check_trilinear_interpolation],
-            "middleware": [ModelCallLimitMiddleware(run_limit=specialist_limit, exit_behavior="error")],
+            "middleware": [stop_repeating_specialist, ModelCallLimitMiddleware(run_limit=specialist_limit, exit_behavior="error")],
         },
         {
             "name": "builder",
@@ -116,6 +118,7 @@ def specialist_specs(models: dict | None = None, search_tools=None) -> list[dict
             "system_prompt": BUILDER_PROMPT,
             "tools": [],
             "middleware": [
+                stop_repeating_specialist,
                 ModelCallLimitMiddleware(
                     run_limit=specialist_limit, exit_behavior="error"
                 )
@@ -137,6 +140,7 @@ def specialist_specs(models: dict | None = None, search_tools=None) -> list[dict
             ),
             "tools": list(search_tools),
             "middleware": [
+                stop_repeating_specialist,
                 ModelCallLimitMiddleware(run_limit=specialist_limit, exit_behavior="error"),
                 ToolCallLimitMiddleware(
                     tool_name="web_search", run_limit=2, exit_behavior="error"
