@@ -23,6 +23,7 @@ from usage_ledger import ledger, token_usage
 from provider_gateway import provider_request
 from agent_platform.gateway_protocol import validate_agent_body, validate_agent_response, AgentProtocolError
 from agent_platform.router import router as agent_router
+from agent_platform.openrouter_spend_guard import PaidTestBudgetError, require_paid_test_cap
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 MAX_BYTES = 160_000
@@ -266,7 +267,8 @@ async def inference(prefix: str, request: Request):
     if request.method == "GET" and route == "/v1/health":
         return {"service": "dragonzpyder-inference",
                 "status": "ready" if os.getenv("OPENROUTER_API_KEY") else "unconfigured",
-                "models": len(models()), "usage_ledger": ledger.available}
+                "models": len(models()), "usage_ledger": ledger.available,
+                 "paid_test_cap_guard": os.getenv("DRAGONZPYDER_STAGING_PAID_TEST_CAP_USD") == "0.50"}
     if request.method == "GET" and route == "/v1/models":
         return {"object": "list", "data": [{"id": model, "object": "model",
                                             "owned_by": "dragonzpyder"} for model in models()]}
@@ -352,6 +354,25 @@ async def inference(prefix: str, request: Request):
                     if budget.get("approved") is not True:
                         log.warning("Agent paid-test preflight denied reason=%s", budget.get("reason"))
                         raise GatewayError(503, "Provider-enforced $0.50 key cap not verified")
+                # Staging paid-agent calls are refused unless the *actual*
+                # provider key proves an upstream-enforced cap <= $0.50.
+                # The upstream provider enforces the aggregate cap even across
+                # gateway replicas/retries; our ledger remains observational.
+                if agent_protocol and os.getenv("RAILWAY_ENVIRONMENT_NAME") == "staging":
+                    if os.getenv("DRAGONZPYDER_STAGING_PAID_TEST_CAP_USD") != "0.50":
+                        raise GatewayError(503, "Staging model test budget guard not enabled")
+                    try:
+                        key_limit, remaining = await require_paid_test_cap(
+                            request.app.state.http,
+                            os.environ["OPENROUTER_API_KEY"],
+                        )
+                    except PaidTestBudgetError:
+                        log.warning("Paid agent request denied: provider $0.50 cap unverified")
+                        raise GatewayError(503, "Provider $0.50 spending cap not verified") from None
+                    log.warning(
+                        "Paid agent provider cap verified limit_usd=%s remaining_usd=%s",
+                        key_limit, remaining,
+                    )
                 if not await runtime.charge():
                     raise GatewayError(429, "DragonZpyder internal inference test quota reached")
                 try:
