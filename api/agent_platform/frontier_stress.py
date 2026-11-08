@@ -75,7 +75,7 @@ def parallel_overlap(spans: list[dict] | None) -> bool:
     for span in spans:
         if not isinstance(span, dict):
             continue
-        if span.get("status", "completed") != "completed":
+        if span.get("status") != "completed":
             # A failed or cancelled delegation is not evidence of successful
             # parallel specialist execution even when timestamps overlap.
             continue
