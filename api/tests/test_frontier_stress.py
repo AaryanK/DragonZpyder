@@ -35,18 +35,18 @@ def test_readiness_is_not_a_claim_of_ten_passes():
 
 def test_parallelism_requires_two_measured_overlapping_distinct_agents():
     assert not parallel_overlap(None)
-    assert not parallel_overlap([{"agent": "analyst", "start_ms": 0, "end_ms": 100}])
+    assert not parallel_overlap([{"agent": "analyst", "start_ms": 0, "end_ms": 100, "status": "completed"}])
     assert not parallel_overlap([
-        {"agent": "analyst", "start_ms": 0, "end_ms": 100},
-        {"agent": "reviewer", "start_ms": 100, "end_ms": 180},
+        {"agent": "analyst", "start_ms": 0, "end_ms": 100, "status": "completed"},
+        {"agent": "reviewer", "start_ms": 100, "end_ms": 180, "status": "completed"},
     ])
     assert not parallel_overlap([
-        {"agent": "analyst", "start_ms": 0, "end_ms": 100},
-        {"agent": "analyst", "start_ms": 30, "end_ms": 80},
+        {"agent": "analyst", "start_ms": 0, "end_ms": 100, "status": "completed"},
+        {"agent": "analyst", "start_ms": 30, "end_ms": 80, "status": "completed"},
     ])
     assert parallel_overlap([
-        {"agent": "analyst", "start_ms": 0, "end_ms": 100},
-        {"agent": "reviewer", "start_ms": 40, "end_ms": 110},
+        {"agent": "analyst", "start_ms": 0, "end_ms": 100, "status": "completed"},
+        {"agent": "reviewer", "start_ms": 40, "end_ms": 110, "status": "completed"},
     ])
 
 
@@ -137,8 +137,8 @@ def test_artifact_basenames_in_wrong_workspace_cannot_be_credited():
         case, report, supported=set(case["required_capabilities"]),
         receipts=[{"kind": "sandbox_test", "verified": True}],
         spans=[
-            {"agent": "teacher", "start_ms": 10, "end_ms": 110},
-            {"agent": "reviewer", "start_ms": 20, "end_ms": 120},
+            {"agent": "teacher", "start_ms": 10, "end_ms": 110, "status": "completed"},
+            {"agent": "reviewer", "start_ms": 20, "end_ms": 120, "status": "completed"},
         ],
         oracle={"case_id": "F08", "passed": True},
     )
@@ -160,8 +160,8 @@ def test_agent_self_claim_cannot_replace_independent_outcome_oracle():
         "supported": set(case["required_capabilities"]),
         "receipts": [{"kind": "sandbox_test", "verified": True}],
         "spans": [
-            {"agent": "teacher", "start_ms": 10, "end_ms": 110},
-            {"agent": "reviewer", "start_ms": 20, "end_ms": 120},
+            {"agent": "teacher", "start_ms": 10, "end_ms": 110, "status": "completed"},
+            {"agent": "reviewer", "start_ms": 20, "end_ms": 120, "status": "completed"},
         ],
     }
     score = score_report(case, report, **kwargs)
@@ -205,9 +205,9 @@ def test_all_expected_artifacts_have_exact_paths_and_f02_numeric_tolerance_is_no
 
 def test_failed_or_cancelled_spans_cannot_earn_parallel_credit():
     spans = [
-        {"agent": "a", "start_ms": 10, "end_ms": 100, "status": "completed"},
-        {"agent": "b", "start_ms": 20, "end_ms": 110, "status": "failed"},
-        {"agent": "c", "start_ms": 30, "end_ms": 120, "status": "cancelled"},
+        {"agent": "a", "start_ms": 10, "end_ms": 100, "status": "completed", "status": "completed"},
+        {"agent": "b", "start_ms": 20, "end_ms": 110, "status": "completed", "status": "failed"},
+        {"agent": "c", "start_ms": 30, "end_ms": 120, "status": "completed", "status": "cancelled"},
     ]
     assert parallel_overlap(spans) is False
     spans[2]["status"] = "completed"
@@ -230,8 +230,8 @@ def test_unrelated_tool_readback_cannot_earn_100_percent_artifact_score():
         supported=set(case["required_capabilities"]),
         receipts=[{"kind": "sandbox_test", "verified": True}],
         spans=[
-            {"agent": "teacher", "start_ms": 10, "end_ms": 110},
-            {"agent": "reviewer", "start_ms": 20, "end_ms": 120},
+            {"agent": "teacher", "start_ms": 10, "end_ms": 110, "status": "completed"},
+            {"agent": "reviewer", "start_ms": 20, "end_ms": 120, "status": "completed"},
         ],
         oracle={"case_id": "F08", "passed": True},
     )
@@ -254,8 +254,8 @@ def test_generic_read_call_without_path_correlated_receipts_is_not_readback():
         supported=set(case["required_capabilities"]),
         receipts=[{"kind": "sandbox_test", "verified": True}],
         spans=[
-            {"agent": "a", "start_ms": 0, "end_ms": 100},
-            {"agent": "b", "start_ms": 1, "end_ms": 101},
+            {"agent": "a", "start_ms": 0, "end_ms": 100, "status": "completed"},
+            {"agent": "b", "start_ms": 1, "end_ms": 101, "status": "completed"},
         ],
         oracle={"case_id": "F08", "passed": True},
     )
@@ -265,15 +265,23 @@ def test_generic_read_call_without_path_correlated_receipts_is_not_readback():
 
 def test_nonfinite_and_negative_delegation_timestamps_never_prove_parallelism():
     """Reject NaN/Infinity: Python comparisons with NaN can silently bypass guards."""
-    valid = {"agent": "analyst", "start_ms": 10, "end_ms": 100}
+    valid = {"agent": "analyst", "start_ms": 10, "end_ms": 100, "status": "completed"}
     for invalid in (
-        {"agent": "reviewer", "start_ms": float("nan"), "end_ms": 90},
-        {"agent": "reviewer", "start_ms": 20, "end_ms": float("nan")},
-        {"agent": "reviewer", "start_ms": float("-inf"), "end_ms": 90},
-        {"agent": "reviewer", "start_ms": 20, "end_ms": float("inf")},
-        {"agent": "reviewer", "start_ms": -1, "end_ms": 90},
+        {"agent": "reviewer", "start_ms": float("nan"), "end_ms": 90, "status": "completed"},
+        {"agent": "reviewer", "start_ms": 20, "end_ms": float("nan"), "status": "completed"},
+        {"agent": "reviewer", "start_ms": float("-inf"), "end_ms": 90, "status": "completed"},
+        {"agent": "reviewer", "start_ms": 20, "end_ms": float("inf"), "status": "completed"},
+        {"agent": "reviewer", "start_ms": -1, "end_ms": 90, "status": "completed"},
     ):
         assert parallel_overlap([valid, invalid]) is False
     assert parallel_overlap([valid, {
-        "agent": "reviewer", "start_ms": 20, "end_ms": 90,
+        "agent": "reviewer", "start_ms": 20, "end_ms": 90, "status": "completed",
     }]) is True
+
+
+def test_missing_delegation_status_never_earns_parallel_credit():
+    completed = {"agent": "analyst", "start_ms": 10, "end_ms": 100, "status": "completed"}
+    missing = {"agent": "reviewer", "start_ms": 20, "end_ms": 110}
+    assert parallel_overlap([completed, missing]) is False
+    assert parallel_overlap([missing, dict(missing, agent="third")]) is False
+    assert parallel_overlap([completed, dict(missing, status="completed")]) is True
