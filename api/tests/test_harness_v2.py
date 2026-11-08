@@ -20,7 +20,10 @@ def test_specialists_cannot_inherit_external_tools():
     from agent_platform.harness import specialist_specs, VIRTUAL_TOOLS
     specs = specialist_specs()
     assert {p["name"] for p in specs} == {"analyst", "verifier", "builder"}
-    assert all(p["tools"] == [] for p in specs)
+    assert specs[0]["tools"] == []
+    assert {tool.name for tool in specs[1]["tools"]} == {
+        "check_quadratic_gradient_step", "check_trilinear_interpolation"}
+    assert specs[2]["tools"] == []
     assert all(len(p["middleware"]) == 1 for p in specs)
     supplied = object()
     overridden = specialist_specs({"verifier": supplied})
