@@ -25,6 +25,8 @@ from agent_platform.gateway_protocol import validate_agent_body, validate_agent_
 from agent_platform.router import router as agent_router
 from agent_platform.openrouter_spend_guard import PaidTestBudgetError, require_paid_test_cap
 from agent_platform.provider_pacing import AgentProviderPacer
+from agent_platform.gateway_parent_budget import ParentBudgetGateway
+from agent_platform.budget_reservations import BudgetExceeded
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 MAX_BYTES = 160_000
@@ -71,6 +73,7 @@ class Runtime:
 
 runtime = Runtime()
 agent_pacer = AgentProviderPacer(concurrency=2, spacing_s=0.4)
+parent_budget = ParentBudgetGateway()
 log = logging.getLogger(__name__)
 
 
@@ -78,6 +81,7 @@ log = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     setup_telemetry()
     await ledger.open()
+    await parent_budget.open()
     agent_runtime = None
     try:
         if os.getenv("DRAGONZPYDER_AGENTS_ENABLED") == "1":
@@ -106,6 +110,7 @@ async def lifespan(app: FastAPI):
     finally:
         if agent_runtime is not None:
             await agent_runtime.close()
+        await parent_budget.close()
         await ledger.close()
         shutdown_telemetry()
 
@@ -242,6 +247,42 @@ async def inference(prefix: str, request: Request):
         )
         return JSONResponse(report)
 
+    # Create parent USD budgets only through the authenticated staging
+    # gateway. No client can create an unmetered parallel job from a browser.
+    if path == "/internal/agent/v1/parallel-budget":
+        if request.method != "POST":
+            return denied(405, "POST required")
+        if (caller_identity(request) != "agent-runtime" or
+                os.getenv("DRAGONZPYDER_AGENT_TOOL_CALLS_ENABLED") != "1"):
+            return denied(403, "Agent runtime authentication required")
+        if not parent_budget.active:
+            return denied(503, "Atomic parent budget gateway is disabled")
+        try:
+            raw = await request.body()
+            if len(raw) > 512:
+                return denied(413, "Budget request too large")
+            item = json.loads(raw)
+            if not isinstance(item, dict) or set(item) != {"job_id", "ceiling_usd"}:
+                return denied(400, "Invalid budget request")
+            from agent_platform.key_budget import verify_key_budget
+            provider_cap = await verify_key_budget(
+                request.app.state.http, os.getenv("OPENROUTER_API_KEY", "")
+            )
+            if provider_cap.get("approved") is not True:
+                return denied(503, "Provider hard cap not verified")
+            from decimal import Decimal
+            if Decimal(str(item["ceiling_usd"])) > Decimal(
+                    str(provider_cap["remaining_usd"])):
+                return denied(429, "Approved provider allowance below parent ceiling")
+            await parent_budget.create(job_id=item["job_id"],
+                                       ceiling_usd=item["ceiling_usd"])
+        except (ValueError, TypeError, KeyError, BudgetExceeded, json.JSONDecodeError):
+            return denied(400, "Parent budget request rejected")
+        except Exception:
+            return denied(503, "Parent budget database unavailable")
+        return JSONResponse({"status": "created", "job_id": item["job_id"],
+                             "atomic_gateway_enforced": True})
+
     if path == "/internal/admin/usage":
         if not admin_authorized(request):
             return denied(401, "Admin service authentication required")
@@ -313,6 +354,11 @@ async def inference(prefix: str, request: Request):
     failure_code = None
     status = "error"
     response = None
+    # Parent identities are supplied only by the already-authenticated
+    # agent-runtime caller; reservations are made by this gateway.
+    parent_job_id = request.headers.get("x-dragonzpyder-parent-job-id") if agent_protocol else None
+    parent_reserved = False
+    parent_finalized = False
     try:
         with inference_span(request, app_id, "unknown", request_id) as span:
             trace_id = span_trace_id(span) or request_id.replace("-", "")
@@ -396,6 +442,23 @@ async def inference(prefix: str, request: Request):
                     )
                 if not await runtime.charge():
                     raise GatewayError(429, "DragonZpyder internal inference test quota reached")
+                if parent_job_id is not None:
+                    if not parent_budget.active:
+                        raise GatewayError(503, "Parallel parent budget gateway is disabled")
+                    try:
+                        await parent_budget.reserve(
+                            job_id=parent_job_id, request_id=request_id,
+                            payload_bytes=len(raw), output_tokens=body["max_tokens"]
+                        )
+                        parent_reserved = True
+                    except (ValueError, BudgetExceeded):
+                        raise GatewayError(429, "Atomic parent inference budget unavailable") from None
+                    # Routing price ceilings match the conservative reservation
+                    # bound. Do not override the provider's tool requirements.
+                    body.setdefault("provider", {})["max_price"] = {
+                        "prompt": 1.0, "completion": 4.0
+                    }
+                    body["usage"] = {"include": True}
                 try:
                     # Only the agent protocol receives local admission pacing.
                     # One upstream request per attempt; never automatically
@@ -417,6 +480,13 @@ async def inference(prefix: str, request: Request):
                         await agent_pacer.cooldown(upstream.headers.get("retry-after"))
                         if code == 429 and agent_protocol else None
                     )
+                    if code == 429 and parent_reserved:
+                        try:
+                            await parent_budget.settle_known_rejection(
+                                job_id=parent_job_id, request_id=request_id)
+                            parent_finalized = True
+                        except Exception:
+                            pass  # Any ambiguous release remains held.
                     raise GatewayError(
                         code, "Inference budget or rate limit reached" if code == 429
                               else "Model provider rejected the request",
@@ -473,9 +543,25 @@ async def inference(prefix: str, request: Request):
                     raise GatewayError(502, "Model provider returned unexpected content")
                 served_model = str(provider_response.get("model") or body["model"])
                 generation_id = str(provider_response.get("id") or "") or None
+                if parent_reserved:
+                    # Missing/invalid/above-bound provider usage never frees
+                    # reserved dollars. The provider hard key cap still applies.
+                    try:
+                        await parent_budget.settle(job_id=parent_job_id,
+                            request_id=request_id,
+                            provider_response=provider_response)
+                    finally:
+                        parent_finalized = True
                 response = JSONResponse(payload)
                 status = "ok"
             except GatewayError as error:
+                if parent_reserved and not parent_finalized:
+                    try:
+                        await parent_budget.settle(job_id=parent_job_id,
+                            request_id=request_id, provider_response=None)
+                    except Exception:
+                        pass  # Hold is never automatically released.
+                    parent_finalized = True
                 failure_code = str(error.status)
                 if agent_protocol:
                     # Only authored validation labels; never record prompts or schemas.
@@ -485,6 +571,13 @@ async def inference(prefix: str, request: Request):
                 if error.retry_after is not None:
                     response.headers["retry-after"] = str(error.retry_after)
             except Exception as error:
+                if parent_reserved and not parent_finalized:
+                    try:
+                        await parent_budget.settle(job_id=parent_job_id,
+                            request_id=request_id, provider_response=None)
+                    except Exception:
+                        pass
+                    parent_finalized = True
                 log.exception("Unexpected inference exception request_id=%s type=%s", request_id, type(error).__name__)
                 failure_code = "502"
                 response = denied(502, "Inference service unavailable")
