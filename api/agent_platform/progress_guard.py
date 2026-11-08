@@ -85,3 +85,35 @@ def progress_guard_decision(state: dict) -> dict | None:
 @before_model(can_jump_to=["end"])
 def stop_repeating_agent(state, runtime):
     return progress_guard_decision(state)
+
+
+
+MAX_SPECIALIST_TURNS = 5
+
+
+def specialist_progress_decision(state: dict) -> dict | None:
+    """Terminate a subagent before it consumes the full recursion budget.
+
+    A short specialist should return useful evidence, not recursively ask
+    the same questions or chain long independent sub-tasks.
+    """
+    messages=state.get("messages",[])
+    actions=action_fingerprints(messages)
+    if repeated_action_cycle(actions):
+        reason="specialist_repeated_tool_cycle"
+    elif sum(getattr(msg,"type",None)=="ai" for msg in messages)>=MAX_SPECIALIST_TURNS:
+        reason="specialist_step_budget_exhausted"
+    else:
+        return None
+    return {
+        "messages":[AIMessage(content=(
+            STOP_PREFIX+" "+reason+
+            "; delegated task incomplete. Evidence requires independent checks."
+        ))],
+        "jump_to":"end",
+    }
+
+
+@before_model(can_jump_to=["end"])
+def stop_repeating_specialist(state, runtime):
+    return specialist_progress_decision(state)
