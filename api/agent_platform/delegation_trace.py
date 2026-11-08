@@ -10,6 +10,7 @@ from hashlib import sha256
 from threading import Lock
 from time import monotonic_ns
 from typing import Callable
+from uuid import uuid4
 
 from langchain_core.callbacks import BaseCallbackHandler
 
@@ -19,6 +20,7 @@ class DelegationTrace(BaseCallbackHandler):
 
     def __init__(self, clock: Callable[[], int] = monotonic_ns):
         super().__init__()
+        self.execution_id = uuid4().hex
         self._clock = clock
         self._origin = clock()
         self._lock = Lock()
@@ -57,6 +59,7 @@ class DelegationTrace(BaseCallbackHandler):
                 continue
             spans.append({
                 "agent": sha256(run_id.encode("utf-8")).hexdigest()[:16],
+                "execution_id": self.execution_id,
                 "start_ms": round((begin - self._origin) / 1_000_000, 3),
                 "end_ms": round((end - self._origin) / 1_000_000, 3),
                 "status": status,
@@ -69,6 +72,7 @@ class DelegationTrace(BaseCallbackHandler):
         )
         return {
             "spans": spans,
+            "execution_id": self.execution_id,
             "parallelism_observed": concurrent,
             "delegated_calls_observed": len(spans),
             "unfinished_calls": still_active,
