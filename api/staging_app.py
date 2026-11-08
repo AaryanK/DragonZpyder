@@ -218,6 +218,53 @@ async def run_staging_frontier_canary_once() -> None:
     )
 
 
+async def log_paid_key_budget_preflight() -> None:
+    """No-inference diagnostic for the actual metered gateway provider key.
+
+    Only an authored rejection reason is logged. No token, limit, account ID,
+    request content, key metadata, or provider response body is recorded.
+    """
+    if os.getenv("DRAGONZPYDER_STAGING_PAID_TOOL_SMOKE_ONCE") != "1":
+        return
+    base = os.getenv("DRAGONZPYDER_AGENT_GATEWAY_BASE_URL", "").rstrip("/")
+    token = os.getenv("DRAGONZPYDER_AGENT_GATEWAY_TOKEN", "")
+    if (not base.startswith("http://dragonzpyder-gateway.railway.internal:8080/")
+            or not base.endswith("/internal/agent/v1") or len(token) < 32):
+        logger.warning("Paid key preflight status=blocked reason=invalid_private_gateway")
+        return
+    allowed_reasons = {
+        "hard_nonresetting_key_cap_verified",
+        "provider_key_unavailable",
+        "provider_budget_lookup_failed",
+        "invalid_provider_budget_response",
+        "key_has_no_verified_hard_cap",
+        "key_hard_cap_exceeds_approved_total",
+        "resettable_key_cap_not_permitted",
+        "invalid_remaining_budget",
+        "key_budget_exhausted",
+    }
+    try:
+        async with httpx.AsyncClient(timeout=10, trust_env=False, follow_redirects=False) as client:
+            response = await client.get(
+                base + "/key-budget",
+                headers={"authorization": "Bearer " + token},
+            )
+        if response.status_code != 200:
+            logger.warning("Paid key preflight status=blocked reason=gateway_%d", response.status_code)
+            return
+        data = response.json()
+        reason = data.get("reason") if isinstance(data, dict) else None
+        if reason not in allowed_reasons:
+            reason = "unexpected_gateway_budget_result"
+        logger.warning(
+            "Paid key preflight status=%s reason=%s",
+            "eligible" if data.get("approved") is True else "blocked",
+            reason,
+        )
+    except (httpx.HTTPError, ValueError, TypeError):
+        logger.warning("Paid key preflight status=blocked reason=lookup_unavailable")
+
+
 @asynccontextmanager
 async def lifespan(app):
     app.state.runtime = None
@@ -247,6 +294,7 @@ async def lifespan(app):
         "Staging infrastructure readiness hatchet=%s pgvector=%s agent_gateway=%s",
         hatchet_state, vector_state, gateway_state,
     )
+    await log_paid_key_budget_preflight()
     app.state.public_web_smoke, source_count = await public_web_search_smoke()
     if app.state.public_web_smoke != "disabled":
         logger.warning(

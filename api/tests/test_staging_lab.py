@@ -205,3 +205,20 @@ def test_frontier_canary_requires_paid_gateway_approval(monkeypatch):
         raise AssertionError("Model call must be blocked without approval")
     monkeypatch.setattr(staging_app, "run_live_case", forbidden)
     assert asyncio.run(staging_app.run_staging_frontier_canary_once()) is None
+
+
+def test_budget_diagnostic_never_calls_gateway_without_paid_test_flag(monkeypatch):
+    import asyncio
+    from staging_app import log_paid_key_budget_preflight
+    monkeypatch.delenv("DRAGONZPYDER_STAGING_PAID_TOOL_SMOKE_ONCE", raising=False)
+    assert asyncio.run(log_paid_key_budget_preflight()) is None
+
+
+def test_budget_diagnostic_blocks_external_gateway_without_network(monkeypatch):
+    import asyncio
+    from staging_app import log_paid_key_budget_preflight
+    monkeypatch.setenv("DRAGONZPYDER_STAGING_PAID_TOOL_SMOKE_ONCE", "1")
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_GATEWAY_BASE_URL",
+                       "https://outside.example/internal/agent/v1")
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_GATEWAY_TOKEN", "t" * 40)
+    assert asyncio.run(log_paid_key_budget_preflight()) is None
