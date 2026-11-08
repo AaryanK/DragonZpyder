@@ -155,6 +155,7 @@ def test_agent_self_claim_cannot_replace_independent_outcome_oracle():
         "artifact_readback_paths": [case["artifact_dir"] + "/" + n
                                     for n in case["expected_artifacts"]],
         "objective_verified": True, "execution_id": "eval-run",
+        "status": "completed",
     }
     kwargs = {
         "supported": set(case["required_capabilities"]),
@@ -215,10 +216,14 @@ def test_incomplete_or_failed_run_cannot_earn_verified_success():
     }
     control = score_report(case, dict(report, status="completed"), **kwargs)
     assert control["status"] == "verified_success"
-    for status in ("incomplete", "failed", "cancelled", "execution_failed"):
+    for status in ("incomplete", "failed", "cancelled", "execution_failed",
+                   "timed_out", "aborted", "unknown", None):
         result = score_report(case, dict(report, status=status), **kwargs)
         assert result["objective_verified"] is False
         assert result["status"] != "verified_success"
+    missing = score_report(case, report, **kwargs)
+    assert missing["objective_verified"] is False
+    assert missing["status"] != "verified_success"
 
 
 def test_all_expected_artifacts_have_exact_paths_and_f02_numeric_tolerance_is_not_a_file():
@@ -330,7 +335,7 @@ def test_score_report_rejects_cross_execution_parallel_evidence():
     case = next(c for c in load_suite() if c["id"] == "F08")
     paths = [case["artifact_dir"] + "/" + n for n in case["expected_artifacts"]]
     report = {"virtual_artifact_paths": paths, "successful_tools": ["write_file", "read_file"],
-              "artifact_readback_paths": paths, "execution_id": "run-a"}
+              "artifact_readback_paths": paths, "execution_id": "run-a", "status": "completed"}
     spans = [
         {"agent": "writer", "start_ms": 0, "end_ms": 100,
          "status": "completed", "execution_id": "run-a"},
@@ -349,7 +354,8 @@ def test_oracle_replay_and_missing_run_binding_fail_closed():
     case = next(c for c in load_suite() if c["id"] == "F08")
     paths = [case["artifact_dir"] + "/" + name for name in case["expected_artifacts"]]
     report = {"execution_id": "run-b", "virtual_artifact_paths": paths,
-              "artifact_readback_paths": paths, "successful_tools": ["write_file", "read_file"]}
+              "artifact_readback_paths": paths, "successful_tools": ["write_file", "read_file"],
+              "status": "completed"}
     kwargs = {"supported": set(case["required_capabilities"]),
               "receipts": [{"kind": "sandbox_test", "verified": True}],
               "spans": [
