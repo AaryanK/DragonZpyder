@@ -69,8 +69,10 @@ def build_parallel_graph(
                 raise ValueError("Worker did not return an answer report")
             # User-facing model prose is untrusted and cannot claim an outcome pass.
             answer = response["answer"][:16000]
+            outcome = response.get("status", "completed")
             data = {
-                "id": track["id"], "status": "reported",
+                "id": track["id"],
+                "status": "incomplete" if outcome == "incomplete" else "reported",
                 "answer": answer,
                 "truncated": len(response["answer"]) > 16000,
                 "artifact_paths": [
@@ -82,6 +84,13 @@ def build_parallel_graph(
                     if isinstance(x, str)
                 ],
                 "objective_verified": False,
+                "termination_reason": (
+                    response.get("termination_reason")
+                    if outcome == "incomplete" and isinstance(
+                        response.get("termination_reason"), str
+                    ) else None
+                ),
+                "checkpoint_recovered": bool(response.get("checkpoint_recovered")),
             }
         except Exception as exc:
             # Never leak provider exception text, which can contain credentials.
