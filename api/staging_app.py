@@ -224,6 +224,22 @@ async def lifespan(app):
     app.state.runtime_error = False
     app.state.provider_auth = await verify_provider_key()
     logger.warning("Staging OpenRouter key verification status=%s", app.state.provider_auth)
+    if os.getenv("DRAGONZPYDER_STAGING_PAID_TOOL_SMOKE_ONCE") == "1":
+        from agent_platform.openrouter_spend_guard import (
+            require_paid_test_cap, PaidTestBudgetError,
+        )
+        try:
+            async with httpx.AsyncClient(timeout=8, follow_redirects=False) as client:
+                cap, remaining = await require_paid_test_cap(
+                    client, os.getenv("OPENROUTER_API_KEY", "")
+                )
+        except PaidTestBudgetError as error:
+            logger.warning("Staging lab OpenRouter cap preflight=%s", str(error))
+        else:
+            logger.warning(
+                "Staging lab OpenRouter cap preflight=verified limit_usd=%s remaining_usd=%s",
+                cap, remaining,
+            )
     hatchet_state, vector_state, gateway_state = await asyncio.gather(
         hatchet_readiness(), vector_readiness(), gateway_readiness()
     )
