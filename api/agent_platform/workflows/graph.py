@@ -145,7 +145,7 @@ def compile_readonly_workflow(
                         "error_code": "execution_failed",
                         "action_count": int(state.get("action_count") or 0) + 1}
 
-        graph.add_node("step:" + step_id, run_step)
+        graph.add_node("step_" + step_id, run_step)
 
     async def finish(state: WorkflowState) -> dict[str, Any]:
         if state.get("status") in ("failed", "waiting"):
@@ -157,10 +157,10 @@ def compile_readonly_workflow(
 
     graph.add_node("finish", finish)
     steps = normalized["steps"]
-    graph.add_edge(START, "step:" + steps[0]["id"])
+    graph.add_edge(START, "step_" + steps[0]["id"])
     for first, second in zip(steps, steps[1:]):
-        graph.add_edge("step:" + first["id"], "step:" + second["id"])
-    graph.add_edge("step:" + steps[-1]["id"], "finish")
+        graph.add_edge("step_" + first["id"], "step_" + second["id"])
+    graph.add_edge("step_" + steps[-1]["id"], "finish")
     graph.add_edge("finish", END)
     return graph.compile(checkpointer=checkpointer)
 
