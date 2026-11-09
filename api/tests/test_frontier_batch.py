@@ -1,7 +1,7 @@
 """Offline budget, evidence-boundary and opt-in contracts for real stress batch."""
 from decimal import Decimal
 import asyncio
-from agent_platform.frontier_batch import validated_budget, safe_metrics, run_frontier_batch_once, ORDER
+from agent_platform.frontier_batch import validated_budget, safe_metrics, run_frontier_batch_once, ORDER, independently_verified
 
 
 def test_one_shot_loopguard_retest_is_only_f08():
@@ -51,3 +51,15 @@ def test_improved_mode_is_gated_and_base_mode_remains_bounded():
     from agent_platform.frontier_batch import MIN_REMAINING_USD, MAX_CASE_SECONDS
     assert MIN_REMAINING_USD == Decimal("0.12")
     assert 60 < MAX_CASE_SECONDS <= 120
+
+
+def test_processed_is_not_equivalent_to_independently_verified():
+    processed = [
+        {"status": "completed", "objective_verified": False},
+        {"status": "completed", "objective_verified": True},
+        {"status": "completed", "objective_verified": "true"},
+        {"status": "completed"},
+    ]
+    assert len(processed) == 4
+    assert sum(independently_verified(report) for report in processed) == 1
+    assert not independently_verified({"status": "completed"})
