@@ -72,6 +72,20 @@ test("workspace navigation discloses planned items rather than promising working
   await expect(drawer).toHaveCount(0);
 });
 
+test("workspace drawer traps focus and returns it on close", async ({page}) => {
+  const trigger=page.locator("#dz-workspace-trigger");
+  await trigger.click();
+  const drawer=page.getByRole("dialog",{name:"Everything, in one place."});
+  await expect(drawer).toBeVisible();
+  const close=drawer.getByRole("button",{name:"Close workspace navigation"});
+  await expect(close).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(drawer.getByRole("button",{name:/Search all available commands/})).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(drawer).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+});
+
 test("all presentation stylesheets are served, not intercepted by the API proxy", async ({page}) => {
   for (const file of ["app.css","mesh.css","workspace.css","ui-v1.css"]) {
     const result = await page.evaluate(async path => {
