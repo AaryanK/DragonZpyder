@@ -123,7 +123,7 @@ export function ScreenCapture() {
       onClick={() => { setError(""); setOpen(true); }}>
       <span aria-hidden="true">▣</span><span><strong>Capture screen</strong><small>Preview and attach a screenshot</small></span>
     </button>
-    {open && <div className="dz-overlay dz-screen-overlay" onMouseDown={event => { if (event.target === event.currentTarget) stop(); }}>
+    {open && createPortal(<div className="dz-overlay dz-screen-overlay" onMouseDown={event => { if (event.target === event.currentTarget) stop(); }}>
       <section className="dz-screen-panel" role="dialog" aria-modal="true" aria-labelledby="dz-screen-title">
         <div className="dz-screen-head"><div><span className="dz-kicker">Local screen preview</span><h2 id="dz-screen-title">Capture your screen</h2></div>
           <button aria-label="Close screen preview" type="button" onClick={stop}>×</button></div>
@@ -133,7 +133,7 @@ export function ScreenCapture() {
         <div className="dz-screen-actions"><button type="button" onClick={stop}>Cancel</button>
           <button type="button" onClick={capture} disabled={!!error}>Attach screenshot</button></div>
       </section>
-    </div>}
+    </div>, document.body)}
   </>;
 }
 
