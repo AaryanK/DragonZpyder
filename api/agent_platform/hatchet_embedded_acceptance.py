@@ -32,7 +32,7 @@ async def prepare():
             await con.execute(SCHEMA)
         store = DurableGoalStore(pool, encryption_key=Fernet.generate_key().decode())
         probe = await store.register(
-            source_app="dragonzpyder", kind="personal",
+            source_app="internal_canary", kind="personal",
             user_id="internal-staging-probe", workspace_id=None,
             request_id=str(uuid4()),
             goal="Synthetic CI probe only: zero model or external tool calls.",
@@ -64,7 +64,7 @@ async def verify(probe_id, user_id):
     try:
         store = DurableGoalStore(pool, encryption_key=Fernet.generate_key().decode())
         probe_runs = await store.list_runs(
-            source_app="dragonzpyder", kind="personal",
+            source_app="internal_canary", kind="personal",
             user_id="internal-staging-probe", workspace_id=None,
             goal_id=probe_id,
         )
