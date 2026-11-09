@@ -75,27 +75,42 @@ export function CommandPalette() {
 export function ScreenCapture() {
   const [open, setOpen] = useState(false);
   const [error, setError] = useState("");
-  const video = useRef(null), current = useRef(null);
-  const stop = useCallback(() => { current.current?.getTracks().forEach(track => track.stop()); current.current = null; setOpen(false); }, []);
-  useEffect(() => {
-    if (!open) return;
-    let cancelled = false;
-    const begin = async () => {
-      try {
-        if (!navigator.mediaDevices?.getDisplayMedia) throw new Error("unsupported");
-        const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
-        if (cancelled) { stream.getTracks().forEach(track => track.stop()); return; }
-        current.current = stream;
-        stream.getVideoTracks()[0]?.addEventListener("ended", stop, { once: true });
-        if (video.current) { video.current.srcObject = stream; await video.current.play().catch(() => {}); }
-      } catch (cause) {
-        if (!cancelled) setError(cause?.name === "NotAllowedError"
-          ? "Screen selection was cancelled or denied." : "Screen capture is unavailable in this browser.");
+  const video = useRef(null), current = useRef(null), generation = useRef(0);
+  const stop = useCallback(() => {
+    generation.current++;
+    current.current?.getTracks().forEach(track => track.stop());
+    current.current = null;
+    setOpen(false);
+  }, []);
+  // getDisplayMedia must be invoked directly within the user gesture, not a
+  // later React effect; otherwise browsers reject it with InvalidStateError.
+  const begin = async () => {
+    const request = ++generation.current;
+    setError("");
+    setOpen(true);
+    try {
+      if (!navigator.mediaDevices?.getDisplayMedia) throw new Error("unsupported");
+      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+      if (request !== generation.current) {
+        stream.getTracks().forEach(track => track.stop());
+        return;
       }
-    };
-    begin();
-    return () => { cancelled = true; current.current?.getTracks().forEach(track => track.stop()); current.current = null; };
-  }, [open, stop]);
+      current.current = stream;
+      stream.getVideoTracks()[0]?.addEventListener("ended", stop, { once: true });
+      requestAnimationFrame(() => {
+        if (video.current) {
+          video.current.srcObject = stream;
+          video.current.play().catch(() => {});
+        } else {
+          stream.getTracks().forEach(track => track.stop());
+        }
+      });
+    } catch (cause) {
+      if (request === generation.current) setError(cause?.name === "NotAllowedError"
+        ? "Screen selection was cancelled or denied." : "Screen capture is unavailable in this browser.");
+    }
+  };
+  useEffect(() => () => { current.current?.getTracks().forEach(track => track.stop()); }, []);
   useEffect(() => {
     if (!open) return;
     const onEscape = event => { if (event.key === "Escape") stop(); };
@@ -120,7 +135,7 @@ export function ScreenCapture() {
   };
   return <>
     <button id="screen-capture-toggle" type="button" className="dz-menu-action"
-      onClick={() => { setError(""); setOpen(true); }}>
+      onClick={begin}>
       <span aria-hidden="true">▣</span><span><strong>Capture screen</strong><small>Preview and attach a screenshot</small></span>
     </button>
     {open && createPortal(<div className="dz-overlay dz-screen-overlay" onMouseDown={event => { if (event.target === event.currentTarget) stop(); }}>
