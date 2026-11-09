@@ -84,3 +84,61 @@ than storing the four-minute lease. Only after data parity and live
 acceptance may Operly's legacy scheduler be retired. Do not enable the
 experimental MCP connector for personal OAuth without proper delegated user
 authorization and network egress enforcement.
+
+
+## Wrapper contexts, owned goals and personal/device migration (November 9)
+
+**Single intelligence provider:** DragonZpyder's LangGraph/Deep Agents
+runtime, Hatchet worker, context/capability hub, model gateway and goals store
+are the shared execution layer. Operly and NaySchool are separate client
+applications with their OWN verified identity and domain capability providers.
+
+**Operly business entry:** The existing signed-readonly capability broker now
+returns live, membership-rechecked `workspace_context` on its `/search`
+response. DragonZpyder fetches that context prior to running a Workspace
+goal, bounds the data to name/timezone/role/mode and labels it explicitly as
+untrusted model data. It NEVER uses a workspace name or model-inferred role
+as authorization. On every subsequent tool call Operly rechecks actual
+workspace identity, capabilities and permissions. Personal requests have
+NO workspace context.
+
+**Goal ownership:** `agent_platform/goal_store.py` and
+`agent_platform/goal_router.py` provide DragonZpyder-owned encrypted
+PostgreSQL goal records, idempotent registration, scoped lookup/cancel and
+validated schedule metadata. The runtime refuses to start if the required
+migration is missing or `DRAGONZPYDER_GOALS_ENCRYPTION_KEY` is invalid.
+Schema: `agent_platform/migrations/20261109_encrypted_goals.sql`.
+Feature flag: `DRAGONZPYDER_GOAL_STORE_ENABLED=1` (OFF by default).
+Service identity: existing `DRAGONZPYDER_OPERLY_AGENT_TOKEN`.
+Database: `DRAGONZPYDER_GOALS_DATABASE_URL`. Stored prompts are encrypted;
+identities are domain-separated hashes. This does NOT execute jobs:
+`job_registered=false` and `requires_fresh_authorization=true`
+remain true. Do not interpret `next_run_at` as a Hatchet schedule.
+
+**Operly wrapper:** `packages/workflow/dragonzpyder_goals.py`
+forwards authenticated Personal/Workspace goal registration, read and cancel
+requests to DragonZpyder. It does not start Operly's own AI agent or scheduler.
+It is not yet exposed as a user-facing workflow capability.
+
+**To safely complete the product:**
+1. Complete a NEW DragonZpyder Personal identity, user-owned OAuth
+   connection store and account migration; move Gmail/Calendar/Drive provider
+   ownership and scopes, preserving explicit consent and token revocation.
+2. Give DragonZpyder a local/remote computer broker with per-device consent,
+   isolated process execution, visible approval for camera/microphone/screen,
+   revocable permissions and no silent background sensor access. Keep Operly
+   business sandboxes as authorized tool providers only.
+3. Register Hatchet wakeups from DragonZpyder's durable goals and renew a
+   single-job user/workspace delegation on each wake; do not persist Operly's
+   240-second tool lease or an OAuth access token in a scheduled payload.
+4. Add independent application principals for Operly and NaySchool, with
+   separate secrets and contextual schemas. NaySchool learner data must not
+   be accessible using an Operly service identity.
+5. Move actual legacy workflow definitions/runs with checksums and read-back
+   parity, then disable/retire Operly's old scheduler and custom planner only
+   after a production-like staged canary proves resumed jobs, approvals,
+   cancellation, idempotency and verified outcomes.
+
+**Not release-ready:** Scheduled execution, automatic Gmail/calendar writes,
+personal camera/computer access, NaySchool integration and migrating user
+OAuth/data are explicitly NOT claimed as done by this PR.
