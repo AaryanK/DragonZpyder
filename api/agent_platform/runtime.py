@@ -320,7 +320,8 @@ class AgentRuntime:
     async def run_report(self, *, service_id: str, thread_id: str, prompt: str,
                          recover_partial_on_failure: bool = False,
                          parent_job_id: str | None = None,
-                         external_tools=None) -> dict:
+                         external_tools=None,
+                         activity_callbacks=None) -> dict:
         if self._checkpointer is None:
             raise RuntimeError("Agent runtime is not started")
         if not isinstance(prompt, str) or not 1 <= len(prompt.strip()) <= 12000:
@@ -353,7 +354,8 @@ class AgentRuntime:
                 )) else
                 32 if os.getenv("DRAGONZPYDER_AGENT_HARNESS_V2") == "1" else 16
             ),
-            "callbacks": [delegation_trace, *langfuse_handlers],
+            "callbacks": [delegation_trace, *langfuse_handlers,
+                          *(activity_callbacks or [])],
             "metadata": {
                 "service_id": service_id,
                 "harness_version": "v2" if os.getenv(
