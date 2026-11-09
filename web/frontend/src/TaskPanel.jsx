@@ -53,7 +53,7 @@ export function TaskPanel() {
     const items = Array.isArray(response.tasks) ? response.tasks : [];
     setTasks(items);
     setConnected(true);
-    const id = selected || items[0]?.task_id;
+    const id = selected?.task_id || items[0]?.task_id;
     if (!id) return;
     const detail = await taskApi("/api/harness/tasks/" + encodeURIComponent(id), { signal });
     if (!signal?.aborted) setSelected(detail);
