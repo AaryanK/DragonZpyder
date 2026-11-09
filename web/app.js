@@ -58,8 +58,8 @@ function applyWorkspaceTheme(theme, { persist = true } = {}) {
   }
 }
 try {
-  applyWorkspaceTheme(localStorage.getItem("dragonzpyder:workspace-theme") || "dark", { persist: false });
-} catch { applyWorkspaceTheme("dark", { persist: false }); }
+  applyWorkspaceTheme(localStorage.getItem("dragonzpyder:workspace-theme") || "light", { persist: false });
+} catch { applyWorkspaceTheme("light", { persist: false }); }
 workspaceThemeToggle.addEventListener("click", () => {
   applyWorkspaceTheme(document.documentElement.dataset.workspaceTheme === "light" ? "dark" : "light");
 });
