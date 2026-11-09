@@ -23,6 +23,7 @@ from usage_ledger import ledger, token_usage
 from provider_gateway import provider_request
 from agent_platform.gateway_protocol import validate_agent_body, validate_agent_response, AgentProtocolError
 from agent_platform.router import router as agent_router
+from agent_platform.workflows.router import router as workflow_router
 from agent_platform.openrouter_spend_guard import PaidTestBudgetError, require_paid_test_cap
 from agent_platform.provider_pacing import AgentProviderPacer
 from agent_platform.gateway_parent_budget import ParentBudgetGateway
@@ -119,6 +120,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="DragonZpyder API", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
 app.include_router(agent_router)
+app.include_router(workflow_router)
 
 
 @app.middleware("http")
