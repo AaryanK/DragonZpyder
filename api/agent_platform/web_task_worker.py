@@ -28,6 +28,16 @@ def require_web_task_gate() -> None:
         raise RuntimeError("Persistent task database is required")
 
 
+# Only reviewed generic tool categories can be shown in user activity. Never
+# include tool arguments, filenames, URLs, remote MCP labels or result text.
+_SAFE_TOOL_LABELS = {
+    "task": "Specialist delegation", "read_file": "Read file",
+    "write_file": "Write file", "edit_file": "Edit file",
+    "ls": "List files", "glob": "Find files", "grep": "Search files",
+    "web_search": "Web research",
+}
+
+
 class ActivityTrace:
     """LangChain callback wrapper. Never stores arguments, prompts or reasoning."""
 
@@ -40,6 +50,10 @@ class ActivityTrace:
         parent = self
 
         class SanitizedEvents(AsyncCallbackHandler):
+            def __init__(self):
+                super().__init__()
+                self.running_tools = {}
+
             async def on_llm_start(self, serialized, prompts, **kwargs):
                 await parent.safe("model_started", "Model inference started")
 
@@ -53,15 +67,22 @@ class ActivityTrace:
                 await parent.safe("info", "Model inference did not complete")
 
             async def on_tool_start(self, serialized, input_str, **kwargs):
-                # Tool names and arguments may be attacker-controlled, so do
-                # not copy them into the shared ops log.
-                await parent.safe("tool_started", "Agent tool started")
+                name = serialized.get("name") if isinstance(serialized, dict) else None
+                label = _SAFE_TOOL_LABELS.get(name, "Tool")
+                run_id = kwargs.get("run_id")
+                if run_id is not None:
+                    self.running_tools[str(run_id)] = label
+                await parent.safe("tool_started", label + " started")
 
             async def on_tool_end(self, output, **kwargs):
-                await parent.safe("tool_finished", "Agent tool returned")
+                run_id = kwargs.get("run_id")
+                label = self.running_tools.pop(str(run_id), "Tool")
+                await parent.safe("tool_finished", label + " completed")
 
             async def on_tool_error(self, error, **kwargs):
-                await parent.safe("info", "Agent tool reported an error")
+                run_id = kwargs.get("run_id")
+                label = self.running_tools.pop(str(run_id), "Tool")
+                await parent.safe("info", label + " returned an error")
 
         return SanitizedEvents()
 
