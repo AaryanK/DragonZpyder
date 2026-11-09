@@ -188,8 +188,10 @@ python -m agent_platform.goal_tick_admin seed-probe
 The order is important: make sure the new task has registered with the Hatchet
 server before provisioning its cron. Repeated cron installation is not
 automatically treated as success; inspect Hatchet state for the fixed name.
-A canary run records its result in `dragonzpyder_goal_runs`. A user's due
-occurrence is created as `awaiting_authorization` and **is never executed**.
+A canary run records its result in `dragonzpyder_goal_runs`. A user's first due occurrence is recorded as `awaiting_authorization`; its
+parent goal is paused with no further next-run time until genuine fresh
+user consent is implemented. This prevents unbounded unauthorized cron
+backlogs. User goals **are never executed** in this slice.
 Neither fake permission grants nor cached 240-second Operly leases are used.
 
 **Acceptance tests:** `api/tests/test_goal_recovery_postgres.py` simulates
