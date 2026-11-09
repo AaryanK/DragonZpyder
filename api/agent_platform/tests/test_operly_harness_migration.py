@@ -2,6 +2,7 @@
 
 These do not make provider calls or execute Operly capabilities.
 """
+from types import SimpleNamespace
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -79,7 +80,7 @@ def test_uses_dragonzpyder_langgraph_and_never_claims_verified_goal(monkeypatch)
     _enable(monkeypatch)
     monkeypatch.setattr(
         "agent_platform.operly_broker.readonly_tools",
-        lambda lease: ["fake-readonly-tool"],
+        lambda lease: [SimpleNamespace(name="fake_readonly_tool", ainvoke=lambda payload: None)],
     )
     app = _app()
     with TestClient(app) as client:
@@ -92,5 +93,5 @@ def test_uses_dragonzpyder_langgraph_and_never_claims_verified_goal(monkeypatch)
     assert body["message"] == "Read-only evidence found."
     assert body["status"] == "completed"
     assert body["objective_verified"] is False
-    assert app.state.agent_runtime.calls[0]["external_tools"] == ["fake-readonly-tool"]
+    assert [tool.name for tool in app.state.agent_runtime.calls[0]["external_tools"]] == ["fake_readonly_tool"]
     assert app.state.agent_runtime.calls[0]["service_id"].startswith("operly-")
