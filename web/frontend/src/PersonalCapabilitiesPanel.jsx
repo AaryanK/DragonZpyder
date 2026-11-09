@@ -73,13 +73,15 @@ export function PersonalCapabilitiesPanel() {
     }
     const composer = document.getElementById("message-input");
     if (!composer) { setError("The Agent composer is unavailable."); return; }
-    const suggestion = "Help me use " + tool.display_name + " to ";
-    if (!composer.value.trim()) {
-      composer.value = suggestion;
-      composer.dispatchEvent(new Event("input", { bubbles: true }));
+    if (composer.value.trim()) {
+      setError("Your existing draft was preserved. Send or clear it before selecting another tool.");
+      return;
     }
+    composer.value = "Help me use " + tool.display_name + " to ";
+    composer.dispatchEvent(new Event("input", { bubbles: true }));
     setOpen(false);
-    requestAnimationFrame(() => composer.focus());
+    // The dialog's focus-restore cleanup runs on the next frame.
+    requestAnimationFrame(() => requestAnimationFrame(() => composer.focus()));
   };
 
   if (!open) return null;
