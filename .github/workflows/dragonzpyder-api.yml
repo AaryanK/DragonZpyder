@@ -1,0 +1,36 @@
+name: DragonZpyder API
+on:
+  push:
+    branches: [codex/consolidate-dragonzpyder-web, codex/python-fastapi-migration]
+    paths: ["api/**", ".github/workflows/dragonzpyder-api.yml"]
+  pull_request:
+    paths: ["api/**", ".github/workflows/dragonzpyder-api.yml"]
+jobs:
+  fastapi-contract:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install FastAPI and tests
+        run: pip install -r api/requirements.txt pytest
+      - name: Validate Python source
+        run: python -m compileall -q api/main.py api/provider_gateway.py api/usage_ledger.py api/observability.py api/tests
+      - name: Run FastAPI contract checks
+        run: pytest -q api/tests/test_fastapi_gateway.py api/tests/test_usage_audit.py api/tests/test_provider_gateway.py
+  legacy-compatibility:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm test

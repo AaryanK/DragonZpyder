@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>DragonZpyder · Chat Lab</title>
+  <link rel="stylesheet" href="/chat/app.css">
+  <script src="/chat/app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="mark">✦</span><span>Dragon<span class="accent">Zpyder</span></span><span class="labtag">CHAT LAB</span></div>
+    <button id="logout" class="textbutton" hidden>Sign out</button>
+  </header>
+  <main class="layout">
+    <section id="login" class="welcome" hidden>
+      <p class="eyebrow">PRIVATE PREVIEW / OPENROUTER</p>
+      <h1>One conversation.<br><em>Multiple kinds of input.</em></h1>
+      <p>Early DragonZpyder Chat Lab: ask questions, show an image or attach a document. No business data or Operly permissions are connected.</p>
+      <form id="loginform" class="loginform">
+        <label for="password">Demo password</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" minlength="16" required placeholder="Enter your demo password">
+        <button type="submit" class="primary">Enter Chat Lab <span>→</span></button>
+      </form>
+      <div id="loginerror" role="alert" class="error" hidden></div>
+    </section>
+    <section id="chat" class="chat" hidden>
+      <div class="chathead">
+        <div><p class="eyebrow">DRAGONZPYDER / PERSONAL AI EXPERIMENT</p><h1>What would you like to explore?</h1></div>
+        <button id="clear" class="textbutton">New chat</button>
+      </div>
+      <div class="modelrow"><label for="model">Model</label><select id="model"></select><span class="muted">Text · Image understanding · Files</span></div>
+      <div id="messages" class="messages" role="log" aria-live="polite" aria-label="Chat conversation">
+        <div class="intro">This prototype stores conversation history only in this browser tab. Attachments are sent for the current message; reattach for follow-up document questions.</div>
+      </div>
+      <form id="composer" class="composer">
+        <div id="attachments" class="attachments" hidden></div>
+        <textarea id="prompt" rows="3" maxlength="10000" placeholder="Ask about anything, describe an image, or question a PDF..." required></textarea>
+        <div class="composertools">
+          <label class="attach" for="file">＋ Attach files<input id="file" type="file" multiple accept=".png,.jpg,.jpeg,.webp,.pdf,.docx,.txt,.md,.csv,.json,.py,.log,image/png,image/jpeg,image/webp,application/pdf" hidden></label>
+          <span class="muted">Up to 3 files · 3 MB each</span>
+          <button class="primary send" id="send" type="submit">Send ↗</button>
+        </div>
+      </form>
+      <div id="chaterror" class="error" role="alert" hidden></div>
+      <footer>Private test only. Model calls may incur OpenRouter charges. Never upload sensitive files to a test system.</footer>
+    </section>
+  </main>
+</body>
+</html>

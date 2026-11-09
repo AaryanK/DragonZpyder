@@ -1,0 +1,252 @@
+
+/* DragonZpyder AI Mesh: compact composer controls, no dashboard redesign */
+.mesh-tools{width:min(920px,100%);display:flex;align-items:center;flex-wrap:wrap;gap:9px;margin:0 auto 10px;pointer-events:auto}
+.mesh-switch{display:inline-flex;align-items:center;gap:8px;height:34px;padding:0 12px;color:#d4d6ce;border:1px solid #465046;border-radius:6px;background:#151a16;font-size:12px;cursor:pointer}
+.mesh-switch[aria-pressed="true"]{color:#f5dfc0;background:#2b291f;border-color:#9f7c5b}
+.mesh-switch span{color:#d6a573}
+.mesh-controls{display:inline-flex;flex-wrap:wrap;align-items:center;gap:8px}
+.mesh-controls[hidden],.mesh-attachments[hidden],.mesh-status[hidden]{display:none!important}
+.mesh-select{max-width:min(275px,75vw);height:34px;border:1px solid #4a5247;background:#181d18;border-radius:6px;color:#dde2d9;padding:0 8px;font-size:12px}
+.mesh-input-label{height:34px;display:inline-flex;align-items:center;gap:5px;border:1px solid #4a5247;background:#181d18;border-radius:6px;padding:0 10px;font-size:12px;color:#e4caa9;cursor:pointer}
+.mesh-input-label[hidden]{display:none!important}
+.mesh-input-label input{display:none}
+.mesh-attachments{display:flex;align-items:center;gap:8px;max-width:min(920px,100%);margin:0 auto 8px;pointer-events:auto}
+.mesh-file-chip{display:inline-flex;align-items:center;gap:6px;background:#242b23;border:1px solid #566050;color:#eddbc0;font-size:11px;padding:6px 9px;border-radius:6px}
+.mesh-file-chip button{border:0;background:none;color:#e9b49a;cursor:pointer}
+.mesh-status{font-size:11px;color:#a5b19e;max-width:min(920px,100%);margin:0 auto 8px;pointer-events:auto}
+.mesh-status.error{color:#eeaa9f}
+.mesh-result-image{max-width:min(540px,100%);border-radius:8px;margin-top:14px;border:1px solid #444e42;cursor:zoom-in}
+.mesh-result-video{max-width:min(580px,100%);border-radius:8px;margin-top:14px}
+.mesh-result-audio{display:block;margin-top:12px;width:min(440px,100%)}
+.mesh-attachment-preview{max-width:240px;max-height:150px;border-radius:7px;margin-top:9px}
+.mesh-hint{color:#869586;font-size:10px}
+.mesh-action-info{font-size:11px;color:#d6a573}
+@media(max-width:680px){.mesh-tools{gap:5px}.mesh-select{max-width:158px}.mesh-switch{padding:0 9px}.mesh-input-label{padding:0 8px}.mesh-controls{gap:5px}}
+
+
+/* Unified Personal composer: input + attachments + contextual controls in one surface. */
+.unified-composer{
+  pointer-events:auto;display:flex;flex-direction:column;align-items:stretch;gap:0;
+  width:min(920px,100%);margin:0 auto;padding:11px 13px 10px;
+  border:1px solid #434d41;border-radius:22px;background:#171b16;
+  box-shadow:0 18px 48px rgba(0,0,0,.35);
+}
+.unified-composer:focus-within{border-color:#987b59}
+.unified-composer.dragging{border:2px dashed #d6a573;background:#22291e}
+.unified-composer #message-input{
+  display:block;width:100%;flex:none;min-height:57px;max-height:170px;
+  padding:9px 7px 12px;line-height:1.5;font-size:14px;
+  resize:none;background:transparent;border:none;box-shadow:none;outline:0
+}
+.composer-toolbar{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:42px}
+.composer-left{display:flex;align-items:center;min-width:0;flex:1;gap:7px;flex-wrap:wrap}
+.composer-right{display:flex;align-items:center;justify-content:flex-end;gap:5px;flex:0 0 auto}
+.unified-composer .composer-plus{
+  display:inline-flex!important;align-items:center;justify-content:center;flex:0 0 37px;
+  width:37px;height:37px;border:1px solid transparent;border-radius:50%;
+  background:transparent;color:#edece3;padding:0;cursor:pointer;
+  font-size:27px;font-weight:350;line-height:1;transition:background .12s,border-color .12s
+}
+.unified-composer .composer-plus:hover{background:#30382d;border-color:#5f6a5b}
+.unified-composer .composer-plus:focus-visible{outline:2px solid #d6a573;outline-offset:2px}
+.unified-composer .composer-plus input{display:none}
+.unified-composer .mesh-switch{
+  display:inline-flex;align-items:center;gap:6px;height:35px;
+  background:#22291f;border:1px solid #3e483c;border-radius:10px;
+  color:#e8e6dc;font-size:12px;padding:0 12px;white-space:nowrap
+}
+.unified-composer .mesh-switch[aria-pressed="true"]{border-color:#8c7454;background:#2c2b22}
+.unified-composer .mesh-controls{display:flex;align-items:center;gap:7px;min-width:0;max-width:100%;flex-wrap:wrap}
+.unified-composer .mesh-controls[hidden]{display:none!important}
+.unified-composer .mesh-select{
+ height:35px;max-width:100%;min-width:0;border-radius:10px;background:#222820;
+ border:1px solid #3b463a;color:#e3e7dc;font-size:12px;outline-offset:2px
+}
+.unified-composer .task-select{width:122px}
+.unified-composer .model-select{width:clamp(152px,18vw,260px);text-overflow:ellipsis}
+.unified-composer .dictation-button{
+  width:37px;height:37px;flex:0 0 37px;border-radius:11px;
+}
+.unified-composer .send-button{
+  display:grid;place-items:center;width:37px;height:37px;flex:0 0 37px;
+  border-radius:11px;font-size:22px
+}
+.unified-composer .mesh-attachments{
+ display:flex;align-items:center;gap:7px;flex-wrap:wrap;width:100%;max-width:none;
+ margin:0 0 6px;padding:0 3px;pointer-events:auto
+}
+.unified-composer .mesh-attachments[hidden]{display:none!important}
+.unified-composer .mesh-file-chip{
+ display:inline-flex;align-items:center;gap:8px;max-width:100%;min-height:38px;
+ background:#273126;border:1px solid #4b5e4a;border-radius:11px;
+ padding:4px 6px 4px 7px;font-size:11px;color:#e9e8d9
+}
+.unified-composer .mesh-file-chip span{max-width:180px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.unified-composer .mesh-file-thumb{width:34px;height:34px;border-radius:6px;object-fit:cover}
+.unified-composer .mesh-file-chip button{
+ display:grid;place-items:center;min-width:25px;min-height:25px;border-radius:6px;font-size:16px
+}
+.unified-composer .mesh-file-chip button:hover{background:#465345}
+.composer-wrap .mesh-status{width:min(920px,100%);max-width:none;margin:7px auto 0;font-size:11px}
+.composer-wrap .composer-note{width:min(920px,100%);max-width:none;color:#859084;font-size:10px}
+.mesh-attachment-preview{max-width:min(330px,100%);max-height:220px;object-fit:contain;border-radius:11px;margin-top:9px}
+@media(max-width:760px){
+ .unified-composer{border-radius:18px;padding:8px 9px}
+ .unified-composer #message-input{min-height:54px;font-size:14px}
+ .unified-composer .mesh-switch{padding:0 8px}
+ .unified-composer .mesh-select{height:34px}
+ .unified-composer .model-select{width:clamp(110px,32vw,190px)}
+ .composer-toolbar{gap:5px}.composer-left{gap:5px}
+}
+@media(max-width:440px){
+ .unified-composer .task-select{width:108px}
+ .unified-composer .model-select{width:min(100%,175px)}
+ .unified-composer .composer-plus{flex-basis:33px;width:33px;height:34px}
+ .unified-composer .mesh-file-chip span{max-width:145px}
+ .composer-wrap .mesh-status{line-height:1.35}
+}
+
+
+/* Modern compact selectors inspired by lightweight chat composer dropdowns.
+   Native selects are retained for the existing AI Mesh controller only. */
+.unified-composer .mesh-native-select{
+ position:absolute!important;width:1px!important;height:1px!important;padding:0!important;
+ margin:0!important;opacity:0!important;pointer-events:none!important;overflow:hidden!important;
+ border:0!important
+}
+.unified-composer .mesh-picker{position:relative;min-width:0;flex:0 1 auto}
+.unified-composer .mesh-picker-trigger{
+ display:inline-flex;align-items:center;gap:8px;justify-content:space-between;
+ max-width:min(250px,35vw);height:36px;padding:0 10px;border:1px solid transparent;
+ border-radius:11px;background:transparent;color:#bfc5bb;font-size:12px;
+ font-weight:540;letter-spacing:-.01em;cursor:pointer;
+ transition:background-color .16s,color .16s,border-color .16s
+}
+.unified-composer .mesh-picker-trigger:hover,.unified-composer .mesh-picker.open .mesh-picker-trigger{
+ background:rgba(255,255,255,.065);color:#f5f3ed
+}
+.unified-composer .mesh-picker-trigger:focus-visible{outline:2px solid #c79e73;outline-offset:2px}
+.unified-composer .mesh-picker--task .mesh-picker-trigger{max-width:142px;color:#d5dbd0}
+.unified-composer .mesh-picker--model .mesh-picker-trigger{max-width:230px;color:#b1bbae}
+.unified-composer .mesh-picker-value{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.unified-composer .mesh-picker-chevron{flex:none;color:#929e90;font-size:17px;line-height:1;transition:transform .16s}
+.unified-composer .mesh-picker.open .mesh-picker-chevron{transform:rotate(180deg)}
+.unified-composer .mesh-picker-popover{
+ position:absolute;bottom:calc(100% + 12px);left:0;z-index:75;
+ width:min(350px,calc(100vw - 38px));max-height:min(390px,55vh);
+ display:flex;flex-direction:column;overflow:hidden;
+ background:#222620;border:1px solid rgba(214,223,201,.15);border-radius:18px;
+ box-shadow:0 24px 60px rgba(0,0,0,.55),0 8px 22px rgba(0,0,0,.2);
+ padding:7px;backdrop-filter:blur(24px)
+}
+.unified-composer .mesh-picker--task .mesh-picker-popover{width:215px}
+.unified-composer .mesh-picker--model .mesh-picker-popover{left:auto;right:0}
+.unified-composer .mesh-picker-popover[hidden]{display:none!important}
+.unified-composer .mesh-picker-search-wrap{
+ flex:none;display:flex;padding:4px 6px 10px;border-bottom:1px solid rgba(255,255,255,.07)
+}
+.unified-composer .mesh-picker-search{
+ width:100%;height:37px;min-width:0;padding:0 12px;outline:none;
+ border:1px solid rgba(255,255,255,.09);border-radius:10px;
+ background:rgba(255,255,255,.055);color:#f1f2ea;font-size:13px
+}
+.unified-composer .mesh-picker-search::placeholder{color:#8d9b8c}
+.unified-composer .mesh-picker-search:focus{border-color:#927758}
+.unified-composer .mesh-picker-options{overflow-y:auto;overscroll-behavior:contain;min-height:0;padding:2px}
+.unified-composer .mesh-picker-option{
+ display:flex;align-items:center;justify-content:space-between;gap:15px;text-align:left;
+ width:100%;min-height:38px;padding:9px 11px;border:0;border-radius:10px;
+ background:transparent;color:#d1d7cc;font-size:12.5px;line-height:1.4;
+ cursor:pointer;outline:none
+}
+.unified-composer .mesh-picker-option:hover,.unified-composer .mesh-picker-option:focus-visible{
+ background:rgba(255,255,255,.08);color:#fff
+}
+.unified-composer .mesh-picker-option[aria-selected="true"]{
+ background:rgba(214,165,115,.11);color:#f0d2ad
+}
+.unified-composer .mesh-picker-option:disabled{opacity:.4;cursor:default}
+.unified-composer .mesh-picker-option-text{min-width:0;overflow-wrap:anywhere}
+.unified-composer .mesh-picker-check{flex:0 0 17px;color:#e5b78b;font-weight:800}
+.unified-composer .mesh-picker-empty{margin:14px;text-align:center;color:#aeb7ab;font-size:12px}
+.unified-composer .composer-voice{
+ display:inline-flex;align-items:center;justify-content:center;gap:8px;
+ min-width:96px;height:38px;padding:0 12px;border:1px solid rgba(214,165,115,.23);
+ border-radius:12px;background:rgba(214,165,115,.11);
+ color:#eed0ae;font-weight:650;font-size:11.5px;white-space:nowrap;
+ cursor:pointer;transition:background-color .16s,border-color .16s
+}
+.unified-composer .composer-voice:hover{background:rgba(214,165,115,.18);border-color:#b5926d}
+.unified-composer .composer-voice .live-voice-bars{height:15px}
+.unified-composer .composer-voice[hidden],.unified-composer .send-button[hidden]{display:none!important}
+.unified-composer .send-button{background:#eee8dd;border-radius:12px}
+.unified-composer .send-button:hover{background:#f4d0a7}
+@media(max-width:700px){
+ .unified-composer .mesh-picker-trigger{height:35px;padding:0 7px;max-width:155px}
+ .unified-composer .mesh-picker--task .mesh-picker-trigger{max-width:115px}
+ .unified-composer .mesh-picker--model .mesh-picker-trigger{max-width:155px}
+ .unified-composer .mesh-picker-popover{
+  position:fixed;left:12px!important;right:12px!important;width:auto!important;
+  bottom:calc(120px + env(safe-area-inset-bottom));max-height:min(380px,55vh)
+ }
+ .unified-composer .composer-voice{min-width:38px;width:38px;padding:0}
+ .unified-composer .composer-voice>span:last-child{display:none}
+ .unified-composer .composer-voice .live-voice-bars{gap:3px}
+}
+
+
+/* Make the mode switch a light-weight contextual chip rather than a hard box. */
+.unified-composer .mesh-switch{
+ height:36px;padding:0 10px;border:1px solid transparent;border-radius:11px;
+ background:transparent;color:#c8d0c2;font-weight:600;font-size:12px;
+ transition:background-color .16s,color .16s
+}
+.unified-composer .mesh-switch:hover{background:rgba(255,255,255,.07);color:#f5f2e8}
+.unified-composer .mesh-switch[aria-pressed="true"]{
+ border:1px solid transparent;background:rgba(214,165,115,.09);color:#e8c89f
+}
+
+
+/* Image generation is a time-only pending state, not fabricated pixel streaming. */
+.mesh-image-pending{
+ display:grid;grid-template-columns:minmax(160px,250px) minmax(0,1fr);column-gap:18px;row-gap:12px;
+ align-items:center;max-width:610px;margin-top:12px;padding:12px;
+ border:1px solid rgba(223,230,214,.12);border-radius:17px;
+ background:linear-gradient(135deg,rgba(255,255,255,.045),rgba(255,255,255,.012));
+}
+.mesh-image-pending-art{
+ aspect-ratio:4/3;position:relative;overflow:hidden;display:grid;place-items:center;
+ border-radius:12px;border:1px solid rgba(255,255,255,.08);background:
+ radial-gradient(circle at 42% 38%,rgba(177,158,127,.16),transparent 56%),#262b27;
+}
+.mesh-image-pending-art::before{
+ content:"";position:absolute;inset:-60%;
+ background:linear-gradient(110deg,transparent 40%,rgba(255,255,255,.10) 50%,transparent 60%);
+ animation:mesh-image-shimmer 2.8s ease-in-out infinite;
+}
+.mesh-image-pending-art span{font-size:34px;color:#ccb38d;opacity:.86}
+@keyframes mesh-image-shimmer{from{transform:translateX(-45%)}to{transform:translateX(45%)}}
+.mesh-image-pending-detail{min-width:0;align-self:end}
+.mesh-image-pending-title{font-size:14px;font-weight:650;color:#f1f0e6}
+.mesh-image-pending-model{font-size:11px;color:#bbc4b7;margin-top:6px;overflow-wrap:anywhere}
+.mesh-image-pending-elapsed{font-variant-numeric:tabular-nums;font-size:12px;color:#c9ab83;margin-top:14px}
+.mesh-image-stop{
+ justify-self:start;grid-column:2;align-self:start;
+ font-size:12px;color:#e0dfd5;background:rgba(255,255,255,.055);
+ border:1px solid rgba(255,255,255,.10);padding:8px 12px;border-radius:10px;cursor:pointer
+}
+.mesh-image-stop:hover{background:rgba(255,255,255,.11)}
+.mesh-image-stop:focus-visible{outline:2px solid #d6a573;outline-offset:2px}
+.mesh-image-stop:disabled{opacity:.6;cursor:default}
+.mesh-image-pending-disclaimer{
+ grid-column:1/-1;color:#a7afa4;font-size:11px;line-height:1.5;margin:0
+}
+@media(max-width:580px){
+ .mesh-image-pending{grid-template-columns:minmax(0,1fr);gap:12px}
+ .mesh-image-pending-art{width:100%;max-height:220px}
+ .mesh-image-stop,.mesh-image-pending-disclaimer{grid-column:1}
+ .mesh-image-pending-detail{align-self:center}
+}
+@media(prefers-reduced-motion:reduce){
+ .mesh-image-pending-art::before{animation:none}
+}
