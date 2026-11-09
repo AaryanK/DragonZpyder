@@ -298,9 +298,20 @@ def main():
         verified = asyncio.run(verify(probe_id, user_id))
         print("HATCHET_EMBEDDED_ACCEPTANCE_PASS", verified, flush=True)
         web_task_id = asyncio.run(seed_browser_probe_task())
-        browser_run = webtask.run(WebTaskInput(task_id=web_task_id))
-        assert browser_run["status"] == "completed", browser_run
-        browser_receipt = asyncio.run(verify_browser_probe_task(web_task_id))
+        # Exercise the SAME asynchronous fire-and-forget SDK path as the
+        # web API, rather than bypassing it with a blocking test-only call.
+        asyncio.run(webtask.aio_run(
+            WebTaskInput(task_id=web_task_id), wait_for_result=False,
+        ))
+        browser_receipt = None
+        until = time.monotonic() + 35
+        while time.monotonic() < until:
+            try:
+                browser_receipt = asyncio.run(verify_browser_probe_task(web_task_id))
+                break
+            except AssertionError:
+                time.sleep(0.3)
+        assert browser_receipt is not None, "Async Hatchet browser task never completed"
         print("HATCHET_EMBEDDED_BROWSER_TASK_PASS", browser_receipt, flush=True)
 
         # A truly scheduled run must happen without task.run() or any other
