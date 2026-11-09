@@ -99,8 +99,9 @@ async def lifespan(app: FastAPI):
                 raise RuntimeError("Dedicated persistent goals database is not configured")
             goal_pool = await asyncpg.create_pool(dsn=goal_dsn, min_size=1, max_size=4)
             async with goal_pool.acquire() as con:
-                if await con.fetchval("SELECT to_regclass('dragonzpyder_goals')") is None:
-                    raise RuntimeError("DragonZpyder goals migration is missing")
+                for required_table in ("dragonzpyder_goals", "dragonzpyder_goal_runs"):
+                    if await con.fetchval("SELECT to_regclass($1)", required_table) is None:
+                        raise RuntimeError("DragonZpyder goal schema migration is incomplete")
             app.state.goal_store = DurableGoalStore(
                 goal_pool, encryption_key=os.getenv("DRAGONZPYDER_GOALS_ENCRYPTION_KEY", ""),
             )
