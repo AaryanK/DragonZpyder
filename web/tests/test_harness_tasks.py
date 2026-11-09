@@ -33,6 +33,12 @@ def backend(req):
                 "task_id": "00000000-0000-0000-0000-000000000001",
                 "status": "queued", "kind": data["kind"],
             })
+        if req.url.path.endswith("/admin/list"):
+            return httpx.Response(200, json={"tasks": [{"task_id": "synthetic", "status": "running"}]})
+        if req.url.path.endswith("/admin/detail"):
+            return httpx.Response(200, json={
+                "task_id": data["task_id"], "status": "running", "events": [],
+            })
         if req.url.path.endswith("/list"):
             assert data == {"owner": "user-1"}
             return httpx.Response(200, json={"tasks": []})
@@ -42,12 +48,6 @@ def backend(req):
                 "task_id": data["task_id"], "status": "completed",
                 "events": [{"event_id": 1, "kind": "completed",
                             "message": "Task completed", "at": "2026-11-09T12:00:00Z"}],
-            })
-        if req.url.path.endswith("/admin/list"):
-            return httpx.Response(200, json={"tasks": [{"task_id": "synthetic", "status": "running"}]})
-        if req.url.path.endswith("/admin/detail"):
-            return httpx.Response(200, json={
-                "task_id": data["task_id"], "status": "running", "events": [],
             })
     return httpx.Response(404)
 
