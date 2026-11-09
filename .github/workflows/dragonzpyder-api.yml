@@ -101,7 +101,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install isolated Hatchet and PostgreSQL dependencies
-        run: pip install 'hatchet-sdk>=1,<3' 'asyncpg>=0.30,<1' 'cryptography>=44,<50' 'pydantic>=2,<3'
+        run: pip install 'hatchet-sdk>=1,<3' 'asyncpg>=0.30,<1' 'cryptography>=44,<50' 'pydantic>=2,<3' 'langchain-core>=0.3,<2' httpx
       - name: Dispatch real Hatchet worker and verify DB evidence
         timeout-minutes: 12
         run: cd api && timeout 660s python -m agent_platform.hatchet_embedded_acceptance
