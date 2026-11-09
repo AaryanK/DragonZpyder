@@ -59,7 +59,7 @@ def _id(value: str) -> UUID:
 
 def _principal(*, source_app: str, kind: str, user_id: str,
                workspace_id: str | None) -> str:
-    if source_app not in ("operly", "dragonzpyder"):
+    if source_app not in ("operly", "dragonzpyder", "internal_canary"):
         raise ValueError("Unrecognized authenticated source")
     if kind not in ("personal", "workspace") or not isinstance(user_id, str) or not 1 <= len(user_id) <= 120:
         raise ValueError("Invalid principal scope")
@@ -206,9 +206,9 @@ class DurableGoalStore:
              "status": row["status"], "attempts": row["attempts"],
              "evidence_sha256": row["evidence_sha256"],
              "error_code": row["error_code"],
-             "synthetic_only": (source_app == "dragonzpyder"
+             "synthetic_only": (source_app == "internal_canary"
                                 and principal == _principal(
-                                    source_app="dragonzpyder", kind="personal",
+                                    source_app="internal_canary", kind="personal",
                                     user_id="internal-staging-probe", workspace_id=None)),
              "objective_verified": False}
             for row in rows
