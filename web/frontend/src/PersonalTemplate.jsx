@@ -1,6 +1,6 @@
 import React from "react";
 import { createPortal } from "react-dom";
-import { CommandPalette, QuickAddMenu, WorkspaceHub, SidebarToggle, ModeSwitchConfirm } from "./WorkspaceControls.jsx";
+import { CommandPalette, QuickAddMenu, WorkspaceHub, SidebarToggle, ModeSwitchConfirm, useModalFocus } from "./WorkspaceControls.jsx";
 
 
 /**
@@ -10,6 +10,8 @@ import { CommandPalette, QuickAddMenu, WorkspaceHub, SidebarToggle, ModeSwitchCo
  */
 function CameraAttachment() {
   const [open, setOpen] = React.useState(false);
+  const dialogRef = React.useRef(null);
+  useModalFocus(dialogRef,open);
   const [error, setError] = React.useState("");
   const preview = React.useRef(null);
   const stream = React.useRef(null);
@@ -88,7 +90,7 @@ function CameraAttachment() {
       <span>Capture photo<small>Preview and attach an image</small></span>
     </button>
     {open && createPortal(<div className="camera-capture-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) close(); }}>
-      <section id="camera-capture-panel" className="camera-capture-panel"
+      <section ref={dialogRef} id="camera-capture-panel" className="camera-capture-panel"
         role="dialog" aria-modal="true" aria-labelledby="camera-capture-title">
         <div className="camera-capture-header"><div><div className="eyebrow">Camera / local preview</div>
           <h2 id="camera-capture-title">Capture an image</h2></div>
