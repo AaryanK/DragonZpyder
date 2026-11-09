@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 // Progressive disclosure for the existing Personal chat. Controls call existing
 // production adapters; they never bypass permission checks or create new APIs.
@@ -14,7 +15,7 @@ const openWorkspace = () => window.dispatchEvent(new Event("dragonzpyder:workspa
 const COMMANDS = [
   { title: "Start a new conversation", hint: "Chat", words: "new create chat", run: () => act("new-chat") },
   { title: "Find a conversation", hint: "History", words: "search conversation history", run: focusSearch },
-  { title: "Attach a file", hint: "Input", words: "upload file pdf document image", run: () => act("mesh-file-label") },
+  { title: "Attach a file", hint: "Input", words: "upload file pdf document image", run: () => act("mesh-upload") },
   { title: "Capture a photo", hint: "Camera", words: "camera picture image photo", run: () => act("camera-capture-toggle") },
   { title: "Capture your screen", hint: "Input", words: "screenshot share screen", run: () => act("screen-capture-toggle") },
   { title: "Dictate a message", hint: "Voice", words: "microphone speech voice dictation", run: () => act("dictation-toggle") },
@@ -194,7 +195,7 @@ export function WorkspaceHub() {
     <button type="button" className="dz-workspace-trigger" id="dz-workspace-trigger" onClick={() => setOpen(true)}>
       <span>◈</span> Explore workspace <span aria-hidden="true">↗</span>
     </button>
-    {open && <div className="dz-hub-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) setOpen(false); }}>
+    {open && createPortal(<div className="dz-hub-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) setOpen(false); }}>
       <aside className="dz-hub" role="dialog" aria-modal="true" aria-labelledby="dz-hub-title">
         <div className="dz-hub-top"><div><span className="dz-kicker">DragonZpyder / Workspace</span><h2 id="dz-hub-title">Everything, in one place.</h2></div>
           <button type="button" aria-label="Close workspace navigation" onClick={() => setOpen(false)}>×</button></div>
@@ -210,6 +211,6 @@ export function WorkspaceHub() {
         })}</div>
         <button type="button" className="dz-hub-command" onClick={() => { setOpen(false); window.dispatchEvent(new Event("dragonzpyder:command-open")); }}>⌘ Search all available commands</button>
       </aside>
-    </div>}
+    </div>, document.body)}
   </>;
 }
