@@ -88,12 +88,25 @@ def test_compiled_react_pages_and_hashed_assets(monkeypatch, tmp_path):
     (tmp_path / "index.html").write_text("<h1>React home build</h1>", encoding="utf8")
     (tmp_path / "app.html").write_text("<h1>React chat build</h1>", encoding="utf8")
     (tmp_path / "account.html").write_text("<h1>React account build</h1>", encoding="utf8")
+    (tmp_path / "app.webmanifest").write_text('{"start_url":"/app"}', encoding="utf8")
+    (tmp_path / "app-icon-192.png").write_bytes(b"PNG-desktop-192")
+    (tmp_path / "app-icon-512.png").write_bytes(b"PNG-desktop-512")
     (tmp_path / "assets").mkdir()
     (tmp_path / "assets" / "main-abcd.js").write_text("console.log('react')", encoding="utf8")
     with TestClient(app) as client:
         assert "React home build" in client.get("/").text
         assert "React chat build" in client.get("/app").text
         assert "React account build" in client.get("/account").text
+        manifest = client.get("/app.webmanifest")
+        assert manifest.status_code == 200
+        assert manifest.headers["content-type"].startswith("application/manifest+json")
+        assert manifest.json()["start_url"] == "/app"
+        for size in (192, 512):
+            icon = client.get(f"/app-icon-{size}.png")
+            assert icon.status_code == 200
+            assert icon.headers["content-type"].startswith("image/png")
+            assert icon.content == f"PNG-desktop-{size}".encode()
+        assert client.get("/app.webmanifest", headers={"host": "chat.dragonspire.xyz"}).status_code == 404
         js = client.get("/assets/main-abcd.js")
         assert js.status_code == 200
         assert "immutable" in js.headers["cache-control"]
