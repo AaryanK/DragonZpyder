@@ -41,6 +41,8 @@ CREATE INDEX IF NOT EXISTS idx_dz_goals_due
 # Kept with goal DDL so fresh-database tests initialize the full ledger.
 from .goal_reconciler_schema import RUN_SCHEMA
 SCHEMA += "\n" + RUN_SCHEMA
+from .event_schema import EVENT_SCHEMA
+SCHEMA += "\n" + EVENT_SCHEMA
 
 
 class GoalConflict(RuntimeError):
