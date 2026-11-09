@@ -26,7 +26,8 @@ STATIC = {
     "/", "/index.html", "/app.html", "/account.html", "/account.css",
     "/account.js", "/app.css", "/app.js", "/companion.js", "/dictation.js",
     "/mesh.js", "/mesh.css", "/workspace.css", "/chat.html", "/privacy.html",
-    "/terms.html", "/robots.txt", "/sitemap.xml", "/script.js",\n    "/app.webmanifest", "/app-icon-192.png", "/app-icon-512.png",
+    "/terms.html", "/robots.txt", "/sitemap.xml", "/script.js",
+    "/app.webmanifest", "/app-icon-192.png", "/app-icon-512.png",
 }
 HOP_HEADERS = {"connection", "transfer-encoding", "content-length", "host",
                "content-encoding", "keep-alive", "upgrade", "proxy-connection"}
@@ -250,7 +251,8 @@ async def dispatch(path: str, request: Request):
             target = ROOT / file_route.lstrip("/")
         if target.is_file():
             media_types = {".html": "text/html", ".js": "text/javascript", ".css": "text/css",
-                           ".xml": "application/xml", ".txt": "text/plain",\n                           ".webmanifest": "application/manifest+json", ".png": "image/png"}
+                           ".xml": "application/xml", ".txt": "text/plain",
+                           ".webmanifest": "application/manifest+json", ".png": "image/png"}
             return FileResponse(target, media_type=media_types.get(target.suffix),
                                 headers={"cache-control": "no-store" if target.suffix in
                                          (".html", ".js", ".css") else "public, max-age=300"})
