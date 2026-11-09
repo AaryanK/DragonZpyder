@@ -36,7 +36,7 @@ const COMMANDS = [
  * The first tabbable control receives focus; Tab cycles inside the modal and
  * closing restores focus to the element that opened it.
  */
-function useModalFocus(dialogRef, open) {
+export function useModalFocus(dialogRef, open) {
   useEffect(() => {
     if (!open) return;
     const origin = document.activeElement;
