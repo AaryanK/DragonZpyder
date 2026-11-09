@@ -79,8 +79,8 @@ async def submit(payload: Submit, request: Request,
             )
         from hatchet_sdk import Hatchet
         from .web_task_worker import make_web_task
-        task_ref = await make_web_task(Hatchet()).aio_run_no_wait(
-            WebTaskInput(task_id=task["task_id"])
+        await make_web_task(Hatchet()).aio_run(
+            WebTaskInput(task_id=task["task_id"]), wait_for_result=False,
         )
         await store.append(task["task_id"], "queued", "Dispatched to Hatchet worker")
     except Exception as exc:
@@ -94,7 +94,13 @@ async def submit(payload: Submit, request: Request,
 async def list_user(payload: Owner, request: Request,
                     authorization: str = Header(default="")):
     store = store_for(request, authorization)
-    return {"tasks": await store.list(owner=payload.owner)}
+    budget = getattr(request.app.state, "parent_budget", None)
+    agent_enabled = (os.getenv("DRAGONZPYDER_WEB_TASKS_PAID_ENABLED") == "1"
+                     and os.getenv("DRAGONZPYDER_AGENT_USE_GATEWAY") == "1"
+                     and budget is not None and budget.active)
+    return {"tasks": await store.list(owner=payload.owner),
+            "agent_enabled": bool(agent_enabled),
+            "worker_test_enabled": True}
 
 
 @router.post("/detail")
