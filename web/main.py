@@ -241,7 +241,8 @@ async def dispatch(path: str, request: Request):
         if target.is_relative_to(assets) and target.is_file():
             return FileResponse(target, headers={"cache-control": "public, max-age=31536000, immutable"})
     if request.method in ("GET", "HEAD") and file_route in STATIC:
-        if file_route in ("/index.html", "/app.html", "/account.html",\n                          "/app.webmanifest", "/app-icon-192.png", "/app-icon-512.png"):
+        if file_route in ("/index.html", "/app.html", "/account.html",
+                          "/app.webmanifest", "/app-icon-192.png", "/app-icon-512.png"):
             target = DIST / file_route.lstrip("/")
             if not target.is_file():
                 return JSONResponse({"detail": {"code": "FRONTEND_UNAVAILABLE",
