@@ -48,7 +48,17 @@ async def execute_goal_tick() -> dict:
                 "SELECT to_regclass('dragonzpyder_goal_runs')"
             )) is None:
                 raise RuntimeError("Goal runs migration missing; fail closed")
-        return await GoalReconciler(pool).tick()
+        result = await GoalReconciler(pool).tick()
+        if os.getenv("DRAGONZPYDER_WEB_EVENT_ENABLED") == "1":
+            from .web_event_watch import require_web_event_gate, run_due_web_checks
+            require_web_event_gate()
+            async with pool.acquire() as con:
+                for table in ("dragonzpyder_event_watches",
+                              "dragonzpyder_event_inbox", "dragonzpyder_event_wakes"):
+                    if await con.fetchval("SELECT to_regclass($1)", table) is None:
+                        raise RuntimeError("Event monitoring migration missing")
+            result["events"] = await run_due_web_checks(pool)
+        return result
     finally:
         await pool.close()
 
