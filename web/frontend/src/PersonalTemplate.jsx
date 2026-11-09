@@ -84,6 +84,7 @@ function CameraAttachment() {
         strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <path d="M3 7h4l2-3h6l2 3h4v13H3z" /><circle cx="12" cy="13" r="4"/>
       </svg>
+      <span>Capture photo<small>Preview and attach an image</small></span>
     </button>
     {open && <div className="camera-capture-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) close(); }}>
       <section id="camera-capture-panel" className="camera-capture-panel"
