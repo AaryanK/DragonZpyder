@@ -88,6 +88,50 @@ async def verify(probe_id, user_id):
         await pool.close()
 
 
+
+async def seed_autonomous_cron_probe() -> str:
+    """Add a new due occurrence AFTER both direct-dispatch assertions."""
+    from .goal_store import DurableGoalStore
+    pool = await asyncpg.create_pool(
+        dsn=os.environ["DRAGONZPYDER_GOALS_DATABASE_URL"], min_size=1, max_size=2
+    )
+    try:
+        store = DurableGoalStore(pool, encryption_key=Fernet.generate_key().decode())
+        probe = await store.register(
+            source_app="internal_canary", kind="personal",
+            user_id="internal-staging-probe", workspace_id=None,
+            request_id=str(uuid4()), goal="Autonomous cron-only synthetic probe",
+            schedule={"type": "interval", "every_seconds": 600},
+        )
+        async with pool.acquire() as con:
+            await con.execute(
+                "UPDATE dragonzpyder_goals SET next_run_at=$1 WHERE goal_id=$2",
+                datetime.now(timezone.utc) - timedelta(seconds=5),
+                UUID(probe["goal_id"]),
+            )
+        return probe["goal_id"]
+    finally:
+        await pool.close()
+
+
+async def is_cron_probe_complete(goal_id: str) -> bool:
+    from .goal_store import DurableGoalStore
+    pool = await asyncpg.create_pool(
+        dsn=os.environ["DRAGONZPYDER_GOALS_DATABASE_URL"], min_size=1, max_size=1
+    )
+    try:
+        store = DurableGoalStore(pool, encryption_key=Fernet.generate_key().decode())
+        rows = await store.list_runs(
+            source_app="internal_canary", kind="personal",
+            user_id="internal-staging-probe", workspace_id=None, goal_id=goal_id,
+        )
+        return (len(rows) == 1 and rows[0]["status"] == "completed"
+                and rows[0]["attempts"] == 1
+                and len(rows[0]["evidence_sha256"] or "") == 64)
+    finally:
+        await pool.close()
+
+
 def main():
     if (os.getenv("DRAGONZPYDER_HATCHET_EMBEDDED_CI") != "1"
             or os.getenv("DRAGONZPYDER_STAGE") != "staging"
@@ -115,6 +159,28 @@ def main():
         assert second["probes"] == []
         verified = asyncio.run(verify(probe_id, user_id))
         print("HATCHET_EMBEDDED_ACCEPTANCE_PASS", verified, flush=True)
+
+        # A truly scheduled run must happen without task.run() or any other
+        # direct trigger. The source of dispatch is Hatchet's persistent cron.
+        # Use a separate new due goal so the previous idempotency test remains
+        # independently verified.
+        cron_probe_id = asyncio.run(seed_autonomous_cron_probe())
+        asyncio.run(task.aio_create_cron(
+            cron_name="dragonzpyder-embedded-cron-acceptance-v1",
+            expression="* * * * *",
+            input=GoalTickInput(),
+        ))
+        deadline = time.monotonic() + 100
+        confirmed = False
+        while time.monotonic() < deadline:
+            confirmed = asyncio.run(is_cron_probe_complete(cron_probe_id))
+            if confirmed:
+                break
+            time.sleep(2)
+        assert confirmed, "Hatchet cron did not autonomously dispatch a due goal"
+        print("HATCHET_EMBEDDED_CRON_ACCEPTANCE_PASS",
+              {"goal_id": cron_probe_id, "model_calls": 0,
+               "external_tool_calls": 0}, flush=True)
     finally:
         hatchet.stop_embedded()
     # Embedded worker child processes can outlive this standalone test runner.
