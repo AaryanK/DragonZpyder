@@ -1093,3 +1093,261 @@ html[data-workspace-theme="light"] .dz-desktop-install-note{
 html[data-workspace-theme="light"] .dz-desktop-install-help{
  color:#9d4b2d;
 }
+
+
+/* Accessibility/readability hotfix — 2026-11-09.
+ * The light command palette previously inherited white kbd text on white
+ * backgrounds and multiple labels were 10px or too low contrast.
+ * This block intentionally follows prior theme rules in cascade order.
+ */
+html[data-workspace-theme="light"]{
+  --text:#211f1c;
+  --muted:#554d47;
+}
+html[data-workspace-theme="light"] .sidebar-label,
+html[data-workspace-theme="light"] .sidebar-footer-label {
+  color:#514841;
+  font-size:11.5px;
+  font-weight:750;
+}
+html[data-workspace-theme="light"] .conversation-button,
+html[data-workspace-theme="light"] .side-action,
+html[data-workspace-theme="light"] .dz-workspace-trigger{
+  color:#36302c;
+  font-size:13.5px;
+  line-height:1.45;
+}
+html[data-workspace-theme="light"] .sidebar-search-wrap,
+html[data-workspace-theme="light"] .sidebar-search-wrap input{
+  color:#38312c;
+  font-size:13.5px;
+}
+html[data-workspace-theme="light"] .sidebar-search-wrap input::placeholder{
+  color:#645a52;
+  opacity:1;
+}
+html[data-workspace-theme="light"] .new-chat{font-size:13.5px}
+html[data-workspace-theme="light"] .runtime-status{
+  color:#4e6151;
+  font-size:12px;
+  line-height:1.4;
+}
+html[data-workspace-theme="light"] .workspace-breadcrumb,
+html[data-workspace-theme="light"] .ghost-btn,
+html[data-workspace-theme="light"] .dz-command-trigger,
+html[data-workspace-theme="light"] .theme-toggle{
+  color:#39322d;
+  font-size:13px;
+}
+html[data-workspace-theme="light"] .empty-state .eyebrow{
+  color:#81441f;
+  font-size:12px;
+}
+html[data-workspace-theme="light"] .empty-state>p{
+  color:#544c45;
+  font-size:15px;
+}
+html[data-workspace-theme="light"] .prompt-chip{
+  color:#403832;
+  font-size:13px;
+  min-height:42px;
+}
+html[data-workspace-theme="light"] .unified-composer #message-input{
+  font-size:15px;
+}
+html[data-workspace-theme="light"] .unified-composer #message-input::placeholder{
+  color:#655d55;
+  opacity:1;
+}
+html[data-workspace-theme="light"] .unified-composer .mesh-switch{
+  color:#37302c;
+  font-size:13px;
+}
+html[data-workspace-theme="light"] .composer-note,
+html[data-workspace-theme="light"] .composer-wrap .composer-note{
+  font-size:11.5px;
+  color:#665e55;
+}
+html[data-workspace-theme="light"] .composer-wrap .mesh-status{
+  font-size:12px;
+  color:#514940;
+}
+html[data-workspace-theme="light"] .dz-add-menu .dz-menu-label,
+html[data-workspace-theme="light"] .dz-add-menu .dz-menu-foot{
+  color:#564e47;
+  font-size:12px;
+}
+html[data-workspace-theme="light"] .dz-menu-action strong,
+html[data-workspace-theme="light"] .dz-add-menu .camera-button span{
+  color:#28231f;
+  font-size:14px;
+}
+html[data-workspace-theme="light"] .dz-menu-action small,
+html[data-workspace-theme="light"] .dz-add-menu .camera-button small{
+  color:#5e544c;
+  font-size:12px;
+}
+/* Command palette: high contrast, correct shortcut key colors, six visible rows. */
+.dz-command-panel{
+  width:min(620px,100%);
+  max-height:min(79dvh,620px);
+}
+.dz-command-top strong{font-size:16px;line-height:1.4}
+.dz-command-top button{font-size:12px;min-height:34px}
+.dz-command-panel>input{
+  min-height:56px;
+  font-size:16px;
+}
+.dz-command-results{
+  flex:0 1 auto;
+  min-height:0;
+  max-height:328px;
+  overflow-y:auto;
+  overscroll-behavior:contain;
+  scrollbar-width:thin;
+}
+.dz-command-results button{
+  min-height:49px;
+  font-size:14px;
+  line-height:1.45;
+  font-weight:550;
+  padding:11px 13px;
+}
+.dz-command-results button small{
+  font-size:12px;
+  font-weight:500;
+}
+.dz-command-results p{font-size:13px}
+.dz-command-foot{
+  font-size:12px;
+  line-height:1.65;
+}
+.dz-command-foot kbd{
+  display:inline-block;
+  vertical-align:baseline;
+  white-space:nowrap;
+  min-width:24px;
+  padding:2px 7px;
+  border-radius:6px;
+  font-size:12px;
+  font-weight:700;
+}
+html[data-workspace-theme="light"] .dz-command-panel{
+  background:#fff;
+  color:#29231f;
+  border-color:#cfc5bc;
+}
+html[data-workspace-theme="light"] .dz-command-top strong{
+  color:#201c19;
+}
+html[data-workspace-theme="light"] .dz-command-top button{
+  background:#f0ece7;
+  color:#38322d;
+  border-color:#d0c7bf;
+}
+html[data-workspace-theme="light"] .dz-command-panel>input{
+  background:#fff;
+  color:#211c19;
+  border-color:#d5cdc5;
+}
+html[data-workspace-theme="light"] .dz-command-panel>input::placeholder{
+  color:#5b534d;
+  opacity:1;
+}
+html[data-workspace-theme="light"] .dz-command-results button{
+  color:#2d2723;
+}
+html[data-workspace-theme="light"] .dz-command-results button small{
+  color:#654a3a;
+}
+html[data-workspace-theme="light"] .dz-command-results button:hover,
+html[data-workspace-theme="light"] .dz-command-results button:focus-visible{
+  color:#201b17;
+  background:#f3ebe4;
+  border-color:#e2cbb9;
+}
+html[data-workspace-theme="light"] .dz-command-results p{
+  color:#514941;
+}
+html[data-workspace-theme="light"] .dz-command-foot{
+  background:#f8f6f3;
+  color:#4d433d;
+  border-top-color:#ded6ce;
+}
+html[data-workspace-theme="light"] .dz-command-foot kbd{
+  color:#29231e;
+  background:#e9e3dc;
+  border-color:#c8beb4;
+  box-shadow:inset 0 -1px 0 #c9bdb1;
+}
+html[data-workspace-theme="dark"] .dz-command-panel>input::placeholder{
+  color:#d4c6bf;
+  opacity:1;
+}
+html[data-workspace-theme="dark"] .dz-command-results button{
+  color:#f3eee8;
+}
+html[data-workspace-theme="dark"] .dz-command-results button small{
+  color:#ffb18c;
+}
+html[data-workspace-theme="dark"] .dz-command-foot kbd{
+  background:#3e3432;
+  color:#f7f3ed;
+  border-color:#8a6a59;
+}
+/* Workspace drawer: planned features must be legible even when unavailable. */
+.dz-hub-row:disabled{opacity:1}
+.dz-hub-lead,.dz-hub-rowcopy small,.dz-hub-status{
+  font-size:12px;
+  line-height:1.55;
+}
+.dz-hub-rowcopy strong{font-size:14px}
+.dz-hub-status{font-size:11px;max-width:135px}
+.dz-hub-command{font-size:13px}
+html[data-workspace-theme="light"] .dz-hub-lead,
+html[data-workspace-theme="light"] .dz-hub-rowcopy small{
+  color:#534b45;
+}
+html[data-workspace-theme="light"] .dz-hub-status{
+  color:#524a45;
+  border-color:#c9c0b8;
+}
+html[data-workspace-theme="light"] .dz-hub-status.ready{
+  color:#22613f;
+  border-color:#77a58a;
+}
+html[data-workspace-theme="light"] .dz-hub-rowcopy strong,
+html[data-workspace-theme="light"] .dz-hub-top h2{
+  color:#29231e;
+}
+html[data-workspace-theme="light"] .dz-desktop-install-head small,
+html[data-workspace-theme="light"] .dz-desktop-install-note{
+  color:#51483f;
+  font-size:12px;
+}
+html[data-workspace-theme="light"] .modal .login-form label,
+html[data-workspace-theme="light"] .modal .modal-copy,
+html[data-workspace-theme="light"] .menu-title,
+html[data-workspace-theme="light"] .drawer .approval-meta{
+  color:#4d463f;
+  font-size:13px;
+}
+html[data-workspace-theme="light"] button:focus-visible,
+html[data-workspace-theme="light"] input:focus-visible,
+html[data-workspace-theme="light"] textarea:focus-visible,
+html[data-workspace-theme="light"] a:focus-visible{
+  outline:2px solid #a84a1e;
+  outline-offset:2px;
+}
+@media(max-width:820px){
+  .dz-command-panel{max-height:84dvh}
+  .dz-command-results{max-height:min(48dvh,328px)}
+  html[data-workspace-theme="light"] .prompt-chip{font-size:13px}
+  html[data-workspace-theme="light"] .unified-composer #message-input{font-size:15px}
+}
+@media(max-width:520px){
+  .dz-command-panel>input{font-size:16px}
+  .dz-command-results button{font-size:14px}
+  .dz-command-foot{font-size:11.5px}
+  .dz-hub-status{font-size:10px;max-width:95px}
+}
