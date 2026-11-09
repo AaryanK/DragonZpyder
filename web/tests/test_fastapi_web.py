@@ -91,6 +91,8 @@ def test_compiled_react_pages_and_hashed_assets(monkeypatch, tmp_path):
     (tmp_path / "app.webmanifest").write_text('{"start_url":"/app"}', encoding="utf8")
     (tmp_path / "app-icon-192.png").write_bytes(b"PNG-desktop-192")
     (tmp_path / "app-icon-512.png").write_bytes(b"PNG-desktop-512")
+    for name in ("brand-icon.png", "brand-logo.png", "brand-operly.png"):
+        (tmp_path / name).write_bytes(b"Official-brand-PNG")
     (tmp_path / "assets").mkdir()
     (tmp_path / "assets" / "main-abcd.js").write_text("console.log('react')", encoding="utf8")
     with TestClient(app) as client:
@@ -101,6 +103,11 @@ def test_compiled_react_pages_and_hashed_assets(monkeypatch, tmp_path):
         assert manifest.status_code == 200
         assert manifest.headers["content-type"].startswith("application/manifest+json")
         assert manifest.json()["start_url"] == "/app"
+        for name in ("brand-icon.png", "brand-logo.png", "brand-operly.png"):
+            img = client.get("/" + name)
+            assert img.status_code == 200
+            assert img.headers["content-type"].startswith("image/png")
+            assert img.content == b"Official-brand-PNG"
         for size in (192, 512):
             icon = client.get(f"/app-icon-{size}.png")
             assert icon.status_code == 200
