@@ -85,6 +85,7 @@ async def lifespan(app: FastAPI):
     setup_telemetry()
     await ledger.open()
     await parent_budget.open()
+    app.state.parent_budget = parent_budget
     log.warning("Staging atomic parent-budget gateway status=%s",
                 "ready" if parent_budget.active else "disabled")
     agent_runtime = None
