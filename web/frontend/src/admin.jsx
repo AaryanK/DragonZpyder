@@ -164,8 +164,9 @@ function AdminPage() {
           </tbody></table></div>
         </section>
         <p className="data-note">Trace correlation IDs are recorded per request. Detailed inspection requires the configured Langfuse workspace and a trace viewer with appropriate permissions.</p>
-        <AdminTaskActivity />
+
       </>}
+      <AdminTaskActivity />
     </main>
   );
 }
