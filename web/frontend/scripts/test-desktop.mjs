@@ -13,6 +13,11 @@ test("Windows browser-install assets are generated with valid PNG dimensions", (
   assert.equal(manifest.id, "/app");
   assert.equal(manifest.display, "standalone");
   assert.equal(manifest.icons.length, 2);
+  for(const brand of ["brand-icon.png","brand-logo.png","brand-operly.png"]) {
+    const png=readFileSync(resolve(root,brand));
+    assert.deepEqual(Array.from(png.subarray(0,8)),[137,80,78,71,13,10,26,10], brand+" is not PNG");
+    assert.ok(png.length>50000, brand+" missing authentic image bytes");
+  }
   const expected = [192, 512];
   for (const size of expected) {
     const name = "app-icon-"+size+".png";
