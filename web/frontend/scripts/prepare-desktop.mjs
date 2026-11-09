@@ -8,7 +8,7 @@
 import { createHash } from "node:crypto";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync, copyFileSync } from "node:fs";
 import { PNG } from "pngjs";
 
 const dist = resolve(dirname(fileURLToPath(import.meta.url)), "../../dist");
@@ -61,6 +61,13 @@ function resizedPng(bytes, size) {
   return PNG.sync.write(out);
 }
 mkdirSync(dist,{recursive:true});
+/* Vite's publicDir is disabled for safety. Copy only allowlisted presentation
+ * files into the preview build for automated browser tests and local review.
+ * Never expose arbitrary Python backend files or .env secrets. */
+const appRoot=resolve(dist,"..");
+for (const name of ["app.css","mesh.css","workspace.css","ui-v1.css","account.css"]) {
+  copyFileSync(resolve(appRoot,name),resolve(dist,name));
+}
 const data = await Promise.all(assets.map(download));
 for(let i=0;i<assets.length;i++) writeFileSync(resolve(dist,assets[i].dest),data[i]);
 const favicon=data[0];
