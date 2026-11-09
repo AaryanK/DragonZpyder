@@ -49,6 +49,10 @@ async def execute_goal_tick() -> dict:
             )) is None:
                 raise RuntimeError("Goal runs migration missing; fail closed")
         result = await GoalReconciler(pool).tick()
+        # An event can arrive from any approved, atomic outbox producer.
+        # Draining an already-queued internal wake needs no web/network call.
+        from .event_wait import EventWaitStore
+        result["event_wakes"] = await EventWaitStore(pool).drain_canary()
         if os.getenv("DRAGONZPYDER_WEB_EVENT_ENABLED") == "1":
             from .web_event_watch import require_web_event_gate, run_due_web_checks
             require_web_event_gate()
