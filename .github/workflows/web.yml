@@ -89,3 +89,23 @@ jobs:
           test -s web/dist/account.html
           test -s web/dist/admin.html
           test -n "$(find web/dist/assets -name '*.js' -print -quit)"
+
+  windows-desktop-build:
+    name: Windows desktop browser build
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Build and test the React frontend and Windows PWA assets
+        shell: pwsh
+        run: |
+          npm install --prefix web/frontend --no-audit --no-fund --package-lock=false
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm run build --prefix web/frontend
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm run test --prefix web/frontend
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
