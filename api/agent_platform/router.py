@@ -64,18 +64,26 @@ async def run_operly_agent(
     seed = "|".join((payload.scope_kind, payload.user_id, payload.workspace_id or ""))
     scope_key = hashlib.sha256(seed.encode("utf-8")).hexdigest()[:32]
     from .capability_hub import operly_personal_or_workspace_hub, CapabilityHubError
-    from .operly_broker import OperlyBrokerUnavailable
+    from .operly_broker import OperlyBrokerUnavailable, verified_operly_wrapper_context
+    from .wrapper_context import scoped_workspace_prompt, WrapperContextError
     from .runtime import AgentPipelineError
     try:
         tools = operly_personal_or_workspace_hub(payload.lease_token).tools()
+        goal = payload.prompt
+        if payload.scope_kind == "workspace":
+            # Context is obtained from the same currently authorized broker as
+            # tools. Neither the prompt nor client-provided metadata can select
+            # a different workspace or impersonate a business.
+            context = await verified_operly_wrapper_context(payload.lease_token)
+            goal = scoped_workspace_prompt(goal, context)
         report = await agent.run_report(
             service_id="operly-" + scope_key,
             thread_id=payload.thread_id,
-            prompt=payload.prompt,
+            prompt=goal,
             recover_partial_on_failure=True,
             external_tools=tools,
         )
-    except (OperlyBrokerUnavailable, CapabilityHubError) as exc:
+    except (OperlyBrokerUnavailable, CapabilityHubError, WrapperContextError) as exc:
         raise HTTPException(503, "Operly tool broker unavailable") from exc
     except (AgentPipelineError, RuntimeError) as exc:
         raise HTTPException(502, "DragonZpyder harness run failed") from exc
