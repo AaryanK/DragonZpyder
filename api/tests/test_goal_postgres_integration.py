@@ -92,3 +92,26 @@ def test_registered_goal_persists_across_restart_but_never_executes():
                 await admin.close()
 
     asyncio.run(scenario())
+
+
+
+def test_principal_hash_cannot_be_confused_by_user_delimiters():
+    from agent_platform.goal_store import _principal
+    first = _principal(
+        source_app="operly", kind="workspace",
+        user_id="abc\\0x", workspace_id="y",
+    )
+    second = _principal(
+        source_app="operly", kind="workspace",
+        user_id="abc", workspace_id="x\\0y",
+    )
+    assert first != second
+    internal = _principal(
+        source_app="internal_canary", kind="personal",
+        user_id="internal-staging-probe", workspace_id=None,
+    )
+    user = _principal(
+        source_app="dragonzpyder", kind="personal",
+        user_id="internal-staging-probe", workspace_id=None,
+    )
+    assert internal != user
