@@ -160,11 +160,56 @@ class DurableGoalStore:
         principal = _principal(source_app=source_app, kind=kind, user_id=user_id,
                                workspace_id=workspace_id)
         async with self._pool.acquire() as con:
-            row = await con.fetchrow(
-                """UPDATE dragonzpyder_goals
-                   SET status='cancelled',next_run_at=NULL,updated_at=now()
-                   WHERE goal_id=$1 AND source_app=$2 AND principal_hash=$3
-                     AND status IN ('registered','awaiting_authorization','paused','cancelled')
-                   RETURNING *""", _id(goal_id), source_app, principal,
-            )
+            async with con.transaction():
+                row = await con.fetchrow(
+                    """UPDATE dragonzpyder_goals
+                       SET status='cancelled',next_run_at=NULL,updated_at=now()
+                       WHERE goal_id=$1 AND source_app=$2 AND principal_hash=$3
+                         AND status IN ('registered','awaiting_authorization','paused','cancelled')
+                       RETURNING *""", _id(goal_id), source_app, principal,
+                )
+                if row is not None:
+                    # Cancellation fences active claims in the SAME transaction.
+                    # Even a late worker cannot commit a cancelled synthetic run.
+                    await con.execute(
+                        """UPDATE dragonzpyder_goal_runs
+                           SET status='cancelled',claim_token=NULL,
+                               lease_until=NULL,updated_at=now()
+                           WHERE goal_id=$1 AND status IN
+                             ('pending','running','awaiting_authorization')""",
+                        _id(goal_id),
+                    )
         return _serialize(row)
+
+    async def list_runs(self, *, source_app: str, kind: str, user_id: str,
+                        workspace_id: str | None, goal_id: str) -> list[dict]:
+        principal = _principal(source_app=source_app, kind=kind,
+                               user_id=user_id, workspace_id=workspace_id)
+        async with self._pool.acquire() as con:
+            # Validate owner even if no run exists. Return no cross-tenant clues.
+            goal = await con.fetchval(
+                """SELECT goal_id FROM dragonzpyder_goals
+                   WHERE goal_id=$1 AND source_app=$2 AND principal_hash=$3""",
+                _id(goal_id), source_app, principal,
+            )
+            if goal is None:
+                raise LookupError("Goal is unavailable")
+            rows = await con.fetch(
+                """SELECT run_id,scheduled_for,status,attempts,
+                          evidence_sha256,error_code
+                   FROM dragonzpyder_goal_runs
+                   WHERE goal_id=$1
+                   ORDER BY scheduled_for DESC LIMIT 25""", goal,
+            )
+        return [
+            {"run_id": str(row["run_id"]), "scheduled_for": row["scheduled_for"].isoformat(),
+             "status": row["status"], "attempts": row["attempts"],
+             "evidence_sha256": row["evidence_sha256"],
+             "error_code": row["error_code"],
+             "synthetic_only": (source_app == "dragonzpyder"
+                                and principal == _principal(
+                                    source_app="dragonzpyder", kind="personal",
+                                    user_id="internal-staging-probe", workspace_id=None)),
+             "objective_verified": False}
+            for row in rows
+        ]
