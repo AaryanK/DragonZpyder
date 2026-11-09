@@ -160,6 +160,7 @@ async def run_frontier_batch_once() -> None:
 
     started = monotonic()
     complete = 0
+    verified = 0
     attempted = 0
     overall_status = "completed"
     async with httpx.AsyncClient(trust_env=False, follow_redirects=False) as client:
@@ -244,6 +245,8 @@ async def run_frontier_batch_once() -> None:
                 log.error("Frontier case persistence unavailable id=%s", case_id)
                 break
             complete += 1
+            if report["objective_verified"] is True:
+                verified += 1
             log.warning(
                 "Frontier live case result id=%s status=%s verified=%s "
                 "tools=%s delegated=%s parallel=%s created=%s read_back=%s "
@@ -293,6 +296,7 @@ async def run_frontier_batch_once() -> None:
     except Exception:
         log.error("Frontier batch completion status persistence unavailable")
     log.warning(
-        "Frontier batch done status=%s completed=%d attempted=%d total=%d elapsed_s=%.2f",
+        "Frontier batch done status=%s completed=%d attempted=%d total=%d elapsed_s=%.2f verified=%d suite_total=%d",
         overall_status, complete, attempted, len(ORDER), monotonic()-started,
+        verified, len(suite),
     )
