@@ -173,6 +173,15 @@ def build_frontier_agent(model, checkpointer, *, specialist_models=None, externa
             "- OS, browser, computer and business tools are not available."
         )
     if external_tools:
+        prompt = prompt.replace(
+            "- External web, OS, browser, and business tools are NOT available in this\\n"
+            "  harness. Say so if the objective genuinely requires them.",
+            "- Operly can expose specifically delegated, read-only connected tools. "
+            "Never assume other external capabilities are available.",
+        ).replace(
+            "- OS, browser, computer and business tools are not available.",
+            "- Connected Operly read-only tools are available only as explicitly delegated.",
+        )
         prompt += ("\\nYou have an Operly tool broker. Discover authorized tools before use. "
                    "These are read-only; never claim to modify external state. "
                    "If a goal requires mutation, stop and explain the missing authorization. "
