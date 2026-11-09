@@ -1,4 +1,5 @@
 import React from "react";
+import { CommandPalette, QuickAddMenu, WorkspaceHub } from "./WorkspaceControls.jsx";
 
 
 /**
@@ -123,12 +124,13 @@ export function PersonalTemplate() {
         <a className="nav-link selected" href="/app" aria-current="page"><span className="nav-glyph" aria-hidden="true">▣</span> Conversations <span className="nav-current">Current</span></a>
         <a className="nav-link" href="/account"><span className="nav-glyph" aria-hidden="true">◎</span> Account &amp; connections</a>
       </div>
-      <button className="new-chat" id="new-chat"><span aria-hidden="true">＋</span> New chat <kbd>⌘ K</kbd></button>
+      <button className="new-chat" id="new-chat"><span aria-hidden="true">＋</span> New chat</button>
       <div className="sidebar-search-wrap"><span aria-hidden="true">⌕</span><input type="search" id="conversation-search" placeholder="Find conversations" aria-label="Find conversations" autoComplete="off"/></div>
       <div className="sidebar-label">Your conversations</div>
       <nav className="conversation-list" id="conversation-list" aria-label="Recent conversations"></nav>
       <div className="sidebar-spacer"></div>
       <div className="sidebar-footer-label">WORKSPACE</div>
+      <WorkspaceHub />
       <button className="side-action" id="approvals-button"><span>Approvals</span><span className="badge-count" id="approval-count" hidden>0</span></button>
       <a className="side-action" href="https://operly.dragonzpyder.xyz/" target="_blank" rel="noreferrer"><span>Open Operly</span><span aria-hidden="true">↗</span></a>
       <a className="side-action" href="/"><span>About DragonZpyder</span><span aria-hidden="true">↗</span></a>
@@ -137,7 +139,7 @@ export function PersonalTemplate() {
       <header className="workspace-head">
         <button className="icon-btn mobile-only" id="open-sidebar" aria-label="Open sidebar">☰</button>
         <div className="workspace-heading"><div className="workspace-breadcrumb"><span>DragonZpyder</span><span aria-hidden="true">/</span><strong>Personal AI</strong></div><div className="runtime-status"><span className="status-dot" id="status-dot"></span><span id="status-text">Checking runtime…</span></div></div>
-        <div className="head-actions"><button className="theme-toggle" id="workspace-theme-toggle" type="button" aria-label="Switch to dark appearance" title="Toggle appearance"><span id="workspace-theme-icon" aria-hidden="true">☾</span></button><span className="head-privacy"><span aria-hidden="true">◈</span> Your private workspace</span><button className="ghost-btn" id="approvals-top">Approvals</button><button className="profile-btn" id="profile-button" aria-label="Account menu"><span id="profile-initial">D</span></button></div>
+        <div className="head-actions"><button type="button" className="dz-command-trigger" id="dz-command-trigger" title="Search commands · Ctrl/⌘ K" aria-label="Open command palette" onClick={() => window.dispatchEvent(new Event("dragonzpyder:command-open"))}>⌘</button><button className="theme-toggle" id="workspace-theme-toggle" type="button" aria-label="Switch to dark appearance" title="Toggle appearance"><span id="workspace-theme-icon" aria-hidden="true">☾</span></button><span className="head-privacy"><span aria-hidden="true">◈</span> Your private workspace</span><button className="ghost-btn" id="approvals-top">Approvals</button><button className="profile-btn" id="profile-button" aria-label="Account menu"><span id="profile-initial">D</span></button></div>
       </header>
       <main className="chat-main" id="chat-main">
         <section className="empty-state" id="empty-state">
@@ -162,10 +164,7 @@ export function PersonalTemplate() {
           <textarea id="message-input" rows="2" maxLength="12000" placeholder="Ask, create, or give DragonZpyder a task…" aria-label="Message DragonZpyder"></textarea>
           <div className="composer-toolbar">
             <div className="composer-left">
-              <label id="mesh-file-label" className="mesh-input-label composer-plus" title="Attach images or documents" aria-label="Attach images or documents" tabIndex="0" role="button">
-                <span aria-hidden="true">＋</span>
-                <input id="mesh-upload" type="file" multiple accept="image/png,image/jpeg,image/webp,.pdf,.docx,.txt,.md,.csv,.json,.py,.log,audio/*" aria-label="Choose files to attach"/>
-              </label>
+              <QuickAddMenu camera={<CameraAttachment />} />
               <button type="button" id="mesh-switch" className="mesh-switch" aria-pressed="false" title="Switch between permissioned Agent and direct AI Mesh"><span aria-hidden="true">✦</span> Agent</button>
               <div id="mesh-controls" className="mesh-controls" hidden>
                 <select id="mesh-task" className="mesh-select task-select" aria-label="AI Mesh task">
@@ -179,7 +178,6 @@ export function PersonalTemplate() {
               </div>
             </div>
             <div className="composer-right">
-              <CameraAttachment />
               <button className="dictation-button" id="dictation-toggle" type="button" title="Dictate into message" aria-label="Start dictation" aria-pressed="false">
                 <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"></rect><path d="M5 10a7 7 0 0 0 14 0M12 17v5m-4 0h8"></path></svg>
               </button>
@@ -193,6 +191,7 @@ export function PersonalTemplate() {
       </footer>
     </section>
   </div>
+  <CommandPalette />
   <section className="companion-panel" id="companion-panel" role="dialog" aria-modal="true" aria-label="Live companion" hidden>
     <div className="companion-card"><div className="eyebrow">DragonZpyder / Live companion</div><h2>Let's talk.</h2>
     <div className="companion-bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
