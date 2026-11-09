@@ -42,7 +42,7 @@ def test_scheduled_goal_survives_worker_restart_and_never_executes_a_user_tool()
             schedule = {"type": "interval", "every_seconds": 600}
 
             probe = await store.register(
-                source_app="dragonzpyder", kind="personal",
+                source_app="internal_canary", kind="personal",
                 user_id="internal-staging-probe", workspace_id=None,
                 request_id=str(uuid4()), goal="NO EXTERNAL EXECUTION",
                 schedule=schedule,
@@ -89,7 +89,7 @@ def test_scheduled_goal_survives_worker_restart_and_never_executes_a_user_tool()
             assert repeat["scheduled"] == {"pending": 0, "awaiting_authorization": 0}
             assert repeat["probes"] == []
             assert len(await store.list_runs(
-                source_app="dragonzpyder", kind="personal",
+                source_app="internal_canary", kind="personal",
                 user_id="internal-staging-probe", workspace_id=None,
                 goal_id=probe["goal_id"],
             )) == 1
@@ -133,7 +133,7 @@ def test_scheduled_goal_survives_worker_restart_and_never_executes_a_user_tool()
 
             store = DurableGoalStore(pool, encryption_key=Fernet.generate_key().decode())
             cancelled = await store.cancel(
-                source_app="dragonzpyder", kind="personal",
+                source_app="internal_canary", kind="personal",
                 user_id="internal-staging-probe", workspace_id=None,
                 goal_id=probe["goal_id"],
             )
