@@ -26,10 +26,103 @@ const COMMANDS = [
   { title: "Account and connections", hint: "Settings", words: "account settings connected apps", run: () => { window.location.href = "/account"; } },
 ];
 
+
+/**
+ * Confirm a destructive conversational context change without performing an
+ * agent action. The promise is resolved on every close path, including Escape.
+ */
+export function ModeSwitchConfirm() {
+  const [request, setRequest] = useState(null);
+  const cancelRef = useRef(null);
+  const originRef = useRef(null);
+  useEffect(() => {
+    const onRequest = event => {
+      if (typeof event.detail?.resolve !== "function") return;
+      event.detail.handled = true;
+      originRef.current = document.activeElement;
+      setRequest({ resolve: event.detail.resolve });
+    };
+    window.addEventListener("dragonzpyder:confirm-mesh-switch", onRequest);
+    return () => window.removeEventListener("dragonzpyder:confirm-mesh-switch", onRequest);
+  }, []);
+  useEffect(() => {
+    if (!request) return;
+    cancelRef.current?.focus();
+    const onKey = event => {
+      if (event.key === "Escape") {
+        event.preventDefault(); event.stopPropagation();
+        request.resolve(false); setRequest(null);
+      }
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [request]);
+  const choose = decision => {
+    request?.resolve(decision);
+    setRequest(null);
+    requestAnimationFrame(() => originRef.current?.focus?.());
+  };
+  return request && createPortal(
+    <div className="dz-overlay dz-confirm-overlay" onMouseDown={event => {
+      if (event.target === event.currentTarget) choose(false);
+    }}>
+      <section className="dz-confirm-panel" role="alertdialog" aria-modal="true"
+        aria-labelledby="dz-confirm-title" aria-describedby="dz-confirm-description">
+        <span className="dz-kicker">Before you attach</span>
+        <h2 id="dz-confirm-title">Switch to AI Mesh?</h2>
+        <p id="dz-confirm-description">Files are currently handled by AI Mesh.
+          Switching starts a separate conversation; the Agent conversation and its connected tools won't carry over.
+          Your previous Agent conversations remain saved.</p>
+        <div className="dz-confirm-actions">
+          <button ref={cancelRef} type="button" onClick={() => choose(false)}>Keep Agent chat</button>
+          <button type="button" onClick={() => choose(true)}>Switch and attach</button>
+        </div>
+      </section>
+    </div>, document.body
+  );
+}
+
+/** One keyboard and touch target for showing/hiding the full desktop sidebar. */
+export function SidebarToggle() {
+  const [expanded, setExpanded] = useState(true);
+  useEffect(() => {
+    let collapsed = false;
+    try { collapsed = localStorage.getItem("dragonzpyder:sidebar-collapsed") === "yes"; } catch {}
+    document.documentElement.classList.toggle("dz-sidebar-collapsed", collapsed);
+    setExpanded(!collapsed);
+  }, []);
+  const toggle = () => {
+    const next = !expanded;
+    setExpanded(next);
+    document.documentElement.classList.toggle("dz-sidebar-collapsed", !next);
+    try { localStorage.setItem("dragonzpyder:sidebar-collapsed", next ? "no" : "yes"); } catch {}
+  };
+  return <button className="dz-sidebar-toggle" type="button" onClick={toggle}
+    aria-label={expanded ? "Collapse sidebar" : "Expand sidebar"}
+    title={expanded ? "Hide sidebar" : "Show sidebar"} aria-expanded={expanded}
+    aria-controls="sidebar">☷</button>;
+}
+
 export function CommandPalette() {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const inputRef = useRef(null);
+  const dialogRef = useRef(null);
+  const previousFocusRef = useRef(null);
+  useEffect(() => {
+    if (!open) return;
+    previousFocusRef.current = document.activeElement;
+    const trap = event => {
+      if (event.key !== "Tab" || !dialogRef.current) return;
+      const nodes = [...dialogRef.current.querySelectorAll("button:not(:disabled),input:not(:disabled),[tabindex='0']")];
+      if (!nodes.length) return;
+      const first=nodes[0], last=nodes[nodes.length-1];
+      if(event.shiftKey && document.activeElement===first) {event.preventDefault(); last.focus();}
+      else if(!event.shiftKey && document.activeElement===last) {event.preventDefault(); first.focus();}
+    };
+    document.addEventListener("keydown",trap,true);
+    return () => {document.removeEventListener("keydown",trap,true);previousFocusRef.current?.focus?.();};
+  }, [open]);
   useEffect(() => {
     const onShortcut = event => {
       if ((event.metaKey || event.ctrlKey) && !event.shiftKey &&
@@ -54,8 +147,8 @@ export function CommandPalette() {
   }, [query]);
   const choose = command => { setOpen(false); command.run(); };
   return <>
-    {open && <div className="dz-overlay" onMouseDown={event => { if (event.target === event.currentTarget) setOpen(false); }}>
-      <section className="dz-command-panel" role="dialog" aria-modal="true" aria-labelledby="dz-command-title">
+    {open && createPortal(<div className="dz-overlay" onMouseDown={event => { if (event.target === event.currentTarget) setOpen(false); }}>
+      <section ref={dialogRef} className="dz-command-panel" role="dialog" aria-modal="true" aria-labelledby="dz-command-title">
         <div className="dz-command-top"><strong id="dz-command-title">What would you like to do?</strong><button type="button" onClick={() => setOpen(false)} aria-label="Close commands">Esc ×</button></div>
         <input ref={inputRef} aria-label="Search DragonZpyder commands" value={query} onChange={event => setQuery(event.target.value)}
           placeholder="Search features, actions, settings…" onKeyDown={event => {
@@ -69,7 +162,7 @@ export function CommandPalette() {
         </div>
         <div className="dz-command-foot">Windows: <kbd>Ctrl K</kbd> or <kbd>Ctrl /</kbd> · macOS: <kbd>⌘ K</kbd>. Unavailable services are not presented as working commands.</div>
       </section>
-    </div>}
+    </div>, document.body)}
   </>;
 }
 
