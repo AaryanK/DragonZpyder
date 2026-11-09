@@ -1,6 +1,7 @@
 import React from "react";
 import { createPortal } from "react-dom";
 import { CommandPalette, QuickAddMenu, WorkspaceHub, SidebarToggle, ModeSwitchConfirm, useModalFocus } from "./WorkspaceControls.jsx";
+import { PersonalCapabilitiesPanel } from "./PersonalCapabilitiesPanel.jsx";
 
 
 /**
@@ -136,6 +137,7 @@ export function PersonalTemplate() {
       <div className="sidebar-footer-label">WORKSPACE</div>
       <WorkspaceHub />
       <button className="side-action" id="approvals-button"><span>Approvals</span><span className="badge-count" id="approval-count" hidden>0</span></button>
+      <button className="side-action" type="button" id="personal-tools-button" onClick={() => window.dispatchEvent(new Event("dragonzpyder:personal-capabilities-open"))}><span>Personal tools</span><span aria-hidden="true">⌕</span></button>
       <a className="side-action" href="https://operly.dragonzpyder.xyz/" target="_blank" rel="noreferrer"><span>Open Operly</span><span aria-hidden="true">↗</span></a>
       <a className="side-action" href="/"><span>About DragonZpyder</span><span aria-hidden="true">↗</span></a>
     </aside>
@@ -196,6 +198,7 @@ export function PersonalTemplate() {
     </section>
   </div>
   <CommandPalette />
+  <PersonalCapabilitiesPanel />
   <ModeSwitchConfirm />
   <section className="companion-panel" id="companion-panel" role="dialog" aria-modal="true" aria-label="Live companion" hidden>
     <div className="companion-card"><div className="eyebrow">DragonZpyder / Live companion</div><h2>Let's talk.</h2>
