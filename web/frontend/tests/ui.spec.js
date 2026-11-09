@@ -72,6 +72,17 @@ test("workspace navigation discloses planned items rather than promising working
   await expect(drawer).toHaveCount(0);
 });
 
+test("all presentation stylesheets are served, not intercepted by the API proxy", async ({page}) => {
+  for (const file of ["app.css","mesh.css","workspace.css","ui-v1.css"]) {
+    const result = await page.evaluate(async path => {
+      const response = await fetch("/"+path, {cache:"no-store"});
+      return {status:response.status, contentType:response.headers.get("content-type") || ""};
+    }, file);
+    expect(result.status, file+" status").toBe(200);
+    expect(result.contentType, file+" content type").toMatch(/text\\/css/);
+  }
+});
+
 test("light shortcut keys have readable contrast and the command list scrolls", async ({page}) => {
   await page.keyboard.press("Control+k");
   const computed = await page.locator(".dz-command-foot kbd").first().evaluate(node => {
