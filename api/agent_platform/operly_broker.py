@@ -37,6 +37,48 @@ def _settings() -> tuple[str, str]:
     return url, token
 
 
+async def verified_operly_wrapper_context(lease: str) -> dict:
+    """Resolve live workspace metadata from Operly, not user input.
+
+    Revalidates membership via Operly broker's signed short-lived lease.
+    Operly remains authority for workspace resources and permissions.
+    """
+    if not isinstance(lease, str) or not 20 <= len(lease) <= 6000:
+        raise OperlyBrokerUnavailable("Invalid delegated lease")
+    base, token = _settings()
+    try:
+        async with httpx.AsyncClient(timeout=15, follow_redirects=False, trust_env=False) as client:
+            async with client.stream(
+                "POST", base + "/search",
+                json={"query": ""},
+                headers={
+                    "Authorization": "Bearer " + token,
+                    "X-Operly-Agent-Lease": lease,
+                    "Accept": "application/json",
+                },
+            ) as response:
+                if response.status_code != 200:
+                    raise OperlyBrokerUnavailable("Scoped workspace context unavailable")
+                body = bytearray()
+                async for chunk in response.aiter_bytes():
+                    body.extend(chunk)
+                    if len(body) > _MAX_RESPONSE:
+                        raise OperlyBrokerUnavailable("Workspace context response too large")
+        data = json.loads(body)
+    except (httpx.HTTPError, ValueError, UnicodeError) as exc:
+        raise OperlyBrokerUnavailable("Operly context broker unavailable") from exc
+    if (not isinstance(data, dict) or data.get("source") != "operly"
+            or data.get("scope_kind") not in ("personal", "workspace")):
+        raise OperlyBrokerUnavailable("Invalid Operly context envelope")
+    if data["scope_kind"] == "workspace" and not isinstance(data.get("workspace_context"), dict):
+        raise OperlyBrokerUnavailable("Workspace context is missing")
+    return {
+        "source": data["source"],
+        "scope_kind": data["scope_kind"],
+        "workspace_context": data.get("workspace_context"),
+    }
+
+
 def readonly_tools(lease: str):
     """Two bounded LangChain tools, with reauthorization on every broker call."""
     if not isinstance(lease, str) or not 20 <= len(lease) <= 6000:
