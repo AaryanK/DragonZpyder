@@ -99,3 +99,38 @@ CREATE TABLE IF NOT EXISTS dragonzpyder_event_wakes (
 CREATE INDEX IF NOT EXISTS idx_dz_event_wakes_pending
  ON dragonzpyder_event_wakes(status,lease_until)
  WHERE status IN ('pending','running');
+
+-- Durable owner-scoped Web harness tasks and operational events.
+CREATE TABLE IF NOT EXISTS dragonzpyder_ui_tasks (
+    task_id uuid PRIMARY KEY,
+    owner_hash char(64) NOT NULL,
+    request_id uuid NOT NULL,
+    kind text NOT NULL CHECK(kind IN ('probe','agent')),
+    prompt_sha256 char(64) NOT NULL,
+    prompt_ciphertext bytea NOT NULL,
+    result_ciphertext bytea,
+    status text NOT NULL CHECK(status IN
+       ('queued','running','completed','incomplete','failed','cancelled')),
+    claim_token uuid,
+    lease_until timestamptz,
+    attempts integer NOT NULL DEFAULT 0 CHECK(attempts BETWEEN 0 AND 2),
+    objective_verified boolean NOT NULL DEFAULT false,
+    trace_id varchar(64),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE(owner_hash,request_id)
+);
+CREATE INDEX IF NOT EXISTS idx_dz_ui_tasks_owner
+  ON dragonzpyder_ui_tasks(owner_hash,created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_dz_ui_tasks_status
+  ON dragonzpyder_ui_tasks(status,updated_at DESC);
+CREATE TABLE IF NOT EXISTS dragonzpyder_ui_task_events (
+    event_id bigserial PRIMARY KEY,
+    task_id uuid NOT NULL REFERENCES dragonzpyder_ui_tasks(task_id)
+       ON DELETE CASCADE,
+    kind varchar(32) NOT NULL,
+    message varchar(180) NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_dz_ui_events_task
+  ON dragonzpyder_ui_task_events(task_id,event_id);
