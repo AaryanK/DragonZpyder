@@ -65,9 +65,9 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install test-only dependencies
-        run: pip install asyncpg 'cryptography>=44,<50' pytest
+        run: pip install asyncpg 'cryptography>=44,<50' 'langchain-core>=0.3,<2' httpx pytest
       - name: Verify real PostgreSQL concurrency, restart and isolation
-        run: pytest -q api/tests/test_budget_postgres_integration.py api/tests/test_goal_postgres_integration.py api/tests/test_goal_recovery_postgres.py
+        run: pytest -q api/tests/test_budget_postgres_integration.py api/tests/test_goal_postgres_integration.py api/tests/test_goal_recovery_postgres.py api/tests/test_web_event_postgres.py
 
   hatchet-embedded-goal:
     runs-on: ubuntu-latest
