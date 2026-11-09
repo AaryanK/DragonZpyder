@@ -6,6 +6,11 @@ async function mockPersonalApi(page) {
     let response = {};
     if (path === "/api/auth/sessions") {
       response = [{ id:"fixture", current:true, scope:"personal", device:"UI test" }];
+    } else if (path === "/api/personal-tools") {
+      response = { scope_kind:"personal", tools:[
+        { id:"personal.calendar.list", display_name:"Read Calendar", description:"Read upcoming events", risk:"read_only", approval_required:false, tags:["calendar"] },
+        { id:"personal.workflow.create", display_name:"Create Scheduled Workflow", description:"Schedule an approved recurring task", risk:"mutating", approval_required:true, tags:["schedule"] },
+      ] };
     } else if (path === "/api/personal-agent/conversations" ||
                path.endsWith("/approvals")) {
       response = [];
@@ -35,6 +40,35 @@ test("keyboard command palette is searchable, readable, and closes with Escape",
   await expect(dialog.getByRole("button",{name:/Start live voice/})).toHaveCount(0);
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
+});
+
+test("Personal tools show only server-authorized capabilities and do not execute from the browser", async ({page}) => {
+  let executionAttempts = 0;
+  await page.route("**/api/personal-tools/*/execute", async route => {
+    executionAttempts++;
+    await route.fulfill({ status: 403, contentType:"application/json", body:"{}" });
+  });
+  await page.locator("#personal-tools-button").click();
+  const dialog = page.getByRole("dialog", { name:"Your Personal capabilities" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText("Read Calendar")).toBeVisible();
+  await expect(dialog.getByText("Create Scheduled Workflow")).toBeVisible();
+  await expect(dialog.getByText("Approval required")).toBeVisible();
+  await dialog.getByRole("button", { name:"Draft an Agent task using Read Calendar" }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.locator("#message-input")).toHaveValue("Help me use Read Calendar to ");
+  expect(executionAttempts).toBe(0);
+});
+
+test("Personal tools refuse to display an unauthorized tool list", async ({page}) => {
+  await page.route("**/api/personal-tools?**", async route => {
+    await route.fulfill({ status:403, contentType:"application/json", body:"{}" });
+  });
+  await page.locator("#personal-tools-button").click();
+  const dialog = page.getByRole("dialog", { name:"Your Personal capabilities" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText("Sign in to your Personal account to view available tools.")).toBeVisible();
+  await expect(dialog.getByText("Read Calendar")).toHaveCount(0);
 });
 
 test("attaching a file requires explicit context change approval", async ({page}) => {
