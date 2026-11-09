@@ -140,21 +140,20 @@ export function PersonalTemplate() {
     <section className="workspace">
       <header className="workspace-head">
         <button className="icon-btn mobile-only" id="open-sidebar" aria-label="Open sidebar">☰</button>
-        <div className="workspace-heading"><div className="workspace-breadcrumb"><span>DragonZpyder</span><span aria-hidden="true">/</span><strong>Personal AI</strong></div><div className="runtime-status"><span className="status-dot" id="status-dot"></span><span id="status-text">Checking runtime…</span></div></div>
+        <div className="workspace-heading"><div className="workspace-breadcrumb"><strong>Personal</strong></div><div className="runtime-status"><span className="status-dot" id="status-dot"></span><span id="status-text">Checking runtime…</span></div></div>
         <div className="head-actions"><button type="button" className="dz-command-trigger" id="dz-command-trigger" title="Search commands · Ctrl/⌘ K" aria-label="Open command palette" onClick={() => window.dispatchEvent(new Event("dragonzpyder:command-open"))}>⌘</button><button className="theme-toggle" id="workspace-theme-toggle" type="button" aria-label="Switch to dark appearance" title="Toggle appearance"><span id="workspace-theme-icon" aria-hidden="true">☾</span></button><span className="head-privacy"><span aria-hidden="true">◈</span> Your private workspace</span><button className="ghost-btn" id="approvals-top">Approvals</button><button className="profile-btn" id="profile-button" aria-label="Account menu"><span id="profile-initial">D</span></button></div>
       </header>
       <main className="chat-main" id="chat-main">
         <section className="empty-state" id="empty-state">
           <div className="welcome-emblem"><img src="https://raw.githubusercontent.com/AaryanK/DragonZpyder-Landing/f18fa6a100eebfa8a43036d7baad5b85d9623785/favicon.png" alt="" className="hero-logo"/></div>
-          <div className="eyebrow">YOUR INTELLIGENCE WORKSPACE</div>
-          <h1>What will we <em>create today?</em></h1>
-          <p>Talk through an idea, analyze something complex, or put your AI agents to work. Your tools are right here when you need them.</p>
-          <div className="welcome-section-title">Explore what you can do <span aria-hidden="true">↗</span></div>
+          <div className="eyebrow">YOUR SPACE TO THINK AND MAKE</div>
+          <h1>What shall we work on?</h1>
+          <p>From a quick question to a big idea. Start anywhere. We’ll find the way forward.</p>
+          <div className="welcome-section-title">Start anywhere <span aria-hidden="true">↗</span></div>
           <div className="prompt-grid">
-            <button className="prompt-chip" data-prompt="Help me understand a new idea."><span className="prompt-icon" aria-hidden="true">✧</span><span><strong>Research &amp; analyze</strong><small>Dig deeper into an idea.</small></span><span className="prompt-arrow" aria-hidden="true">↗</span></button>
-            <button className="prompt-chip" data-prompt="Help me make a clear plan for this week."><span className="prompt-icon" aria-hidden="true">⌘</span><span><strong>Plan with me</strong><small>Make a clear plan for this week.</small></span><span className="prompt-arrow" aria-hidden="true">↗</span></button>
-            <button className="prompt-chip" data-prompt="Help me draft an email I can review."><span className="prompt-icon" aria-hidden="true">✉</span><span><strong>Create something</strong><small>Draft, design or work on a project.</small></span><span className="prompt-arrow" aria-hidden="true">↗</span></button>
-            <button className="prompt-chip" data-prompt="Show me which connected tools I can use."><span className="prompt-icon" aria-hidden="true">◎</span><span><strong>Use agents &amp; tools</strong><small>See what tools you can connect.</small></span><span className="prompt-arrow" aria-hidden="true">↗</span></button>
+            <button className="prompt-chip" data-prompt="Help me think through a new idea.">Explore an idea</button>
+            <button className="prompt-chip" data-prompt="Help me plan a project from scratch.">Plan a project</button>
+            <button className="prompt-chip" data-prompt="Help me turn my notes into a clear draft.">Write something</button>
           </div>
         </section>
         <section className="messages" id="messages" aria-live="polite"></section>
@@ -163,7 +162,7 @@ export function PersonalTemplate() {
         <span id="dictation-feedback" className="dictation-feedback" role="status" aria-live="polite" hidden></span>
         <form className="composer unified-composer" id="composer" aria-label="Chat message composer">
           <div id="mesh-attachments" className="mesh-attachments" hidden></div>
-          <textarea id="message-input" rows="2" maxLength="12000" placeholder="Ask, create, or give DragonZpyder a task…" aria-label="Message DragonZpyder"></textarea>
+          <textarea id="message-input" rows="2" maxLength="12000" placeholder="Ask anything, or give DragonZpyder a task…" aria-label="Message DragonZpyder"></textarea>
           <div className="composer-toolbar">
             <div className="composer-left">
               <QuickAddMenu camera={<CameraAttachment />} />
