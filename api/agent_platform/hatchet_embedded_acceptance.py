@@ -218,6 +218,53 @@ async def verify_waiting_event(canary_wait_id: str, user_wait_id: str) -> bool:
         await pool.close()
 
 
+
+async def seed_browser_probe_task() -> str:
+    """Store a zero-cost Personal UI job for the real embedded Hatchet worker."""
+    from .task_activity import ActivityStore
+    pool = await asyncpg.create_pool(
+        dsn=os.environ["DRAGONZPYDER_GOALS_DATABASE_URL"], min_size=1, max_size=2
+    )
+    try:
+        store = ActivityStore(
+            pool, encryption_key=os.environ["DRAGONZPYDER_GOALS_ENCRYPTION_KEY"]
+        )
+        task, _ = await store.create(
+            owner="synthetic-ui-ci@example.invalid",
+            request_id=str(uuid4()), kind="probe",
+            prompt="Check only worker and PostgreSQL readiness",
+        )
+        return task["task_id"]
+    finally:
+        await pool.close()
+
+
+async def verify_browser_probe_task(task_id: str) -> dict:
+    from .task_activity import ActivityStore
+    pool = await asyncpg.create_pool(
+        dsn=os.environ["DRAGONZPYDER_GOALS_DATABASE_URL"], min_size=1, max_size=2
+    )
+    try:
+        store = ActivityStore(
+            pool, encryption_key=os.environ["DRAGONZPYDER_GOALS_ENCRYPTION_KEY"]
+        )
+        result = await store.get(
+            owner="synthetic-ui-ci@example.invalid", task_id=task_id,
+        )
+        assert result["status"] == "completed", result
+        assert "Hatchet worker" in result["answer"]
+        assert any(ev["kind"] == "started" for ev in result["events"])
+        assert any(ev["kind"] == "completed" for ev in result["events"])
+        assert result["objective_verified"] is False
+        assert "answer" not in await store.get(
+            owner=None, task_id=task_id, admin=True,
+        )
+        return {"task_id": task_id, "events": len(result["events"]),
+                "status": result["status"], "paid_model_calls": 0}
+    finally:
+        await pool.close()
+
+
 def main():
     if (os.getenv("DRAGONZPYDER_HATCHET_EMBEDDED_CI") != "1"
             or os.getenv("DRAGONZPYDER_STAGE") != "staging"
@@ -225,12 +272,17 @@ def main():
         raise RuntimeError("Embedded acceptance requires isolated CI database")
     from hatchet_sdk import Hatchet
     from .goal_tick import GoalTickInput, make_goal_tick_task, require_synthetic_gate
+    from .web_task_worker import WebTaskInput, make_web_task
     require_synthetic_gate()
+    os.environ["DRAGONZPYDER_WEB_TASKS_ENABLED"] = "1"
+    os.environ["RAILWAY_ENVIRONMENT_NAME"] = "staging"
+    os.environ["DRAGONZPYDER_GOALS_ENCRYPTION_KEY"] = Fernet.generate_key().decode()
     probe_id, user_id = asyncio.run(prepare())
     hatchet = Hatchet.from_embedded()
     task = make_goal_tick_task(hatchet)
-    worker = hatchet.worker("dragonzpyder-embedded-goal-smoke", slots=1,
-                            workflows=[task])
+    webtask = make_web_task(hatchet)
+    worker = hatchet.worker("dragonzpyder-embedded-goal-smoke", slots=2,
+                            workflows=[task, webtask])
     try:
         threading.Thread(target=worker.start, daemon=True).start()
         time.sleep(3)
@@ -245,6 +297,11 @@ def main():
         assert second["probes"] == []
         verified = asyncio.run(verify(probe_id, user_id))
         print("HATCHET_EMBEDDED_ACCEPTANCE_PASS", verified, flush=True)
+        web_task_id = asyncio.run(seed_browser_probe_task())
+        browser_run = webtask.run(WebTaskInput(task_id=web_task_id))
+        assert browser_run["status"] == "completed", browser_run
+        browser_receipt = asyncio.run(verify_browser_probe_task(web_task_id))
+        print("HATCHET_EMBEDDED_BROWSER_TASK_PASS", browser_receipt, flush=True)
 
         # A truly scheduled run must happen without task.run() or any other
         # direct trigger. The source of dispatch is Hatchet's persistent cron.
