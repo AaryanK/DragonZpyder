@@ -79,7 +79,7 @@ test("all presentation stylesheets are served, not intercepted by the API proxy"
       return {status:response.status, contentType:response.headers.get("content-type") || ""};
     }, file);
     expect(result.status, file+" status").toBe(200);
-    expect(result.contentType, file+" content type").toMatch(/text\\/css/);
+    expect(result.contentType, file+" content type").toContain("text/css");
   }
 });
 
