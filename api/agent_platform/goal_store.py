@@ -74,7 +74,8 @@ def _serialize(row) -> dict:
         "goal_id": str(row["goal_id"]), "source_app": row["source_app"],
         "status": row["status"], "next_run_at": (
             row["next_run_at"].isoformat() if row["next_run_at"] else None
-        ), "schedule": row["schedule_json"],
+        ), "schedule": (json.loads(row["schedule_json"]) if isinstance(row["schedule_json"], str)
+                     else row["schedule_json"]),
         "job_registered": False, "execution_started": False,
         "requires_fresh_authorization": True,
     }
@@ -109,6 +110,8 @@ class DurableGoalStore:
             )
         else:
             next_run = None
+        if next_run is not None:
+            next_run = next_run.replace(tzinfo=timezone.utc)
         manifest = json.dumps({"goal": goal, "schedule": normalized}, sort_keys=True,
                               ensure_ascii=True, separators=(",", ":"))
         fingerprint = hashlib.sha256(manifest.encode()).hexdigest()
