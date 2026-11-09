@@ -30,6 +30,22 @@ assert.match(app, /workspace\.css/, "Personal workspace stylesheet missing");
 assert.match(app, /data-workspace-theme="dark"/, "Graphite/ember appearance should be the default");
 assert.match(app, /id="workspace-theme-toggle"/, "Dark/light theme control missing");
 assert.match(app, /id="camera-capture-toggle"/, "Camera capture control must be present");
+for (const [id, description] of [
+  ["dz-add-toggle", "progressive attachment menu"],
+  ["dz-add-menu", "hidden attachment options"],
+  ["dz-workspace-trigger", "workspace drawer"],
+  ["dz-command-trigger", "command shortcut trigger"],
+  ["screen-capture-toggle", "local screen capture"],
+]) {
+  assert.ok(app.includes('id="' + id + '"'), "Missing " + description);
+}
+assert.equal((app.match(/id="mesh-upload"/g) || []).length, 1,
+  "The existing Mesh uploader must be reused rather than duplicated");
+assert.equal((app.match(/id="mesh-file-label"/g) || []).length, 1,
+  "Attachment input label must remain unique");
+assert.equal((app.match(/id="camera-capture-toggle"/g) || []).length, 1,
+  "Camera button must remain available only through the input menu");
+
 assert.match(app, /id="mesh-model"/, "Model selection must remain connected");
 
 assert.equal((app.match(/id="companion-open"/g) || []).length, 1,
