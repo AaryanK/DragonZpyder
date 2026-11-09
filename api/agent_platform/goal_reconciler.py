@@ -12,6 +12,7 @@ handles DB atomicity, replay, leases and cancellation across worker restarts.
 from __future__ import annotations
 
 import hashlib
+import json
 from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
@@ -59,6 +60,11 @@ class GoalReconciler:
                 for goal in due:
                     due_at = goal["next_run_at"]
                     schedule = goal["schedule_json"]
+                    if isinstance(schedule, str):
+                        try:
+                            schedule = json.loads(schedule)
+                        except (ValueError, TypeError) as exc:
+                            raise RuntimeError("Stored schedule malformed") from exc
                     if not isinstance(schedule, dict):
                         raise RuntimeError("Invalid stored schedule; no dispatch")
                     # No user-facing request can register the internal synthetic
