@@ -31,8 +31,44 @@ const COMMANDS = [
  * Confirm a destructive conversational context change without performing an
  * agent action. The promise is resolved on every close path, including Escape.
  */
+/**
+ * Dialogs must not strand keyboard or screen-reader users behind an overlay.
+ * The first tabbable control receives focus; Tab cycles inside the modal and
+ * closing restores focus to the element that opened it.
+ */
+function useModalFocus(dialogRef, open) {
+  useEffect(() => {
+    if (!open) return;
+    const origin = document.activeElement;
+    let cancelled = false;
+    const items = () => [...(dialogRef.current?.querySelectorAll(
+      "a[href],button:not(:disabled),input:not(:disabled),textarea:not(:disabled),select:not(:disabled),[tabindex='0']"
+    ) || [])].filter(el => el.getClientRects().length>0);
+    requestAnimationFrame(() => { if(!cancelled) items()[0]?.focus(); });
+    const onKey = event => {
+      if (event.key !== "Tab") return;
+      const nodes = items();
+      if (!nodes.length) { event.preventDefault(); return; }
+      const first=nodes[0],last=nodes[nodes.length-1];
+      if (event.shiftKey && (document.activeElement===first || !dialogRef.current?.contains(document.activeElement))) {
+        event.preventDefault(); last.focus();
+      } else if (!event.shiftKey && (document.activeElement===last || !dialogRef.current?.contains(document.activeElement))) {
+        event.preventDefault(); first.focus();
+      }
+    };
+    document.addEventListener("keydown",onKey,true);
+    return () => {
+      cancelled=true;
+      document.removeEventListener("keydown",onKey,true);
+      requestAnimationFrame(()=>origin?.focus?.());
+    };
+  },[dialogRef,open]);
+}
+
 export function ModeSwitchConfirm() {
   const [request, setRequest] = useState(null);
+  const dialogRef = useRef(null);
+  useModalFocus(dialogRef,Boolean(request));
   const cancelRef = useRef(null);
   const originRef = useRef(null);
   useEffect(() => {
@@ -66,7 +102,7 @@ export function ModeSwitchConfirm() {
     <div className="dz-overlay dz-confirm-overlay" onMouseDown={event => {
       if (event.target === event.currentTarget) choose(false);
     }}>
-      <section className="dz-confirm-panel" role="alertdialog" aria-modal="true"
+      <section ref={dialogRef} className="dz-confirm-panel" role="alertdialog" aria-modal="true"
         aria-labelledby="dz-confirm-title" aria-describedby="dz-confirm-description">
         <span className="dz-kicker">Before you attach</span>
         <h2 id="dz-confirm-title">Switch to AI Mesh?</h2>
@@ -170,6 +206,8 @@ export function ScreenCapture() {
   const [open, setOpen] = useState(false);
   const [error, setError] = useState("");
   const video = useRef(null), current = useRef(null), generation = useRef(0);
+  const dialogRef = useRef(null);
+  useModalFocus(dialogRef,open);
   const stop = useCallback(() => {
     generation.current++;
     current.current?.getTracks().forEach(track => track.stop());
@@ -233,7 +271,7 @@ export function ScreenCapture() {
       <span aria-hidden="true">▣</span><span><strong>Capture screen</strong><small>Preview and attach a screenshot</small></span>
     </button>
     {open && createPortal(<div className="dz-overlay dz-screen-overlay" onMouseDown={event => { if (event.target === event.currentTarget) stop(); }}>
-      <section className="dz-screen-panel" role="dialog" aria-modal="true" aria-labelledby="dz-screen-title">
+      <section ref={dialogRef} className="dz-screen-panel" role="dialog" aria-modal="true" aria-labelledby="dz-screen-title">
         <div className="dz-screen-head"><div><span className="dz-kicker">Local screen preview</span><h2 id="dz-screen-title">Capture your screen</h2></div>
           <button aria-label="Close screen preview" type="button" onClick={stop}>×</button></div>
         <video ref={video} autoPlay muted playsInline />
@@ -340,6 +378,8 @@ export function DesktopInstallAction({ pendingPrompt, consumePrompt }) {
 
 export function WorkspaceHub() {
   const [open, setOpen] = useState(false);
+  const dialogRef = useRef(null);
+  useModalFocus(dialogRef,open);
   // Listen from initial page mount; Chrome/Edge may fire before the drawer opens.
   const [pendingPrompt, setPendingPrompt] = useState(null);
   useEffect(() => {
@@ -359,7 +399,7 @@ export function WorkspaceHub() {
       <span>◈</span> Explore workspace <span aria-hidden="true">↗</span>
     </button>
     {open && createPortal(<div className="dz-hub-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) setOpen(false); }}>
-      <aside className="dz-hub" role="dialog" aria-modal="true" aria-labelledby="dz-hub-title">
+      <aside ref={dialogRef} className="dz-hub" role="dialog" aria-modal="true" aria-labelledby="dz-hub-title">
         <div className="dz-hub-top"><div><span className="dz-kicker">DragonZpyder / Workspace</span><h2 id="dz-hub-title">Everything, in one place.</h2></div>
           <button type="button" aria-label="Close workspace navigation" onClick={() => setOpen(false)}>×</button></div>
         <p className="dz-hub-lead">The chat stays minimal. Find your tools, jobs, and settings here without filling the conversation screen.</p>
