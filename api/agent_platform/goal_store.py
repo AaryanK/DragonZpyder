@@ -67,9 +67,13 @@ def _principal(*, source_app: str, kind: str, user_id: str,
         raise ValueError("Workspace identity required")
     if kind == "personal" and workspace_id is not None:
         raise ValueError("Personal requests cannot inherit workspace authority")
-    return hashlib.sha256(
-        "\\0".join(("dz-goal-v1", source_app, kind, user_id, workspace_id or "")).encode()
-    ).hexdigest()
+    # Serialize distinct fields instead of joining on an attacker-supplied
+    # separator: a user ID may legally contain delimiter-like characters.
+    canonical = json.dumps(
+        ["dz-goal-v2", source_app, kind, user_id, workspace_id],
+        separators=(",", ":"), ensure_ascii=True,
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 def _serialize(row) -> dict:
