@@ -46,6 +46,7 @@ export function TaskPanel() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const [connected, setConnected] = useState(false);
+  const [agentEnabled, setAgentEnabled] = useState(false);
 
   const refresh = useCallback(async (signal, preferredTaskId) => {
     const response = await taskApi("/api/harness/tasks", { signal });
@@ -53,6 +54,7 @@ export function TaskPanel() {
     const items = Array.isArray(response.tasks) ? response.tasks : [];
     setTasks(items);
     setConnected(true);
+    setAgentEnabled(response.agent_enabled === true);
     const id = preferredTaskId || selected?.task_id || items[0]?.task_id;
     if (!id) return;
     const detail = await taskApi("/api/harness/tasks/" + encodeURIComponent(id), { signal });
@@ -130,9 +132,11 @@ export function TaskPanel() {
               <label htmlFor="dz-goal">Give the harness a goal</label>
               <textarea id="dz-goal" placeholder="Research a problem, explain the evidence, and prepare a plan…"
                 value={goal} onChange={e => setGoal(e.target.value)} maxLength={5000} rows={3}/>
-              <p>Agent mode uses a bounded LangGraph run. External account actions are disabled.</p>
+              <p>{agentEnabled
+                ? "Budgeted LangGraph agent enabled. External account actions remain disabled."
+                : "Agent runs are disabled until a gateway-enforced budget is configured. You can test the Hatchet worker now."}</p>
               <div className="dz-task-actions">
-                <button type="submit" disabled={sending || !goal.trim()} className="dz-task-primary">
+                <button type="submit" disabled={!agentEnabled || sending || !goal.trim()} className="dz-task-primary">
                   {sending ? "Submitting…" : "Run agent"}
                 </button>
                 <button type="button" onClick={() => start("probe")} disabled={sending}>Test worker</button>
