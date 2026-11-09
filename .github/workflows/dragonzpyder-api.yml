@@ -65,7 +65,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install test-only dependencies
-        run: pip install asyncpg pytest
+        run: pip install asyncpg 'cryptography>=44,<50' pytest
       - name: Verify real PostgreSQL concurrency, restart and isolation
         run: pytest -q api/tests/test_budget_postgres_integration.py api/tests/test_goal_postgres_integration.py
 
