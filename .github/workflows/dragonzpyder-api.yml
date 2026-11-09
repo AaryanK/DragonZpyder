@@ -20,7 +20,7 @@ jobs:
       - name: Validate Python source
         run: python -m compileall -q api/main.py api/provider_gateway.py api/usage_ledger.py api/observability.py api/agent_platform api/tests
       - name: Run FastAPI contract checks
-        run: pytest -q api/tests/test_fastapi_gateway.py api/tests/test_usage_audit.py api/tests/test_provider_gateway.py api/tests/test_agent_platform_contract.py api/tests/test_agent_gateway_protocol.py api/tests/test_workflow_hub_router.py
+        run: pytest -q api/tests/test_fastapi_gateway.py api/tests/test_usage_audit.py api/tests/test_provider_gateway.py api/tests/test_agent_platform_contract.py api/tests/test_agent_gateway_protocol.py api/tests/test_workflow_hub_router.py api/tests/test_goal_router.py
   agent-stack-imports:
     runs-on: ubuntu-latest
     permissions:
@@ -67,7 +67,7 @@ jobs:
       - name: Install test-only dependencies
         run: pip install asyncpg pytest
       - name: Verify real PostgreSQL concurrency, restart and isolation
-        run: pytest -q api/tests/test_budget_postgres_integration.py
+        run: pytest -q api/tests/test_budget_postgres_integration.py api/tests/test_goal_postgres_integration.py
 
   personal-core-contracts:
     runs-on: ubuntu-latest
