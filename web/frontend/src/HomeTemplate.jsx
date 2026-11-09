@@ -1,45 +1,98 @@
 import React from "react";
 import { RuntimeDot, RuntimeText, RuntimeYear } from "./runtime.jsx";
 
+
+const edCSS = "\n:root{color-scheme:light;--bg:#faf9f6;--surface:#f6f4f1;--surface2:#eeeae5;--text:#161616;--soft:#474747;--muted:#686560;--dim:#77736b;--line:#e2ded8;--accent:#f95610;--accent-light:#fb783a}\nbody{background:#faf9f6;color:#161616}\n.ed-topbar{z-index:30;position:sticky;top:0;background:rgba(250,249,246,.96);border-bottom:1px solid #eee9e3;backdrop-filter:blur(14px)}\n.ed-nav{min-height:74px;max-width:1480px;width:calc(100% - 70px);margin:auto;display:flex;align-items:center;justify-content:space-between;gap:24px}\n.ed-brand{font-size:24px;font-weight:850;letter-spacing:-.07em;display:flex;align-items:center;gap:7px;white-space:nowrap}.ed-logo{font-size:31px;color:#f95610}.ed-navlinks{display:flex;gap:27px;align-items:center;font-size:13px;font-weight:750}.ed-navlinks a:hover{color:#f95610}.ed-nav-actions{display:flex;align-items:center;gap:12px}.ed-sign{font-size:13px;font-weight:750;padding:10px 16px;border:1px solid #d9d4cd;border-radius:10px;background:#fff}.ed-button{display:inline-flex;gap:12px;align-items:center;justify-content:center;background:#f95610;color:#fff;border-radius:10px;padding:14px 19px;font-size:13px;font-weight:800;border:1px solid #f95610;cursor:pointer}.ed-button:hover{background:#dc4009}.ed-button.secondary{background:#fff;color:#191919;border:1px solid #d6d1c9}.ed-hero{max-width:1480px;width:calc(100% - 70px);margin:0 auto;min-height:650px;padding:48px 0 30px;display:grid;grid-template-columns:44% 56%;align-items:center;position:relative;isolation:isolate}.ed-sweep{position:absolute;left:50%;top:0;height:100%;width:137px;transform:skew(-30deg);background:linear-gradient(160deg,#ff9816,#fe500e);z-index:-2}.ed-beast{position:absolute;z-index:-1;left:37%;top:40px;width:260px;height:570px;opacity:.88;pointer-events:none}.ed-beast svg{width:100%;height:100%;filter:drop-shadow(1px 12px 12px #4b271b70)}.ed-copy{padding-right:34px;z-index:1}.ed-eyebrow{font-weight:800;font-size:11px;letter-spacing:.32em}.ed-rule{height:4px;width:56px;background:#fe500e;margin:17px 0 23px}.ed-copy h1{font-family:Inter,Arial,Helvetica,sans-serif;font-size:clamp(70px,7.9vw,118px);line-height:.84;letter-spacing:-.09em;font-weight:900;margin:0 0 30px}.ed-copy h1 span{display:block}.ed-copy h2{font-size:28px;font-family:Inter,Arial,sans-serif;letter-spacing:-.06em;font-weight:850;margin:0 0 8px;line-height:1.15}.ed-sub{font-size:22px;letter-spacing:-.04em}.ed-desc{font-size:15px;max-width:450px;line-height:1.72;color:#55504c;margin:20px 0 23px}.ed-ctas{display:flex;flex-wrap:wrap;gap:12px}.ed-checks{display:flex;gap:14px;flex-wrap:wrap;font-weight:700;font-size:10px;margin-top:26px}.ed-checks span::before{content:\"✓\";color:#f95610;margin-right:7px;font-weight:900}\n.ed-workspace{background:#161618;color:white;position:relative;z-index:2;height:550px;border-radius:20px;overflow:hidden;display:grid;grid-template-columns:176px 1fr;box-shadow:0 21px 41px #17111240;border:1px solid #343234}.ed-side{padding:19px 11px;display:flex;flex-direction:column;gap:4px;background:#121214;border-right:1px solid #343334}.ed-side-title{font-size:14px;font-weight:850;margin:0 0 18px;padding:0 7px;white-space:nowrap}.ed-side-title b{color:#f95610;font-size:20px;margin-right:6px}.ed-side button{width:100%;background:none;border:0;color:#c6c3c0;text-align:left;padding:10px 11px;border-radius:9px;font-size:12px;cursor:pointer}.ed-side button:hover{background:#302a2a}.ed-side button.selected{background:#332c2c;color:white;border-left:3px solid #f95610}.ed-side small{color:#8a8582;margin:18px 9px 7px;font-size:10px}.ed-side label{padding:6px 9px;color:#ccc;font-size:10px}.ed-side footer{margin-top:auto;border-top:1px solid #3b3939;padding:12px 8px 0;color:#aca7a4;font-size:10px}.ed-panel{display:flex;flex-direction:column;min-width:0}.ed-panel-top{height:58px;border-bottom:1px solid #363434;padding:0 17px;display:flex;align-items:center;justify-content:space-between;font-weight:750;font-size:13px}.ed-mode{font-size:10px;background:#2b2b2d;border:1px solid #434142;border-radius:10px;padding:9px 11px;color:#dedbd8}.ed-main{padding:28px 18px 10px;flex:1;overflow:auto}.ed-welcome{display:grid;grid-template-columns:1fr 142px;gap:8px;margin-bottom:27px}.ed-welcome h3{color:white;font-size:34px;font-family:Inter,Arial,sans-serif;letter-spacing:-.05em;line-height:1.06;font-weight:830;margin:17px 0 12px}.ed-welcome h3 em{font-style:normal;color:#f95610}.ed-welcome p{font-size:12px;color:#c2bbb8}.ed-vision{border:1px solid #5a5553;background:linear-gradient(125deg,#33302e,#18191a);border-radius:15px;height:141px;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;position:relative}.ed-vision b{font-size:34px;color:#f95610}.ed-vision span{font-size:9px;color:#ddd;position:absolute;top:7px;left:8px;background:#191919ba;padding:4px 6px;border-radius:6px}.ed-vision video{position:absolute;width:100%;height:100%;object-fit:cover;inset:0}.ed-vision button{z-index:3;position:absolute;bottom:5px;right:5px;background:#242424b5;color:white;border:1px solid #6b6561;border-radius:6px;font-size:10px;padding:4px 7px}.ed-prompt-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}.ed-prompt-grid button{background:#29282a;border:1px solid #454344;border-radius:12px;padding:13px 9px;text-align:left;color:white;min-height:103px;cursor:pointer}.ed-prompt-grid button:hover{border-color:#f95610;transform:translateY(-2px)}.ed-prompt-grid .mark{font-size:22px;color:#f95610}.ed-prompt-grid b{display:block;font-size:11px;margin:6px 0}.ed-prompt-grid small{font-size:10px;color:#c3bdbb;line-height:1.45}.ed-bubbles{display:flex;flex-direction:column;gap:9px;align-items:flex-start;padding-bottom:10px}.ed-bubble{font-size:12px;line-height:1.58;color:#eee;max-width:90%;background:#2b2a2d;padding:11px 13px;border:1px solid #474245;border-radius:12px;white-space:pre-wrap}.ed-bubble.me{align-self:flex-end;background:#602d22;border-color:#a74929}.ed-composer{margin:0 13px 12px;border:1px solid #f4773b;border-radius:15px;padding:12px;background:#242426;box-shadow:0 0 18px #f9561022}.ed-composer textarea{width:100%;background:none;border:0;color:white;resize:none;outline:0;min-height:37px;font:13px/1.45 Inter,Arial,sans-serif}.ed-composer textarea::placeholder{color:#c6c0ba}.ed-composer-bar{display:flex;align-items:center;gap:9px}.ed-composer-bar button{height:29px;min-width:29px;border-radius:9px;border:1px solid #464143;background:#302e30;color:#fff;cursor:pointer}.ed-composer-bar button.active{background:#71321c;border-color:#f95610;color:#ff995d}.ed-composer-bar .ed-push{margin-left:auto}.ed-composer-bar .ed-send{border-radius:50%;background:#f95610;border-color:#f95610}.ed-demo-note{text-align:center;font-size:9px;color:#99908c;padding-bottom:7px}.ed-kb-strip{max-width:1480px;width:calc(100% - 70px);margin:0 auto 70px;padding:19px 18px;display:flex;align-items:center;gap:16px;border-radius:15px;background:#f0eeeb;color:#232323}.ed-kb-strip>strong{font-size:13px;white-space:nowrap;margin-right:18px}.ed-kb-strip span{font-size:11px;display:flex;gap:9px;align-items:center;flex:1;border-left:1px solid #d7d1ca;padding-left:12px}.ed-kb-strip kbd{white-space:nowrap;font-size:10px;border:1px solid #d6d0c7;background:white;padding:5px 7px;border-radius:5px;font-weight:850}.ed-kb-strip button{border:0;background:none;color:#f95610;font-size:12px;font-weight:800;cursor:pointer}.ed-modal-shade{position:fixed;inset:0;background:#111a;z-index:100;display:flex;justify-content:center;align-items:flex-start;padding:13vh 15px}.ed-modal{width:min(520px,100%);border-radius:17px;overflow:hidden;background:#202022;color:#fff;box-shadow:0 19px 65px #0007;border:1px solid #565253}.ed-modal input{width:100%;padding:17px;background:#2d2b2c;color:white;border:0;outline:0}.ed-modal button{width:100%;padding:14px 17px;border:0;border-top:1px solid #414042;background:#222124;text-align:left;color:#fff;cursor:pointer}.ed-modal button:hover{background:#403031}.ed-modal .ed-close{text-align:right;background:#2d2b2d;font-size:11px;color:#fba77c}.ed-message{color:#f58246;font-size:10px;min-height:14px;margin:3px 2px}\n.proof-strip{background:#fff;border-color:#e5e2dc}.proof{border-color:#e5e2dc}.section{background:#fff}.mesh-section{background:#f4f2ee}.thesis-point+.thesis-point{border-color:#e3deda}.mesh-example,.wallet,.product-card{background:#fff!important;color:#191919!important;border-color:#dedad3!important}.wallet-line,.mesh-row{border-color:#dfdad3!important}.principle,.closing{background:#151515;color:white}.principle p,.closing .disclaimer{color:#c2bcb9}.footer-row{color:white}.footer-links a{color:#d4d1c8}\n@media(max-width:1120px){.ed-navlinks{gap:13px}.ed-hero{grid-template-columns:43% 57%}.ed-copy h1{font-size:clamp(64px,7.5vw,96px)}.ed-workspace{grid-template-columns:148px 1fr}.ed-side-title{font-size:12px}.ed-panel-top{padding:0 10px}.ed-main{padding:22px 10px}.ed-welcome h3{font-size:28px}.ed-prompt-grid{gap:6px}.ed-prompt-grid button{padding:10px 6px}.ed-kb-strip{overflow:auto}.ed-kb-strip span{min-width:157px}}\n@media(max-width:900px){.ed-navlinks{display:none}.ed-nav{width:calc(100% - 32px)}.ed-hero{width:calc(100% - 32px);display:block;padding-top:38px}.ed-copy{max-width:740px;padding-right:0;margin-bottom:34px}.ed-copy h1{font-size:clamp(67px,12vw,116px)}.ed-beast{left:60%;top:50px;opacity:.25}.ed-sweep{left:79%;opacity:.25}.ed-workspace{height:545px;max-width:850px;margin:auto}.ed-kb-strip{width:calc(100% - 32px)}}\n@media(max-width:580px){.ed-nav{min-height:63px}.ed-brand{font-size:19px}.ed-logo{font-size:25px}.ed-sign{display:none}.ed-nav-actions{gap:3px}.ed-button{padding:11px 12px;font-size:11px}.ed-copy h1{font-size:clamp(57px,13.6vw,83px)}.ed-copy h2{font-size:24px}.ed-sub{font-size:18px}.ed-desc{font-size:13px}.ed-hero{padding-top:29px}.ed-beast{left:53%;top:60px}.ed-workspace{grid-template-columns:1fr;height:550px}.ed-side{display:none}.ed-main{padding:17px 10px}.ed-welcome{grid-template-columns:1fr 105px}.ed-welcome h3{font-size:25px}.ed-vision{height:132px}.ed-prompt-grid button small{font-size:9px}.ed-prompt-grid button b{font-size:10px}.ed-kb-strip{margin-bottom:35px}}\n@media(prefers-reduced-motion:reduce){.ed-prompt-grid button,.ed-button{transition:none}}\n";
+function EditorialDragon() {
+ return <svg role="img" aria-label="Decorative dragon illustration" viewBox="0 0 280 540" preserveAspectRatio="xMidYMid meet">
+ <path d="M235 21L164 131 111 91 139 173 55 204 98 218 34 285 107 267 49 326 81 349 57 423 121 378 162 448 164 346 236 289 187 261 251 217 192 195 263 94 197 145Z" fill="#17191a" stroke="#f85b13" strokeWidth="9" strokeLinejoin="round"/>
+ <path d="M232 80 168 202 89 244 60 328 102 319 90 374 156 323 207 242Z" fill="#323034"/>
+ <path d="M114 265 164 247 151 275 114 265Z" fill="#ff7b0c" stroke="#ff9c2d" strokeWidth="7"/><path d="M73 328 118 339 144 320 108 358 80 374Z" fill="#fa4e13"/>
+ <path d="M176 169 235 49 190 191 242 180 180 227M150 311 176 353 160 398M115 245 88 209" stroke="#f95a14" strokeWidth="7" fill="none"/>
+ </svg>
+}
+function EditorialDemo() {
+ const [value,setValue]=React.useState("");
+ const [history,setHistory]=React.useState([]);
+ const [palette,setPalette]=React.useState(false);
+ const [voice,setVoice]=React.useState(false);
+ const [camera,setCamera]=React.useState(false);
+ const [dictating,setDictating]=React.useState(false);
+ const [status,setStatus]=React.useState("");
+ const [search,setSearch]=React.useState("");
+ const [selected,setSelected]=React.useState("Chat");
+ const cameraRef=React.useRef(null), videoRef=React.useRef(null), speechRef=React.useRef(null);
+ React.useEffect(()=>{if(videoRef.current && cameraRef.current) videoRef.current.srcObject=cameraRef.current;},[camera]);
+ React.useEffect(()=>()=>{cameraRef.current?.getTracks().forEach(t=>t.stop());speechRef.current?.stop();},[]);
+ const submit=(v=value)=>{
+   const q=v.trim(); if(!q)return;
+   let reply="This is a design preview, not a live AI call. Open DragonZpyder Personal to use the real assistant.";
+   if(/camera|image/i.test(q)) reply="The demo camera preview can show your local webcam with permission; analysis requires the real Personal AI.";
+   if(/agent|action|workflow/i.test(q)) reply="DragonZpyder Personal supports permitted connected tools and reviewed actions. The AI Mesh is still planned.";
+   setHistory(prev=>[...prev,{me:true,text:q},{me:false,text:reply}]);setValue("");
+   if(voice && typeof window!=="undefined" && window.speechSynthesis){window.speechSynthesis.cancel();window.speechSynthesis.speak(new SpeechSynthesisUtterance(reply));}
+ };
+ const doCamera=async()=>{
+  if(cameraRef.current){cameraRef.current.getTracks().forEach(t=>t.stop());cameraRef.current=null;setCamera(false);setStatus("Camera stopped");return;}
+  try {
+   if(!navigator.mediaDevices?.getUserMedia) throw new Error("Camera not supported here");
+   const stream=await navigator.mediaDevices.getUserMedia({video:true,audio:false});cameraRef.current=stream;setCamera(true);setStatus("Camera preview is local to your browser");
+  }catch(e){setStatus("Camera unavailable or permission declined");}
+ };
+ const doDictation=()=>{
+  if(dictating && speechRef.current){speechRef.current.stop();return;}
+  const S=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!S){setStatus("Speech recognition is unavailable in this browser");return;}
+  const recognition=new S();recognition.lang="en-US";recognition.interimResults=false;
+  recognition.onresult=e=>setValue(v=>(v?v+" ":"")+Array.from(e.results).map(r=>r[0].transcript).join(" "));
+  recognition.onstart=()=>{setDictating(true);setStatus("Listening for dictation")};
+  recognition.onend=()=>setDictating(false);
+  recognition.onerror=e=>setStatus("Dictation: "+e.error);
+  speechRef.current=recognition;recognition.start();
+ };
+ const toggleVoice=()=>{setVoice(v=>!v);setStatus(voice?"Voice responses off":"Browser demo voice responses on");if(voice&&window.speechSynthesis)window.speechSynthesis.cancel();};
+ const run=(key)=>{setPalette(false);if(key==="new"){setHistory([]);setValue("");}else if(key==="camera"){doCamera();}else if(key==="dictation"){doDictation();}else if(key==="voice"){toggleVoice();}else if(key==="palette"){setPalette(true)}else if(key==="mesh"){document.getElementById("mesh")?.scrollIntoView({behavior:"smooth"})}else if(key==="credits"){document.getElementById("credits")?.scrollIntoView({behavior:"smooth"})}else{setStatus("Open Personal AI to use live "+key+" features");}};
+ React.useEffect(()=>{
+  const keydown=e=>{const mod=e.ctrlKey||e.metaKey,k=e.key.toLowerCase();if(k==="escape"){setPalette(false);return}if(mod&&k==="k"){e.preventDefault();setPalette(x=>!x)}if(mod&&e.shiftKey){if(k==="d"){e.preventDefault();doDictation()}if(k==="v"){e.preventDefault();toggleVoice()}if(k==="c"){e.preventDefault();doCamera()}}};
+  window.addEventListener("keydown",keydown);return()=>window.removeEventListener("keydown",keydown);
+ },[dictating,voice]);
+ const cmd=[["New conversation","new"],["Command palette","palette"],["Toggle dictation","dictation"],["Toggle voice responses","voice"],["Toggle camera","camera"],["Explore AI Mesh","mesh"],["Explore Project IC","credits"]];
+ return <>
+ <div className="ed-workspace">
+  <aside className="ed-side"><div className="ed-side-title"><b>✺</b> DragonZpyder</div>
+   <button onClick={()=>run("new")}>＋ New Chat</button>{["Chat","Agents","Projects","Files","Tools","Camera"].map(x=><button key={x} className={selected===x?"selected":""} onClick={()=>{setSelected(x);if(x==="Camera")run("camera");else if(x!=="Chat")setStatus(x+" is a preview menu; open Personal for live functionality");}}>{x}</button>)}
+   <small>RECENT</small><label>Analyze this screenshot</label><label>Plan my week</label><label>Research AI agents</label><footer>● Interactive preview</footer>
+  </aside>
+  <div className="ed-panel"><div className="ed-panel-top"><span>DragonZpyder</span><span className="ed-mode">⚡ Auto (Demo mode) ⌄</span></div>
+   <div className="ed-main">
+    {history.length===0?<><div className="ed-welcome">
+     <div><h3>When dragons<br/>and spiders<br/>work <em>together.</em></h3><p>How can I help you today?</p></div>
+     <div className="ed-vision"><b>✺</b><span>{camera?"● Camera on":"● Camera off"}</span>{camera&&<video autoPlay muted playsInline ref={videoRef}/>}<button onClick={doCamera}>{camera?"Stop":"Camera"}</button></div>
+    </div><div className="ed-prompt-grid">
+     {[["▧","Analyze","Images, docs and research","Can you analyze an image?"],["◈","Create","Write, design or code","Help me create a plan"],["ϟ","Assist","Actions with permission","Tell me about agent workflows"],["⌘","Build","Develop with AI tools","Help me build a website"]].map(x=><button key={x[1]} onClick={()=>submit(x[3])}><span className="mark">{x[0]}</span><b>{x[1]}</b><small>{x[2]}</small></button>)}
+    </div></>:<div className="ed-bubbles">{history.map((m,i)=><div key={i} className={"ed-bubble"+(m.me?" me":"")}>{m.text}</div>)}</div>}
+   </div>
+   <div className="ed-composer"><textarea aria-label="Message DragonZpyder demo" placeholder="Message DragonZpyder..." rows={2} value={value} onChange={e=>setValue(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();submit()}}}/><div className="ed-composer-bar"><button title="Connected tools demo" onClick={()=>run("tools")}>⊞</button><button title="Open command palette" onClick={()=>run("palette")}>⌘</button><button className={"ed-push"+(camera?" active":"")} title="Toggle camera" onClick={doCamera}>▣</button><button className={dictating?"active":""} title="Toggle dictation" onClick={doDictation}>♩</button><button className={voice?"active":""} title="Toggle demo voice responses" onClick={toggleVoice}>◉</button><button className="ed-send" title="Send demo message" onClick={()=>submit()}>➤</button></div></div>
+   <div className="ed-message" role="status" aria-live="polite">{status||"Interactive design preview · No AI requests are sent"}</div>
+  </div>
+ </div>
+ <div className="ed-kb-strip"><strong>⌨ Keyboard shortcuts</strong><span><kbd>⌘ / Ctrl K</kbd> Command palette</span><span><kbd>⌘ / Ctrl ⇧ D</kbd> Dictation</span><span><kbd>⌘ / Ctrl ⇧ V</kbd> Voice</span><span><kbd>⌘ / Ctrl ⇧ C</kbd> Camera</span><button onClick={()=>setPalette(true)}>View all ↗</button></div>
+ {palette&&<div className="ed-modal-shade" onMouseDown={e=>{if(e.target===e.currentTarget)setPalette(false)}}><div className="ed-modal" role="dialog" aria-modal="true" aria-label="DragonZpyder commands"><input autoFocus value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search commands…"/>{cmd.filter(x=>x[0].toLowerCase().includes(search.toLowerCase())).map(x=><button key={x[1]} onClick={()=>run(x[1])}>{x[0]}</button>)}<button className="ed-close" onClick={()=>setPalette(false)}>Close · Esc</button></div></div>}
+ </>;
+}
+function EditorialHeader(){return <header className="ed-topbar" id="topbar"><div className="ed-nav"><a className="ed-brand" href="#top"><span className="ed-logo">✺</span>DragonZpyder™</a><nav className="ed-navlinks" aria-label="Main navigation"><a href="#thesis">Product</a><a href="#mesh">AI Mesh</a><a href="#credits">Project IC</a><a href="#ecosystem">Ecosystem</a><a href="#personal">Personal AI</a></nav><div className="ed-nav-actions"><a className="ed-sign" href="/app">Sign in</a><a className="ed-button" href="/app">Get DragonZpyder →</a></div></div></header>}
+function EditorialHero(){return <><section className="ed-hero" aria-labelledby="hero-title"><div className="ed-sweep" aria-hidden="true"/><div className="ed-beast" aria-hidden="true"><EditorialDragon/></div><div className="ed-copy"><div className="ed-eyebrow">MULTIMODAL AI ASSISTANT</div><div className="ed-rule"/><h1 id="hero-title"><span>DRAGON</span><span>ZPYDER</span></h1><h2>See. Hear. Speak. Create.</h2><div className="ed-sub">A more capable AI, everywhere.</div><p className="ed-desc">An intelligent place to think, create and take action—with conversations, permitted tools and reviewed actions today. One connected AI ecosystem is the ambition.</p><div className="ed-ctas"><a className="ed-button" href="/app">Try Personal AI →</a><a className="ed-button secondary" href="#thesis">Explore the experience →</a></div><div className="ed-checks"><span>Context-aware chat</span><span>Voice &amp; dictation</span><span>Camera preview</span><span>Agent workflows</span></div></div><div className="ed-preview"><EditorialDemo/></div></section></>}
+
 // Layout and copy are the existing DragonZpyder design, now authored as JSX.
 // Do not reintroduce the former static HTML templates.
 export function HomeTemplate() {
   return (
     <>
 
-  <header className="topbar" id="topbar"><div className="wrap nav">
-  <a className="brand" href="#top" aria-label="DragonZpyder home"><img src="https://raw.githubusercontent.com/AaryanK/DragonZpyder-Landing/f18fa6a100eebfa8a43036d7baad5b85d9623785/favicon.png" alt="" width="32" height="32"/><span>DragonZpyder</span></a>
-  <nav className="navlinks" aria-label="Main navigation"><a href="#thesis">The thesis</a><a href="#mesh">AI Mesh</a><a href="#credits">Project IC</a><a href="#ecosystem">Ecosystem</a><a className="nav-cta" href="/app">Personal AI <span aria-hidden="true">↗</span></a></nav>
-</div></header>
+  <style>{edCSS}</style>
+  <EditorialHeader />
   <main id="top">
-  <section className="hero" aria-labelledby="hero-title"><div className="wrap hero-grid">
-    <div>
-      <div className="eyebrow hero-eyebrow"><span className="ember" aria-hidden="true"></span> DragonZpyder / The connected AI ecosystem</div>
-      <h1 id="hero-title">The best of AI.<br/><em>Connected.</em></h1>
-      <p className="lead">Exceptional intelligence is everywhere—in reasoning models, coding tools, image and video engines, and specialist apps. It's scattered across different platforms and paywalls. <strong>DragonZpyder is building the connection layer</strong>: one place to bring compatible AI capabilities together and make them work for you.</p>
-      <div className="actions"><a className="button primary" href="#mesh">Explore the AI Mesh <span aria-hidden="true">↘</span></a><a className="button" href="#credits">Discover Project IC <span aria-hidden="true">↓</span></a></div>
-      <p className="scope-note">Vision and product development. The multi-model Mesh and shared AI Credits wallet are not yet released. <a href="#personal" style={{ textDecoration: "underline", textUnderlineOffset: "3px", color: "var(--soft)" }}>Our Personal AI is in early access.</a></p>
-    </div>
-    <aside className="network" aria-label="Illustration of proposed DragonZpyder architecture">
-      <div className="network-header"><strong>One connected experience</strong><span>Architecture / planned</span></div>
-      <div className="network-inner">
-        <div className="network-label">Independent sources of intelligence</div>
-        <div className="source-rows">
-          <div className="source"><i aria-hidden="true"></i> Reasoning &amp; research</div>
-          <div className="source"><i aria-hidden="true"></i> Coding &amp; agents</div>
-          <div className="source"><i aria-hidden="true"></i> Image &amp; video</div>
-          <div className="source"><i aria-hidden="true"></i> Voice &amp; sound</div>
-          <div className="source"><i aria-hidden="true"></i> Third-party AI applications</div>
-        </div>
-        <div className="network-wire" aria-hidden="true">↓</div>
-        <div className="network-hub"><span className="micro">Connection / choice / orchestration</span><b>DragonZpyder</b><p>Different strengths. One coherent place to use them.</p></div>
-        <div className="network-wire" aria-hidden="true">↓</div>
-        <div className="network-label">The intended experience</div>
-      </div>
-      <div className="network-footer"><div><b>AI Mesh</b><span>Connect the capabilities</span></div><div><b>Project IC / AIC</b><span>One proposed spending layer</span></div></div>
-      <div className="network-caption">Conceptual system map · No provider integration or partner is implied.</div>
-    </aside>
-  </div></section>
+  <EditorialHero />
   <div className="proof-strip"><div className="wrap proof-grid">
     <div className="proof"><b>Many exceptional AI services</b><span>Different creators, strengths and interfaces.</span></div>
     <div className="proof"><b>One coherent experience</b><span>Choose, coordinate and compose permitted tools.</span></div>
