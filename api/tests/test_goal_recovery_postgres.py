@@ -79,6 +79,13 @@ def test_scheduled_goal_survives_worker_restart_and_never_executes_a_user_tool()
             assert len(user_runs) == 1
             assert user_runs[0]["status"] == "awaiting_authorization"
             assert user_runs[0]["attempts"] == 0
+            waiting_goal = await store.get(
+                source_app="operly", kind="workspace",
+                user_id="person-1", workspace_id="team-1",
+                goal_id=real_user["goal_id"],
+            )
+            assert waiting_goal["status"] == "awaiting_authorization"
+            assert waiting_goal["next_run_at"] is None
             with pytest.raises(LookupError):
                 await store.list_runs(
                     source_app="operly", kind="workspace", user_id="person-1",
@@ -96,7 +103,7 @@ def test_scheduled_goal_survives_worker_restart_and_never_executes_a_user_tool()
 
             second_clock = clock + timedelta(seconds=600)
             second = await tick.enqueue_due(now=second_clock)
-            assert second["pending"] == 1
+            assert second == {"pending": 1, "awaiting_authorization": 0}
             one, two = await asyncio.gather(
                 tick.claim_probe(now=second_clock), tick.claim_probe(now=second_clock)
             )
