@@ -83,13 +83,18 @@ class GoalReconciler:
                     next_at = next_schedule_time(
                         schedule, after=due_at.astimezone(timezone.utc).replace(tzinfo=None)
                     )
+                    # Unapproved user goals are paused after ONE recorded
+                    # occurrence. Otherwise a minutely cron could grow an
+                    # unbounded backlog of unauthorized user goal records.
                     await con.execute(
                         """UPDATE dragonzpyder_goals
-                           SET next_run_at=$2,updated_at=$3
+                           SET next_run_at=$2,updated_at=$3,status=$4
                            WHERE goal_id=$1 AND status='registered'""",
                         goal["goal_id"],
-                        next_at.replace(tzinfo=timezone.utc) if next_at else None,
+                        (next_at.replace(tzinfo=timezone.utc)
+                         if next_at and synthetic else None),
                         clock,
+                        "registered" if synthetic else "awaiting_authorization",
                     )
                     if created is not None:
                         result[state] += 1
