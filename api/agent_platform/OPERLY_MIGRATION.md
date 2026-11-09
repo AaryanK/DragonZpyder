@@ -205,3 +205,72 @@ has a dedicated CI job.
 permission lease on every Hatchet wake, budget reservation, bounded reasoning
 plan and independent verifier before a scheduled job may invoke any Google,
 MCP, desktop, camera, Operly Workspace or paid model capability.
+
+
+## Event-triggered persistence: scheduled web search, then one-shot wake
+
+The *next* layer over the proven Hatchet minute cron provides deterministic,
+bounded external event observation without a continuously running LLM.
+
+- `web_event_watch.py`: operator-registered, **Wikipedia-only** web search
+  monitors (5–1,440 minute intervals; at most two checked per Hatchet tick).
+  The first successful search establishes a baseline, not an event. A changed
+  subsequent source snapshot publishes a typed event.
+- `event_schema.py` + `event_wait.py`: durable subscriptions, event inbox,
+  unique (monitor, source fingerprint) idempotency, and per-wait one-shot
+  execution receipts. Web snapshot, event insertion and subscriptions are
+  updated in one Postgres transaction; failed or empty searches never
+  fabricate a change. A second worker never re-runs a completed wake.
+- `goal_tick.py`: the existing Hatchet `dragonzpyder-goal-reconcile-v1`
+  task additionally consumes ready event-wake receipts, whether the original
+  producer was a scheduled monitor or an already-persisted event. No second
+  homegrown scheduler is introduced.
+- `web_event_admin.py`: operator-only staging registration using the
+  existing Hatchet reconcile cron. User-facing creation is deliberately
+  disabled pending scoped consent and source policy.
+
+**Activation:** keep defaults OFF. In an isolated staging environment,
+review and apply the *updated* event+goal migration and configure
+`DRAGONZPYDER_GOALS_DATABASE_URL`,
+`DRAGONZPYDER_GOAL_STORE_ENABLED=1`,
+`DRAGONZPYDER_GOAL_TICK_ENABLED=1`,
+`DRAGONZPYDER_GOAL_SYNTHETIC_ONLY=1`,
+`DRAGONZPYDER_WEB_EVENT_ENABLED=1`,
+`DRAGONZPYDER_AGENT_WEB_SEARCH_ENABLED=1`,
+`DRAGONZPYDER_STAGE=staging`. The operator also needs
+`DRAGONZPYDER_GOAL_CRON_INSTALL_ALLOWED=1`,
+`DRAGONZPYDER_WEB_EVENT_MONITOR_ID`,
+`DRAGONZPYDER_WEB_EVENT_QUERY`, and optional
+`DRAGONZPYDER_WEB_EVENT_INTERVAL_SECONDS=600`.
+
+After the existing Hatchet minute cron is provisioned and the new worker
+task is running, register a monitored query and one synthetic event waiter:
+
+```sh
+python -m agent_platform.web_event_admin arm-watch
+```
+
+No independent web-search cron is created; the persistent worker scans the
+approved monitors when due. The monitor is read-only, fixed-origin, and does
+not use OAuth, browser control, payment, or model inference.
+
+**Safety:** when a user-owned wait matches an event, its wake is stored
+`awaiting_authorization` and is never executed. Only the reserved internal
+canary principal may complete a DB-only wake receipt. A waiting subscription
+is one-shot; a restart, duplicate event or repeated cron poll cannot make
+another delivery. The subscription and all queued wakes can be cancelled.
+No report should claim that event delivery completed a user's underlying
+goal or that the branch is already deployed to Railway.
+
+**Proof:** disposable Postgres tests verify genuine source change vs
+baseline, duplicate and empty search handling, event subscription isolation,
+cancellation and restart. The embedded Hatchet CI acceptance additionally
+inserts deterministic source fixture events into the real database, then
+waits for an independently fired Hatchet cron to drain them. It never
+contacts a third-party service during that acceptance test.
+
+**Future external events:** authenticated calendar/Gmail changes, approvals
+and business webhooks can feed the same event inbox only after each source
+has signature validation, ownership, revocation policy, event-schema limits
+and a per-goal permission renewal path. Never accept untrusted arbitrary
+URLs or model-authored webhook endpoints.
