@@ -56,10 +56,10 @@ async def submit(payload: Submit, request: Request,
     if payload.kind == "agent":
         # An arbitrary browser task must not start model billing unless the
         # gateway transactionally enforces a per-job ceiling of $0.05.
-        from main import parent_budget
+        budget = getattr(request.app.state, "parent_budget", None)
         if (os.getenv("DRAGONZPYDER_WEB_TASKS_PAID_ENABLED") != "1"
                 or os.getenv("DRAGONZPYDER_AGENT_USE_GATEWAY") != "1"
-                or not parent_budget.active):
+                or budget is None or not budget.active):
             raise HTTPException(503, "Budgeted agent tasks are disabled")
     try:
         task, created = await store.create(
@@ -74,8 +74,7 @@ async def submit(payload: Submit, request: Request,
     from .web_task_worker import WebTaskInput
     try:
         if payload.kind == "agent":
-            from main import parent_budget
-            await parent_budget.create(
+            await budget.create(
                 job_id=task["task_id"], ceiling_usd="0.05"
             )
         from hatchet_sdk import Hatchet
