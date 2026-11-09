@@ -35,7 +35,9 @@ def app():
 def test_goal_api_feature_disabled_by_default(monkeypatch):
     monkeypatch.delenv("DRAGONZPYDER_GOAL_STORE_ENABLED", raising=False)
     with TestClient(app()) as client:
-        x = client.post("/internal/goals/register", json={})
+        x = client.post("/internal/goals/register",
+            json={"kind":"personal","user_id":"test-user","workspace_id":None,
+                  "request_id":str(uuid4()),"goal":"Test without authorization"})
     assert x.status_code == 503
 
 
@@ -43,7 +45,9 @@ def test_goal_api_requires_dedicated_service_credential(monkeypatch):
     monkeypatch.setenv("DRAGONZPYDER_GOAL_STORE_ENABLED", "1")
     monkeypatch.setenv("DRAGONZPYDER_OPERLY_AGENT_TOKEN", "g" * 48)
     with TestClient(app()) as client:
-        x = client.post("/internal/goals/register", json={})
+        x = client.post("/internal/goals/register",
+            json={"kind":"personal","user_id":"test-user","workspace_id":None,
+                  "request_id":str(uuid4()),"goal":"Test without authorization"})
     assert x.status_code == 401
 
 
