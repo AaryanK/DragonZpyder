@@ -63,10 +63,11 @@ async def run_operly_agent(
     # cookies, provider keys or workspace identifiers are accepted elsewhere.
     seed = "|".join((payload.scope_kind, payload.user_id, payload.workspace_id or ""))
     scope_key = hashlib.sha256(seed.encode("utf-8")).hexdigest()[:32]
-    from .operly_broker import readonly_tools, OperlyBrokerUnavailable
+    from .capability_hub import operly_personal_or_workspace_hub, CapabilityHubError
+    from .operly_broker import OperlyBrokerUnavailable
     from .runtime import AgentPipelineError
     try:
-        tools = readonly_tools(payload.lease_token)
+        tools = operly_personal_or_workspace_hub(payload.lease_token).tools()
         report = await agent.run_report(
             service_id="operly-" + scope_key,
             thread_id=payload.thread_id,
@@ -74,7 +75,7 @@ async def run_operly_agent(
             recover_partial_on_failure=True,
             external_tools=tools,
         )
-    except OperlyBrokerUnavailable as exc:
+    except (OperlyBrokerUnavailable, CapabilityHubError) as exc:
         raise HTTPException(503, "Operly tool broker unavailable") from exc
     except (AgentPipelineError, RuntimeError) as exc:
         raise HTTPException(502, "DragonZpyder harness run failed") from exc
