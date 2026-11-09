@@ -32,7 +32,8 @@ export function CommandPalette() {
   const inputRef = useRef(null);
   useEffect(() => {
     const onShortcut = event => {
-      if ((event.metaKey || event.ctrlKey) && !event.shiftKey && event.key.toLowerCase() === "k") {
+      if ((event.metaKey || event.ctrlKey) && !event.shiftKey &&
+          (event.key.toLowerCase() === "k" || event.key === "/")) {
         event.preventDefault(); setQuery(""); setOpen(value => !value);
       } else if (event.key === "Escape") {
         setOpen(false);
@@ -66,7 +67,7 @@ export function CommandPalette() {
               <span>{command.title}</span><small>{command.hint}</small>
             </button>) : <p>No matching actions. Try “camera”, “voice”, or “jobs”.</p>}
         </div>
-        <div className="dz-command-foot">Search actions with <kbd>Ctrl/⌘ K</kbd>. Unavailable services are not presented as working commands.</div>
+        <div className="dz-command-foot">Windows: <kbd>Ctrl K</kbd> or <kbd>Ctrl /</kbd> · macOS: <kbd>⌘ K</kbd>. Unavailable services are not presented as working commands.</div>
       </section>
     </div>}
   </>;
@@ -197,6 +198,65 @@ const HUB_SECTIONS = [
   { title: "Memory", icon: "◈", status: "Planned", detail: "A dedicated memory review and controls page is not yet available." },
 ];
 
+/**
+ * Install the current HTTPS origin as a desktop web app in Chromium browsers.
+ * Windows Edge can also install from its Apps menu if no prompt is available.
+ * No service worker: authenticated requests are never cached for offline use.
+ */
+export function DesktopInstallAction() {
+  const pending = useRef(null);
+  const [platform, setPlatform] = useState("unknown");
+  const [promptAvailable, setPromptAvailable] = useState(false);
+  const [installed, setInstalled] = useState(false);
+  const [help, setHelp] = useState("");
+  useEffect(() => {
+    const os = navigator.userAgentData?.platform || navigator.platform || navigator.userAgent || "";
+    setPlatform(/win(dows|32|64)/i.test(os) ? "windows" : "other");
+    setInstalled(window.matchMedia("(display-mode: standalone)").matches);
+    const canInstall = event => {
+      event.preventDefault();
+      pending.current = event;
+      setPromptAvailable(true);
+    };
+    const done = () => { setInstalled(true); setPromptAvailable(false); pending.current = null; };
+    window.addEventListener("beforeinstallprompt", canInstall);
+    window.addEventListener("appinstalled", done);
+    return () => {
+      window.removeEventListener("beforeinstallprompt", canInstall);
+      window.removeEventListener("appinstalled", done);
+    };
+  }, []);
+  const install = async () => {
+    if (!pending.current) {
+      setHelp("On Windows, open Microsoft Edge ··· → Apps → Install this site as an app. In Chrome, open the browser menu → Cast, save and share → Install page as app (wording varies).");
+      return;
+    }
+    const event = pending.current;
+    pending.current = null;
+    setPromptAvailable(false);
+    try {
+      await event.prompt();
+      const result = await event.userChoice;
+      if (result?.outcome !== "accepted") setHelp("Installation cancelled. You can also use your browser’s Install app menu.");
+    } catch {
+      setHelp("The install prompt could not open. Use your browser's Install app menu instead.");
+    }
+  };
+  if (platform !== "windows") return null;
+  return <section className="dz-desktop-install" aria-label="Windows desktop installation">
+    <div className="dz-desktop-install-head"><span aria-hidden="true">⊞</span><div>
+      <strong>{installed ? "DragonZpyder desktop app" : "DragonZpyder for Windows"}</strong>
+      <small>{installed ? "Running in the installed app window" :
+        "Use the same chat and tools in an app-style Edge or Chrome window"}</small></div>
+    </div>
+    {!installed && <button type="button" onClick={install}>
+      {promptAvailable ? "Install desktop app" : "How to install on Windows"} <span aria-hidden="true">↗</span>
+    </button>}
+    {help && <p className="dz-desktop-install-help" role="status">{help}</p>}
+    <p className="dz-desktop-install-note">Requires internet and a supported browser. Not a native .exe or an offline assistant.</p>
+  </section>;
+}
+
 export function WorkspaceHub() {
   const [open, setOpen] = useState(false);
   useEffect(() => {
@@ -224,6 +284,7 @@ export function WorkspaceHub() {
             <span className={"dz-hub-status" + (actionable ? " ready" : "")}>{section.status}</span>
           </button>;
         })}</div>
+        <DesktopInstallAction />
         <button type="button" className="dz-hub-command" onClick={() => { setOpen(false); window.dispatchEvent(new Event("dragonzpyder:command-open")); }}>⌘ Search all available commands</button>
       </aside>
     </div>, document.body)}
