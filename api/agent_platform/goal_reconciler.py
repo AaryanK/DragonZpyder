@@ -21,7 +21,7 @@ from .goal_reconciler_schema import RUN_SCHEMA
 from .workflows.spec import next_schedule_time
 
 _PROBE_IDENTITY = _principal(
-    source_app="dragonzpyder", kind="personal",
+    source_app="internal_canary", kind="personal",
     user_id="internal-staging-probe", workspace_id=None,
 )
 _MAX_PER_TICK = 20
@@ -69,7 +69,7 @@ class GoalReconciler:
                         raise RuntimeError("Invalid stored schedule; no dispatch")
                     # No user-facing request can register the internal synthetic
                     # principal. Operly goal APIs hardcode source_app=operly.
-                    synthetic = (goal["source_app"] == "dragonzpyder" and
+                    synthetic = (goal["source_app"] == "internal_canary" and
                                  goal["principal_hash"] == _PROBE_IDENTITY)
                     state = "pending" if synthetic else "awaiting_authorization"
                     created = await con.fetchval(
@@ -108,7 +108,7 @@ class GoalReconciler:
                        FROM dragonzpyder_goals g
                        WHERE r.goal_id=g.goal_id AND r.status='running'
                          AND r.lease_until <= $1 AND r.attempts>=3
-                         AND g.source_app='dragonzpyder' AND g.principal_hash=$2""",
+                         AND g.source_app='internal_canary' AND g.principal_hash=$2""",
                     clock, _PROBE_IDENTITY,
                 )
                 row = await con.fetchrow(
@@ -117,7 +117,7 @@ class GoalReconciler:
                            FROM dragonzpyder_goal_runs r
                            JOIN dragonzpyder_goals g ON g.goal_id=r.goal_id
                            WHERE g.status='registered'
-                             AND g.source_app='dragonzpyder'
+                             AND g.source_app='internal_canary'
                              AND g.principal_hash=$2
                              AND (
                                r.status='pending'
@@ -156,7 +156,7 @@ class GoalReconciler:
                      AND EXISTS (
                        SELECT 1 FROM dragonzpyder_goals g
                        WHERE g.goal_id=r.goal_id AND g.status='registered'
-                         AND g.source_app='dragonzpyder'
+                         AND g.source_app='internal_canary'
                          AND g.principal_hash=$5
                      )
                    RETURNING r.run_id,r.attempts,r.evidence_sha256""",
