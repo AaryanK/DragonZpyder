@@ -156,7 +156,11 @@ def specialist_specs(models: dict | None = None, search_tools=None) -> list[dict
 def build_frontier_agent(model, checkpointer, *, specialist_models=None, external_tools=None):
     """Compose real LangChain primitives without making a provider request."""
     virtual_state = StateBackend()
-    allow_search = os.getenv("DRAGONZPYDER_AGENT_WEB_SEARCH_ENABLED") == "1"
+    # Do not combine account-owned data capabilities with unaudited public search:
+    # that could turn a read-only connector into a prompt-driven exfiltration path.
+    # A future explicit per-user egress grant can safely enable both.
+    allow_search = (os.getenv("DRAGONZPYDER_AGENT_WEB_SEARCH_ENABLED") == "1"
+                    and not external_tools)
     search_tools = []
     prompt = SUPERVISOR_PROMPT
     if allow_search:
