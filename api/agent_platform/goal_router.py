@@ -89,3 +89,17 @@ async def cancel_goal(payload: TargetGoal, request: Request,
         raise HTTPException(404, "Goal not found in authorized scope") from exc
     except ValueError as exc:
         raise HTTPException(422, "Invalid goal reference") from exc
+
+
+@router.post("/runs")
+async def get_goal_runs(payload: TargetGoal, request: Request,
+                        authorization: str = Header(default="")):
+    """Bounded, owner-scoped execution evidence; never return private goal text."""
+    store = _store(request, authorization)
+    try:
+        runs = await store.list_runs(**_owner(payload), goal_id=payload.goal_id)
+    except LookupError as exc:
+        raise HTTPException(404, "Goal not found in authorized scope") from exc
+    except ValueError as exc:
+        raise HTTPException(422, "Invalid goal reference") from exc
+    return {"runs": runs, "objective_verified": False}
