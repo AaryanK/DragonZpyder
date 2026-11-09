@@ -45,3 +45,42 @@ Configure in a staging environment first, using secret references and restricted
 - Full LangGraph/Operly workflow replacement; business workflow engine remains in Operly.
 
 **Migration order:** remote harness read-only proof → sandbox/authorized tool relay → durable goal ownership in DragonZpyder → Personal data/connectors migration with identity mapping → retire Operly's model planner/custom harness when matched tests pass. Never delete a permission/audit/migration layer merely because the agent logic moved.
+
+
+## Universal harness migration slice (November 9)
+
+The following reusable code is now **authored and owned in DragonZpyder**:
+
+| Component | Canonical DragonZpyder source | Status |
+| --- | --- | --- |
+| LangChain/Deep Agents supervisor | `agent_platform/harness.py`, `runtime.py` | Existing, still staged |
+| Scoped tool hub | `agent_platform/capability_hub.py` | Integrated for Operly read tools |
+| Operly as a capability source | `agent_platform/operly_broker.py` | Signed lease / read-only |
+| Remote MCP SDK adapter | `agent_platform/mcp_adapter.py` | Operator-reviewed, disabled unless firewall and source allowlist are explicit |
+| Workflow specification + cron/timezone | `agent_platform/workflows/spec.py` | Ported from Operly, tested for identical semantics |
+| Workflow LangGraph executor | `agent_platform/workflows/graph.py` | Bounded read-only execution, wait boundary, no external writes |
+| Workflow control-plane preview | `agent_platform/workflows/router.py` | Service-authenticated, no scheduling side effect |
+| Hatchet worker and scheduling primitives | `agent_platform/jobs.py`, `worker.py` | Previously in DragonZpyder, operator-only |
+| PostgreSQL checkpointer | `agent_platform/runtime.py` | Previously in DragonZpyder |
+| OpenRouter, Langfuse, Mem0 | Agent modules + separate API | Previously in DragonZpyder; Mem0 user rollout not certified |
+
+Operly's `packages/workflow/dragonzpyder_client.py` and feature-flagged
+`WorkflowProvider._schedule_preview` are compatibility **wrappers**. When
+`OPERLY_WORKFLOW_HARNESS_OWNER=dragonzpyder`, Operly sends its authorized
+request to DragonZpyder's `/internal/workflows/preview`, which runs the
+canonical schedule logic. The old path remains when this flag is unset.
+
+**Not migrated:** runnable recurring cron jobs, shared human approval/resume,
+personal OAuth and records, current business workflow definitions, tool provider
+credentials, exact-once external effects, billing and durable parent goal
+state. Do not delete Operly SQLAlchemy models, workflow migrations or
+permission gates while active stored workflows depend on them. A preview
+without `job_registered=true` is a preview, not a scheduled task.
+
+**Next required migration:** move workflow definition and run persistence to
+DragonZpyder-owned PostgreSQL, attach Hatchet wakeups and event triggers,
+and request a NEW scoped Operly capability lease on every waking run rather
+than storing the four-minute lease. Only after data parity and live
+acceptance may Operly's legacy scheduler be retired. Do not enable the
+experimental MCP connector for personal OAuth without proper delegated user
+authorization and network egress enforcement.
