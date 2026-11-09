@@ -132,6 +132,92 @@ async def is_cron_probe_complete(goal_id: str) -> bool:
         await pool.close()
 
 
+
+async def seed_waiting_event_fixture() -> tuple[str, str]:
+    """Use injected source observations; production never receives a fake URL.
+
+    Produces an actual durable inbox event and two linked wake records, but
+    DOES NOT execute either. Only the next Hatchet cron may drain the canary.
+    """
+    from .web_event_watch import register_operator_watch, check_web_watch
+    from .event_wait import EventWaitStore
+    pool = await asyncpg.create_pool(
+        dsn=os.environ["DRAGONZPYDER_GOALS_DATABASE_URL"], min_size=1, max_size=2
+    )
+    try:
+        clock = datetime.now(timezone.utc)
+        await register_operator_watch(
+            pool, monitor_id="embedded_fixture_watch",
+            query="encyclopedia updates", interval_seconds=600, now=clock,
+        )
+        store = EventWaitStore(pool)
+        canary = await store.subscribe(
+            source_app="internal_canary", kind="personal",
+            user_id="internal-staging-probe", workspace_id=None,
+            request_id=str(uuid4()), monitor_id="embedded_fixture_watch",
+        )
+        user = await store.subscribe(
+            source_app="operly", kind="workspace",
+            user_id="synthetic-user", workspace_id="synthetic-workspace",
+            request_id=str(uuid4()), monitor_id="embedded_fixture_watch",
+        )
+
+        async def baseline(*args, **kwargs):
+            return {"results": [
+                {"title": "Old article",
+                 "url": "https://en.wikipedia.org/wiki/Old",
+                 "snippet": "Initial public snapshot"},
+            ]}
+        async def update(*args, **kwargs):
+            return {"results": [
+                {"title": "New article",
+                 "url": "https://en.wikipedia.org/wiki/New",
+                 "snippet": "A changed public snapshot"},
+            ]}
+        first = await check_web_watch(
+            pool, "embedded_fixture_watch", search=baseline, now=clock,
+        )
+        changed = await check_web_watch(
+            pool, "embedded_fixture_watch", search=update,
+            now=clock + timedelta(seconds=601),
+        )
+        assert first["event_published"] is False
+        assert changed["event_published"] is True
+        assert changed["wakes_created"] == 2
+        # Do NOT call drain_canary here. The real Hatchet cron must deliver it.
+        return canary["wait_id"], user["wait_id"]
+    finally:
+        await pool.close()
+
+
+async def verify_waiting_event(canary_wait_id: str, user_wait_id: str) -> bool:
+    from .event_wait import EventWaitStore
+    pool = await asyncpg.create_pool(
+        dsn=os.environ["DRAGONZPYDER_GOALS_DATABASE_URL"], min_size=1, max_size=2
+    )
+    try:
+        store = EventWaitStore(pool)
+        canary = await store.list_wakes(
+            source_app="internal_canary", kind="personal",
+            user_id="internal-staging-probe", workspace_id=None,
+            wait_id=canary_wait_id,
+        )
+        user = await store.list_wakes(
+            source_app="operly", kind="workspace",
+            user_id="synthetic-user", workspace_id="synthetic-workspace",
+            wait_id=user_wait_id,
+        )
+        return (
+            len(canary) == 1 and canary[0]["status"] == "completed"
+            and canary[0]["attempts"] == 1
+            and len(canary[0]["evidence_sha256"] or "") == 64
+            and len(user) == 1 and user[0]["status"] == "awaiting_authorization"
+            and user[0]["attempts"] == 0
+        )
+    finally:
+        await pool.close()
+
+
 def main():
     if (os.getenv("DRAGONZPYDER_HATCHET_EMBEDDED_CI") != "1"
             or os.getenv("DRAGONZPYDER_STAGE") != "staging"
@@ -165,6 +251,15 @@ def main():
         # Use a separate new due goal so the previous idempotency test remains
         # independently verified.
         cron_probe_id = asyncio.run(seed_autonomous_cron_probe())
+
+        # Publish a real PostgreSQL event using deterministic source fixtures,
+        # then disable *network* monitoring. Hatchet's cron must independently
+        # consume the durable inbox wake without any model or network action.
+        os.environ["DRAGONZPYDER_WEB_EVENT_ENABLED"] = "1"
+        os.environ["DRAGONZPYDER_AGENT_WEB_SEARCH_ENABLED"] = "1"
+        canary_wait, user_wait = asyncio.run(seed_waiting_event_fixture())
+        os.environ["DRAGONZPYDER_WEB_EVENT_ENABLED"] = "0"
+
         asyncio.run(task.aio_create_cron(
             cron_name="dragonzpyder-embedded-cron-acceptance-v1",
             expression="* * * * *",
@@ -173,7 +268,8 @@ def main():
         deadline = time.monotonic() + 100
         confirmed = False
         while time.monotonic() < deadline:
-            confirmed = asyncio.run(is_cron_probe_complete(cron_probe_id))
+            confirmed = (asyncio.run(is_cron_probe_complete(cron_probe_id))
+                         and asyncio.run(verify_waiting_event(canary_wait, user_wait)))
             if confirmed:
                 break
             time.sleep(2)
@@ -181,6 +277,10 @@ def main():
         print("HATCHET_EMBEDDED_CRON_ACCEPTANCE_PASS",
               {"goal_id": cron_probe_id, "model_calls": 0,
                "external_tool_calls": 0}, flush=True)
+        print("HATCHET_EMBEDDED_EVENT_WAKE_PASS",
+              {"canary_wait_id": canary_wait,
+               "user_wait": "awaiting_authorization",
+               "event_deduplicated": True, "model_calls": 0}, flush=True)
     finally:
         hatchet.stop_embedded()
     # Embedded worker child processes can outlive this standalone test runner.
