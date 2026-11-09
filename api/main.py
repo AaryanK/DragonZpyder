@@ -24,6 +24,7 @@ from provider_gateway import provider_request
 from agent_platform.gateway_protocol import validate_agent_body, validate_agent_response, AgentProtocolError
 from agent_platform.router import router as agent_router
 from agent_platform.workflows.router import router as workflow_router
+from agent_platform.goal_router import router as goals_router
 from agent_platform.openrouter_spend_guard import PaidTestBudgetError, require_paid_test_cap
 from agent_platform.provider_pacing import AgentProviderPacer
 from agent_platform.gateway_parent_budget import ParentBudgetGateway
@@ -86,7 +87,23 @@ async def lifespan(app: FastAPI):
     log.warning("Staging atomic parent-budget gateway status=%s",
                 "ready" if parent_budget.active else "disabled")
     agent_runtime = None
+    goal_pool = None
     try:
+        if os.getenv("DRAGONZPYDER_GOAL_STORE_ENABLED") == "1":
+            # The schema must be migrated separately. Do not silently create
+            # tables or start user work from an API process.
+            import asyncpg
+            from agent_platform.goal_store import DurableGoalStore
+            goal_dsn = os.getenv("DRAGONZPYDER_GOALS_DATABASE_URL", "")
+            if not goal_dsn.startswith(("postgres://", "postgresql://")):
+                raise RuntimeError("Dedicated persistent goals database is not configured")
+            goal_pool = await asyncpg.create_pool(dsn=goal_dsn, min_size=1, max_size=4)
+            async with goal_pool.acquire() as con:
+                if await con.fetchval("SELECT to_regclass('dragonzpyder_goals')") is None:
+                    raise RuntimeError("DragonZpyder goals migration is missing")
+            app.state.goal_store = DurableGoalStore(
+                goal_pool, encryption_key=os.getenv("DRAGONZPYDER_GOALS_ENCRYPTION_KEY", ""),
+            )
         if os.getenv("DRAGONZPYDER_AGENTS_ENABLED") == "1":
             from agent_platform.runtime import AgentRuntime
             agent_runtime = AgentRuntime()
@@ -113,6 +130,8 @@ async def lifespan(app: FastAPI):
     finally:
         if agent_runtime is not None:
             await agent_runtime.close()
+        if goal_pool is not None:
+            await goal_pool.close()
         await parent_budget.close()
         await ledger.close()
         shutdown_telemetry()
@@ -121,6 +140,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="DragonZpyder API", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
 app.include_router(agent_router)
 app.include_router(workflow_router)
+app.include_router(goals_router)
 
 
 @app.middleware("http")
