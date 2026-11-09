@@ -43,6 +43,8 @@ from .goal_reconciler_schema import RUN_SCHEMA
 SCHEMA += "\n" + RUN_SCHEMA
 from .event_schema import EVENT_SCHEMA
 SCHEMA += "\n" + EVENT_SCHEMA
+from .task_activity import TASK_SCHEMA
+SCHEMA += "\n" + TASK_SCHEMA
 
 
 class GoalConflict(RuntimeError):
