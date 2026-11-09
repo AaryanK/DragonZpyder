@@ -203,37 +203,25 @@ const HUB_SECTIONS = [
  * Windows Edge can also install from its Apps menu if no prompt is available.
  * No service worker: authenticated requests are never cached for offline use.
  */
-export function DesktopInstallAction() {
-  const pending = useRef(null);
+export function DesktopInstallAction({ pendingPrompt, consumePrompt }) {
   const [platform, setPlatform] = useState("unknown");
-  const [promptAvailable, setPromptAvailable] = useState(false);
   const [installed, setInstalled] = useState(false);
   const [help, setHelp] = useState("");
   useEffect(() => {
     const os = navigator.userAgentData?.platform || navigator.platform || navigator.userAgent || "";
     setPlatform(/win(dows|32|64)/i.test(os) ? "windows" : "other");
     setInstalled(window.matchMedia("(display-mode: standalone)").matches);
-    const canInstall = event => {
-      event.preventDefault();
-      pending.current = event;
-      setPromptAvailable(true);
-    };
-    const done = () => { setInstalled(true); setPromptAvailable(false); pending.current = null; };
-    window.addEventListener("beforeinstallprompt", canInstall);
+    const done = () => setInstalled(true);
     window.addEventListener("appinstalled", done);
-    return () => {
-      window.removeEventListener("beforeinstallprompt", canInstall);
-      window.removeEventListener("appinstalled", done);
-    };
+    return () => window.removeEventListener("appinstalled", done);
   }, []);
   const install = async () => {
-    if (!pending.current) {
+    if (!pendingPrompt) {
       setHelp("On Windows, open Microsoft Edge ··· → Apps → Install this site as an app. In Chrome, open the browser menu → Cast, save and share → Install page as app (wording varies).");
       return;
     }
-    const event = pending.current;
-    pending.current = null;
-    setPromptAvailable(false);
+    const event = pendingPrompt;
+    consumePrompt();
     try {
       await event.prompt();
       const result = await event.userChoice;
@@ -250,7 +238,7 @@ export function DesktopInstallAction() {
         "Use the same chat and tools in an app-style Edge or Chrome window"}</small></div>
     </div>
     {!installed && <button type="button" onClick={install}>
-      {promptAvailable ? "Install desktop app" : "How to install on Windows"} <span aria-hidden="true">↗</span>
+      {pendingPrompt ? "Install desktop app" : "How to install on Windows"} <span aria-hidden="true">↗</span>
     </button>}
     {help && <p className="dz-desktop-install-help" role="status">{help}</p>}
     <p className="dz-desktop-install-note">Requires internet and a supported browser. Not a native .exe or an offline assistant.</p>
@@ -259,6 +247,13 @@ export function DesktopInstallAction() {
 
 export function WorkspaceHub() {
   const [open, setOpen] = useState(false);
+  // Listen from initial page mount; Chrome/Edge may fire before the drawer opens.
+  const [pendingPrompt, setPendingPrompt] = useState(null);
+  useEffect(() => {
+    const handlePrompt = event => { event.preventDefault(); setPendingPrompt(event); };
+    window.addEventListener("beforeinstallprompt", handlePrompt);
+    return () => window.removeEventListener("beforeinstallprompt", handlePrompt);
+  }, []);
   useEffect(() => {
     const show = () => setOpen(true);
     const keys = event => { if (event.key === "Escape") setOpen(false); };
@@ -284,7 +279,7 @@ export function WorkspaceHub() {
             <span className={"dz-hub-status" + (actionable ? " ready" : "")}>{section.status}</span>
           </button>;
         })}</div>
-        <DesktopInstallAction />
+        <DesktopInstallAction pendingPrompt={pendingPrompt} consumePrompt={() => setPendingPrompt(null)} />
         <button type="button" className="dz-hub-command" onClick={() => { setOpen(false); window.dispatchEvent(new Event("dragonzpyder:command-open")); }}>⌘ Search all available commands</button>
       </aside>
     </div>, document.body)}
