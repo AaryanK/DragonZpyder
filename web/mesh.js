@@ -222,7 +222,30 @@ async function setFiles(files){
   incoming.push({name:file.name||"pasted-image.png",mime,data:await asDataUrl(file,mime),bytes:file.size});
  }
  if(!incoming.length)return;
- if(!enabled)setActive(true,{preserveDraft:true});
+ if(!enabled){
+   // Files are currently a separate AI Mesh conversation, not Agent tools.
+   // Never silently erase the visible Agent chat or change execution authority.
+   const permitted=await new Promise(resolve=>{
+     let settled=false;
+     const detail={
+       handled:false,
+       resolve(value){if(settled)return; settled=true; resolve(Boolean(value));}
+     };
+     window.dispatchEvent(new CustomEvent("dragonzpyder:confirm-mesh-switch",{detail}));
+     if(!detail.handled){
+       detail.resolve(window.confirm(
+         "Files require AI Mesh and a separate conversation. Your Agent chat will remain saved but tools won't carry over. Switch?"
+       ));
+     }
+   });
+   if(!permitted){
+     upload.value="";
+     note("Attachment cancelled. Your Agent conversation was not changed.");
+     return;
+   }
+   setActive(true,{preserveDraft:true});
+   note("Switched to AI Mesh for attachments. Agent tools and prior conversation context are separate.");
+ }
  if(task.value!=="chat"&&!(task.value==="transcribe"&&incoming.every(item=>item.mime.startsWith("audio/")))){
   task.value="chat";refreshTask();
  }

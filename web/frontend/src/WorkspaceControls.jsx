@@ -26,10 +26,139 @@ const COMMANDS = [
   { title: "Account and connections", hint: "Settings", words: "account settings connected apps", run: () => { window.location.href = "/account"; } },
 ];
 
+
+/**
+ * Confirm a destructive conversational context change without performing an
+ * agent action. The promise is resolved on every close path, including Escape.
+ */
+/**
+ * Dialogs must not strand keyboard or screen-reader users behind an overlay.
+ * The first tabbable control receives focus; Tab cycles inside the modal and
+ * closing restores focus to the element that opened it.
+ */
+export function useModalFocus(dialogRef, open) {
+  useEffect(() => {
+    if (!open) return;
+    const origin = document.activeElement;
+    let cancelled = false;
+    const items = () => [...(dialogRef.current?.querySelectorAll(
+      "a[href],button:not(:disabled),input:not(:disabled),textarea:not(:disabled),select:not(:disabled),[tabindex='0']"
+    ) || [])].filter(el => el.getClientRects().length>0);
+    requestAnimationFrame(() => { if(!cancelled) items()[0]?.focus(); });
+    const onKey = event => {
+      if (event.key !== "Tab") return;
+      const nodes = items();
+      if (!nodes.length) { event.preventDefault(); return; }
+      const first=nodes[0],last=nodes[nodes.length-1];
+      if (event.shiftKey && (document.activeElement===first || !dialogRef.current?.contains(document.activeElement))) {
+        event.preventDefault(); last.focus();
+      } else if (!event.shiftKey && (document.activeElement===last || !dialogRef.current?.contains(document.activeElement))) {
+        event.preventDefault(); first.focus();
+      }
+    };
+    document.addEventListener("keydown",onKey,true);
+    return () => {
+      cancelled=true;
+      document.removeEventListener("keydown",onKey,true);
+      requestAnimationFrame(()=>origin?.focus?.());
+    };
+  },[dialogRef,open]);
+}
+
+export function ModeSwitchConfirm() {
+  const [request, setRequest] = useState(null);
+  const dialogRef = useRef(null);
+  useModalFocus(dialogRef,Boolean(request));
+  const cancelRef = useRef(null);
+  const originRef = useRef(null);
+  useEffect(() => {
+    const onRequest = event => {
+      if (typeof event.detail?.resolve !== "function") return;
+      event.detail.handled = true;
+      originRef.current = document.activeElement;
+      setRequest({ resolve: event.detail.resolve });
+    };
+    window.addEventListener("dragonzpyder:confirm-mesh-switch", onRequest);
+    return () => window.removeEventListener("dragonzpyder:confirm-mesh-switch", onRequest);
+  }, []);
+  useEffect(() => {
+    if (!request) return;
+    cancelRef.current?.focus();
+    const onKey = event => {
+      if (event.key === "Escape") {
+        event.preventDefault(); event.stopPropagation();
+        request.resolve(false); setRequest(null);
+      }
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [request]);
+  const choose = decision => {
+    request?.resolve(decision);
+    setRequest(null);
+    requestAnimationFrame(() => originRef.current?.focus?.());
+  };
+  return request && createPortal(
+    <div className="dz-overlay dz-confirm-overlay" onMouseDown={event => {
+      if (event.target === event.currentTarget) choose(false);
+    }}>
+      <section ref={dialogRef} className="dz-confirm-panel" role="alertdialog" aria-modal="true"
+        aria-labelledby="dz-confirm-title" aria-describedby="dz-confirm-description">
+        <span className="dz-kicker">Before you attach</span>
+        <h2 id="dz-confirm-title">Switch to AI Mesh?</h2>
+        <p id="dz-confirm-description">Files are currently handled by AI Mesh.
+          Switching starts a separate conversation; the Agent conversation and its connected tools won't carry over.
+          Your previous Agent conversations remain saved.</p>
+        <div className="dz-confirm-actions">
+          <button ref={cancelRef} type="button" onClick={() => choose(false)}>Keep Agent chat</button>
+          <button type="button" onClick={() => choose(true)}>Switch and attach</button>
+        </div>
+      </section>
+    </div>, document.body
+  );
+}
+
+/** One keyboard and touch target for showing/hiding the full desktop sidebar. */
+export function SidebarToggle() {
+  const [expanded, setExpanded] = useState(true);
+  useEffect(() => {
+    let collapsed = false;
+    try { collapsed = localStorage.getItem("dragonzpyder:sidebar-collapsed") === "yes"; } catch {}
+    document.documentElement.classList.toggle("dz-sidebar-collapsed", collapsed);
+    setExpanded(!collapsed);
+  }, []);
+  const toggle = () => {
+    const next = !expanded;
+    setExpanded(next);
+    document.documentElement.classList.toggle("dz-sidebar-collapsed", !next);
+    try { localStorage.setItem("dragonzpyder:sidebar-collapsed", next ? "no" : "yes"); } catch {}
+  };
+  return <button className="dz-sidebar-toggle" type="button" onClick={toggle}
+    aria-label={expanded ? "Collapse sidebar" : "Expand sidebar"}
+    title={expanded ? "Hide sidebar" : "Show sidebar"} aria-expanded={expanded}
+    aria-controls="sidebar">☷</button>;
+}
+
 export function CommandPalette() {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const inputRef = useRef(null);
+  const dialogRef = useRef(null);
+  const previousFocusRef = useRef(null);
+  useEffect(() => {
+    if (!open) return;
+    previousFocusRef.current = document.activeElement;
+    const trap = event => {
+      if (event.key !== "Tab" || !dialogRef.current) return;
+      const nodes = [...dialogRef.current.querySelectorAll("button:not(:disabled),input:not(:disabled),[tabindex='0']")];
+      if (!nodes.length) return;
+      const first=nodes[0], last=nodes[nodes.length-1];
+      if(event.shiftKey && document.activeElement===first) {event.preventDefault(); last.focus();}
+      else if(!event.shiftKey && document.activeElement===last) {event.preventDefault(); first.focus();}
+    };
+    document.addEventListener("keydown",trap,true);
+    return () => {document.removeEventListener("keydown",trap,true);previousFocusRef.current?.focus?.();};
+  }, [open]);
   useEffect(() => {
     const onShortcut = event => {
       if ((event.metaKey || event.ctrlKey) && !event.shiftKey &&
@@ -54,8 +183,8 @@ export function CommandPalette() {
   }, [query]);
   const choose = command => { setOpen(false); command.run(); };
   return <>
-    {open && <div className="dz-overlay" onMouseDown={event => { if (event.target === event.currentTarget) setOpen(false); }}>
-      <section className="dz-command-panel" role="dialog" aria-modal="true" aria-labelledby="dz-command-title">
+    {open && createPortal(<div className="dz-overlay" onMouseDown={event => { if (event.target === event.currentTarget) setOpen(false); }}>
+      <section ref={dialogRef} className="dz-command-panel" role="dialog" aria-modal="true" aria-labelledby="dz-command-title">
         <div className="dz-command-top"><strong id="dz-command-title">What would you like to do?</strong><button type="button" onClick={() => setOpen(false)} aria-label="Close commands">Esc ×</button></div>
         <input ref={inputRef} aria-label="Search DragonZpyder commands" value={query} onChange={event => setQuery(event.target.value)}
           placeholder="Search features, actions, settings…" onKeyDown={event => {
@@ -69,7 +198,7 @@ export function CommandPalette() {
         </div>
         <div className="dz-command-foot">Windows: <kbd>Ctrl K</kbd> or <kbd>Ctrl /</kbd> · macOS: <kbd>⌘ K</kbd>. Unavailable services are not presented as working commands.</div>
       </section>
-    </div>}
+    </div>, document.body)}
   </>;
 }
 
@@ -77,6 +206,8 @@ export function ScreenCapture() {
   const [open, setOpen] = useState(false);
   const [error, setError] = useState("");
   const video = useRef(null), current = useRef(null), generation = useRef(0);
+  const dialogRef = useRef(null);
+  useModalFocus(dialogRef,open);
   const stop = useCallback(() => {
     generation.current++;
     current.current?.getTracks().forEach(track => track.stop());
@@ -140,7 +271,7 @@ export function ScreenCapture() {
       <span aria-hidden="true">▣</span><span><strong>Capture screen</strong><small>Preview and attach a screenshot</small></span>
     </button>
     {open && createPortal(<div className="dz-overlay dz-screen-overlay" onMouseDown={event => { if (event.target === event.currentTarget) stop(); }}>
-      <section className="dz-screen-panel" role="dialog" aria-modal="true" aria-labelledby="dz-screen-title">
+      <section ref={dialogRef} className="dz-screen-panel" role="dialog" aria-modal="true" aria-labelledby="dz-screen-title">
         <div className="dz-screen-head"><div><span className="dz-kicker">Local screen preview</span><h2 id="dz-screen-title">Capture your screen</h2></div>
           <button aria-label="Close screen preview" type="button" onClick={stop}>×</button></div>
         <video ref={video} autoPlay muted playsInline />
@@ -247,6 +378,8 @@ export function DesktopInstallAction({ pendingPrompt, consumePrompt }) {
 
 export function WorkspaceHub() {
   const [open, setOpen] = useState(false);
+  const dialogRef = useRef(null);
+  useModalFocus(dialogRef,open);
   // Listen from initial page mount; Chrome/Edge may fire before the drawer opens.
   const [pendingPrompt, setPendingPrompt] = useState(null);
   useEffect(() => {
@@ -266,7 +399,7 @@ export function WorkspaceHub() {
       <span>◈</span> Explore workspace <span aria-hidden="true">↗</span>
     </button>
     {open && createPortal(<div className="dz-hub-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) setOpen(false); }}>
-      <aside className="dz-hub" role="dialog" aria-modal="true" aria-labelledby="dz-hub-title">
+      <aside ref={dialogRef} className="dz-hub" role="dialog" aria-modal="true" aria-labelledby="dz-hub-title">
         <div className="dz-hub-top"><div><span className="dz-kicker">DragonZpyder / Workspace</span><h2 id="dz-hub-title">Everything, in one place.</h2></div>
           <button type="button" aria-label="Close workspace navigation" onClick={() => setOpen(false)}>×</button></div>
         <p className="dz-hub-lead">The chat stays minimal. Find your tools, jobs, and settings here without filling the conversation screen.</p>

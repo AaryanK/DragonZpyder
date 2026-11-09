@@ -110,3 +110,41 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npm test
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Exercise the real chat UI in Chromium on Windows
+        working-directory: web/frontend
+        shell: pwsh
+        run: |
+          npx playwright install chromium
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm run test:e2e
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+  browser-ui:
+    name: React browser usability checks
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install UI dependencies and Chromium
+        working-directory: web/frontend
+        run: |
+          npm install --no-audit --no-fund --package-lock=false
+          npx playwright install --with-deps chromium
+      - name: Build the actual React application
+        working-directory: web/frontend
+        run: npm run build
+      - name: Verify desktop/mobile interactions, readable UI, and mode-switch safety
+        working-directory: web/frontend
+        run: npm run test:e2e
+      - name: Upload failed-browser diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dragonzpyder-ui-browser-failures
+          path: |
+            web/frontend/test-results/
+          retention-days: 7
