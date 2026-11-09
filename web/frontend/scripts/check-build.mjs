@@ -27,7 +27,7 @@ for (const section of ["workspace-switcher", "conversation-search", "workspace-b
     "Redesigned Personal workspace missing: " + section);
 }
 assert.match(app, /workspace\.css/, "Personal workspace stylesheet missing");
-assert.match(app, /data-workspace-theme="dark"/, "Graphite/ember appearance should be the default");
+assert.match(app, /data-workspace-theme="light"/, "Quiet workspace appearance should be the default");
 assert.match(app, /id="workspace-theme-toggle"/, "Dark/light theme control missing");
 assert.match(app, /id="camera-capture-toggle"/, "Camera capture control must be present");
 for (const [id, description] of [
