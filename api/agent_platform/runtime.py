@@ -97,7 +97,11 @@ def build_agent(model, checkpointer, *, parent_job_id: str | None = None, extern
             if configured:
                 models[role] = (model_client(model_override=configured, parent_job_id=parent_job_id)
                                 if parent_job_id is not None else model_client(model_override=configured))
-        return build_frontier_agent(model, checkpointer, specialist_models=models, external_tools=external_tools)
+        return (
+            build_frontier_agent(model, checkpointer, specialist_models=models)
+            if external_tools is None else
+            build_frontier_agent(model, checkpointer, specialist_models=models, external_tools=external_tools)
+        )
     backend = StateBackend()
     # A replacement filesystem middleware must explicitly use the same backend.
     return create_deep_agent(
@@ -328,9 +332,11 @@ class AgentRuntime:
         delegation_trace = DelegationTrace()
         try:
             agent = (
-                build_agent(model, self._checkpointer, parent_job_id=parent_job_id, external_tools=external_tools)
+                build_agent(model, self._checkpointer, parent_job_id=parent_job_id,
+                            **({"external_tools": external_tools} if external_tools is not None else {}))
                 if parent_job_id is not None else
-                build_agent(model, self._checkpointer, external_tools=external_tools)
+                build_agent(model, self._checkpointer,
+                            **({"external_tools": external_tools} if external_tools is not None else {}))
             )
         except Exception as exc:
             raise AgentPipelineError("construction") from exc
