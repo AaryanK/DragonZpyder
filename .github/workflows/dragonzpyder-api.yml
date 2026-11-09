@@ -69,6 +69,43 @@ jobs:
       - name: Verify real PostgreSQL concurrency, restart and isolation
         run: pytest -q api/tests/test_budget_postgres_integration.py api/tests/test_goal_postgres_integration.py api/tests/test_goal_recovery_postgres.py
 
+  hatchet-embedded-goal:
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: goal_test
+          POSTGRES_PASSWORD: disposable_hatchet_ci
+          POSTGRES_DB: goal_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U goal_test -d goal_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DRAGONZPYDER_HATCHET_EMBEDDED_CI: "1"
+      DRAGONZPYDER_STAGE: staging
+      DRAGONZPYDER_GOAL_STORE_ENABLED: "1"
+      DRAGONZPYDER_GOAL_TICK_ENABLED: "1"
+      DRAGONZPYDER_GOAL_SYNTHETIC_ONLY: "1"
+      DRAGONZPYDER_GOALS_DATABASE_URL: postgresql://goal_test:disposable_hatchet_ci@localhost:5432/goal_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install isolated Hatchet and PostgreSQL dependencies
+        run: pip install 'hatchet-sdk>=1,<3' 'asyncpg>=0.30,<1' 'cryptography>=44,<50' 'pydantic>=2,<3'
+      - name: Dispatch real Hatchet worker and verify DB evidence
+        timeout-minutes: 12
+        run: cd api && timeout 660s python -m agent_platform.hatchet_embedded_acceptance
+
   personal-core-contracts:
     runs-on: ubuntu-latest
     permissions:
