@@ -142,3 +142,64 @@ It is not yet exposed as a user-facing workflow capability.
 **Not release-ready:** Scheduled execution, automatic Gmail/calendar writes,
 personal camera/computer access, NaySchool integration and migrating user
 OAuth/data are explicitly NOT claimed as done by this PR.
+
+
+## Durable Hatchet autonomy — synthetic-only acceptance slice
+
+The previously missing **DB occurrence ledger + Hatchet worker bridge** has
+been added, but remains OFF and undeployed. This is the first step toward
+persistent autonomous goals, not authorization to use personal connectors.
+
+- `goal_reconciler_schema.py`: unique goal/occurrence records, running leases,
+  attempt counts, evidence digest and explicit failed/cancelled state.
+- `goal_reconciler.py`: idempotent due-time scan, PostgreSQL row locking with
+  `SKIP LOCKED`, ledger replay on duplicate/late Hatchet ticks, expired-claim
+  recovery and bounded retries (max three attempts).
+- `goal_tick.py` + `worker.py`: dedicated Hatchet worker task
+  `dragonzpyder-goal-reconcile-v1`, 45-second execution timeout, concurrency 1,
+  retry 1. Only a fixed internal canary principal may run DB-only code.
+- `goal_tick_admin.py`: optional operator-only **staging** registration of
+  exactly one durable Hatchet minute cron and one idempotent, recurring
+  internal probe. Importing/starting a worker does NOT automatically create a
+  cron.
+- `goal_store.py` + `goal_router.py`: cancellation fences queued/running
+  claims transactionally and authenticated owners can query recent receipts
+  via `POST /internal/goals/runs`. External/user objectives remain unverified.
+
+**Fail-closed flags:** `DRAGONZPYDER_GOAL_STORE_ENABLED=1`,
+`DRAGONZPYDER_GOAL_TICK_ENABLED=1`,
+`DRAGONZPYDER_GOAL_SYNTHETIC_ONLY=1`,
+`DRAGONZPYDER_STAGE=staging`, and
+`DRAGONZPYDER_GOAL_CRON_INSTALL_ALLOWED=1` (operator commands only).
+
+Required secrets/config: `DRAGONZPYDER_GOALS_DATABASE_URL` (persistent
+PostgreSQL, schema migrated), `DRAGONZPYDER_GOALS_ENCRYPTION_KEY` (valid
+Fernet key, only in trusted service), and existing Hatchet worker
+`HATCHET_CLIENT_TOKEN` + private host/TLS settings. Never pass model keys,
+Operly OAuth tokens, or user-created leases to Hatchet inputs.
+
+An operator deploying a dedicated staging worker can run once:
+
+```sh
+python -m agent_platform.goal_tick_admin install-cron
+python -m agent_platform.goal_tick_admin seed-probe
+```
+
+The order is important: make sure the new task has registered with the Hatchet
+server before provisioning its cron. Repeated cron installation is not
+automatically treated as success; inspect Hatchet state for the fixed name.
+A canary run records its result in `dragonzpyder_goal_runs`. A user's due
+occurrence is created as `awaiting_authorization` and **is never executed**.
+Neither fake permission grants nor cached 240-second Operly leases are used.
+
+**Acceptance tests:** `api/tests/test_goal_recovery_postgres.py` simulates
+restart, concurrent claim, late worker, replay, cancellation and tenant
+isolation against real PostgreSQL. `hatchet_embedded_acceptance.py` executes
+the real task twice via a disposable embedded Hatchet worker/engine and
+asserts persisted evidence and zero user actions. The embedding test also
+has a dedicated CI job.
+
+**Next stage:** implement a scoped, durable per-goal consent record, fresh
+permission lease on every Hatchet wake, budget reservation, bounded reasoning
+plan and independent verifier before a scheduled job may invoke any Google,
+MCP, desktop, camera, Operly Workspace or paid model capability.
