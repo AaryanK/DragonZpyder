@@ -1,6 +1,6 @@
 import React from "react";
 import { createPortal } from "react-dom";
-import { CommandPalette, QuickAddMenu, WorkspaceHub } from "./WorkspaceControls.jsx";
+import { CommandPalette, QuickAddMenu, WorkspaceHub, SidebarToggle, ModeSwitchConfirm } from "./WorkspaceControls.jsx";
 
 
 /**
@@ -140,6 +140,7 @@ export function PersonalTemplate() {
     <section className="workspace">
       <header className="workspace-head">
         <button className="icon-btn mobile-only" id="open-sidebar" aria-label="Open sidebar">☰</button>
+        <SidebarToggle />
         <div className="workspace-heading"><div className="workspace-breadcrumb"><strong>Personal</strong></div><div className="runtime-status"><span className="status-dot" id="status-dot"></span><span id="status-text">Checking runtime…</span></div></div>
         <div className="head-actions"><button type="button" className="dz-command-trigger" id="dz-command-trigger" title="Search commands · Ctrl/⌘ K" aria-label="Open command palette" onClick={() => window.dispatchEvent(new Event("dragonzpyder:command-open"))}>⌘</button><button className="theme-toggle" id="workspace-theme-toggle" type="button" aria-label="Switch to dark appearance" title="Toggle appearance"><span id="workspace-theme-icon" aria-hidden="true">☾</span></button><span className="head-privacy"><span aria-hidden="true">◈</span> Your private workspace</span><button className="ghost-btn" id="approvals-top">Approvals</button><button className="profile-btn" id="profile-button" aria-label="Account menu"><span id="profile-initial">D</span></button></div>
       </header>
@@ -193,6 +194,7 @@ export function PersonalTemplate() {
     </section>
   </div>
   <CommandPalette />
+  <ModeSwitchConfirm />
   <section className="companion-panel" id="companion-panel" role="dialog" aria-modal="true" aria-label="Live companion" hidden>
     <div className="companion-card"><div className="eyebrow">DragonZpyder / Live companion</div><h2>Let's talk.</h2>
     <div className="companion-bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
