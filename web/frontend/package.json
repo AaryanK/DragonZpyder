@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
-    "build": "vite build && node scripts/prerender.mjs",
+    "build": "vite build && node scripts/prerender.mjs && node scripts/prepare-desktop.mjs",
     "preview": "vite preview --host 0.0.0.0",
     "test": "node scripts/check-build.mjs && node --test scripts/test-markdown.mjs",
     "test:markdown": "node --test scripts/test-markdown.mjs"
