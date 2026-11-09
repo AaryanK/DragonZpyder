@@ -47,13 +47,13 @@ export function TaskPanel() {
   const [error, setError] = useState("");
   const [connected, setConnected] = useState(false);
 
-  const refresh = useCallback(async (signal) => {
+  const refresh = useCallback(async (signal, preferredTaskId) => {
     const response = await taskApi("/api/harness/tasks", { signal });
     if (signal?.aborted) return;
     const items = Array.isArray(response.tasks) ? response.tasks : [];
     setTasks(items);
     setConnected(true);
-    const id = selected?.task_id || items[0]?.task_id;
+    const id = preferredTaskId || selected?.task_id || items[0]?.task_id;
     if (!id) return;
     const detail = await taskApi("/api/harness/tasks/" + encodeURIComponent(id), { signal });
     if (!signal?.aborted) setSelected(detail);
@@ -94,7 +94,7 @@ export function TaskPanel() {
       const details = await taskApi("/api/harness/tasks/" + encodeURIComponent(created.task_id));
       setSelected(details);
       if (kind === "agent") setGoal("");
-      await refresh();
+      await refresh(undefined, created.task_id);
     } catch (err) { setError(err.message); }
     finally { setSending(false); }
   }
