@@ -1054,3 +1054,42 @@ html[data-workspace-theme="light"] .dz-hub-status.ready{
 @media(prefers-reduced-motion:reduce){
  html[data-workspace-theme="light"] .prompt-chip{transition:none}
 }
+
+
+/* Windows app installation is discoverable inside workspace navigation only. */
+.dz-desktop-install{
+  margin:19px 0 4px;padding:16px;border:1px solid #5a443a;border-radius:13px;
+  background:#242123;color:#f7f2ec;
+}
+.dz-desktop-install-head{display:flex;align-items:flex-start;gap:12px}
+.dz-desktop-install-head>span{flex:0 0 33px;width:33px;height:33px;border-radius:8px;
+ display:grid;place-items:center;background:#3c2a24;color:#ff8b50;font-size:20px}
+.dz-desktop-install-head strong{font-size:13px;font-weight:750;display:block}
+.dz-desktop-install-head small{display:block;color:#bdb1aa;font-size:11px;line-height:1.55;margin-top:5px}
+.dz-desktop-install>button{
+ display:flex;justify-content:space-between;align-items:center;width:100%;
+ margin-top:14px;padding:11px 13px;border:1px solid #f16629;border-radius:9px;
+ background:#f16629;color:white;font-size:11.5px;font-weight:750;cursor:pointer;
+}
+.dz-desktop-install>button:hover{background:#db4b16}
+.dz-desktop-install-help{
+ margin:12px 0 0;font-size:11px;line-height:1.6;color:#ffd0b9;
+}
+.dz-desktop-install-note{
+ font-size:10px;line-height:1.55;color:#a89f99;margin:10px 0 0;
+}
+html[data-workspace-theme="light"] .dz-desktop-install{
+ background:#fff;border-color:#e8ded5;color:#312d29;
+}
+html[data-workspace-theme="light"] .dz-desktop-install-head>span{
+ background:#fff0e7;color:#d95820;
+}
+html[data-workspace-theme="light"] .dz-desktop-install-head small{
+ color:#857c74;
+}
+html[data-workspace-theme="light"] .dz-desktop-install-note{
+ color:#8f857d;
+}
+html[data-workspace-theme="light"] .dz-desktop-install-help{
+ color:#9d4b2d;
+}
