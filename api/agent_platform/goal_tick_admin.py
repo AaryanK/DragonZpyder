@@ -51,7 +51,7 @@ async def run(mode: str) -> dict:
             pool, encryption_key=os.environ["DRAGONZPYDER_GOALS_ENCRYPTION_KEY"],
         )
         row = await store.register(
-            source_app="dragonzpyder", kind="personal",
+            source_app="internal_canary", kind="personal",
             user_id="internal-staging-probe", workspace_id=None,
             request_id=str(uuid5(NAMESPACE_DNS, "dragonzpyder:staging:goal-tick:v1")),
             goal="DB-only synthetic recurring scheduler proof. No model or tools.",
