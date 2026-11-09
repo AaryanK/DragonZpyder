@@ -102,10 +102,11 @@ jobs:
           node-version: "22"
       - name: Build and test the React frontend and Windows PWA assets
         shell: pwsh
+        working-directory: web/frontend
         run: |
-          npm install --prefix web/frontend --no-audit --no-fund --package-lock=false
+          npm install --no-audit --no-fund --package-lock=false
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          npm run build --prefix web/frontend
+          npm run build
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          npm run test --prefix web/frontend
+          npm test
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
