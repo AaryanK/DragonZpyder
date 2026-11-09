@@ -271,3 +271,19 @@ def test_paid_gateway_ui_preflight_rejects_external_origin_without_network(monke
     except HTTPException as exc:
         assert exc.status_code == 503
         assert "private staging gateway" in exc.detail
+
+
+
+def test_staging_lab_exposes_authenticated_harness_but_disabled_by_default(monkeypatch):
+    monkeypatch.delenv("DRAGONZPYDER_WEB_TASKS_ENABLED", raising=False)
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    with TestClient(app) as client:
+        paths = {route.path for route in app.routes}
+        assert "/internal/web-tasks/submit" in paths
+        assert "/internal/web-tasks/list" in paths
+        assert "/internal/web-tasks/admin/detail" in paths
+        denied = client.post(
+            "/internal/web-tasks/list", json={"owner": "test-person"},
+        )
+        assert denied.status_code == 503
+        assert "tasks" not in denied.json()
