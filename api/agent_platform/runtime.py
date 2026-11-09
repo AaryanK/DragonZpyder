@@ -87,7 +87,7 @@ class AgentPipelineError(RuntimeError):
         self.phase = phase
 
 
-def build_agent(model, checkpointer, *, parent_job_id: str | None = None):
+def build_agent(model, checkpointer, *, parent_job_id: str | None = None, external_tools=None):
     """Construct the enabled agent harness without executing a model call."""
     if os.getenv("DRAGONZPYDER_AGENT_HARNESS_V2") == "1":
         from .harness import build_frontier_agent
@@ -97,11 +97,12 @@ def build_agent(model, checkpointer, *, parent_job_id: str | None = None):
             if configured:
                 models[role] = (model_client(model_override=configured, parent_job_id=parent_job_id)
                                 if parent_job_id is not None else model_client(model_override=configured))
-        return build_frontier_agent(model, checkpointer, specialist_models=models)
+        return build_frontier_agent(model, checkpointer, specialist_models=models, external_tools=external_tools)
     backend = StateBackend()
     # A replacement filesystem middleware must explicitly use the same backend.
     return create_deep_agent(
         model=model,
+        tools=list(external_tools or []),
         backend=backend,
         middleware=[FilesystemMiddleware(
             backend=backend,
@@ -314,7 +315,8 @@ class AgentRuntime:
 
     async def run_report(self, *, service_id: str, thread_id: str, prompt: str,
                          recover_partial_on_failure: bool = False,
-                         parent_job_id: str | None = None) -> dict:
+                         parent_job_id: str | None = None,
+                         external_tools=None) -> dict:
         if self._checkpointer is None:
             raise RuntimeError("Agent runtime is not started")
         if not isinstance(prompt, str) or not 1 <= len(prompt.strip()) <= 12000:
@@ -326,9 +328,9 @@ class AgentRuntime:
         delegation_trace = DelegationTrace()
         try:
             agent = (
-                build_agent(model, self._checkpointer, parent_job_id=parent_job_id)
+                build_agent(model, self._checkpointer, parent_job_id=parent_job_id, external_tools=external_tools)
                 if parent_job_id is not None else
-                build_agent(model, self._checkpointer)
+                build_agent(model, self._checkpointer, external_tools=external_tools)
             )
         except Exception as exc:
             raise AgentPipelineError("construction") from exc
