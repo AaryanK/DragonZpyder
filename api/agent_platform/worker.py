@@ -27,6 +27,10 @@ def main() -> None:
         from .goal_tick import make_goal_tick_task, require_synthetic_gate
         require_synthetic_gate()
         workflows.append(make_goal_tick_task(hatchet))
+    if os.getenv("DRAGONZPYDER_WEB_TASKS_ENABLED") == "1":
+        from .web_task_worker import make_web_task, require_web_task_gate
+        require_web_task_gate()
+        workflows.append(make_web_task(hatchet))
     worker = hatchet.worker("dragonzpyder-agent-worker", slots=2, workflows=workflows)
     worker.start()
 
