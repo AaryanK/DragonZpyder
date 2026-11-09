@@ -28,3 +28,17 @@ th{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.05
 .status,.error{padding:16px;border:1px solid var(--line);border-radius:10px}
 .error{border-color:#b66e6e;color:#ffbebe}
 @media(max-width:580px){.admin-layout{padding:22px 16px 60px}.admin-header{display:block}.account-link{display:inline-block;margin-top:16px}}
+
+.dz-admin-tasks{margin-top:36px}
+.dz-admin-tasks-header{display:flex;justify-content:space-between;gap:24px;align-items:flex-start}
+.dz-admin-tasks-header h2{margin-bottom:6px}
+.dz-admin-live{white-space:nowrap;font-size:11px;color:#8dbca2;letter-spacing:.08em}
+.dz-admin-task-grid{display:grid;grid-template-columns:minmax(200px,35%) 1fr;gap:24px;min-height:300px}
+.dz-admin-task-list{max-height:430px;overflow-y:auto;border-right:1px solid var(--line);padding-right:12px}
+.dz-admin-task{width:100%;display:grid;grid-template-columns:1fr auto;gap:4px;text-align:left;background:transparent;border:1px solid transparent;border-radius:11px;padding:12px;cursor:pointer}
+.dz-admin-task:hover,.dz-admin-task.chosen{background:#252b26;border-color:var(--line)}
+.dz-admin-task strong{font-size:12px;color:var(--accent)}.dz-admin-task small{grid-column:1/-1;color:var(--muted);font-size:11px}
+.dz-admin-task-events{min-width:0}.dz-admin-task-events h3{font-size:17px;margin:0}
+.dz-admin-event{display:flex;flex-direction:column;padding:10px 0;border-bottom:1px solid var(--line);font-size:13px}
+.dz-admin-event small{color:var(--muted);font-size:11px}
+@media(max-width:680px){.dz-admin-task-grid{grid-template-columns:1fr}.dz-admin-task-list{max-height:250px;border-right:0;border-bottom:1px solid var(--line);padding-right:0}}
