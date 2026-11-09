@@ -30,7 +30,7 @@ async function download(asset) {
       const bytes = Buffer.from(await response.arrayBuffer());
       if (bytes.length < 100 || bytes.length > asset.maxBytes) throw new Error("Unexpected image size for "+asset.name);
       if (!bytes.subarray(0,8).equals(PNG_SIGNATURE)) throw new Error("Not a PNG: "+asset.name);
-      const gitBlobHash = createHash("sha1").update(Buffer.from("blob "+bytes.length+"\\0")).update(bytes).digest("hex");
+      const gitBlobHash = createHash("sha1").update(Buffer.from("blob "+bytes.length+"\0")).update(bytes).digest("hex");
       if (gitBlobHash !== asset.sha) throw new Error("Official "+asset.name+" hash differs from pinned brand source");
       return bytes;
     } catch (err) {
@@ -76,5 +76,5 @@ const manifest = {
     {src:"/app-icon-512.png",sizes:"512x512",type:"image/png",purpose:"any"},
   ]
 };
-writeFileSync(resolve(dist,"app.webmanifest"),JSON.stringify(manifest,null,2)+"\\n");
+writeFileSync(resolve(dist,"app.webmanifest"),JSON.stringify(manifest,null,2)+"\n");
 console.log("Verified official DragonZpyder and Operly logos and Windows install icons.");
