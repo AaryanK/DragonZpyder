@@ -16,6 +16,7 @@ from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
 from .goal_store import _principal
+from .goal_reconciler_schema import RUN_SCHEMA
 from .workflows.spec import next_schedule_time
 
 _PROBE_IDENTITY = _principal(
@@ -24,29 +25,6 @@ _PROBE_IDENTITY = _principal(
 )
 _MAX_PER_TICK = 20
 _LEASE = timedelta(seconds=90)
-
-RUN_SCHEMA = """
-CREATE TABLE IF NOT EXISTS dragonzpyder_goal_runs (
-    run_id uuid PRIMARY KEY,
-    goal_id uuid NOT NULL REFERENCES dragonzpyder_goals(goal_id) ON DELETE CASCADE,
-    scheduled_for timestamptz NOT NULL,
-    status text NOT NULL CHECK (
-      status IN ('pending','running','awaiting_authorization',
-                 'completed','failed','cancelled')
-    ),
-    claim_token uuid,
-    lease_until timestamptz,
-    attempts integer NOT NULL DEFAULT 0 CHECK (attempts BETWEEN 0 AND 3),
-    evidence_sha256 char(64),
-    error_code text,
-    created_at timestamptz NOT NULL DEFAULT now(),
-    updated_at timestamptz NOT NULL DEFAULT now(),
-    UNIQUE(goal_id, scheduled_for)
-);
-CREATE INDEX IF NOT EXISTS idx_dz_goal_runs_pending
- ON dragonzpyder_goal_runs(status, lease_until)
- WHERE status IN ('pending','running');
-"""
 
 
 def utc_now() -> datetime:
