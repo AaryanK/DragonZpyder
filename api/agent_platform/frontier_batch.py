@@ -44,6 +44,11 @@ def safe_metrics(case_id: str, report: dict) -> dict:
     }}
 
 
+def independently_verified(report: dict) -> bool:
+    """Only an explicit evaluator verdict counts as a verified completion."""
+    return report.get("objective_verified") is True
+
+
 def validated_budget(data: object) -> Decimal | None:
     if (not isinstance(data, dict) or data.get("approved") is not True
             or data.get("reason") != "hard_nonresetting_key_cap_verified"):
@@ -245,7 +250,7 @@ async def run_frontier_batch_once() -> None:
                 log.error("Frontier case persistence unavailable id=%s", case_id)
                 break
             complete += 1
-            if report["objective_verified"] is True:
+            if independently_verified(report):
                 verified += 1
             log.warning(
                 "Frontier live case result id=%s status=%s verified=%s "
