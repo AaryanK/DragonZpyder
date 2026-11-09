@@ -1,4 +1,5 @@
 import React from "react";
+import { createPortal } from "react-dom";
 import { CommandPalette, QuickAddMenu, WorkspaceHub } from "./WorkspaceControls.jsx";
 
 
@@ -86,7 +87,7 @@ function CameraAttachment() {
       </svg>
       <span>Capture photo<small>Preview and attach an image</small></span>
     </button>
-    {open && <div className="camera-capture-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) close(); }}>
+    {open && createPortal(<div className="camera-capture-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) close(); }}>
       <section id="camera-capture-panel" className="camera-capture-panel"
         role="dialog" aria-modal="true" aria-labelledby="camera-capture-title">
         <div className="camera-capture-header"><div><div className="eyebrow">Camera / local preview</div>
@@ -100,7 +101,7 @@ function CameraAttachment() {
           <button type="button" className="camera-cancel" onClick={close}>Cancel</button>
           <button type="button" className="camera-capture-action" onClick={capture} disabled={Boolean(error)}>Capture photo</button>
         </div>
-      </section></div>}
+      </section></div>, document.body)}
   </>;
 }
 
