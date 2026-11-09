@@ -22,6 +22,7 @@ const COMMANDS = [
   { title: "Start live voice", hint: "Voice", words: "voice call audio", run: () => act("companion-open") },
   { title: "Choose Agent / AI Mesh", hint: "Mode", words: "model select agent mesh", run: () => document.getElementById("mesh-switch")?.focus() },
   { title: "Review pending approvals", hint: "Safety", words: "approve permissions actions", run: () => act("approvals-top") },
+  { title: "Browse Personal tools", hint: "Capabilities", words: "personal tools integrations capabilities mcp", run: () => window.dispatchEvent(new Event("dragonzpyder:personal-capabilities-open")) },
   { title: "Open workspace navigation", hint: "Navigate", words: "agents jobs projects memory files automations", run: openWorkspace },
   { title: "Account and connections", hint: "Settings", words: "account settings connected apps", run: () => { window.location.href = "/account"; } },
 ];
@@ -322,6 +323,7 @@ const HUB_SECTIONS = [
   { title: "Conversations", icon: "▣", status: "Available", detail: "Search your saved chats and start a new conversation.", action: focusSearch },
   { title: "Approvals", icon: "◉", status: "Available", detail: "Review actions before DragonZpyder is allowed to execute them.", action: () => act("approvals-top") },
   { title: "Connections", icon: "⌘", status: "Available", detail: "Manage your account and supported integrations.", action: () => { window.location.href = "/account"; } },
+  { title: "Personal tools", icon: "⌕", status: "Available", detail: "Search only capabilities currently authorized for your Personal account.", action: () => window.dispatchEvent(new Event("dragonzpyder:personal-capabilities-open")) },
   { title: "Models", icon: "✦", status: "Available in Mesh", detail: "Switch to AI Mesh to select a supported model and see its pricing.", action: () => document.getElementById("mesh-switch")?.focus() },
   { title: "Agents", icon: "◇", status: "Integration planned", detail: "Agent-team configuration and orchestration are not wired into this chat yet." },
   { title: "Jobs & automations", icon: "◷", status: "Integration planned", detail: "Background worker infrastructure is being tested separately; there is no live jobs UI here yet." },
