@@ -233,8 +233,10 @@ async def run_live_case(case_id: str) -> dict:
     case = suite[case_id]
     started = monotonic()
     runtime = AgentRuntime()
-    await runtime.start()
     try:
+        # Bound initialization separately; the report timeout alone cannot
+        # stop a stalled checkpoint/database connection.
+        await asyncio.wait_for(runtime.start(), timeout=30)
         try:
             # Most cases deliberately require capabilities the agent lacks.
             # Executing them can still measure *honesty* and partial progress.
@@ -278,7 +280,9 @@ async def run_live_case(case_id: str) -> dict:
                 "objective_verified": False,
             }
     finally:
-        await runtime.close()
+        # Cleanup must not hang the operator diagnostic indefinitely.
+        # Cancellation is propagated; no success is reported on timeout.
+        await asyncio.wait_for(runtime.close(), timeout=15)
     score["elapsed_s"] = round(monotonic() - started, 2)
     score["comparison_with_frontier_labs"] = "not_available"
     return score
