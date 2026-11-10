@@ -461,3 +461,55 @@ def test_runtime_startup_cancellation_closes_checkpoint_pool(monkeypatch):
         asyncio.run(runtime.start())
     assert events == ["open", "close"]
     assert runtime._checkpointer is None
+
+
+def test_live_diagnostic_bounds_stalled_startup_and_closes(monkeypatch):
+    """No paid model calls: stalled startup must be cancelled and cleaned."""
+    from agent_platform import frontier_stress as stress
+    from agent_platform import runtime as runtime_module
+
+    events = []
+
+    class FakeRuntime:
+        async def start(self):
+            events.append("start")
+            await asyncio.Event().wait()
+
+        async def close(self):
+            events.append("close")
+
+    monkeypatch.setattr(stress, "live_eval_enabled", lambda: True)
+    monkeypatch.setattr(stress, "STARTUP_TIMEOUT_S", 0.01)
+    monkeypatch.setattr(runtime_module, "AgentRuntime", FakeRuntime)
+    with pytest.raises(asyncio.TimeoutError):
+        asyncio.run(stress.run_live_case("F01"))
+    assert events == ["start", "close"]
+
+
+def test_live_diagnostic_bounds_stalled_cleanup(monkeypatch):
+    """No paid model calls: even failure cleanup has a cancellation deadline."""
+    from agent_platform import frontier_stress as stress
+    from agent_platform import runtime as runtime_module
+
+    events = []
+
+    class FakeRuntime:
+        async def start(self):
+            events.append("start")
+
+        async def run_report(self, **kwargs):
+            raise RuntimeError("synthetic failure")
+
+        async def close(self):
+            events.append("close")
+            try:
+                await asyncio.Event().wait()
+            finally:
+                events.append("close_cancelled")
+
+    monkeypatch.setattr(stress, "live_eval_enabled", lambda: True)
+    monkeypatch.setattr(stress, "CLEANUP_TIMEOUT_S", 0.01)
+    monkeypatch.setattr(runtime_module, "AgentRuntime", FakeRuntime)
+    with pytest.raises(asyncio.TimeoutError):
+        asyncio.run(stress.run_live_case("F01"))
+    assert events == ["start", "close", "close_cancelled"]
