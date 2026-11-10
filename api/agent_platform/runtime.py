@@ -303,10 +303,19 @@ class AgentRuntime:
         dsn = os.getenv("DRAGONZPYDER_AGENT_DATABASE_URL", "")
         if not dsn.startswith(("postgres://", "postgresql://")):
             raise RuntimeError("A dedicated PostgreSQL checkpoint DSN is required")
-        self._checkpointer = await self._stack.enter_async_context(
-            AsyncPostgresSaver.from_conn_string(dsn)
-        )
-        await self._checkpointer.setup()
+        try:
+            self._checkpointer = await self._stack.enter_async_context(
+                AsyncPostgresSaver.from_conn_string(dsn)
+            )
+            await self._checkpointer.setup()
+        except BaseException:
+            # Setup failure or cancellation must not strand an opened DB pool.
+            # Keep the original failure, even if cleanup itself fails.
+            try:
+                await self.close()
+            except BaseException:
+                pass
+            raise
 
     async def close(self) -> None:
         await self._stack.aclose()
