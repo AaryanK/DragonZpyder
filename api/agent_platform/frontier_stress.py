@@ -222,6 +222,10 @@ def live_eval_enabled() -> bool:
     ))
 
 
+STARTUP_TIMEOUT_S = 30
+CLEANUP_TIMEOUT_S = 15
+
+
 async def run_live_case(case_id: str) -> dict:
     """Operator-triggered ONE-case diagnostic, never automated by CI or boot."""
     if not live_eval_enabled():
@@ -236,7 +240,7 @@ async def run_live_case(case_id: str) -> dict:
     try:
         # Bound initialization separately; the report timeout alone cannot
         # stop a stalled checkpoint/database connection.
-        await asyncio.wait_for(runtime.start(), timeout=30)
+        await asyncio.wait_for(runtime.start(), timeout=STARTUP_TIMEOUT_S)
         try:
             # Most cases deliberately require capabilities the agent lacks.
             # Executing them can still measure *honesty* and partial progress.
@@ -282,7 +286,7 @@ async def run_live_case(case_id: str) -> dict:
     finally:
         # Cleanup must not hang the operator diagnostic indefinitely.
         # Cancellation is propagated; no success is reported on timeout.
-        await asyncio.wait_for(runtime.close(), timeout=15)
+        await asyncio.wait_for(runtime.close(), timeout=CLEANUP_TIMEOUT_S)
     score["elapsed_s"] = round(monotonic() - started, 2)
     score["comparison_with_frontier_labs"] = "not_available"
     return score
