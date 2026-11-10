@@ -392,3 +392,72 @@ def test_oracle_replay_and_missing_run_binding_fail_closed():
     valid = score_report(case, report, oracle={
         "case_id": "F08", "execution_id": "run-b", "passed": True}, **kwargs)
     assert valid["objective_verified"] is True
+
+
+def test_runtime_startup_setup_failure_closes_checkpoint_pool(monkeypatch):
+    """No paid calls or PostgreSQL required; exercise real AgentRuntime.start."""
+    from contextlib import asynccontextmanager
+    from agent_platform import runtime as module
+
+    events = []
+
+    class FakeSaver:
+        async def setup(self):
+            events.append("setup")
+            raise RuntimeError("synthetic setup failure")
+
+    class FakePostgres:
+        @staticmethod
+        @asynccontextmanager
+        async def from_conn_string(_dsn):
+            events.append("open")
+            try:
+                yield FakeSaver()
+            finally:
+                events.append("close")
+
+    monkeypatch.setenv("DRAGONZPYDER_AGENTS_ENABLED", "1")
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_DATABASE_URL", "postgresql://localhost/test")
+    monkeypatch.delenv("DRAGONZPYDER_AGENT_REQUIRE_MODEL_PREFLIGHT", raising=False)
+    monkeypatch.setattr(module, "model_client", lambda: object())
+    monkeypatch.setattr(module, "AsyncPostgresSaver", FakePostgres)
+
+    runtime = module.AgentRuntime()
+    with pytest.raises(RuntimeError, match="synthetic setup failure"):
+        asyncio.run(runtime.start())
+    assert events == ["open", "setup", "close"]
+    assert runtime._checkpointer is None
+
+
+def test_runtime_startup_cancellation_closes_checkpoint_pool(monkeypatch):
+    """Cancellation is BaseException; cleanup must still run."""
+    from contextlib import asynccontextmanager
+    from agent_platform import runtime as module
+
+    events = []
+
+    class FakeSaver:
+        async def setup(self):
+            raise asyncio.CancelledError()
+
+    class FakePostgres:
+        @staticmethod
+        @asynccontextmanager
+        async def from_conn_string(_dsn):
+            events.append("open")
+            try:
+                yield FakeSaver()
+            finally:
+                events.append("close")
+
+    monkeypatch.setenv("DRAGONZPYDER_AGENTS_ENABLED", "1")
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_DATABASE_URL", "postgresql://localhost/test")
+    monkeypatch.delenv("DRAGONZPYDER_AGENT_REQUIRE_MODEL_PREFLIGHT", raising=False)
+    monkeypatch.setattr(module, "model_client", lambda: object())
+    monkeypatch.setattr(module, "AsyncPostgresSaver", FakePostgres)
+
+    runtime = module.AgentRuntime()
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(runtime.start())
+    assert events == ["open", "close"]
+    assert runtime._checkpointer is None
