@@ -189,13 +189,24 @@ def score_report(case: dict, report: dict | None, *,
 
 def readiness_report() -> dict:
     suite = load_suite()
+    cases = [score_report(case, None) for case in suite]
+    # Static eligibility is distinct from execution or outcome verification.
+    # Do not silently count a capability-blocked case as a model failure.
+    blocked = {
+        case["id"]: sorted(set(case["required_capabilities"]) - CAPABILITIES)
+        for case in suite
+        if set(case["required_capabilities"]) - CAPABILITIES
+    }
     return {
         "suite": "frontier_stress_v1",
         "kind": "capability_readiness_only_not_model_benchmark",
-        "cases": [score_report(case, None) for case in suite],
+        "cases": cases,
         "count": len(suite),
         "distinct_domains": len({c["domain"] for c in suite}),
         "prompt_word_counts": {c["id"]: len(c["prompt"].split()) for c in suite},
+        "capability_eligible_count": len(suite) - len(blocked),
+        "capability_blocked_count": len(blocked),
+        "missing_capabilities_by_case": blocked,
         "real_model_runs": 0,
         "all_cases_outcome_verified": False,
     }
