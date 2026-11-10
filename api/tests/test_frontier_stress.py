@@ -33,6 +33,23 @@ def test_readiness_is_not_a_claim_of_ten_passes():
     assert all(c["objective_verified"] is False for c in result["cases"])
 
 
+
+def test_readiness_reports_capability_eligibility_not_model_failure():
+    result = readiness_report()
+    suite = load_suite()
+    blocked = result["missing_capabilities_by_case"]
+    assert result["capability_blocked_count"] == len(blocked) == 10
+    assert result["capability_eligible_count"] == 0
+    assert set(blocked) == {case["id"] for case in suite}
+    for case in suite:
+        expected = sorted(set(case["required_capabilities"]) -
+                          {"filesystem", "web_search", "inline_subagents"})
+        assert blocked[case["id"]] == expected
+        assert "parallel_subagents" in blocked[case["id"]]
+    assert result["real_model_runs"] == 0
+    assert all(not case["objective_verified"] for case in result["cases"])
+
+
 def test_parallelism_requires_two_measured_overlapping_distinct_agents():
     assert not parallel_overlap(None, execution_id="eval-run")
     assert not parallel_overlap([{"agent": "analyst", "start_ms": 0, "end_ms": 100, "status": "completed", "execution_id": "eval-run"}], execution_id="eval-run")
