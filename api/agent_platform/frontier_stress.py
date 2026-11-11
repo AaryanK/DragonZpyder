@@ -241,6 +241,7 @@ async def run_live_case(case_id: str) -> dict:
     case = suite[case_id]
     started = monotonic()
     runtime = AgentRuntime()
+    primary_error = None
     try:
         # Bound initialization separately; the report timeout alone cannot
         # stop a stalled checkpoint/database connection.
@@ -287,10 +288,20 @@ async def run_live_case(case_id: str) -> dict:
                 "http_status": http_status if type(http_status) is int else None,
                 "objective_verified": False,
             }
+    except BaseException as exc:
+        # Preserve the initiating failure, including cancellation, if cleanup
+        # also fails. Never attach raw exception messages or secret-bearing args.
+        primary_error = exc
+        raise
     finally:
-        # Cleanup must not hang the operator diagnostic indefinitely.
-        # Cancellation is propagated; no success is reported on timeout.
-        await asyncio.wait_for(runtime.close(), timeout=CLEANUP_TIMEOUT_S)
+        try:
+            await asyncio.wait_for(runtime.close(), timeout=CLEANUP_TIMEOUT_S)
+        except Exception as cleanup_error:
+            if primary_error is None:
+                raise
+            primary_error.add_note(
+                "Agent runtime cleanup also failed: " + type(cleanup_error).__name__
+            )
     score["elapsed_s"] = round(monotonic() - started, 2)
     score["comparison_with_frontier_labs"] = "not_available"
     return score
