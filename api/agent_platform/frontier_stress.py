@@ -131,6 +131,10 @@ def score_report(case: dict, report: dict | None, *,
     proved_kinds = sorted({
         r["kind"] for r in receipts if isinstance(r, dict)
         and r.get("verified") is True and r.get("kind") in EXTERNAL_RECEIPT_KINDS
+        and r.get("case_id") == case["id"]
+        and isinstance(report.get("execution_id"), str)
+        and bool(report["execution_id"])
+        and r.get("execution_id") == report["execution_id"]
     })
     parallel = parallel_overlap(spans, execution_id=report.get("execution_id"))
     has_artifacts = (
