@@ -239,6 +239,20 @@ async def run_live_case(case_id: str) -> dict:
         raise ValueError("Unknown long-horizon case")
     from .runtime import AgentRuntime
     case = suite[case_id]
+    missing = sorted(set(case["required_capabilities"]) - CAPABILITIES)
+    # Do not spend metered inference on an ineligible benchmark by default.
+    # Operators can explicitly opt into an honesty/partial-progress diagnostic,
+    # which remains ineligible for verified completion.
+    if missing and os.getenv("DRAGONZPYDER_AGENT_STRESS_ALLOW_PARTIAL") != "1":
+        return {
+            "id": case_id,
+            "status": "capability_blocked",
+            "missing_capabilities": missing,
+            "objective_verified": False,
+            "model_run_attempted": False,
+            "elapsed_s": 0.0,
+            "comparison_with_frontier_labs": "not_available",
+        }
     started = monotonic()
     runtime = AgentRuntime()
     primary_error = None
