@@ -152,7 +152,8 @@ def test_artifact_basenames_in_wrong_workspace_cannot_be_credited():
     }
     score = score_report(
         case, report, supported=set(case["required_capabilities"]),
-        receipts=[{"kind": "sandbox_test", "verified": True}],
+        receipts=[{"kind": "sandbox_test", "verified": True,
+                     "case_id": case["id"], "execution_id": "eval-run"}],
         spans=[
             {"agent": "teacher", "start_ms": 10, "end_ms": 110, "status": "completed", "execution_id": "eval-run"},
             {"agent": "reviewer", "start_ms": 20, "end_ms": 120, "status": "completed", "execution_id": "eval-run"},
@@ -176,7 +177,8 @@ def test_agent_self_claim_cannot_replace_independent_outcome_oracle():
     }
     kwargs = {
         "supported": set(case["required_capabilities"]),
-        "receipts": [{"kind": "sandbox_test", "verified": True}],
+        "receipts": [{"kind": "sandbox_test", "verified": True,
+                     "case_id": case["id"], "execution_id": "eval-run"}],
         "spans": [
             {"agent": "teacher", "start_ms": 10, "end_ms": 110, "status": "completed", "execution_id": "eval-run"},
             {"agent": "reviewer", "start_ms": 20, "end_ms": 120, "status": "completed", "execution_id": "eval-run"},
@@ -223,7 +225,8 @@ def test_incomplete_or_failed_run_cannot_earn_verified_success():
     }
     kwargs = {
         "supported": set(case["required_capabilities"]),
-        "receipts": [{"kind": "sandbox_test", "verified": True}],
+        "receipts": [{"kind": "sandbox_test", "verified": True,
+                     "case_id": case["id"], "execution_id": "eval-run"}],
         "spans": [
             {"agent": "a", "start_ms": 10, "end_ms": 110, "status": "completed", "execution_id": "eval-run"},
             {"agent": "b", "start_ms": 20, "end_ms": 120, "status": "completed", "execution_id": "eval-run"},
@@ -278,7 +281,8 @@ def test_unrelated_tool_readback_cannot_earn_100_percent_artifact_score():
     result = score_report(
         case, report,
         supported=set(case["required_capabilities"]),
-        receipts=[{"kind": "sandbox_test", "verified": True}],
+        receipts=[{"kind": "sandbox_test", "verified": True,
+                     "case_id": case["id"], "execution_id": "eval-run"}],
         spans=[
             {"agent": "teacher", "start_ms": 10, "end_ms": 110, "status": "completed", "execution_id": "eval-run"},
             {"agent": "reviewer", "start_ms": 20, "end_ms": 120, "status": "completed", "execution_id": "eval-run"},
@@ -302,7 +306,8 @@ def test_generic_read_call_without_path_correlated_receipts_is_not_readback():
     score = score_report(
         case, report,
         supported=set(case["required_capabilities"]),
-        receipts=[{"kind": "sandbox_test", "verified": True}],
+        receipts=[{"kind": "sandbox_test", "verified": True,
+                     "case_id": case["id"], "execution_id": "eval-run"}],
         spans=[
             {"agent": "a", "start_ms": 0, "end_ms": 100, "status": "completed", "execution_id": "eval-run"},
             {"agent": "b", "start_ms": 1, "end_ms": 101, "status": "completed", "execution_id": "eval-run"},
@@ -360,7 +365,8 @@ def test_score_report_rejects_cross_execution_parallel_evidence():
          "status": "completed", "execution_id": "run-b"},
     ]
     score = score_report(case, report, supported=set(case["required_capabilities"]),
-        receipts=[{"kind": "sandbox_test", "verified": True}], spans=spans,
+        receipts=[{"kind": "sandbox_test", "verified": True,
+                     "case_id": case["id"], "execution_id": "eval-run"}], spans=spans,
         oracle={"case_id": "F08", "passed": True},
         oracle_verifier=lambda *_: True)
     assert score["parallelism_observed"] is False
@@ -374,7 +380,8 @@ def test_oracle_replay_and_missing_run_binding_fail_closed():
               "artifact_readback_paths": paths, "successful_tools": ["write_file", "read_file"],
               "status": "completed"}
     kwargs = {"supported": set(case["required_capabilities"]),
-              "receipts": [{"kind": "sandbox_test", "verified": True}],
+              "receipts": [{"kind": "sandbox_test", "verified": True,
+                     "case_id": case["id"], "execution_id": "run-b"}],
               "spans": [
                   {"agent": "writer", "start_ms": 0, "end_ms": 100,
                    "status": "completed", "execution_id": "run-b"},
@@ -513,3 +520,27 @@ def test_live_diagnostic_bounds_stalled_cleanup(monkeypatch):
     with pytest.raises(asyncio.TimeoutError):
         asyncio.run(stress.run_live_case("F01"))
     assert events == ["start", "close", "close_cancelled"]
+
+
+def test_external_receipts_require_matching_case_and_execution():
+    case = next(c for c in load_suite() if c["id"] == "F08")
+    report = {"execution_id": "run-b", "status": "completed"}
+    supported = set(case["required_capabilities"])
+    def check(receipt):
+        return score_report(case, report, supported=supported,
+                            receipts=[receipt])["external_receipt_kinds"]
+    base = {"kind": "sandbox_test", "verified": True,
+            "case_id": "F08", "execution_id": "run-b"}
+    assert check(base) == ["sandbox_test"]
+    for bad in (
+        dict(base, case_id="F07"),
+        dict(base, execution_id="run-a"),
+        dict(base, case_id=""),
+        dict(base, execution_id=""),
+        {k: v for k, v in base.items() if k != "case_id"},
+        {k: v for k, v in base.items() if k != "execution_id"},
+        dict(base, verified=False),
+    ):
+        assert check(bad) == []
+    assert score_report(case, {"status": "completed"}, supported=supported,
+                        receipts=[base])["external_receipt_kinds"] == []
