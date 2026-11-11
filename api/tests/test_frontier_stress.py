@@ -544,3 +544,44 @@ def test_external_receipts_require_matching_case_and_execution():
         assert check(bad) == []
     assert score_report(case, {"status": "completed"}, supported=supported,
                         receipts=[base])["external_receipt_kinds"] == []
+
+
+def test_live_diagnostic_preserves_startup_error_when_cleanup_also_fails(monkeypatch):
+    """The initiating failure must not be replaced by cleanup failure."""
+    from agent_platform import frontier_stress as stress
+    from agent_platform import runtime as runtime_module
+
+    class FakeRuntime:
+        async def start(self):
+            raise ValueError("synthetic startup failure")
+
+        async def close(self):
+            raise RuntimeError("synthetic cleanup failure")
+
+    monkeypatch.setattr(stress, "live_eval_enabled", lambda: True)
+    monkeypatch.setattr(runtime_module, "AgentRuntime", FakeRuntime)
+    with pytest.raises(ValueError, match="synthetic startup failure") as caught:
+        asyncio.run(stress.run_live_case("F01"))
+    assert any("cleanup also failed: RuntimeError" in note
+               for note in caught.value.__notes__)
+
+
+def test_live_diagnostic_reports_cleanup_failure_after_handled_execution(monkeypatch):
+    """A handled run failure cannot hide a subsequent cleanup failure."""
+    from agent_platform import frontier_stress as stress
+    from agent_platform import runtime as runtime_module
+
+    class FakeRuntime:
+        async def start(self):
+            return None
+
+        async def run_report(self, **kwargs):
+            raise ValueError("synthetic model failure")
+
+        async def close(self):
+            raise RuntimeError("synthetic cleanup failure")
+
+    monkeypatch.setattr(stress, "live_eval_enabled", lambda: True)
+    monkeypatch.setattr(runtime_module, "AgentRuntime", FakeRuntime)
+    with pytest.raises(RuntimeError, match="synthetic cleanup failure"):
+        asyncio.run(stress.run_live_case("F01"))
