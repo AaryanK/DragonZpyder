@@ -39,6 +39,7 @@ def test_live_case_does_not_promote_self_reported_artifacts_to_verified_success(
         async def close(self):
             events.append("close")
 
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_STRESS_ALLOW_PARTIAL", "1")
     monkeypatch.setattr(stress, "live_eval_enabled", lambda: True)
     monkeypatch.setattr(runtime_module, "AgentRuntime", SyntheticRuntime)
     result = asyncio.run(stress.run_live_case("F08"))
@@ -74,9 +75,25 @@ def test_live_case_never_trusts_claimed_success_without_real_readbacks(monkeypat
         async def close(self):
             pass
 
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_STRESS_ALLOW_PARTIAL", "1")
     monkeypatch.setattr(stress, "live_eval_enabled", lambda: True)
     monkeypatch.setattr(runtime_module, "AgentRuntime", SyntheticRuntime)
     result = asyncio.run(stress.run_live_case("F08"))
     assert result["artifact_files_read_back"] == []
     assert result["read_back_observed"] is False
     assert result["objective_verified"] is False
+
+
+def test_ineligible_case_is_blocked_before_runtime_start_or_model_spend(monkeypatch):
+    class MustNotStart:
+        def __init__(self):
+            raise AssertionError("runtime must not be constructed")
+
+    monkeypatch.setattr(stress, "live_eval_enabled", lambda: True)
+    monkeypatch.delenv("DRAGONZPYDER_AGENT_STRESS_ALLOW_PARTIAL", raising=False)
+    monkeypatch.setattr(runtime_module, "AgentRuntime", MustNotStart)
+    result = asyncio.run(stress.run_live_case("F08"))
+    assert result["status"] == "capability_blocked"
+    assert result["model_run_attempted"] is False
+    assert result["objective_verified"] is False
+    assert "parallel_subagents" in result["missing_capabilities"]
