@@ -485,6 +485,7 @@ def test_live_diagnostic_bounds_stalled_startup_and_closes(monkeypatch):
         async def close(self):
             events.append("close")
 
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_STRESS_ALLOW_PARTIAL", "1")
     monkeypatch.setattr(stress, "live_eval_enabled", lambda: True)
     monkeypatch.setattr(stress, "STARTUP_TIMEOUT_S", 0.01)
     monkeypatch.setattr(runtime_module, "AgentRuntime", FakeRuntime)
@@ -514,6 +515,7 @@ def test_live_diagnostic_bounds_stalled_cleanup(monkeypatch):
             finally:
                 events.append("close_cancelled")
 
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_STRESS_ALLOW_PARTIAL", "1")
     monkeypatch.setattr(stress, "live_eval_enabled", lambda: True)
     monkeypatch.setattr(stress, "CLEANUP_TIMEOUT_S", 0.01)
     monkeypatch.setattr(runtime_module, "AgentRuntime", FakeRuntime)
@@ -558,6 +560,7 @@ def test_live_diagnostic_preserves_startup_error_when_cleanup_also_fails(monkeyp
         async def close(self):
             raise RuntimeError("synthetic cleanup failure")
 
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_STRESS_ALLOW_PARTIAL", "1")
     monkeypatch.setattr(stress, "live_eval_enabled", lambda: True)
     monkeypatch.setattr(runtime_module, "AgentRuntime", FakeRuntime)
     with pytest.raises(ValueError, match="synthetic startup failure") as caught:
@@ -581,6 +584,7 @@ def test_live_diagnostic_reports_cleanup_failure_after_handled_execution(monkeyp
         async def close(self):
             raise RuntimeError("synthetic cleanup failure")
 
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_STRESS_ALLOW_PARTIAL", "1")
     monkeypatch.setattr(stress, "live_eval_enabled", lambda: True)
     monkeypatch.setattr(runtime_module, "AgentRuntime", FakeRuntime)
     with pytest.raises(RuntimeError, match="synthetic cleanup failure"):
