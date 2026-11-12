@@ -1,0 +1,36 @@
+name: Artifact oracle prototype checks
+
+on:
+  push:
+    branches:
+      - codex/trusted-artifact-oracle-prototype-20261112
+    paths:
+      - 'api/agent_platform/evals/outcome_oracle_prototype.py'
+      - 'api/tests/test_outcome_oracle_prototype.py'
+      - 'api/tests/test_outcome_oracle_bounds.py'
+      - '.github/workflows/artifact-oracle-prototype.yml'
+  pull_request:
+    paths:
+      - 'api/agent_platform/evals/outcome_oracle_prototype.py'
+      - 'api/tests/test_outcome_oracle_prototype.py'
+      - 'api/tests/test_outcome_oracle_bounds.py'
+      - '.github/workflows/artifact-oracle-prototype.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  artifact-oracle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile isolated verifier
+        run: python -m py_compile api/agent_platform/evals/outcome_oracle_prototype.py
+      - name: Run adversarial oracle regression suite
+        working-directory: api
+        run: python -m unittest discover -s tests -p 'test_outcome_oracle*.py' -v
