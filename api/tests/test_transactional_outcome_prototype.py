@@ -69,6 +69,26 @@ class TransactionalOutcomeTests(unittest.TestCase):
         (self.root / "report.txt").symlink_to("/etc/hosts")
         self.assertEqual(self.check(), "rejected")
 
+    def test_delivery_availability_after_delete_and_replace(self):
+        from agent_platform.evals.transactional_outcome_prototype import check_delivery_availability
+        self.assertEqual(self.check(), 'verified')
+        args = dict(issuer='trusted-sandbox-runner-v1', nonce='n', task_id='t', run_id='r')
+        self.assertEqual(check_delivery_availability(self.db, self.root, **args), 'available')
+        (self.root / 'report.txt').unlink()
+        self.assertEqual(check_delivery_availability(self.db, self.root, **args), 'unavailable')
+        self.assertEqual(self.check(), 'already_verified')
+        (self.root / 'report.txt').write_bytes(b'wrong')
+        self.assertEqual(check_delivery_availability(self.db, self.root, **args), 'unavailable')
+        (self.root / 'report.txt').write_bytes(b'correct')
+        self.assertEqual(check_delivery_availability(self.db, self.root, **args), 'available')
+
+    def test_delivery_availability_rejects_unknown_identity(self):
+        from agent_platform.evals.transactional_outcome_prototype import check_delivery_availability
+        self.assertEqual(self.check(), 'verified')
+        args = dict(issuer='trusted-sandbox-runner-v1', nonce='n', task_id='t', run_id='r')
+        self.assertEqual(check_delivery_availability(self.db, self.root, **dict(args, task_id='other')), 'unknown')
+        self.assertEqual(check_delivery_availability(self.db, self.root, **dict(args, nonce='other')), 'unknown')
+
 
 if __name__ == "__main__":
     unittest.main()
