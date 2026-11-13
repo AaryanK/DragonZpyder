@@ -1,4 +1,4 @@
-name: Artifact oracle prototype checks
+name: Artifact oracle and receipt prototype checks
 
 on:
   push:
@@ -6,14 +6,18 @@ on:
       - codex/trusted-artifact-oracle-prototype-20261112
     paths:
       - 'api/agent_platform/evals/outcome_oracle_prototype.py'
+      - 'api/agent_platform/evals/trusted_receipt_prototype.py'
       - 'api/tests/test_outcome_oracle_prototype.py'
       - 'api/tests/test_outcome_oracle_bounds.py'
+      - 'api/tests/test_trusted_receipt_prototype.py'
       - '.github/workflows/artifact-oracle-prototype.yml'
   pull_request:
     paths:
       - 'api/agent_platform/evals/outcome_oracle_prototype.py'
+      - 'api/agent_platform/evals/trusted_receipt_prototype.py'
       - 'api/tests/test_outcome_oracle_prototype.py'
       - 'api/tests/test_outcome_oracle_bounds.py'
+      - 'api/tests/test_trusted_receipt_prototype.py'
       - '.github/workflows/artifact-oracle-prototype.yml'
   workflow_dispatch:
 
@@ -29,8 +33,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Compile isolated verifier
-        run: python -m py_compile api/agent_platform/evals/outcome_oracle_prototype.py
-      - name: Run adversarial oracle regression suite
+      - name: Compile isolated verifiers
+        run: python -m py_compile api/agent_platform/evals/outcome_oracle_prototype.py api/agent_platform/evals/trusted_receipt_prototype.py
+      - name: Run artifact oracle regression suite
         working-directory: api
         run: python -m unittest discover -s tests -p 'test_outcome_oracle*.py' -v
+      - name: Run authenticated receipt security suite
+        env:
+          PYTHONPATH: '.:api'
+        run: python -m unittest discover -s api/tests -p 'test_trusted_receipt_prototype.py' -v
