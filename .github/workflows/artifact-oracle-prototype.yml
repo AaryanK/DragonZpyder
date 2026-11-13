@@ -12,6 +12,7 @@ on:
       - 'api/tests/test_outcome_oracle_bounds.py'
       - 'api/tests/test_trusted_receipt_prototype.py'
       - 'api/tests/test_transactional_outcome_prototype.py'
+      - 'api/tests/test_attempt_identity_contract_diagnostic.py'
       - '.github/workflows/artifact-oracle-prototype.yml'
   pull_request:
     paths:
@@ -22,6 +23,7 @@ on:
       - 'api/tests/test_outcome_oracle_bounds.py'
       - 'api/tests/test_trusted_receipt_prototype.py'
       - 'api/tests/test_transactional_outcome_prototype.py'
+      - 'api/tests/test_attempt_identity_contract_diagnostic.py'
       - '.github/workflows/artifact-oracle-prototype.yml'
   workflow_dispatch:
 
@@ -50,3 +52,7 @@ jobs:
         env:
           PYTHONPATH: '.:api'
         run: python -m unittest discover -s api/tests -p 'test_transactional_outcome_prototype.py' -v
+      - name: Run attempt identity contract diagnostic
+        env:
+          PYTHONPATH: '.:api'
+        run: python -m unittest discover -s api/tests -p 'test_attempt_identity_contract_diagnostic.py' -v
