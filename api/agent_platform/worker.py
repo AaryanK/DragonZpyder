@@ -21,6 +21,16 @@ def main() -> None:
             and os.getenv("DRAGONZPYDER_AGENT_WEB_SEARCH_ENABLED") == "1"):
         from .monitor import make_monitor_task
         workflows.append(make_monitor_task(hatchet))
+    # Hatchet manages task assignment; the PostgreSQL ledger owns occurrence
+    # state, replay protection and evidence. No client-driven cron creation.
+    if os.getenv("DRAGONZPYDER_GOAL_TICK_ENABLED") == "1":
+        from .goal_tick import make_goal_tick_task, require_synthetic_gate
+        require_synthetic_gate()
+        workflows.append(make_goal_tick_task(hatchet))
+    if os.getenv("DRAGONZPYDER_WEB_TASKS_ENABLED") == "1":
+        from .web_task_worker import make_web_task, require_web_task_gate
+        require_web_task_gate()
+        workflows.append(make_web_task(hatchet))
     worker = hatchet.worker("dragonzpyder-agent-worker", slots=2, workflows=workflows)
     worker.start()
 

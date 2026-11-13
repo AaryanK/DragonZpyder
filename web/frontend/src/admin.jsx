@@ -8,6 +8,78 @@ function formatInteger(value) {
 function formatUsd(value) {
   return value === null || value === undefined ? "Unknown" : "$" + Number(value).toFixed(6);
 }
+function AdminTaskActivity() {
+  const [items, setItems] = useState([]);
+  const [task, setTask] = useState(null);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    let stopped = false;
+    let pending = false;
+    const update = async () => {
+      if (pending || stopped) return;
+      pending = true;
+      try {
+        const response = await fetch("/admin/api/tasks", {
+          credentials: "same-origin", cache: "no-store",
+        });
+        if (!response.ok) throw new Error("Activity unavailable (" + response.status + ")");
+        const result = await response.json();
+        if (!stopped) { setItems(result.tasks || []); setError(""); }
+        if (task?.task_id) {
+          const detail = await fetch(
+            "/admin/api/tasks/" + encodeURIComponent(task.task_id),
+            { credentials: "same-origin", cache: "no-store" },
+          );
+          if (detail.ok && !stopped) setTask(await detail.json());
+        }
+      } catch (err) {
+        if (!stopped) setError(err.message);
+      } finally { pending = false; }
+    };
+    update();
+    const timer = setInterval(update, 3000);
+    return () => { stopped = true; clearInterval(timer); };
+  }, [task?.task_id]);
+  return <section className="table-box dz-admin-tasks">
+    <header className="dz-admin-tasks-header">
+      <div><h2>Harness activity</h2><p className="data-note">
+        Live task metadata and safe execution events, refreshed every 3 seconds.
+        User prompts, private outputs and secrets are not shown.</p></div>
+      <span className="dz-admin-live">● LIVE</span>
+    </header>
+    {error && <div className="error" role="alert">{error}</div>}
+    <div className="dz-admin-task-grid">
+      <div className="dz-admin-task-list">
+        {items.length === 0 && <p className="data-note">No harness tasks recorded.</p>}
+        {items.map(item => <button type="button" key={item.task_id}
+          onClick={async () => {
+            try {
+              const r = await fetch("/admin/api/tasks/" + encodeURIComponent(item.task_id),
+                { credentials: "same-origin", cache: "no-store" });
+              if (!r.ok) throw new Error("Cannot inspect task");
+              setTask(await r.json());
+            } catch (err) { setError(err.message); }
+          }}
+          className={"dz-admin-task" + (task?.task_id === item.task_id ? " chosen" : "")}>
+          <span>{item.kind === "agent" ? "Agent" : "Worker check"}</span>
+          <strong>{item.status}</strong>
+          <small>{item.task_id.slice(0, 8)} · {new Date(item.created_at).toLocaleString()}</small>
+        </button>)}
+      </div>
+      <div className="dz-admin-task-events">
+        <h3>{task ? "Execution " + task.task_id.slice(0, 8) : "Select an execution"}</h3>
+        {task && <p className="data-note">Attempts: {task.attempts ?? 0} · Status: {task.status}
+          {task.trace_id ? " · Trace " + task.trace_id : ""}
+        </p>}
+        {(task?.events || []).map(ev => <div key={ev.event_id} className="dz-admin-event">
+          <span>{ev.message}</span><small>{new Date(ev.at).toLocaleString()} · {ev.kind}</small>
+        </div>)}
+        {!task && <p className="data-note">Task events appear here without opening Langfuse.</p>}
+      </div>
+    </div>
+  </section>;
+}
+
 function AdminPage() {
   const [days, setDays] = useState(30);
   const [filter, setFilter] = useState("");
@@ -92,7 +164,9 @@ function AdminPage() {
           </tbody></table></div>
         </section>
         <p className="data-note">Trace correlation IDs are recorded per request. Detailed inspection requires the configured Langfuse workspace and a trace viewer with appropriate permissions.</p>
+
       </>}
+      <AdminTaskActivity />
     </main>
   );
 }

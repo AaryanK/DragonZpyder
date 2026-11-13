@@ -8,6 +8,8 @@ langgraph-checkpoint-postgres>=2,<5
 psycopg[binary]>=3,<4
 langfuse>=3,<5
 hatchet-sdk>=1,<3
+# Remote MCP clients are bound only through reviewed per-run hub manifests.
+langchain-mcp-adapters>=0.3,<0.4
 mem0ai>=1,<3
 
 # Sandboxed in-memory JavaScript; activated only by staging feature flag.

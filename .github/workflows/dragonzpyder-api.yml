@@ -20,7 +20,7 @@ jobs:
       - name: Validate Python source
         run: python -m compileall -q api/main.py api/provider_gateway.py api/usage_ledger.py api/observability.py api/agent_platform api/tests
       - name: Run FastAPI contract checks
-        run: pytest -q api/tests/test_fastapi_gateway.py api/tests/test_usage_audit.py api/tests/test_provider_gateway.py api/tests/test_agent_platform_contract.py api/tests/test_agent_gateway_protocol.py
+        run: pytest -q api/tests/test_fastapi_gateway.py api/tests/test_usage_audit.py api/tests/test_provider_gateway.py api/tests/test_agent_platform_contract.py api/tests/test_agent_gateway_protocol.py api/tests/test_workflow_hub_router.py api/tests/test_goal_router.py api/tests/test_web_tasks_router.py
   agent-stack-imports:
     runs-on: ubuntu-latest
     permissions:
@@ -38,7 +38,7 @@ jobs:
           python -c "from deepagents import create_deep_agent; from langchain_openrouter import ChatOpenRouter; from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver; from langfuse.langchain import CallbackHandler; from hatchet_sdk import Hatchet; from mem0 import Memory; from agent_platform.runtime import AgentRuntime; from agent_platform.worker import main; print('agent stack imports OK')"
           python -m agent_platform.ops_benchmark
           python -m agent_platform.frontier_stress
-          pytest -q tests/test_agent_platform_contract.py tests/test_staging_lab.py tests/test_agent_stack_integration.py tests/test_harness_v2.py tests/test_agent_evaluation.py tests/test_agent_web_monitor.py tests/test_ops_benchmark.py tests/test_frontier_stress.py tests/test_orchestration.py tests/test_model_capabilities.py tests/test_artifact_evidence.py tests/test_budget_reservations.py tests/test_progress_guard.py tests/test_frontier_batch.py tests/test_key_budget.py tests/test_scientific_oracles.py tests/test_provider_pacing.py tests/test_gateway_parent_budget.py tests/test_sandbox_math.py
+          pytest -q tests/test_agent_platform_contract.py tests/test_staging_lab.py tests/test_agent_stack_integration.py tests/test_harness_v2.py tests/test_agent_evaluation.py tests/test_agent_web_monitor.py tests/test_ops_benchmark.py tests/test_frontier_stress.py tests/test_orchestration.py tests/test_model_capabilities.py tests/test_artifact_evidence.py tests/test_budget_reservations.py tests/test_progress_guard.py tests/test_frontier_batch.py tests/test_key_budget.py tests/test_scientific_oracles.py tests/test_provider_pacing.py tests/test_gateway_parent_budget.py tests/test_sandbox_math.py tests/test_workflow_core.py tests/test_capability_hub.py tests/test_mcp_adapter.py tests/test_wrapper_context.py tests/test_goal_hatchet_contract.py tests/test_web_task_callbacks.py ../api/agent_platform/tests/test_operly_harness_migration.py
   budget-postgres-integration:
     runs-on: ubuntu-latest
     permissions:
@@ -65,9 +65,46 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install test-only dependencies
-        run: pip install asyncpg pytest
+        run: pip install asyncpg 'cryptography>=44,<50' 'langchain-core>=0.3,<2' httpx pytest
       - name: Verify real PostgreSQL concurrency, restart and isolation
-        run: pytest -q api/tests/test_budget_postgres_integration.py
+        run: pytest -q api/tests/test_budget_postgres_integration.py api/tests/test_goal_postgres_integration.py api/tests/test_goal_recovery_postgres.py api/tests/test_web_event_postgres.py api/tests/test_web_task_postgres.py
+
+  hatchet-embedded-goal:
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: goal_test
+          POSTGRES_PASSWORD: disposable_hatchet_ci
+          POSTGRES_DB: goal_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U goal_test -d goal_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DRAGONZPYDER_HATCHET_EMBEDDED_CI: "1"
+      DRAGONZPYDER_STAGE: staging
+      DRAGONZPYDER_GOAL_STORE_ENABLED: "1"
+      DRAGONZPYDER_GOAL_TICK_ENABLED: "1"
+      DRAGONZPYDER_GOAL_SYNTHETIC_ONLY: "1"
+      DRAGONZPYDER_GOALS_DATABASE_URL: postgresql://goal_test:disposable_hatchet_ci@localhost:5432/goal_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install isolated Hatchet and PostgreSQL dependencies
+        run: pip install 'hatchet-sdk>=1,<3' 'asyncpg>=0.30,<1' 'cryptography>=44,<50' 'pydantic>=2,<3' 'langchain-core>=0.3,<2' httpx
+      - name: Dispatch real Hatchet worker and verify DB evidence
+        timeout-minutes: 12
+        run: cd api && timeout 660s python -m agent_platform.hatchet_embedded_acceptance
 
   personal-core-contracts:
     runs-on: ubuntu-latest

@@ -1,4 +1,5 @@
 import React from "react";
+import { TaskPanel } from "./TaskPanel.jsx";
 
 // Layout and copy are the existing DragonZpyder design, now authored as JSX.
 // Do not reintroduce the former static HTML templates.
@@ -27,6 +28,7 @@ export function PersonalTemplate() {
       <nav className="conversation-list" id="conversation-list" aria-label="Recent conversations"></nav>
       <div className="sidebar-spacer"></div>
       <div className="sidebar-footer-label">WORKSPACE</div>
+      <TaskPanel />
       <button className="side-action" id="approvals-button"><span>Approvals</span><span className="badge-count" id="approval-count" hidden>0</span></button>
       <a className="side-action" href="https://operly.dragonzpyder.xyz/" target="_blank" rel="noreferrer"><span>Open Operly</span><span aria-hidden="true">↗</span></a>
       <a className="side-action" href="/"><span>About DragonZpyder</span><span aria-hidden="true">↗</span></a>

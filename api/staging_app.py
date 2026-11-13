@@ -20,6 +20,7 @@ from agent_platform.frontier_stress import run_live_case, live_eval_enabled
 from agent_platform.staging_smokes import hatchet_readiness, vector_readiness, gateway_readiness, synthetic_memory_smoke
 from agent_platform.paid_tool_smoke import run_paid_tool_smoke_once
 from agent_platform.frontier_batch import run_frontier_batch_once
+from agent_platform.web_tasks_router import router as web_tasks_router
 
 logger = logging.getLogger("dragonzpyder.staging")
 
@@ -268,6 +269,10 @@ async def log_paid_key_budget_preflight() -> None:
 
 @asynccontextmanager
 async def lifespan(app):
+    app.state.activity_store = None
+    app.state.parent_budget = None
+    web_task_pool = None
+    web_budget = None
     app.state.runtime = None
     app.state.runtime_error = False
     app.state.provider_auth = await verify_provider_key()
@@ -321,8 +326,39 @@ async def lifespan(app):
     if os.getenv("DRAGONZPYDER_STAGING_FRONTIER_BATCH_ONCE") == "1":
         frontier_batch_task = asyncio.create_task(run_frontier_batch_once())
     try:
+        if os.getenv("DRAGONZPYDER_WEB_TASKS_ENABLED") == "1":
+            if (os.getenv("RAILWAY_ENVIRONMENT_NAME") != "staging"
+                    or os.getenv("DRAGONZPYDER_GOAL_STORE_ENABLED") != "1"):
+                raise RuntimeError("Browser harness is restricted to isolated staging")
+            dsn = os.getenv("DRAGONZPYDER_GOALS_DATABASE_URL", "")
+            if not dsn.startswith(("postgres://", "postgresql://")):
+                raise RuntimeError("Durable web-task PostgreSQL is not configured")
+            import asyncpg
+            from agent_platform.task_activity import ActivityStore
+            web_task_pool = await asyncpg.create_pool(
+                dsn=dsn, min_size=1, max_size=3,
+            )
+            async with web_task_pool.acquire() as con:
+                for table in ("dragonzpyder_ui_tasks", "dragonzpyder_ui_task_events"):
+                    if await con.fetchval("SELECT to_regclass($1)", table) is None:
+                        raise RuntimeError("Web harness task tables not migrated")
+            app.state.activity_store = ActivityStore(
+                web_task_pool,
+                encryption_key=os.getenv("DRAGONZPYDER_GOALS_ENCRYPTION_KEY", ""),
+            )
+            if os.getenv("DRAGONZPYDER_WEB_TASKS_PAID_ENABLED") == "1":
+                from agent_platform.gateway_parent_budget import ParentBudgetGateway
+                web_budget = ParentBudgetGateway()
+                await web_budget.open()
+                if not web_budget.active:
+                    raise RuntimeError("Atomic per-job budget unavailable; agent tasks disabled")
+                app.state.parent_budget = web_budget
         yield
     finally:
+        if web_budget is not None:
+            await web_budget.close()
+        if web_task_pool is not None:
+            await web_task_pool.close()
         for task in (stress_task, paid_smoke_task, frontier_batch_task):
             if task and not task.done():
                 task.cancel()
@@ -334,6 +370,7 @@ async def lifespan(app):
             await app.state.runtime.close()
 
 app = FastAPI(title="DragonZpyder Staging", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
+app.include_router(web_tasks_router)
 
 @app.middleware("http")
 async def headers(req, call_next):
