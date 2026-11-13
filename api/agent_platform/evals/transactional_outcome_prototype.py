@@ -72,3 +72,28 @@ def verify_and_record(db: sqlite3.Connection, key: bytes, receipt: dict, root: P
             raise
     except (KeyError,TypeError,ValueError,OverflowError,sqlite3.Error):
         return 'rejected'
+
+
+def check_delivery_availability(db: sqlite3.Connection, root: Path, *, issuer: str, nonce: str, task_id: str, run_id: str) -> str:
+    """Recheck current artifact bytes without changing historical verification.
+
+    Returns 'available', 'unavailable', or 'unknown'. This is a point-in-time
+    check, not a storage lease: delivery must pin/copy immutable bytes itself.
+    The caller must authorize access to this outcome and artifact root.
+    """
+    if not all(isinstance(v, str) and v for v in (issuer, nonce, task_id, run_id)):
+        return 'unknown'
+    try:
+        row = db.execute(
+            'SELECT manifest FROM verified_outcomes WHERE issuer=? AND nonce=? AND task_id=? AND run_id=?',
+            (issuer, nonce, task_id, run_id),
+        ).fetchone()
+        if row is None:
+            return 'unknown'
+        import json
+        manifest = json.loads(row[0])
+        if not isinstance(manifest, dict):
+            return 'unavailable'
+        return 'available' if verify_artifacts(root, run_id, {'run_id': run_id, 'artifacts': manifest}, manifest) else 'unavailable'
+    except (sqlite3.Error, ValueError, TypeError, OSError):
+        return 'unknown'
