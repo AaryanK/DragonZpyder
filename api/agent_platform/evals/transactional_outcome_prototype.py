@@ -19,7 +19,7 @@ def initialize(db):
 
 
 def verify_and_record(db: sqlite3.Connection, key: bytes, receipt: dict, root: Path, *, task_id: str, run_id: str, now=None):
-    """Return 'verified', 'already_verified', or 'rejected'.
+    """Return 'verified', 'already_verified', 'rejected', or 'infrastructure_error'.
 
     SQLite transaction binds nonce consumption to durable verification outcome.
     This is a local single-DB prototype, not a distributed exactly-once protocol.
@@ -70,7 +70,12 @@ def verify_and_record(db: sqlite3.Connection, key: bytes, receipt: dict, root: P
         except Exception:
             db.rollback()
             raise
-    except (KeyError,TypeError,ValueError,OverflowError,sqlite3.Error):
+    except sqlite3.Error:
+        # Database availability/transaction failures are not invalid receipts.
+        # BEGIN IMMEDIATE can fail before the inner rollback scope; do not
+        # rollback a transaction owned by the caller.
+        return 'infrastructure_error'
+    except (KeyError,TypeError,ValueError,OverflowError):
         return 'rejected'
 
 
