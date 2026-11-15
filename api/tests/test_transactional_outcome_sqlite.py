@@ -64,6 +64,31 @@ class TransactionalOutcomeSQLiteTests(unittest.TestCase):
         self.db.rollback()
         self.assertEqual(self.verify(), "verified")
 
+    def v2_receipt(self, nonce, attempt_id):
+        return issue(self.key, dict(self.receipt["payload"], version=2, nonce=nonce, attempt_id=attempt_id))
+
+    def test_v2_same_attempt_different_nonces_rejected(self):
+        self.assertEqual(self.verify(receipt=self.v2_receipt("first", "attempt-1")), "verified")
+        self.assertEqual(self.verify(receipt=self.v2_receipt("second", "attempt-1")), "rejected")
+        self.assertEqual(self.db.execute("SELECT COUNT(*) FROM verified_outcomes").fetchone()[0], 1)
+        self.assertEqual(self.verify(receipt=self.v2_receipt("first", "attempt-1")), "already_verified")
+
+    def test_v2_distinct_attempts_allowed(self):
+        self.assertEqual(self.verify(receipt=self.v2_receipt("first", "attempt-1")), "verified")
+        self.assertEqual(self.verify(receipt=self.v2_receipt("second", "attempt-2")), "verified")
+
+    def test_v2_invalid_attempt_identity_rejected(self):
+        for attempt in ("", "x" * 129, None):
+            self.assertEqual(self.verify(receipt=self.v2_receipt("nonce-" + str(attempt), attempt)), "rejected")
+
+    def test_v2_existing_schema_migrates(self):
+        legacy = sqlite3.connect(":memory:")
+        self.addCleanup(legacy.close)
+        legacy.execute("CREATE TABLE verified_outcomes (issuer TEXT NOT NULL, nonce TEXT NOT NULL, task_id TEXT NOT NULL, run_id TEXT NOT NULL, receipt_hash TEXT NOT NULL, manifest TEXT NOT NULL, PRIMARY KEY(issuer, nonce))")
+        initialize(legacy)
+        self.assertEqual(self.verify(db=legacy, receipt=self.v2_receipt("first", "attempt-1")), "verified")
+        self.assertEqual(self.verify(db=legacy, receipt=self.v2_receipt("second", "attempt-1")), "rejected")
+
     def test_missing_schema_is_infrastructure_error(self):
         other = sqlite3.connect(":memory:")
         self.addCleanup(other.close)
