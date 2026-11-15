@@ -15,6 +15,11 @@ from agent_platform.evals.trusted_receipt_prototype import canonical, MAX_TTL_SE
 
 def initialize(db):
     db.execute('CREATE TABLE IF NOT EXISTS verified_outcomes (issuer TEXT NOT NULL, nonce TEXT NOT NULL, task_id TEXT NOT NULL, run_id TEXT NOT NULL, receipt_hash TEXT NOT NULL, manifest TEXT NOT NULL, PRIMARY KEY(issuer, nonce))')
+    # Additive migration: legacy v1 receipts retain nonce-only semantics.
+    cols = {row[1] for row in db.execute('PRAGMA table_info(verified_outcomes)')}
+    if 'attempt_id' not in cols:
+        db.execute('ALTER TABLE verified_outcomes ADD COLUMN attempt_id TEXT')
+    db.execute('CREATE UNIQUE INDEX IF NOT EXISTS verified_attempt_identity ON verified_outcomes (issuer, task_id, run_id, attempt_id) WHERE attempt_id IS NOT NULL')
     db.commit()
 
 
@@ -28,11 +33,19 @@ def verify_and_record(db: sqlite3.Connection, key: bytes, receipt: dict, root: P
         if not isinstance(key, bytes) or len(key) < 32 or not isinstance(receipt, dict):
             return 'rejected'
         p = receipt['payload']
-        if not isinstance(p, dict) or set(p) != {'version','issuer','task_id','run_id','nonce','issued_at','expires_at','artifacts'}:
+        base_fields = {'version','issuer','task_id','run_id','nonce','issued_at','expires_at','artifacts'}
+        if not isinstance(p, dict) or type(p.get('version')) is not int or p['version'] not in (1, 2):
             return 'rejected'
-        if type(p['version']) is not int or p['version'] != 1 or p['issuer'] != 'trusted-sandbox-runner-v1':
+        if set(p) != (base_fields if p['version'] == 1 else base_fields | {'attempt_id'}):
+            return 'rejected'
+        if p['issuer'] != 'trusted-sandbox-runner-v1':
             return 'rejected'
         if not all(isinstance(x, str) and x for x in (task_id, run_id, p['nonce'])) or p['task_id'] != task_id or p['run_id'] != run_id:
+            return 'rejected'
+        # v2 binds a trusted logical attempt to the signed receipt. v1 remains
+        # readable for compatibility, but cannot provide attempt deduplication.
+        attempt_id = p.get('attempt_id') if p['version'] == 2 else None
+        if p['version'] == 2 and (not isinstance(attempt_id, str) or not attempt_id or len(attempt_id) > 128):
             return 'rejected'
         mac = receipt['mac']
         if not isinstance(mac, str) or len(mac) != 64 or not hmac.compare_digest(hmac.new(key, canonical(p), hashlib.sha256).hexdigest(), mac):
@@ -58,13 +71,20 @@ def verify_and_record(db: sqlite3.Connection, key: bytes, receipt: dict, root: P
             if existing:
                 db.rollback()
                 return 'already_verified' if existing == (task_id,run_id,receipt_hash,manifest_json) else 'rejected'
+            if attempt_id is not None:
+                # Under BEGIN IMMEDIATE, a competing nonce for the same signed
+                # logical attempt cannot both commit.
+                prior = db.execute('SELECT nonce FROM verified_outcomes WHERE issuer=? AND task_id=? AND run_id=? AND attempt_id=?', (p['issuer'], task_id, run_id, attempt_id)).fetchone()
+                if prior:
+                    db.rollback()
+                    return 'rejected'
             if not p['issued_at'] <= t < p['expires_at']:
                 db.rollback()
                 return 'rejected'
             if not verify_artifacts(root, run_id, {'run_id':run_id,'artifacts':manifest}, manifest):
                 db.rollback()
                 return 'rejected'
-            db.execute('INSERT INTO verified_outcomes VALUES (?,?,?,?,?,?)', (p['issuer'],p['nonce'],task_id,run_id,receipt_hash,manifest_json))
+            db.execute('INSERT INTO verified_outcomes (issuer,nonce,task_id,run_id,receipt_hash,manifest,attempt_id) VALUES (?,?,?,?,?,?,?)', (p['issuer'],p['nonce'],task_id,run_id,receipt_hash,manifest_json,attempt_id))
             db.commit()
             return 'verified'
         except Exception:
