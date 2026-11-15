@@ -123,6 +123,31 @@ class TransactionalOutcomeSQLiteTests(unittest.TestCase):
         self.assertEqual(self.verify(db=legacy, receipt=self.v2_receipt("first", "attempt-1")), "verified")
         self.assertEqual(self.verify(db=legacy, receipt=self.v2_receipt("second", "attempt-1")), "rejected")
 
+    def test_v2_only_mode_rejects_legacy_before_db_access(self):
+        # Opt-in enforcement must reject legacy receipts even on a missing DB.
+        other = sqlite3.connect(":memory:")
+        self.addCleanup(other.close)
+        self.assertEqual(verify_and_record(
+            other, self.key, self.receipt, self.root,
+            task_id="task", run_id="run", now=1050, require_v2=True,
+        ), "rejected")
+        self.assertEqual(self.verify(), "verified")  # legacy default remains compatible
+
+    def test_v2_only_mode_enforces_signed_attempt_identity(self):
+        receipt = self.v2_receipt("new-nonce", "trusted-attempt")
+        self.assertEqual(verify_and_record(
+            self.db, self.key, receipt, self.root,
+            task_id="task", run_id="run", now=1050, require_v2=True,
+        ), "verified")
+        self.assertEqual(verify_and_record(
+            self.db, self.key, self.v2_receipt("another-nonce", "trusted-attempt"),
+            self.root, task_id="task", run_id="run", now=1050, require_v2=True,
+        ), "rejected")
+        self.assertEqual(verify_and_record(
+            self.db, self.key, receipt, self.root,
+            task_id="task", run_id="run", now=1050, require_v2=True,
+        ), "already_verified")
+
     def test_missing_schema_is_infrastructure_error(self):
         other = sqlite3.connect(":memory:")
         self.addCleanup(other.close)
