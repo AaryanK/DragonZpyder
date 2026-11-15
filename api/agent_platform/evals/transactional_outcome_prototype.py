@@ -30,13 +30,17 @@ def verify_and_record(db: sqlite3.Connection, key: bytes, receipt: dict, root: P
     This is a local single-DB prototype, not a distributed exactly-once protocol.
     """
     try:
-        if type(require_v2) is not bool:\n            return 'rejected'\n        if not isinstance(key, bytes) or len(key) < 32 or not isinstance(receipt, dict):
+        if type(require_v2) is not bool:
+            return 'rejected'
+        if not isinstance(key, bytes) or len(key) < 32 or not isinstance(receipt, dict):
             return 'rejected'
         p = receipt['payload']
         base_fields = {'version','issuer','task_id','run_id','nonce','issued_at','expires_at','artifacts'}
         if not isinstance(p, dict) or type(p.get('version')) is not int or p['version'] not in (1, 2):
             return 'rejected'
-        if require_v2 and p['version'] != 2:\n            return 'rejected'\n        if set(p) != (base_fields if p['version'] == 1 else base_fields | {'attempt_id'}):
+        if require_v2 and p['version'] != 2:
+            return 'rejected'
+        if set(p) != (base_fields if p['version'] == 1 else base_fields | {'attempt_id'}):
             return 'rejected'
         if p['issuer'] != 'trusted-sandbox-runner-v1':
             return 'rejected'
