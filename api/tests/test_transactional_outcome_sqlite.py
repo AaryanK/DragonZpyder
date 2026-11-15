@@ -5,6 +5,7 @@ Run from api/: python -m unittest discover -s tests -p 'test_transactional_outco
 import hashlib
 import sqlite3
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 
@@ -72,6 +73,39 @@ class TransactionalOutcomeSQLiteTests(unittest.TestCase):
         self.assertEqual(self.verify(receipt=self.v2_receipt("second", "attempt-1")), "rejected")
         self.assertEqual(self.db.execute("SELECT COUNT(*) FROM verified_outcomes").fetchone()[0], 1)
         self.assertEqual(self.verify(receipt=self.v2_receipt("first", "attempt-1")), "already_verified")
+
+    def test_v2_concurrent_nonces_one_verified(self):
+        # Two independent connections race to consume the same signed attempt.
+        # The unique attempt index must make the outcome exactly one success.
+        barrier = threading.Barrier(3)
+        outcomes = []
+        errors = []
+        lock = threading.Lock()
+
+        def worker(nonce):
+            try:
+                connection = sqlite3.connect(self.path, timeout=2.0)
+                try:
+                    barrier.wait(timeout=3)
+                    result = self.verify(db=connection, receipt=self.v2_receipt(nonce, "race-attempt"))
+                    with lock:
+                        outcomes.append(result)
+                finally:
+                    connection.close()
+            except Exception as exc:
+                with lock:
+                    errors.append(repr(exc))
+
+        threads = [threading.Thread(target=worker, args=(nonce,)) for nonce in ("race-a", "race-b")]
+        for thread in threads:
+            thread.start()
+        barrier.wait(timeout=3)
+        for thread in threads:
+            thread.join(timeout=5)
+        self.assertFalse(any(thread.is_alive() for thread in threads), "verification threads must terminate")
+        self.assertEqual(errors, [])
+        self.assertCountEqual(outcomes, ["verified", "rejected"])
+        self.assertEqual(self.db.execute("SELECT COUNT(*) FROM verified_outcomes").fetchone()[0], 1)
 
     def test_v2_distinct_attempts_allowed(self):
         self.assertEqual(self.verify(receipt=self.v2_receipt("first", "attempt-1")), "verified")
