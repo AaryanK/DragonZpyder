@@ -45,3 +45,17 @@ def test_paid_eval_never_runs_by_default(monkeypatch):
         monkeypatch.delenv(name, raising=False)
     with pytest.raises(RuntimeError, match="explicit gateway-only opt-in"):
         asyncio.run(evaluate(["daily-inbox"]))
+
+
+def test_smoke_success_never_counts_as_verified_completion():
+    case = next(x for x in load_cases() if x["id"] == "virtual-workspace")
+    report = score_case(
+        case,
+        "I created /workspace/plan.md in the virtual workspace.",
+        tool_names=["write_file", "read_file"],
+    )
+    assert report["smoke_passed"] is True
+    assert report["verified_completion"] is False
+    summary = summarize([report])
+    assert summary["passed"] == 1
+    assert summary["verified_completions"] == 0
