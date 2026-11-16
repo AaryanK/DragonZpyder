@@ -34,8 +34,8 @@ async def evaluate(case_ids: list[str]) -> dict:
         raise ValueError("Unknown synthetic evaluation case")
     scores = []
     runtime = AgentRuntime()
-    await runtime.start()
     try:
+        await runtime.start()
         for cid in case_ids:
             case = available[cid]
             started = time.monotonic()
