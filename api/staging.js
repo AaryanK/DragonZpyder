@@ -1,0 +1,73 @@
+const $=id=>document.getElementById(id);
+async function refresh(){
+  try{
+    const r=await fetch("/status",{cache:"no-store"}); const data=await r.json();
+    const list=$("status");list.replaceChildren();
+    for(const [name,state] of Object.entries(data.components)){
+      const item=document.createElement("div");item.className="item";
+      const a=document.createElement("span");a.textContent=name.replaceAll("_"," ");
+      const b=document.createElement("span");b.className="value";b.textContent=state.replaceAll("_"," ");
+      item.append(a,b);list.append(item);
+    }
+    const harnessNote=data.harness_ready?"Harness initialized.":"Harness cannot start until test configuration is complete.";
+    const keyNote=" OpenRouter key check: "+String(data.openrouter_key_validation||"not checked").replaceAll("_"," ")+".";
+    $("note").textContent=harnessNote+keyNote;
+
+  }catch(e){$("note").textContent="Cannot load status: "+e.message}
+}
+$("refresh").addEventListener("click",refresh);
+$("run").addEventListener("click",async()=>{
+  $("run").disabled=true;$("output").textContent="Running…";
+  try{
+    const r=await fetch("/test",{method:"POST",headers:{"content-type":"application/json","x-staging-password":$("password").value},body:JSON.stringify({thread_id:$("thread").value,prompt:$("prompt").value})});
+    const data=await r.json();$("output").textContent=r.ok?data.answer:(data.detail||"Test failed");
+  }catch(e){$("output").textContent="Network problem: "+e.message}
+  finally{$("run").disabled=false}
+});
+refresh();
+
+$("memory-test").addEventListener("click",async()=>{
+  $("memory-test").disabled=true;
+  $("memory-output").textContent="Checking synthetic memory persistence and deletion…";
+  try{
+    const r=await fetch("/test-memory",{
+      method:"POST",
+      headers:{"x-staging-password":$("password").value}
+    });
+    const data=await r.json();
+    $("memory-output").textContent=r.ok
+      ?JSON.stringify(data,null,2)
+      :(data.detail||"Synthetic memory test failed");
+  }catch(e){$("memory-output").textContent="Network problem: "+e.message}
+  finally{$("memory-test").disabled=false}
+});
+
+
+$("hatchet-test").addEventListener("click",async()=>{
+  $("hatchet-test").disabled=true;
+  $("hatchet-output").textContent="Dispatching ping through Hatchet…";
+  try {
+    const r=await fetch("/test-hatchet",{
+      method:"POST",headers:{"x-staging-password":$("password").value}
+    });
+    const data=await r.json();
+    $("hatchet-output").textContent=r.ok?JSON.stringify(data,null,2):(data.detail||"Hatchet test failed");
+  } catch(e) { $("hatchet-output").textContent="Network problem: "+e.message }
+  finally { $("hatchet-test").disabled=false }
+});
+
+
+$("hatchet-schedule").addEventListener("click",async()=>{
+  $("hatchet-schedule").disabled=true;
+  $("hatchet-schedule-output").textContent="Creating a delayed Hatchet run…";
+  try {
+    const r=await fetch("/test-hatchet-schedule",{
+      method:"POST",headers:{"x-staging-password":$("password").value}
+    });
+    const data=await r.json();
+    $("hatchet-schedule-output").textContent=r.ok
+      ?JSON.stringify(data,null,2)
+      :(data.detail||"Schedule failed");
+  }catch(e){$("hatchet-schedule-output").textContent="Network problem: "+e.message}
+  finally {$("hatchet-schedule").disabled=false}
+});

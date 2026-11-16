@@ -12,7 +12,7 @@ import os
 import re
 import time
 from uuid import uuid4
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, nullcontext
 from typing import Any
 
 import httpx
@@ -21,6 +21,12 @@ from fastapi.responses import JSONResponse
 from observability import setup_telemetry, shutdown_telemetry, inference_span, span_trace_id
 from usage_ledger import ledger, token_usage
 from provider_gateway import provider_request
+from agent_platform.gateway_protocol import validate_agent_body, validate_agent_response, AgentProtocolError
+from agent_platform.router import router as agent_router
+from agent_platform.openrouter_spend_guard import PaidTestBudgetError, require_paid_test_cap
+from agent_platform.provider_pacing import AgentProviderPacer
+from agent_platform.gateway_parent_budget import ParentBudgetGateway
+from agent_platform.budget_reservations import BudgetExceeded
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 MAX_BYTES = 160_000
@@ -28,9 +34,10 @@ MODEL_PATTERN = re.compile(r"^[a-zA-Z0-9_.:/-]{3,100}$")
 
 
 class GatewayError(Exception):
-    def __init__(self, status: int, message: str):
+    def __init__(self, status: int, message: str, *, retry_after: int | None = None):
         self.status = status
         self.message = message
+        self.retry_after = retry_after
 
 
 class Runtime:
@@ -65,6 +72,8 @@ class Runtime:
 
 
 runtime = Runtime()
+agent_pacer = AgentProviderPacer(concurrency=2, spacing_s=0.4)
+parent_budget = ParentBudgetGateway()
 log = logging.getLogger(__name__)
 
 
@@ -72,16 +81,44 @@ log = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     setup_telemetry()
     await ledger.open()
+    await parent_budget.open()
+    log.warning("Staging atomic parent-budget gateway status=%s",
+                "ready" if parent_budget.active else "disabled")
+    agent_runtime = None
     try:
+        if os.getenv("DRAGONZPYDER_AGENTS_ENABLED") == "1":
+            from agent_platform.runtime import AgentRuntime
+            agent_runtime = AgentRuntime()
+            await agent_runtime.start()
+            app.state.agent_runtime = agent_runtime
         async with httpx.AsyncClient(timeout=90.0, follow_redirects=False) as client:
             app.state.http = client
+            if (os.getenv("RAILWAY_ENVIRONMENT_NAME") == "staging" and
+                    os.getenv("DRAGONZPYDER_STAGING_PAID_TEST_CAP_USD") == "0.50"):
+                try:
+                    cap, remaining = await require_paid_test_cap(
+                        client, os.getenv("OPENROUTER_API_KEY", "")
+                    )
+                except PaidTestBudgetError as error:
+                    # This is a static, authored reason code: no key, provider
+                    # payload, provider user ID or prompt is emitted.
+                    log.warning("Staging OpenRouter cap preflight=%s", str(error))
+                else:
+                    log.warning(
+                        "Staging OpenRouter cap preflight=verified limit_usd=%s remaining_usd=%s",
+                        cap, remaining,
+                    )
             yield
     finally:
+        if agent_runtime is not None:
+            await agent_runtime.close()
+        await parent_budget.close()
         await ledger.close()
         shutdown_telemetry()
 
 
 app = FastAPI(title="DragonZpyder API", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
+app.include_router(agent_router)
 
 
 @app.middleware("http")
@@ -196,6 +233,58 @@ async def inference(prefix: str, request: Request):
         return await provider_request(request, path.removeprefix("/internal/provider"),
                                       app_id=app_id, runtime=runtime)
 
+    # Only the private agent runtime may inspect whether its actual GATEWAY
+    # provider key has an immutable <=$0.50 cap. Never trust the lab's key.
+    if path == "/internal/agent/v1/key-budget":
+        if request.method != "GET":
+            return denied(405, "Method not allowed")
+        if (caller_identity(request) != "agent-runtime" or
+                os.getenv("DRAGONZPYDER_AGENT_TOOL_CALLS_ENABLED") != "1"):
+            return denied(403, "Agent runtime authentication required")
+        if os.getenv("DRAGONZPYDER_AGENT_PAID_TEST_MAX_KEY_LIMIT_USD") != "0.50":
+            return denied(503, "Paid staging budget guard is not enabled")
+        from agent_platform.key_budget import verify_key_budget
+        report = await verify_key_budget(
+            request.app.state.http, os.getenv("OPENROUTER_API_KEY", "")
+        )
+        return JSONResponse(report)
+
+    # Create parent USD budgets only through the authenticated staging
+    # gateway. No client can create an unmetered parallel job from a browser.
+    if path == "/internal/agent/v1/parallel-budget":
+        if request.method != "POST":
+            return denied(405, "POST required")
+        if (caller_identity(request) != "agent-runtime" or
+                os.getenv("DRAGONZPYDER_AGENT_TOOL_CALLS_ENABLED") != "1"):
+            return denied(403, "Agent runtime authentication required")
+        if not parent_budget.active:
+            return denied(503, "Atomic parent budget gateway is disabled")
+        try:
+            raw = await request.body()
+            if len(raw) > 512:
+                return denied(413, "Budget request too large")
+            item = json.loads(raw)
+            if not isinstance(item, dict) or set(item) != {"job_id", "ceiling_usd"}:
+                return denied(400, "Invalid budget request")
+            from agent_platform.key_budget import verify_key_budget
+            provider_cap = await verify_key_budget(
+                request.app.state.http, os.getenv("OPENROUTER_API_KEY", "")
+            )
+            if provider_cap.get("approved") is not True:
+                return denied(503, "Provider hard cap not verified")
+            from decimal import Decimal
+            if Decimal(str(item["ceiling_usd"])) > Decimal(
+                    str(provider_cap["remaining_usd"])):
+                return denied(429, "Approved provider allowance below parent ceiling")
+            await parent_budget.create(job_id=item["job_id"],
+                                       ceiling_usd=item["ceiling_usd"])
+        except (ValueError, TypeError, KeyError, BudgetExceeded, json.JSONDecodeError):
+            return denied(400, "Parent budget request rejected")
+        except Exception:
+            return denied(503, "Parent budget database unavailable")
+        return JSONResponse({"status": "created", "job_id": item["job_id"],
+                             "atomic_gateway_enforced": True})
+
     if path == "/internal/admin/usage":
         if not admin_authorized(request):
             return denied(401, "Admin service authentication required")
@@ -210,16 +299,38 @@ async def inference(prefix: str, request: Request):
         summary = await ledger.summary(days=int(raw_days), app_id=app_id)
         return JSONResponse(summary) if summary else denied(503, "Usage ledger not configured")
 
-    if not (path.startswith("/internal/v1/") or path.startswith("/v1/")):
+    agent_protocol = path == "/internal/agent/v1/chat/completions"
+    personal_protocol = path == "/internal/personal/v1/chat/completions"
+    if not (agent_protocol or personal_protocol or path.startswith("/internal/v1/") or path.startswith("/v1/")):
         return JSONResponse({"error": {"message": "Unknown DragonZpyder API route"}}, status_code=404)
-    app_id = caller_identity(request)
-    if app_id is None:
-        return denied(401, "Service authentication required")
-    route = path.removeprefix("/internal")
+    if personal_protocol:
+        # Dedicated service credential, distinct from Operly, legacy and agent
+        # bearer credentials. No browser or user-supplied identity is accepted.
+        bearer = request.headers.get("authorization", "")
+        expected = os.getenv("DRAGONZPYDER_PERSONAL_BACKEND_TOKEN", "")
+        if (os.getenv("DRAGONZPYDER_PERSONAL_GATEWAY_ENABLED") != "1"
+                or len(expected) < 40):
+            return denied(503, "Personal inference gateway disabled")
+        if not (bearer.startswith("Bearer ") and
+                hmac.compare_digest(bearer[7:], expected)):
+            return denied(401, "Personal service authentication required")
+        app_id = "personal-core"
+    else:
+        app_id = caller_identity(request)
+        if app_id is None:
+            return denied(401, "Service authentication required")
+    if agent_protocol and (
+        app_id != "agent-runtime" or
+        os.getenv("DRAGONZPYDER_AGENT_TOOL_CALLS_ENABLED") != "1"
+    ):
+        return denied(403, "Agent gateway is disabled for this caller")
+    route = "/v1/chat/completions" if (agent_protocol or personal_protocol) else path.removeprefix("/internal")
     if request.method == "GET" and route == "/v1/health":
         return {"service": "dragonzpyder-inference",
                 "status": "ready" if os.getenv("OPENROUTER_API_KEY") else "unconfigured",
-                "models": len(models()), "usage_ledger": ledger.available}
+                "models": len(models()), "usage_ledger": ledger.available,
+                 "paid_test_cap_guard": os.getenv("DRAGONZPYDER_STAGING_PAID_TEST_CAP_USD") == "0.50",
+                 "atomic_parent_budget_ready": parent_budget.active}
     if request.method == "GET" and route == "/v1/models":
         return {"object": "list", "data": [{"id": model, "object": "model",
                                             "owned_by": "dragonzpyder"} for model in models()]}
@@ -229,6 +340,8 @@ async def inference(prefix: str, request: Request):
         return denied(415, "JSON request required")
     if not os.getenv("OPENROUTER_API_KEY"):
         return denied(503, "Inference provider is not configured")
+    if (agent_protocol or personal_protocol) and not ledger.available:
+        return denied(503, "Metered inference requires persistent usage accounting")
     if not ledger.available and ledger.required:
         return denied(503, "Usage accounting unavailable")
     if not await runtime.enter():
@@ -244,6 +357,11 @@ async def inference(prefix: str, request: Request):
     failure_code = None
     status = "error"
     response = None
+    # Parent identities are supplied only by the already-authenticated
+    # agent-runtime caller; reservations are made by this gateway.
+    parent_job_id = request.headers.get("x-dragonzpyder-parent-job-id") if agent_protocol else None
+    parent_reserved = False
+    parent_finalized = False
     try:
         with inference_span(request, app_id, "unknown", request_id) as span:
             trace_id = span_trace_id(span) or request_id.replace("-", "")
@@ -254,52 +372,215 @@ async def inference(prefix: str, request: Request):
                 if len(raw) > MAX_BYTES:
                     raise GatewayError(413, "Request payload exceeds 160 KB")
                 try:
-                    body = valid_body(json.loads(raw))
+                    decoded = json.loads(raw)
+                    if agent_protocol:
+                        try:
+                            body = validate_agent_body(decoded, models())
+                        except AgentProtocolError as error:
+                            # Diagnostics contain only roles and value TYPES, never text.
+                            safe_roles = {"system", "developer", "user", "assistant", "tool"}
+                            shapes = [
+                                ((item.get("role") if item.get("role") in safe_roles else "other"),
+                                 type(item.get("content")).__name__)
+                                for item in decoded.get("messages", [])[:20]
+                                if isinstance(item, dict)
+                            ] if isinstance(decoded, dict) and isinstance(decoded.get("messages"), list) else []
+                            log.warning("Agent request shape rejection reason=%s shapes=%s", error.message, shapes)
+                            raise GatewayError(error.status, error.message) from None
+                    else:
+                        body = valid_body(decoded)
+                        if personal_protocol:
+                            allowlist = {
+                                x.strip() for x in os.getenv(
+                                    "DRAGONZPYDER_PERSONAL_ALLOWED_MODELS", ""
+                                ).split(",") if x.strip()
+                            }
+                            if not allowlist or body["model"] not in allowlist:
+                                raise GatewayError(403, "Personal model not approved")
+                            if body["max_tokens"] > 768:
+                                raise GatewayError(400, "Personal output limit exceeded")
+                            # Enforce provider-side ceilings too: catalog-based
+                            # model selection alone cannot cap endpoint prices.
+                            body["provider"] = {
+                                "sort": "price",
+                                "max_price": {"prompt": 0.25, "completion": 1.5},
+                                "data_collection": "deny",
+                            }
+                            body["usage"] = {"include": True}
                 except (ValueError, UnicodeDecodeError):
                     raise GatewayError(400, "Invalid JSON request")
                 span.set_attribute("gen_ai.request.model", body["model"])
                 span.set_attribute("gen_ai.request.max_tokens", body["max_tokens"])
+                if agent_protocol and os.getenv("DRAGONZPYDER_AGENT_PAID_TEST_MAX_KEY_LIMIT_USD"):
+                    if os.getenv("DRAGONZPYDER_AGENT_PAID_TEST_MAX_KEY_LIMIT_USD") != "0.50":
+                        raise GatewayError(503, "Invalid staging paid-test budget guard")
+                    from agent_platform.key_budget import verify_key_budget
+                    budget = await verify_key_budget(
+                        request.app.state.http, os.getenv("OPENROUTER_API_KEY", "")
+                    )
+                    if budget.get("approved") is not True:
+                        log.warning("Agent paid-test preflight denied reason=%s", budget.get("reason"))
+                        raise GatewayError(503, "Provider-enforced $0.50 key cap not verified")
+                # Staging paid-agent calls are refused unless the *actual*
+                # provider key proves an upstream-enforced cap <= $0.50.
+                # The upstream provider enforces the aggregate cap even across
+                # gateway replicas/retries; our ledger remains observational.
+                if agent_protocol and os.getenv("RAILWAY_ENVIRONMENT_NAME") == "staging":
+                    if os.getenv("DRAGONZPYDER_STAGING_PAID_TEST_CAP_USD") != "0.50":
+                        raise GatewayError(503, "Staging model test budget guard not enabled")
+                    try:
+                        key_limit, remaining = await require_paid_test_cap(
+                            request.app.state.http,
+                            os.environ["OPENROUTER_API_KEY"],
+                        )
+                    except PaidTestBudgetError as error:
+                        log.warning(
+                            "Paid agent request denied: provider $0.50 cap unverified reason=%s",
+                            str(error),
+                        )
+                        raise GatewayError(503, "Provider $0.50 spending cap not verified") from None
+                    log.warning(
+                        "Paid agent provider cap verified limit_usd=%s remaining_usd=%s",
+                        key_limit, remaining,
+                    )
                 if not await runtime.charge():
                     raise GatewayError(429, "DragonZpyder internal inference test quota reached")
+                if parent_job_id is not None:
+                    if not parent_budget.active:
+                        raise GatewayError(503, "Parallel parent budget gateway is disabled")
+                    try:
+                        await parent_budget.reserve(
+                            job_id=parent_job_id, request_id=request_id,
+                            payload_bytes=len(raw), output_tokens=body["max_tokens"]
+                        )
+                        parent_reserved = True
+                    except (ValueError, BudgetExceeded):
+                        raise GatewayError(429, "Atomic parent inference budget unavailable") from None
+                    # Routing price ceilings match the conservative reservation
+                    # bound. Do not override the provider's tool requirements.
+                    body.setdefault("provider", {})["max_price"] = {
+                        "prompt": 1.0, "completion": 4.0
+                    }
+                    body["usage"] = {"include": True}
                 try:
-                    upstream = await request.app.state.http.post(
-                        OPENROUTER_URL, json=body,
-                        headers={"authorization": "Bearer " + os.environ["OPENROUTER_API_KEY"],
-                                 "HTTP-Referer": "https://dragonzpyder.xyz",
-                                 "X-Title": "DragonZpyder Runtime",
-                                 "X-DragonZpyder-Request-Id": request_id})
+                    # Only the agent protocol receives local admission pacing.
+                    # One upstream request per attempt; never automatically
+                    # retry ambiguous HTTP timeouts or network failures.
+                    async with (agent_pacer.slot() if agent_protocol else nullcontext()):
+                        upstream = await request.app.state.http.post(
+                            OPENROUTER_URL, json=body,
+                            headers={"authorization": "Bearer " + os.environ["OPENROUTER_API_KEY"],
+                                     "HTTP-Referer": "https://dragonzpyder.xyz",
+                                     "X-Title": "DragonZpyder Runtime",
+                                     "X-DragonZpyder-Request-Id": request_id})
                 except httpx.HTTPError:
                     raise GatewayError(502, "Inference service unavailable")
                 if upstream.status_code != 200:
                     log.warning("Inference upstream returned status %s request_id=%s",
                                 upstream.status_code, request_id)
                     code = 429 if upstream.status_code == 429 else 400 if upstream.status_code == 400 else 502
-                    raise GatewayError(code, "Inference budget or rate limit reached" if code == 429
-                                       else "Model provider rejected the request")
+                    delay = (
+                        await agent_pacer.cooldown(upstream.headers.get("retry-after"))
+                        if code == 429 and agent_protocol else None
+                    )
+                    if code == 429 and parent_reserved:
+                        try:
+                            await parent_budget.settle_known_rejection(
+                                job_id=parent_job_id, request_id=request_id)
+                            parent_finalized = True
+                        except Exception:
+                            pass  # Any ambiguous release remains held.
+                    raise GatewayError(
+                        code, "Inference budget or rate limit reached" if code == 429
+                              else "Model provider rejected the request",
+                        retry_after=delay,
+                    )
                 try:
                     provider_response = upstream.json()
-                    choice = provider_response["choices"][0]
-                    answer = choice["message"]["content"]
-                    if not isinstance(answer, str):
-                        raise ValueError("nontext")
-                    if len(answer.encode("utf-8")) > 90000:
-                        raise GatewayError(502, "Model response exceeded output size limit")
-                except (ValueError, TypeError, KeyError, IndexError):
+                    if agent_protocol:
+                        payload = validate_agent_response(
+                            provider_response, body["model"],
+                            allowed_tool_names={
+                                tool["function"]["name"] for tool in body.get("tools", [])
+                            },
+                        )
+                    else:
+                        choice = provider_response["choices"][0]
+                        answer = choice["message"]["content"]
+                        if not isinstance(answer, str):
+                            raise ValueError("nontext")
+                        if len(answer.encode("utf-8")) > 90000:
+                            raise GatewayError(502, "Model response exceeded output size limit")
+                        payload = {"id": str(provider_response.get("id") or ""),
+                                   "object": "chat.completion",
+                                   "model": str(provider_response.get("model") or body["model"]),
+                                   "choices": [{"index": 0, "message": {"role": "assistant", "content": answer},
+                                                "finish_reason": choice.get("finish_reason") or "stop"}]}
+                        if "usage" in provider_response:
+                            payload["usage"] = provider_response["usage"]
+                except (ValueError, TypeError, KeyError, IndexError, AgentProtocolError) as error:
+                    if agent_protocol and os.getenv("DRAGONZPYDER_AGENT_SHAPE_DIAGNOSTICS") == "1":
+                        # Shape metadata only. No raw output, reasoning tokens,
+                        # message content, request, tool arguments or provider keys.
+                        choice = (provider_response.get("choices") or [None])[0] if isinstance(
+                            provider_response, dict
+                        ) else None
+                        message = choice.get("message") if isinstance(choice, dict) else None
+                        message = message if isinstance(message, dict) else {}
+                        tools = message.get("tool_calls")
+                        output = message.get("content")
+                        finish = choice.get("finish_reason") if isinstance(choice, dict) else None
+                        finish = finish if finish in {"stop", "length", "tool_calls", "content_filter"} else "other"
+                        detail = getattr(error, "message", type(error).__name__)
+                        log.warning(
+                            "Agent provider shape rejected reason=%s "
+                            "finish=%s content_type=%s content_chars=%d "
+                            "tools_type=%s tools_count=%d has_reasoning=%s request_id=%s",
+                            detail, finish, type(output).__name__,
+                            len(output) if isinstance(output, str) else 0,
+                            type(tools).__name__,
+                            len(tools) if isinstance(tools, list) else 0,
+                            bool(message.get("reasoning") or message.get("reasoning_details")),
+                            request_id,
+                        )
                     raise GatewayError(502, "Model provider returned unexpected content")
                 served_model = str(provider_response.get("model") or body["model"])
                 generation_id = str(provider_response.get("id") or "") or None
-                payload = {"id": generation_id or "", "object": "chat.completion",
-                           "model": served_model,
-                           "choices": [{"index": 0, "message": {"role": "assistant", "content": answer},
-                                        "finish_reason": choice.get("finish_reason") or "stop"}]}
-                if "usage" in provider_response:
-                    payload["usage"] = provider_response["usage"]
+                if parent_reserved:
+                    # Missing/invalid/above-bound provider usage never frees
+                    # reserved dollars. The provider hard key cap still applies.
+                    try:
+                        await parent_budget.settle(job_id=parent_job_id,
+                            request_id=request_id,
+                            provider_response=provider_response)
+                    finally:
+                        parent_finalized = True
                 response = JSONResponse(payload)
                 status = "ok"
             except GatewayError as error:
+                if parent_reserved and not parent_finalized:
+                    try:
+                        await parent_budget.settle(job_id=parent_job_id,
+                            request_id=request_id, provider_response=None)
+                    except Exception:
+                        pass  # Hold is never automatically released.
+                    parent_finalized = True
                 failure_code = str(error.status)
+                if agent_protocol:
+                    # Only authored validation labels; never record prompts or schemas.
+                    log.warning("Agent gateway request rejected status=%s reason=%s request_id=%s",
+                                error.status, error.message, request_id)
                 response = denied(error.status, error.message)
+                if error.retry_after is not None:
+                    response.headers["retry-after"] = str(error.retry_after)
             except Exception as error:
+                if parent_reserved and not parent_finalized:
+                    try:
+                        await parent_budget.settle(job_id=parent_job_id,
+                            request_id=request_id, provider_response=None)
+                    except Exception:
+                        pass
+                    parent_finalized = True
                 log.exception("Unexpected inference exception request_id=%s type=%s", request_id, type(error).__name__)
                 failure_code = "502"
                 response = denied(502, "Inference service unavailable")
