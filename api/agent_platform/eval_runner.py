@@ -58,6 +58,7 @@ async def evaluate(case_ids: list[str]) -> dict:
                     "case_id": cid, "smoke_passed": False,
                     "failure_type": type(exc).__name__,
                     "evaluation_class": "heuristic-smoke-only",
+                    "verified_completion": False,
                 }
             score["duration_s"] = round(time.monotonic() - started, 2)
             scores.append(score)
