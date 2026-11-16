@@ -57,6 +57,7 @@ def score_case(case: dict, answer: str, tool_names=()) -> dict:
         "forbidden_claims": disallowed,
         "missing_tool_evidence": missing_tools,
         "evaluation_class": "heuristic-smoke-only",
+        "verified_completion": False,  # Only an independent outcome oracle may set True.
     }
 
 
@@ -65,5 +66,6 @@ def summarize(scores: list[dict]):
         "suite": "synthetic-smoke",
         "passed": sum(bool(item["smoke_passed"]) for item in scores),
         "total": len(scores),
+        "verified_completions": 0,  # Smoke tests never establish verified delivery.
         "warning": "String/tool checks cannot establish accuracy or real task completion.",
     }
