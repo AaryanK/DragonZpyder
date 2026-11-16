@@ -84,3 +84,27 @@ def test_runner_failure_is_explicitly_not_verified(monkeypatch):
     assert failure["verified_completion"] is False
     assert failure["failure_type"] == "RuntimeError"
     assert result["summary"]["verified_completions"] == 0
+
+
+
+def test_runner_closes_runtime_after_startup_failure(monkeypatch):
+    """A failed startup must not leave a partially initialized runtime open."""
+    import asyncio
+    import pytest
+    from agent_platform import eval_runner
+
+    events = []
+
+    class FailingStartupRuntime:
+        async def start(self):
+            events.append("start")
+            raise RuntimeError("synthetic startup failure")
+
+        async def close(self):
+            events.append("close")
+
+    monkeypatch.setattr(eval_runner, "evaluation_enabled", lambda: True)
+    monkeypatch.setattr(eval_runner, "AgentRuntime", FailingStartupRuntime)
+    with pytest.raises(RuntimeError, match="synthetic startup failure"):
+        asyncio.run(eval_runner.evaluate(["virtual-workspace"]))
+    assert events == ["start", "close"]
