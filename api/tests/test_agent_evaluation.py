@@ -59,3 +59,28 @@ def test_smoke_success_never_counts_as_verified_completion():
     summary = summarize([report])
     assert summary["passed"] == 1
     assert summary["verified_completions"] == 0
+
+
+def test_runner_failure_is_explicitly_not_verified(monkeypatch):
+    """Offline failure injection: no provider calls or credentials."""
+    import asyncio
+    from agent_platform import eval_runner
+
+    class FailingRuntime:
+        async def start(self):
+            pass
+
+        async def run_report(self, **kwargs):
+            raise RuntimeError("synthetic failure")
+
+        async def close(self):
+            pass
+
+    monkeypatch.setattr(eval_runner, "evaluation_enabled", lambda: True)
+    monkeypatch.setattr(eval_runner, "AgentRuntime", FailingRuntime)
+    result = asyncio.run(eval_runner.evaluate(["virtual-workspace"]))
+    failure = result["case_results"][0]
+    assert failure["smoke_passed"] is False
+    assert failure["verified_completion"] is False
+    assert failure["failure_type"] == "RuntimeError"
+    assert result["summary"]["verified_completions"] == 0
