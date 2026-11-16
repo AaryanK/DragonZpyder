@@ -9,7 +9,7 @@ import threading
 import unittest
 from pathlib import Path
 
-from agent_platform.evals.transactional_outcome_prototype import initialize, verify_and_record
+from agent_platform.evals.transactional_outcome_prototype import initialize, verify_and_record, check_delivery_availability
 from agent_platform.evals.trusted_receipt_prototype import issue
 
 
@@ -42,6 +42,24 @@ class TransactionalOutcomeSQLiteTests(unittest.TestCase):
     def test_verified_then_idempotent_replay(self):
         self.assertEqual(self.verify(), "verified")
         self.assertEqual(self.verify(), "already_verified")
+
+    def test_historical_replay_does_not_prove_current_delivery(self):
+        # Ledger idempotency is historical; the delivery boundary must recheck bytes.
+        self.assertEqual(self.verify(), "verified")
+        args = dict(issuer="trusted-sandbox-runner-v1", nonce="nonce", task_id="task", run_id="run")
+        self.assertEqual(check_delivery_availability(self.db, self.root, **args), "available")
+        (self.root / "result.txt").unlink()
+        self.assertEqual(self.verify(), "already_verified")
+        self.assertEqual(check_delivery_availability(self.db, self.root, **args), "unavailable")
+        self.assertEqual(check_delivery_availability(self.db, self.root, **dict(args, nonce="missing")), "unknown")
+
+    def test_mutated_artifact_is_not_deliverable_after_verification(self):
+        self.assertEqual(self.verify(), "verified")
+        (self.root / "result.txt").write_bytes(b"tampered output")
+        self.assertEqual(check_delivery_availability(
+            self.db, self.root, issuer="trusted-sandbox-runner-v1",
+            nonce="nonce", task_id="task", run_id="run",
+        ), "unavailable")
 
     def test_invalid_mac_is_rejected(self):
         bad = dict(self.receipt, mac="0" * 64)
