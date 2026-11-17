@@ -166,6 +166,27 @@ class TransactionalOutcomeSQLiteTests(unittest.TestCase):
             task_id="task", run_id="run", now=1050, require_v2=True,
         ), "already_verified")
 
+    def test_v2_only_mode_rejects_legacy_replay_without_changing_ledger(self):
+        # Historical v1 verification must not bypass a newly enforced v2 gate.
+        self.assertEqual(self.verify(), "verified")
+        before = self.db.execute("SELECT COUNT(*) FROM verified_outcomes").fetchone()[0]
+        self.assertEqual(verify_and_record(
+            self.db, self.key, self.receipt, self.root,
+            task_id="task", run_id="run", now=1050, require_v2=True,
+        ), "rejected")
+        self.assertEqual(self.db.execute("SELECT COUNT(*) FROM verified_outcomes").fetchone()[0], before)
+        self.assertEqual(self.verify(), "already_verified")
+
+    def test_v2_only_mode_rejects_non_boolean_policy_flags(self):
+        # Truthy strings or integers must not silently weaken migration policy.
+        for flag in ("false", "true", 0, 1, None):
+            with self.subTest(flag=flag):
+                self.assertEqual(verify_and_record(
+                    self.db, self.key, self.v2_receipt("new", "attempt"), self.root,
+                    task_id="task", run_id="run", now=1050, require_v2=flag,
+                ), "rejected")
+        self.assertEqual(self.db.execute("SELECT COUNT(*) FROM verified_outcomes").fetchone()[0], 0)
+
     def test_missing_schema_is_infrastructure_error(self):
         other = sqlite3.connect(":memory:")
         self.addCleanup(other.close)
