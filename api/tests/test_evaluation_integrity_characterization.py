@@ -53,3 +53,19 @@ def test_current_baseline_has_no_external_delivery_oracle():
     assert len(requiring_tools) == 1
     assert requiring_tools[0]["id"] == "virtual-workspace"
     assert all("receipt_oracle" not in c for c in cases)
+
+
+def test_summary_does_not_count_truthy_nonboolean_success_claims():
+    """Imported or malformed scores must not inflate smoke-pass totals."""
+    scores = [
+        {"smoke_passed": True},
+        {"smoke_passed": False},
+        {"smoke_passed": "false"},
+        {"smoke_passed": "true"},
+        {"smoke_passed": 1},
+        {"smoke_passed": []},
+    ]
+    result = summarize(scores)
+    assert result["total"] == 6
+    assert result["passed"] == 1
+    assert result["verified_completions"] == 0
