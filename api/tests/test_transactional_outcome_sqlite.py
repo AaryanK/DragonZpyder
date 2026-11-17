@@ -70,6 +70,23 @@ class TransactionalOutcomeSQLiteTests(unittest.TestCase):
             "SELECT COUNT(*) FROM verified_outcomes"
         ).fetchone()[0], 1)
 
+    def test_v2_replay_cannot_cross_task_or_run_boundary(self):
+        # A valid signed receipt for one task/run must not authorize another.
+        receipt = self.v2_receipt("scoped-nonce", "scoped-attempt")
+        for task_id, run_id in (("other-task", "run"), ("task", "other-run")):
+            with self.subTest(task_id=task_id, run_id=run_id):
+                self.assertEqual(verify_and_record(
+                    self.db, self.key, receipt, self.root,
+                    task_id=task_id, run_id=run_id, now=1050, require_v2=True,
+                ), "rejected")
+        self.assertEqual(self.db.execute(
+            "SELECT COUNT(*) FROM verified_outcomes"
+        ).fetchone()[0], 0)
+        self.assertEqual(self.verify(receipt=receipt), "verified")
+        self.assertEqual(self.db.execute(
+            "SELECT COUNT(*) FROM verified_outcomes"
+        ).fetchone()[0], 1)
+
     def test_mutated_artifact_is_not_deliverable_after_verification(self):
         self.assertEqual(self.verify(), "verified")
         (self.root / "result.txt").write_bytes(b"tampered output")
