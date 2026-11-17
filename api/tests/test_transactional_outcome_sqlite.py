@@ -53,6 +53,23 @@ class TransactionalOutcomeSQLiteTests(unittest.TestCase):
         self.assertEqual(check_delivery_availability(self.db, self.root, **args), "unavailable")
         self.assertEqual(check_delivery_availability(self.db, self.root, **dict(args, nonce="missing")), "unknown")
 
+    def test_expired_v2_replay_is_historical_not_fresh_authorization(self):
+        # A recorded receipt is idempotent even after its signing TTL expires.
+        # Neither this result nor availability grants a new delivery capability.
+        receipt = self.v2_receipt("expiring-nonce", "expiring-attempt")
+        self.assertEqual(self.verify(receipt=receipt), "verified")
+        self.assertEqual(verify_and_record(
+            self.db, self.key, receipt, self.root,
+            task_id="task", run_id="run", now=1100, require_v2=True,
+        ), "already_verified")
+        self.assertEqual(check_delivery_availability(
+            self.db, self.root, issuer="trusted-sandbox-runner-v1",
+            nonce="expiring-nonce", task_id="task", run_id="run",
+        ), "available")
+        self.assertEqual(self.db.execute(
+            "SELECT COUNT(*) FROM verified_outcomes"
+        ).fetchone()[0], 1)
+
     def test_mutated_artifact_is_not_deliverable_after_verification(self):
         self.assertEqual(self.verify(), "verified")
         (self.root / "result.txt").write_bytes(b"tampered output")
