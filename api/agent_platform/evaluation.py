@@ -64,7 +64,7 @@ def score_case(case: dict, answer: str, tool_names=()) -> dict:
 def summarize(scores: list[dict]):
     return {
         "suite": "synthetic-smoke",
-        "passed": sum(bool(item["smoke_passed"]) for item in scores),
+        "passed": sum(item["smoke_passed"] is True for item in scores),
         "total": len(scores),
         "verified_completions": 0,  # Smoke tests never establish verified delivery.
         "warning": "String/tool checks cannot establish accuracy or real task completion.",
