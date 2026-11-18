@@ -289,5 +289,37 @@ class TransactionalOutcomeSQLiteTests(unittest.TestCase):
         self.assertEqual(self.verify(db=other), "infrastructure_error")
 
 
+    def test_initialize_rejects_shadowed_nonunique_attempt_index(self):
+        db = sqlite3.connect(':memory:')
+        self.addCleanup(db.close)
+        db.execute('CREATE TABLE verified_outcomes (issuer TEXT, nonce TEXT, task_id TEXT, run_id TEXT, receipt_hash TEXT, manifest TEXT, attempt_id TEXT)')
+        db.execute('CREATE INDEX verified_attempt_identity ON verified_outcomes (issuer, task_id, run_id, attempt_id) WHERE attempt_id IS NOT NULL')
+        db.commit()
+        with self.assertRaises(sqlite3.OperationalError):
+            initialize(db)
+        self.assertFalse(db.in_transaction)
+        self.assertEqual(db.execute('PRAGMA index_list(verified_outcomes)').fetchall()[0][2], 0)
+
+    def test_initialize_rejects_wrong_index_columns(self):
+        db = sqlite3.connect(':memory:')
+        self.addCleanup(db.close)
+        db.execute('CREATE TABLE verified_outcomes (issuer TEXT, nonce TEXT, task_id TEXT, run_id TEXT, receipt_hash TEXT, manifest TEXT, attempt_id TEXT)')
+        db.execute('CREATE UNIQUE INDEX verified_attempt_identity ON verified_outcomes (issuer, nonce, run_id, attempt_id) WHERE attempt_id IS NOT NULL')
+        db.commit()
+        with self.assertRaises(sqlite3.OperationalError):
+            initialize(db)
+        self.assertFalse(db.in_transaction)
+
+    def test_initialize_rejects_wrong_partial_predicate(self):
+        db = sqlite3.connect(':memory:')
+        self.addCleanup(db.close)
+        db.execute('CREATE TABLE verified_outcomes (issuer TEXT, nonce TEXT, task_id TEXT, run_id TEXT, receipt_hash TEXT, manifest TEXT, attempt_id TEXT)')
+        db.execute('CREATE UNIQUE INDEX verified_attempt_identity ON verified_outcomes (issuer, task_id, run_id, attempt_id) WHERE attempt_id IS NULL')
+        db.commit()
+        with self.assertRaises(sqlite3.OperationalError):
+            initialize(db)
+        self.assertFalse(db.in_transaction)
+
+
 if __name__ == "__main__":
     unittest.main()
