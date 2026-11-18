@@ -20,7 +20,16 @@ def initialize(db):
     db.execute('BEGIN IMMEDIATE')
     try:
         db.execute('CREATE TABLE IF NOT EXISTS verified_outcomes (issuer TEXT NOT NULL, nonce TEXT NOT NULL, task_id TEXT NOT NULL, run_id TEXT NOT NULL, receipt_hash TEXT NOT NULL, manifest TEXT NOT NULL, PRIMARY KEY(issuer, nonce))')
-        cols = {row[1] for row in db.execute('PRAGMA table_info(verified_outcomes)')}
+        # CREATE TABLE IF NOT EXISTS does not validate a preexisting table.
+        # A shadow table without the composite PK can silently admit replayed nonces.
+        table_info = list(db.execute('PRAGMA table_info(verified_outcomes)'))
+        required = ('issuer', 'nonce', 'task_id', 'run_id', 'receipt_hash', 'manifest')
+        by_name = {row[1]: row for row in table_info}
+        if any(name not in by_name or by_name[name][3] != 1 for name in required):
+            raise sqlite3.OperationalError('verified outcomes table missing required NOT NULL columns')
+        if [row[1] for row in sorted(table_info, key=lambda row: row[5]) if row[5] > 0] != ['issuer', 'nonce']:
+            raise sqlite3.OperationalError('verified outcomes table has unexpected primary key')
+        cols = set(by_name)
         if 'attempt_id' not in cols:
             db.execute('ALTER TABLE verified_outcomes ADD COLUMN attempt_id TEXT')
         db.execute('CREATE UNIQUE INDEX IF NOT EXISTS verified_attempt_identity ON verified_outcomes (issuer, task_id, run_id, attempt_id) WHERE attempt_id IS NOT NULL')
