@@ -32,7 +32,7 @@ def initialize(db):
             raise sqlite3.OperationalError('verified attempt index has unexpected key columns')
         sql_row = db.execute("SELECT sql FROM sqlite_master WHERE type='index' AND name='verified_attempt_identity' AND tbl_name='verified_outcomes'").fetchone()
         import re
-        if not sql_row or not sql_row[0] or not re.search(r'\\bWHERE\\s+attempt_id\\s+IS\\s+NOT\\s+NULL\\s*$', sql_row[0], re.IGNORECASE):
+        if not sql_row or not sql_row[0] or not re.search(r'\bWHERE\s+attempt_id\s+IS\s+NOT\s+NULL\s*$', sql_row[0], re.IGNORECASE):
             raise sqlite3.OperationalError('verified attempt index has unexpected predicate')
         db.commit()
     except Exception:
