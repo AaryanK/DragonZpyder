@@ -43,7 +43,7 @@ def initialize(db):
         ).fetchone()
         import re
         if not index_sql_row or not index_sql_row[0] or not re.search(
-            r'\\bWHERE\\s+attempt_id\\s+IS\\s+NOT\\s+NULL\\s*
+            r'\bWHERE\s+attempt_id\s+IS\s+NOT\s+NULL\s*
     except Exception:
         db.rollback()
         raise
