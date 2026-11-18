@@ -14,6 +14,10 @@ from agent_platform.evals.trusted_receipt_prototype import canonical, MAX_TTL_SE
 
 
 def initialize(db):
+    # Never commit or migrate inside a transaction owned by the caller.
+    # SQLite DDL and the final commit would otherwise persist unrelated writes.
+    if db.in_transaction:
+        raise sqlite3.ProgrammingError('initialize requires a connection without an active transaction')
     db.execute('CREATE TABLE IF NOT EXISTS verified_outcomes (issuer TEXT NOT NULL, nonce TEXT NOT NULL, task_id TEXT NOT NULL, run_id TEXT NOT NULL, receipt_hash TEXT NOT NULL, manifest TEXT NOT NULL, PRIMARY KEY(issuer, nonce))')
     # Additive migration: legacy v1 receipts retain nonce-only semantics.
     cols = {row[1] for row in db.execute('PRAGMA table_info(verified_outcomes)')}
