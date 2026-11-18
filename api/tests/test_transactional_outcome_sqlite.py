@@ -110,6 +110,25 @@ class TransactionalOutcomeSQLiteTests(unittest.TestCase):
         blocker.rollback()
         self.assertEqual(self.verify(db=contender), "verified")
 
+    def test_initialize_rejects_caller_transaction_without_committing_it(self):
+        # Initialization must not commit unrelated writes on a shared connection.
+        observer = sqlite3.connect(self.path, timeout=0.02)
+        self.addCleanup(observer.close)
+        self.db.execute("CREATE TABLE IF NOT EXISTS caller_data (value TEXT)")
+        self.db.commit()
+        self.db.execute("INSERT INTO caller_data VALUES ('uncommitted')")
+        self.assertTrue(self.db.in_transaction)
+        self.assertEqual(observer.execute("SELECT COUNT(*) FROM caller_data").fetchone()[0], 0)
+        with self.assertRaises(sqlite3.ProgrammingError):
+            initialize(self.db)
+        self.assertTrue(self.db.in_transaction)
+        self.assertEqual(observer.execute("SELECT COUNT(*) FROM caller_data").fetchone()[0], 0)
+        self.db.rollback()
+        self.assertEqual(observer.execute("SELECT COUNT(*) FROM caller_data").fetchone()[0], 0)
+        initialize(self.db)
+        self.assertFalse(self.db.in_transaction)
+        self.assertEqual(self.verify(), "verified")
+
     def test_caller_transaction_is_not_rolled_back(self):
         self.db.execute("BEGIN")
         self.assertEqual(self.verify(), "infrastructure_error")
