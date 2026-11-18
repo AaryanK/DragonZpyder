@@ -18,13 +18,20 @@ def initialize(db):
     # SQLite DDL and the final commit would otherwise persist unrelated writes.
     if db.in_transaction:
         raise sqlite3.ProgrammingError('initialize requires a connection without an active transaction')
-    db.execute('CREATE TABLE IF NOT EXISTS verified_outcomes (issuer TEXT NOT NULL, nonce TEXT NOT NULL, task_id TEXT NOT NULL, run_id TEXT NOT NULL, receipt_hash TEXT NOT NULL, manifest TEXT NOT NULL, PRIMARY KEY(issuer, nonce))')
-    # Additive migration: legacy v1 receipts retain nonce-only semantics.
-    cols = {row[1] for row in db.execute('PRAGMA table_info(verified_outcomes)')}
-    if 'attempt_id' not in cols:
-        db.execute('ALTER TABLE verified_outcomes ADD COLUMN attempt_id TEXT')
-    db.execute('CREATE UNIQUE INDEX IF NOT EXISTS verified_attempt_identity ON verified_outcomes (issuer, task_id, run_id, attempt_id) WHERE attempt_id IS NOT NULL')
-    db.commit()
+    # Schema changes must commit together or leave the preexisting schema intact.
+    # BEGIN IMMEDIATE also serializes concurrent initializers.
+    db.execute('BEGIN IMMEDIATE')
+    try:
+        db.execute('CREATE TABLE IF NOT EXISTS verified_outcomes (issuer TEXT NOT NULL, nonce TEXT NOT NULL, task_id TEXT NOT NULL, run_id TEXT NOT NULL, receipt_hash TEXT NOT NULL, manifest TEXT NOT NULL, PRIMARY KEY(issuer, nonce))')
+        # Additive migration: legacy v1 receipts retain nonce-only semantics.
+        cols = {row[1] for row in db.execute('PRAGMA table_info(verified_outcomes)')}
+        if 'attempt_id' not in cols:
+            db.execute('ALTER TABLE verified_outcomes ADD COLUMN attempt_id TEXT')
+        db.execute('CREATE UNIQUE INDEX IF NOT EXISTS verified_attempt_identity ON verified_outcomes (issuer, task_id, run_id, attempt_id) WHERE attempt_id IS NOT NULL')
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
 
 
 def verify_and_record(db: sqlite3.Connection, key: bytes, receipt: dict, root: Path, *, task_id: str, run_id: str, now=None, require_v2: bool = False):
