@@ -289,6 +289,36 @@ class TransactionalOutcomeSQLiteTests(unittest.TestCase):
         self.assertEqual(self.verify(db=other), "infrastructure_error")
 
 
+    def test_initialize_rejects_shadow_table_without_primary_key(self):
+        db = sqlite3.connect(':memory:')
+        self.addCleanup(db.close)
+        db.execute('CREATE TABLE verified_outcomes (issuer TEXT NOT NULL, nonce TEXT NOT NULL, task_id TEXT NOT NULL, run_id TEXT NOT NULL, receipt_hash TEXT NOT NULL, manifest TEXT NOT NULL)')
+        db.commit()
+        with self.assertRaises(sqlite3.OperationalError):
+            initialize(db)
+        self.assertFalse(db.in_transaction)
+        db.execute('INSERT INTO verified_outcomes VALUES (?,?,?,?,?,?)', ('issuer', 'nonce', 'task', 'run', 'hash', '{}'))
+        db.execute('INSERT INTO verified_outcomes VALUES (?,?,?,?,?,?)', ('issuer', 'nonce', 'task', 'run', 'hash', '{}'))
+        self.assertEqual(db.execute('SELECT COUNT(*) FROM verified_outcomes').fetchone()[0], 2)
+
+    def test_initialize_rejects_wrong_primary_key_order(self):
+        db = sqlite3.connect(':memory:')
+        self.addCleanup(db.close)
+        db.execute('CREATE TABLE verified_outcomes (issuer TEXT NOT NULL, nonce TEXT NOT NULL, task_id TEXT NOT NULL, run_id TEXT NOT NULL, receipt_hash TEXT NOT NULL, manifest TEXT NOT NULL, PRIMARY KEY(nonce, issuer))')
+        db.commit()
+        with self.assertRaises(sqlite3.OperationalError):
+            initialize(db)
+        self.assertFalse(db.in_transaction)
+
+    def test_initialize_rejects_nullable_required_column(self):
+        db = sqlite3.connect(':memory:')
+        self.addCleanup(db.close)
+        db.execute('CREATE TABLE verified_outcomes (issuer TEXT NOT NULL, nonce TEXT NOT NULL, task_id TEXT, run_id TEXT NOT NULL, receipt_hash TEXT NOT NULL, manifest TEXT NOT NULL, PRIMARY KEY(issuer, nonce))')
+        db.commit()
+        with self.assertRaises(sqlite3.OperationalError):
+            initialize(db)
+        self.assertFalse(db.in_transaction)
+
     def test_initialize_rejects_shadowed_nonunique_attempt_index(self):
         db = sqlite3.connect(':memory:')
         self.addCleanup(db.close)
