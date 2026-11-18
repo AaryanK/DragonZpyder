@@ -194,6 +194,49 @@ class TransactionalOutcomeSQLiteTests(unittest.TestCase):
         self.assertEqual(self.verify(db=legacy, receipt=self.v2_receipt("first", "attempt-1")), "verified")
         self.assertEqual(self.verify(db=legacy, receipt=self.v2_receipt("second", "attempt-1")), "rejected")
 
+    def test_failed_unique_index_migration_rolls_back_column_addition(self):
+        # A legacy database with duplicate non-null logical attempts cannot
+        # acquire the unique index. Failure must not leave a partial migration.
+        legacy = sqlite3.connect(":memory:")
+        self.addCleanup(legacy.close)
+        legacy.execute("CREATE TABLE verified_outcomes (issuer TEXT NOT NULL, nonce TEXT NOT NULL, task_id TEXT NOT NULL, run_id TEXT NOT NULL, receipt_hash TEXT NOT NULL, manifest TEXT NOT NULL, attempt_id TEXT, PRIMARY KEY(issuer, nonce))")
+        for nonce in ("first", "second"):
+            legacy.execute(
+                "INSERT INTO verified_outcomes VALUES (?,?,?,?,?,?,?)",
+                ("trusted-sandbox-runner-v1", nonce, "task", "run", "hash", "{}", "same-attempt"),
+            )
+        legacy.commit()
+        with self.assertRaises(sqlite3.IntegrityError):
+            initialize(legacy)
+        self.assertFalse(legacy.in_transaction)
+        indexes = {row[1] for row in legacy.execute("PRAGMA index_list(verified_outcomes)")}
+        self.assertNotIn("verified_attempt_identity", indexes)
+        self.assertEqual(legacy.execute("SELECT COUNT(*) FROM verified_outcomes").fetchone()[0], 2)
+        # A corrected dataset must permit a clean subsequent initialization.
+        legacy.execute("DELETE FROM verified_outcomes WHERE nonce='second'")
+        legacy.commit()
+        initialize(legacy)
+        indexes = {row[1] for row in legacy.execute("PRAGMA index_list(verified_outcomes)")}
+        self.assertIn("verified_attempt_identity", indexes)
+
+    def test_failed_migration_does_not_leave_added_column(self):
+        # Force the index DDL to fail after ALTER TABLE, not before it.
+        legacy = sqlite3.connect(":memory:")
+        self.addCleanup(legacy.close)
+        legacy.execute("CREATE TABLE verified_outcomes (issuer TEXT NOT NULL, nonce TEXT NOT NULL, task_id TEXT NOT NULL, run_id TEXT NOT NULL, receipt_hash TEXT NOT NULL, manifest TEXT NOT NULL, PRIMARY KEY(issuer, nonce))")
+        legacy.execute("CREATE VIEW verified_attempt_identity AS SELECT 1 AS value")
+        legacy.commit()
+        with self.assertRaises(sqlite3.OperationalError):
+            initialize(legacy)
+        columns = {row[1] for row in legacy.execute("PRAGMA table_info(verified_outcomes)")}
+        self.assertNotIn("attempt_id", columns)
+        self.assertFalse(legacy.in_transaction)
+        legacy.execute("DROP VIEW verified_attempt_identity")
+        legacy.commit()
+        initialize(legacy)
+        columns = {row[1] for row in legacy.execute("PRAGMA table_info(verified_outcomes)")}
+        self.assertIn("attempt_id", columns)
+
     def test_v2_only_mode_rejects_legacy_before_db_access(self):
         # Opt-in enforcement must reject legacy receipts even on a missing DB.
         other = sqlite3.connect(":memory:")
