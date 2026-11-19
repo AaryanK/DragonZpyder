@@ -121,6 +121,18 @@ async def select_local_tool(model, remaining: tuple[str, ...]) -> str:
     return allowed[name]
 
 
+def verify_persisted_result(result_json: Any, expected_digest: str) -> None:
+    """Verify JSONB content itself, not just its stored digest metadata."""
+    if isinstance(result_json, str):
+        result_json = json.loads(result_json)
+    if not isinstance(result_json, dict) or not result_json:
+        raise CanaryError("PostgreSQL receipt result is invalid")
+    canonical = json.dumps(result_json, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    actual = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    if actual != expected_digest:
+        raise CanaryError("PostgreSQL receipt content integrity failed")
+
+
 class PersistentToolCanary:
     def __init__(self, pool, *, model, registry=None):
         self.pool = pool
@@ -197,11 +209,12 @@ class PersistentToolCanary:
                 )
                 # Compare the stored digest with data actually in the table.
                 receipt = await connection.fetchrow(
-                    """SELECT result_sha256,tool_name FROM dz_staging_long_horizon_receipts
+                    """SELECT result_json,result_sha256,tool_name FROM dz_staging_long_horizon_receipts
                        WHERE goal_id=$1 AND step_index=$2""", GOAL_ID,step,
                 )
                 if receipt["result_sha256"] != digest or receipt["tool_name"] != selected:
                     raise CanaryError("PostgreSQL receipt verification failed")
+                verify_persisted_result(receipt["result_json"], digest)
                 return {"state":state,"next_step":step+1,"last_tool":selected,
                         "receipt_sha256":digest,"model_calls":1,"tool_calls":1,
                         "verification":"database_readback",
