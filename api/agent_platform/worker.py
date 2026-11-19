@@ -21,6 +21,12 @@ def main() -> None:
             and os.getenv("DRAGONZPYDER_AGENT_WEB_SEARCH_ENABLED") == "1"):
         from .monitor import make_monitor_task
         workflows.append(make_monitor_task(hatchet))
+    if os.getenv("DRAGONZPYDER_LOCAL_MONITOR_ENABLED") == "1":
+        # Staging-only, explicit operator-scheduled local monitor.
+        # Worker registration does NOT create or modify a Hatchet cron.
+        from .local_monitor import make_local_monitor_task, require_monitor_gate
+        require_monitor_gate()
+        workflows.append(make_local_monitor_task(hatchet))
     worker = hatchet.worker("dragonzpyder-agent-worker", slots=2, workflows=workflows)
     worker.start()
 

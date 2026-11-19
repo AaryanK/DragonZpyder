@@ -1,0 +1,1614 @@
+{
+  "schema_version": "1",
+  "suite": "local-autonomy-100",
+  "scope": "Worker-local time, RAM, disk, policy and schedule behavior; no LLM/MCP or real recurring waits",
+  "cases": [
+    {
+      "id": "LOCAL-001",
+      "kind": "monitor",
+      "category": "Resource monitoring",
+      "title": "First healthy baseline — CI build runner",
+      "intent": "Initial capacity baseline",
+      "tools": [
+        "time.now",
+        "system.memory",
+        "system.disk"
+      ],
+      "ram_percent": 35,
+      "disk_percent": 30,
+      "previous_ram_percent": null,
+      "expected_status": "healthy",
+      "expected_alerts": [],
+      "execution": "offline_simulation"
+    },
+    {
+      "id": "LOCAL-002",
+      "kind": "monitor",
+      "category": "Resource monitoring",
+      "title": "First healthy baseline — API worker",
+      "intent": "Initial capacity baseline",
+      "tools": [
+        "time.now",
+        "system.memory",
+        "system.disk"
+      ],
+      "ram_percent": 35.1,
+      "disk_percent": 30.1,
+      "previous_ram_percent": null,
+      "expected_status": "healthy",
+      "expected_alerts": [],
+      "execution": "offline_simulation"
+    },
+    {
+      "id": "LOCAL-003",
+      "kind": "monitor",
+      "category": "Resource monitoring",
+      "title": "First healthy baseline — video transcoder",
+      "intent": "Initial capacity baseline",
+      "tools": [
+        "time.now",
+        "system.memory",
+        "system.disk"
+      ],
+      "ram_percent": 35.2,
+      "disk_percent": 30.2,
+      "previous_ram_percent": null,
+      "expected_status": "healthy",
+      "expected_alerts": [],
+      "execution": "offline_simulation"
+    },
+    {
+      "id": "LOCAL-004",
+      "kind": "monitor",
+      "category": "Resource monitoring",
+      "title": "First healthy baseline — research pipeline",
+      "intent": "Initial capacity baseline",
+      "tools": [
+        "time.now",
+        "system.memory",
+        "system.disk"
+      ],
+      "ram_percent": 35.3,
+      "disk_percent": 30.3,
+      "previous_ram_percent": null,
+      "expected_status": "healthy",
+      "expected_alerts": [],
+      "execution": "offline_simulation"
+    },
+    {
+      "id": "LOCAL-005",
+      "kind": "monitor",
+      "category": "Resource monitoring",
+      "title": "First healthy baseline — background document processor",
+      "intent": "Initial capacity baseline",
+      "tools": [
+        "time.now",
+        "system.memory",
+        "system.disk"
+      ],
+      "ram_percent": 35.4,
+      "disk_percent": 30.4,
+      "previous_ram_percent": null,
+      "expected_status": "healthy",
+      "expected_alerts": [],
+      "execution": "offline_simulation"
+    },
+    {
+      "id": "LOCAL-006",
+      "kind": "monitor",
+      "category": "Resource monitoring",
+      "title": "Healthy repeat check — CI build runner",
+      "intent": "Follow-up check without growth alarm",
+      "tools": [
+        "time.now",
+        "system.memory",
+        "system.disk"
+      ],
+      "ram_percent": 49,
+      "disk_percent": 43,
+      "previous_ram_percent": 46,
+      "expected_status": "healthy",
+      "expected_alerts": [],
+      "execution": "offline_simulation"
+    },
+    {
+      "id": "LOCAL-007",
+      "kind": "monitor",
+      "category": "Resource monitoring",
+      "title": "Healthy repeat check — API worker",
+      "intent": "Follow-up check without growth alarm",
+      "tools": [
+        "time.now",
+        "system.memory",
+        "system.disk"
+      ],
+      "ram_percent": 49.1,
+      "disk_percent": 43.1,
+      "previous_ram_percent": 45.9,
+      "expected_status": "healthy",
+      "expected_alerts": [],
+      "execution": "offline_simulation"
+    },
+    {
+      "id": "LOCAL-008",
+      "kind": "monitor",
+      "category": "Resource monitoring",
+      "title": "Healthy repeat check — video transcoder",
+      "intent": "Follow-up check without growth alarm",
+      "tools": [
+        "time.now",
+        "system.memory",
+        "system.disk"
+      ],
+      "ram_percent": 49.2,
+      "disk_percent": 43.2,
+      "previous_ram_percent": 45.8,
+      "expected_status": "healthy",
+      "expected_alerts": [],
+      "execution": "offline_simulation"
+    },
+    {
+      "id": "LOCAL-009",
+      "kind": "monitor",
+      "category": "Resource monitoring",
+      "title": "Healthy repeat check — research pipeline",
+      "intent": "Follow-up check without growth alarm",
+      "tools": [
+        "time.now",
+        "system.memory",
+        "system.disk"
+      ],
+      "ram_percent": 49.3,
+      "disk_percent": 43.3,
+      "previous_ram_percent": 45.7,
+      "expected_status": "healthy",
+      "expected_alerts": [],
+      "execution": "offline_simulation"
+    },
+    {
+      "id": "LOCAL-010",
+      "kind": "monitor",
+      "category": "Resource monitoring",
+      "title": "Healthy repeat check — background document processor",
+      "intent": "Follow-up check without growth alarm",
+      "tools": [
+        "time.now",
+        "system.memory",
+        "system.disk"
+      ],
+      "ram_percent": 49.4,
+      "disk_percent": 43.4,
+      "previous_ram_percent": 45.6,
+      "expected_status": "healthy",
+      "expected_alerts": [],
+      "execution": "offline_simulation"
+    },
+    {
+      "id": "LOCAL-011",
+      "kind": "monitor",
+      "category": "Resource monitoring",
+      "title": "RAM at warning threshold — CI build runner",
+      "intent": "Memory pressure on scheduled service",
+      "tools": [
+        "time.now",
+        "system.memory",
+        "system.disk"
+      ],
+      "ram_percent": 85,
+      "disk_percent": 36,
+      "previous_ram_percent": 80,
+      "expected_status": "attention",
+      "expected_alerts": [
+        "ram_high"
+      ],
+      "execution": "offline_simulation"
+    },
+    {
+      "id": "LOCAL-012",
+      "kind": "monitor",
+      "category": "Resource monitoring",
+      "title": "RAM at warning threshold — API worker",
+      "intent": "Memory pressure on scheduled service",
+      "tools": [
+        "time.now",
+        "system.memory",
+        "system.disk"
+      ],
+      "ram_percent": 85.1,
+      "disk_percent": 36.1,
+      "previous_ram_percent": 79.9,
+      "expected_status": "attention",
+      "expected_alerts": [
+        "ram_high"
+      ],
+      "execution": "offline_simulation"
+    },
+    {
+      "id": "LOCAL-013",
+      "kind": "monitor",
+      "category": "Resource monitoring",
+      "title": "RAM at warning threshold — video transcoder",
+      "intent": "Memory pressure on scheduled service",
+      "tools": [
+        "time.now",
+        "system.memory",
+        "system.disk"
+      ],
+      "ram_percent": 85.2,
+      "disk_percent": 36.2,
+      "previous_ram_percent": 79.8,
+      "expected_status": "attention",
+      "expected_alerts": [
+        "ram_high"
+      ],
+      "execution": "offline_simulation"
+    },
+    {
+      "id": "LOCAL-014",
+      "kind": "monitor",
+      "category": "Resource monitoring",
+      "title": "RAM at warning threshold — research pipeline",
+      "intent": "Memory pressure on scheduled service",
+      "tools": [
+        "time.now",
+        "system.memory",
+        "system.disk"
+      ],
+      "ram_percent": 85.3,
+      "disk_percent": 36.3,
+      "previous_ram_percent": 79.7,
+      "expected_status": "attention",
+      "expected_alerts": [
+        "ram_high"
+      ],
+      "execution": "offline_simulation"
+    },
+    {
+      "id": "LOCAL-015",
+      "kind": "monitor",
+      "category": "Resource monitoring",
+      "title": "RAM at warning threshold — background document processor",
+      "intent": "Memory pressure on scheduled service",
+      "tools": [
+        "time.now",
+        "system.memory",
+        "system.disk"
+      ],
+      "ram_percent": 85.4,
+      "disk_percent": 36.4,
+      "previous_ram_percent": 79.6,
+      "expected_status": "attention",
+      "expected_alerts": [
+        "ram_high"
+      ],
+      "execution": "offline_simulation"
+    },
+    {
+      "id": "LOCAL-016",
+      "kind": "monitor",
+      "category": "Resource monitoring",
+      "title": "Disk at warning threshold — CI build runner",
+      "intent": "Storage pressure during routine jobs",
+      "tools": [
+        "time.now",
+        "system.memory",
+        "system.disk"
+      ],
+      "ram_percent": 31,
+      "disk_percent": 90,
+      "previous_ram_percent": 30,
+      "expected_status": "attention",
+      "expected_alerts": [
+        "disk_high"
+      ],
+      "execution": "offline_simulation"
+    },
+    {
+      "id": "LOCAL-017",
+      "kind": "monitor",
+      "category": "Resource monitoring",
+      "title": "Disk at warning threshold — API worker",
+      "intent": "Storage pressure during routine jobs",
+      "tools": [
+        "time.now",
+        "system.memory",
+        "system.disk"
+      ],
+      "ram_percent": 31.1,
+      "disk_percent": 90.1,
+      "previous_ram_percent": 29.9,
+      "expected_status": "attention",
+      "expected_alerts": [
+        "disk_high"
+      ],
+      "execution": "offline_simulation"
+    },
+    {
+      "id": "LOCAL-018",
+      "kind": "monitor",
+      "category": "Resource monitoring",
+      "title": "Disk at warning threshold — video transcoder",
+      "intent": "Storage pressure during routine jobs",
+      "tools": [
+        "time.now",
+        "system.memory",
+        "system.disk"
+      ],
+      "ram_percent": 31.2,
+      "disk_percent": 90.2,
+      "previous_ram_percent": 29.8,
+      "expected_status": "attention",
+      "expected_alerts": [
+        "disk_high"
+      ],
+      "execution": "offline_simulation"
+    },
+    {
+      "id": "LOCAL-019",
+      "kind": "monitor",
+      "category": "Resource monitoring",
+      "title": "Disk at warning threshold — research pipeline",
+      "intent": "Storage pressure during routine jobs",
+      "tools": [
+        "time.now",
+        "system.memory",
+        "system.disk"
+      ],
+      "ram_percent": 31.3,
+      "disk_percent": 90.3,
+      "previous_ram_percent": 29.7,
+      "expected_status": "attention",
+      "expected_alerts": [
+        "disk_high"
+      ],
+      "execution": "offline_simulation"
+    },
+    {
+      "id": "LOCAL-020",
+      "kind": "monitor",
+      "category": "Resource monitoring",
+      "title": "Disk at warning threshold — background document processor",
+      "intent": "Storage pressure during routine jobs",
+      "tools": [
+        "time.now",
+        "system.memory",
+        "system.disk"
+      ],
+      "ram_percent": 31.4,
+      "disk_percent": 90.4,
+      "previous_ram_percent": 29.6,
+      "expected_status": "attention",
+      "expected_alerts": [
+        "disk_high"
+      ],
+      "execution": "offline_simulation"
+    },
+    {
+      "id": "LOCAL-021",
+      "kind": "monitor",
+      "category": "Resource monitoring",
+      "title": "Sudden RAM growth below cap — CI build runner",
+      "intent": "Detect sudden memory growth before saturation",
+      "tools": [
+        "time.now",
+        "system.memory",
+        "system.disk"
+      ],
+      "ram_percent": 65,
+      "disk_percent": 45,
+      "previous_ram_percent": 35,
+      "expected_status": "attention",
+      "expected_alerts": [
+        "ram_jump"
+      ],
+      "execution": "offline_simulation"
+    },
+    {
+      "id": "LOCAL-022",
+      "kind": "monitor",
+      "category": "Resource monitoring",
+      "title": "Sudden RAM growth below cap — API worker",
+      "intent": "Detect sudden memory growth before saturation",
+      "tools": [
+        "time.now",
+        "system.memory",
+        "system.disk"
+      ],
+      "ram_percent": 65.1,
+      "disk_percent": 45.1,
+      "previous_ram_percent": 34.9,
+      "expected_status": "attention",
+      "expected_alerts": [
+        "ram_jump"
+      ],
+      "execution": "offline_simulation"
+    },
+    {
+      "id": "LOCAL-023",
+      "kind": "monitor",
+      "category": "Resource monitoring",
+      "title": "Sudden RAM growth below cap — video transcoder",
+      "intent": "Detect sudden memory growth before saturation",
+      "tools": [
+        "time.now",
+        "system.memory",
+        "system.disk"
+      ],
+      "ram_percent": 65.2,
+      "disk_percent": 45.2,
+      "previous_ram_percent": 34.8,
+      "expected_status": "attention",
+      "expected_alerts": [
+        "ram_jump"
+      ],
+      "execution": "offline_simulation"
+    },
+    {
+      "id": "LOCAL-024",
+      "kind": "monitor",
+      "category": "Resource monitoring",
+      "title": "Sudden RAM growth below cap — research pipeline",
+      "intent": "Detect sudden memory growth before saturation",
+      "tools": [
+        "time.now",
+        "system.memory",
+        "system.disk"
+      ],
+      "ram_percent": 65.3,
+      "disk_percent": 45.3,
+      "previous_ram_percent": 34.7,
+      "expected_status": "attention",
+      "expected_alerts": [
+        "ram_jump"
+      ],
+      "execution": "offline_simulation"
+    },
+    {
+      "id": "LOCAL-025",
+      "kind": "monitor",
+      "category": "Resource monitoring",
+      "title": "Sudden RAM growth below cap — background document processor",
+      "intent": "Detect sudden memory growth before saturation",
+      "tools": [
+        "time.now",
+        "system.memory",
+        "system.disk"
+      ],
+      "ram_percent": 65.4,
+      "disk_percent": 45.4,
+      "previous_ram_percent": 34.6,
+      "expected_status": "attention",
+      "expected_alerts": [
+        "ram_jump"
+      ],
+      "execution": "offline_simulation"
+    },
+    {
+      "id": "LOCAL-026",
+      "kind": "monitor",
+      "category": "Resource monitoring",
+      "title": "Simultaneous RAM and disk limits — CI build runner",
+      "intent": "Two independent system resource alerts",
+      "tools": [
+        "time.now",
+        "system.memory",
+        "system.disk"
+      ],
+      "ram_percent": 91,
+      "disk_percent": 95,
+      "previous_ram_percent": 85,
+      "expected_status": "attention",
+      "expected_alerts": [
+        "ram_high",
+        "disk_high"
+      ],
+      "execution": "offline_simulation"
+    },
+    {
+      "id": "LOCAL-027",
+      "kind": "monitor",
+      "category": "Resource monitoring",
+      "title": "Simultaneous RAM and disk limits — API worker",
+      "intent": "Two independent system resource alerts",
+      "tools": [
+        "time.now",
+        "system.memory",
+        "system.disk"
+      ],
+      "ram_percent": 91.1,
+      "disk_percent": 95.1,
+      "previous_ram_percent": 84.9,
+      "expected_status": "attention",
+      "expected_alerts": [
+        "ram_high",
+        "disk_high"
+      ],
+      "execution": "offline_simulation"
+    },
+    {
+      "id": "LOCAL-028",
+      "kind": "monitor",
+      "category": "Resource monitoring",
+      "title": "Simultaneous RAM and disk limits — video transcoder",
+      "intent": "Two independent system resource alerts",
+      "tools": [
+        "time.now",
+        "system.memory",
+        "system.disk"
+      ],
+      "ram_percent": 91.2,
+      "disk_percent": 95.2,
+      "previous_ram_percent": 84.8,
+      "expected_status": "attention",
+      "expected_alerts": [
+        "ram_high",
+        "disk_high"
+      ],
+      "execution": "offline_simulation"
+    },
+    {
+      "id": "LOCAL-029",
+      "kind": "monitor",
+      "category": "Resource monitoring",
+      "title": "Simultaneous RAM and disk limits — research pipeline",
+      "intent": "Two independent system resource alerts",
+      "tools": [
+        "time.now",
+        "system.memory",
+        "system.disk"
+      ],
+      "ram_percent": 91.3,
+      "disk_percent": 95.3,
+      "previous_ram_percent": 84.7,
+      "expected_status": "attention",
+      "expected_alerts": [
+        "ram_high",
+        "disk_high"
+      ],
+      "execution": "offline_simulation"
+    },
+    {
+      "id": "LOCAL-030",
+      "kind": "monitor",
+      "category": "Resource monitoring",
+      "title": "Simultaneous RAM and disk limits — background document processor",
+      "intent": "Two independent system resource alerts",
+      "tools": [
+        "time.now",
+        "system.memory",
+        "system.disk"
+      ],
+      "ram_percent": 91.4,
+      "disk_percent": 95.4,
+      "previous_ram_percent": 84.6,
+      "expected_status": "attention",
+      "expected_alerts": [
+        "ram_high",
+        "disk_high"
+      ],
+      "execution": "offline_simulation"
+    },
+    {
+      "id": "LOCAL-031",
+      "kind": "monitor",
+      "category": "Resource monitoring",
+      "title": "High RAM and rapid increase — CI build runner",
+      "intent": "Memory leak indication",
+      "tools": [
+        "time.now",
+        "system.memory",
+        "system.disk"
+      ],
+      "ram_percent": 90,
+      "disk_percent": 42,
+      "previous_ram_percent": 65,
+      "expected_status": "attention",
+      "expected_alerts": [
+        "ram_high",
+        "ram_jump"
+      ],
+      "execution": "offline_simulation"
+    },
+    {
+      "id": "LOCAL-032",
+      "kind": "monitor",
+      "category": "Resource monitoring",
+      "title": "High RAM and rapid increase — API worker",
+      "intent": "Memory leak indication",
+      "tools": [
+        "time.now",
+        "system.memory",
+        "system.disk"
+      ],
+      "ram_percent": 90.1,
+      "disk_percent": 42.1,
+      "previous_ram_percent": 64.9,
+      "expected_status": "attention",
+      "expected_alerts": [
+        "ram_high",
+        "ram_jump"
+      ],
+      "execution": "offline_simulation"
+    },
+    {
+      "id": "LOCAL-033",
+      "kind": "monitor",
+      "category": "Resource monitoring",
+      "title": "High RAM and rapid increase — video transcoder",
+      "intent": "Memory leak indication",
+      "tools": [
+        "time.now",
+        "system.memory",
+        "system.disk"
+      ],
+      "ram_percent": 90.2,
+      "disk_percent": 42.2,
+      "previous_ram_percent": 64.8,
+      "expected_status": "attention",
+      "expected_alerts": [
+        "ram_high",
+        "ram_jump"
+      ],
+      "execution": "offline_simulation"
+    },
+    {
+      "id": "LOCAL-034",
+      "kind": "monitor",
+      "category": "Resource monitoring",
+      "title": "High RAM and rapid increase — research pipeline",
+      "intent": "Memory leak indication",
+      "tools": [
+        "time.now",
+        "system.memory",
+        "system.disk"
+      ],
+      "ram_percent": 90.3,
+      "disk_percent": 42.3,
+      "previous_ram_percent": 64.7,
+      "expected_status": "attention",
+      "expected_alerts": [
+        "ram_high",
+        "ram_jump"
+      ],
+      "execution": "offline_simulation"
+    },
+    {
+      "id": "LOCAL-035",
+      "kind": "monitor",
+      "category": "Resource monitoring",
+      "title": "High RAM and rapid increase — background document processor",
+      "intent": "Memory leak indication",
+      "tools": [
+        "time.now",
+        "system.memory",
+        "system.disk"
+      ],
+      "ram_percent": 90.4,
+      "disk_percent": 42.4,
+      "previous_ram_percent": 64.6,
+      "expected_status": "attention",
+      "expected_alerts": [
+        "ram_high",
+        "ram_jump"
+      ],
+      "execution": "offline_simulation"
+    },
+    {
+      "id": "LOCAL-036",
+      "kind": "monitor",
+      "category": "Resource monitoring",
+      "title": "All three resource warnings — CI build runner",
+      "intent": "Cross-resource saturation after workload growth",
+      "tools": [
+        "time.now",
+        "system.memory",
+        "system.disk"
+      ],
+      "ram_percent": 95,
+      "disk_percent": 97,
+      "previous_ram_percent": 60,
+      "expected_status": "attention",
+      "expected_alerts": [
+        "ram_high",
+        "disk_high",
+        "ram_jump"
+      ],
+      "execution": "offline_simulation"
+    },
+    {
+      "id": "LOCAL-037",
+      "kind": "monitor",
+      "category": "Resource monitoring",
+      "title": "All three resource warnings — API worker",
+      "intent": "Cross-resource saturation after workload growth",
+      "tools": [
+        "time.now",
+        "system.memory",
+        "system.disk"
+      ],
+      "ram_percent": 95.1,
+      "disk_percent": 97.1,
+      "previous_ram_percent": 59.9,
+      "expected_status": "attention",
+      "expected_alerts": [
+        "ram_high",
+        "disk_high",
+        "ram_jump"
+      ],
+      "execution": "offline_simulation"
+    },
+    {
+      "id": "LOCAL-038",
+      "kind": "monitor",
+      "category": "Resource monitoring",
+      "title": "All three resource warnings — video transcoder",
+      "intent": "Cross-resource saturation after workload growth",
+      "tools": [
+        "time.now",
+        "system.memory",
+        "system.disk"
+      ],
+      "ram_percent": 95.2,
+      "disk_percent": 97.2,
+      "previous_ram_percent": 59.8,
+      "expected_status": "attention",
+      "expected_alerts": [
+        "ram_high",
+        "disk_high",
+        "ram_jump"
+      ],
+      "execution": "offline_simulation"
+    },
+    {
+      "id": "LOCAL-039",
+      "kind": "monitor",
+      "category": "Resource monitoring",
+      "title": "All three resource warnings — research pipeline",
+      "intent": "Cross-resource saturation after workload growth",
+      "tools": [
+        "time.now",
+        "system.memory",
+        "system.disk"
+      ],
+      "ram_percent": 95.3,
+      "disk_percent": 97.3,
+      "previous_ram_percent": 59.7,
+      "expected_status": "attention",
+      "expected_alerts": [
+        "ram_high",
+        "disk_high",
+        "ram_jump"
+      ],
+      "execution": "offline_simulation"
+    },
+    {
+      "id": "LOCAL-040",
+      "kind": "monitor",
+      "category": "Resource monitoring",
+      "title": "All three resource warnings — background document processor",
+      "intent": "Cross-resource saturation after workload growth",
+      "tools": [
+        "time.now",
+        "system.memory",
+        "system.disk"
+      ],
+      "ram_percent": 95.4,
+      "disk_percent": 97.4,
+      "previous_ram_percent": 59.6,
+      "expected_status": "attention",
+      "expected_alerts": [
+        "ram_high",
+        "disk_high",
+        "ram_jump"
+      ],
+      "execution": "offline_simulation"
+    },
+    {
+      "id": "LOCAL-041",
+      "kind": "schedule",
+      "category": "Scheduled monitoring",
+      "title": "Minute-level smoke check at start of day",
+      "intent": "Calculate deterministic timezone-aware wake bucket",
+      "tools": [
+        "time.now"
+      ],
+      "interval_minutes": 1,
+      "at": "2026-11-19T00:00:00+00:00",
+      "expected_bucket": "2026-11-19T00:00:00+00:00",
+      "execution": "offline_simulation"
+    },
+    {
+      "id": "LOCAL-042",
+      "kind": "schedule",
+      "category": "Scheduled monitoring",
+      "title": "Minute-level smoke check at mid-interval wake",
+      "intent": "Calculate deterministic timezone-aware wake bucket",
+      "tools": [
+        "time.now"
+      ],
+      "interval_minutes": 1,
+      "at": "2026-11-19T08:07:22+00:00",
+      "expected_bucket": "2026-11-19T08:07:00+00:00",
+      "execution": "offline_simulation"
+    },
+    {
+      "id": "LOCAL-043",
+      "kind": "schedule",
+      "category": "Scheduled monitoring",
+      "title": "Minute-level smoke check at end of UTC day",
+      "intent": "Calculate deterministic timezone-aware wake bucket",
+      "tools": [
+        "time.now"
+      ],
+      "interval_minutes": 1,
+      "at": "2026-11-19T23:59:59+00:00",
+      "expected_bucket": "2026-11-19T23:59:00+00:00",
+      "execution": "offline_simulation"
+    },
+    {
+      "id": "LOCAL-044",
+      "kind": "schedule",
+      "category": "Scheduled monitoring",
+      "title": "Minute-level smoke check at new-day rollover",
+      "intent": "Calculate deterministic timezone-aware wake bucket",
+      "tools": [
+        "time.now"
+      ],
+      "interval_minutes": 1,
+      "at": "2026-11-20T00:00:01+00:00",
+      "expected_bucket": "2026-11-20T00:00:00+00:00",
+      "execution": "offline_simulation"
+    },
+    {
+      "id": "LOCAL-045",
+      "kind": "schedule",
+      "category": "Scheduled monitoring",
+      "title": "Staging memory check at start of day",
+      "intent": "Calculate deterministic timezone-aware wake bucket",
+      "tools": [
+        "time.now"
+      ],
+      "interval_minutes": 5,
+      "at": "2026-11-19T00:00:00+00:00",
+      "expected_bucket": "2026-11-19T00:00:00+00:00",
+      "execution": "offline_simulation"
+    },
+    {
+      "id": "LOCAL-046",
+      "kind": "schedule",
+      "category": "Scheduled monitoring",
+      "title": "Staging memory check at mid-interval wake",
+      "intent": "Calculate deterministic timezone-aware wake bucket",
+      "tools": [
+        "time.now"
+      ],
+      "interval_minutes": 5,
+      "at": "2026-11-19T08:07:22+00:00",
+      "expected_bucket": "2026-11-19T08:05:00+00:00",
+      "execution": "offline_simulation"
+    },
+    {
+      "id": "LOCAL-047",
+      "kind": "schedule",
+      "category": "Scheduled monitoring",
+      "title": "Staging memory check at end of UTC day",
+      "intent": "Calculate deterministic timezone-aware wake bucket",
+      "tools": [
+        "time.now"
+      ],
+      "interval_minutes": 5,
+      "at": "2026-11-19T23:59:59+00:00",
+      "expected_bucket": "2026-11-19T23:55:00+00:00",
+      "execution": "offline_simulation"
+    },
+    {
+      "id": "LOCAL-048",
+      "kind": "schedule",
+      "category": "Scheduled monitoring",
+      "title": "Staging memory check at new-day rollover",
+      "intent": "Calculate deterministic timezone-aware wake bucket",
+      "tools": [
+        "time.now"
+      ],
+      "interval_minutes": 5,
+      "at": "2026-11-20T00:00:01+00:00",
+      "expected_bucket": "2026-11-20T00:00:00+00:00",
+      "execution": "offline_simulation"
+    },
+    {
+      "id": "LOCAL-049",
+      "kind": "schedule",
+      "category": "Scheduled monitoring",
+      "title": "Ten-minute capacity pulse at start of day",
+      "intent": "Calculate deterministic timezone-aware wake bucket",
+      "tools": [
+        "time.now"
+      ],
+      "interval_minutes": 10,
+      "at": "2026-11-19T00:00:00+00:00",
+      "expected_bucket": "2026-11-19T00:00:00+00:00",
+      "execution": "offline_simulation"
+    },
+    {
+      "id": "LOCAL-050",
+      "kind": "schedule",
+      "category": "Scheduled monitoring",
+      "title": "Ten-minute capacity pulse at mid-interval wake",
+      "intent": "Calculate deterministic timezone-aware wake bucket",
+      "tools": [
+        "time.now"
+      ],
+      "interval_minutes": 10,
+      "at": "2026-11-19T08:07:22+00:00",
+      "expected_bucket": "2026-11-19T08:00:00+00:00",
+      "execution": "offline_simulation"
+    },
+    {
+      "id": "LOCAL-051",
+      "kind": "schedule",
+      "category": "Scheduled monitoring",
+      "title": "Ten-minute capacity pulse at end of UTC day",
+      "intent": "Calculate deterministic timezone-aware wake bucket",
+      "tools": [
+        "time.now"
+      ],
+      "interval_minutes": 10,
+      "at": "2026-11-19T23:59:59+00:00",
+      "expected_bucket": "2026-11-19T23:50:00+00:00",
+      "execution": "offline_simulation"
+    },
+    {
+      "id": "LOCAL-052",
+      "kind": "schedule",
+      "category": "Scheduled monitoring",
+      "title": "Ten-minute capacity pulse at new-day rollover",
+      "intent": "Calculate deterministic timezone-aware wake bucket",
+      "tools": [
+        "time.now"
+      ],
+      "interval_minutes": 10,
+      "at": "2026-11-20T00:00:01+00:00",
+      "expected_bucket": "2026-11-20T00:00:00+00:00",
+      "execution": "offline_simulation"
+    },
+    {
+      "id": "LOCAL-053",
+      "kind": "schedule",
+      "category": "Scheduled monitoring",
+      "title": "Quarter-hour operations check at start of day",
+      "intent": "Calculate deterministic timezone-aware wake bucket",
+      "tools": [
+        "time.now"
+      ],
+      "interval_minutes": 15,
+      "at": "2026-11-19T00:00:00+00:00",
+      "expected_bucket": "2026-11-19T00:00:00+00:00",
+      "execution": "offline_simulation"
+    },
+    {
+      "id": "LOCAL-054",
+      "kind": "schedule",
+      "category": "Scheduled monitoring",
+      "title": "Quarter-hour operations check at mid-interval wake",
+      "intent": "Calculate deterministic timezone-aware wake bucket",
+      "tools": [
+        "time.now"
+      ],
+      "interval_minutes": 15,
+      "at": "2026-11-19T08:07:22+00:00",
+      "expected_bucket": "2026-11-19T08:00:00+00:00",
+      "execution": "offline_simulation"
+    },
+    {
+      "id": "LOCAL-055",
+      "kind": "schedule",
+      "category": "Scheduled monitoring",
+      "title": "Quarter-hour operations check at end of UTC day",
+      "intent": "Calculate deterministic timezone-aware wake bucket",
+      "tools": [
+        "time.now"
+      ],
+      "interval_minutes": 15,
+      "at": "2026-11-19T23:59:59+00:00",
+      "expected_bucket": "2026-11-19T23:45:00+00:00",
+      "execution": "offline_simulation"
+    },
+    {
+      "id": "LOCAL-056",
+      "kind": "schedule",
+      "category": "Scheduled monitoring",
+      "title": "Quarter-hour operations check at new-day rollover",
+      "intent": "Calculate deterministic timezone-aware wake bucket",
+      "tools": [
+        "time.now"
+      ],
+      "interval_minutes": 15,
+      "at": "2026-11-20T00:00:01+00:00",
+      "expected_bucket": "2026-11-20T00:00:00+00:00",
+      "execution": "offline_simulation"
+    },
+    {
+      "id": "LOCAL-057",
+      "kind": "schedule",
+      "category": "Scheduled monitoring",
+      "title": "Half-hour maintenance check at start of day",
+      "intent": "Calculate deterministic timezone-aware wake bucket",
+      "tools": [
+        "time.now"
+      ],
+      "interval_minutes": 30,
+      "at": "2026-11-19T00:00:00+00:00",
+      "expected_bucket": "2026-11-19T00:00:00+00:00",
+      "execution": "offline_simulation"
+    },
+    {
+      "id": "LOCAL-058",
+      "kind": "schedule",
+      "category": "Scheduled monitoring",
+      "title": "Half-hour maintenance check at mid-interval wake",
+      "intent": "Calculate deterministic timezone-aware wake bucket",
+      "tools": [
+        "time.now"
+      ],
+      "interval_minutes": 30,
+      "at": "2026-11-19T08:07:22+00:00",
+      "expected_bucket": "2026-11-19T08:00:00+00:00",
+      "execution": "offline_simulation"
+    },
+    {
+      "id": "LOCAL-059",
+      "kind": "schedule",
+      "category": "Scheduled monitoring",
+      "title": "Half-hour maintenance check at end of UTC day",
+      "intent": "Calculate deterministic timezone-aware wake bucket",
+      "tools": [
+        "time.now"
+      ],
+      "interval_minutes": 30,
+      "at": "2026-11-19T23:59:59+00:00",
+      "expected_bucket": "2026-11-19T23:30:00+00:00",
+      "execution": "offline_simulation"
+    },
+    {
+      "id": "LOCAL-060",
+      "kind": "schedule",
+      "category": "Scheduled monitoring",
+      "title": "Half-hour maintenance check at new-day rollover",
+      "intent": "Calculate deterministic timezone-aware wake bucket",
+      "tools": [
+        "time.now"
+      ],
+      "interval_minutes": 30,
+      "at": "2026-11-20T00:00:01+00:00",
+      "expected_bucket": "2026-11-20T00:00:00+00:00",
+      "execution": "offline_simulation"
+    },
+    {
+      "id": "LOCAL-061",
+      "kind": "dispatch",
+      "category": "Tool invocation",
+      "title": "Timestamp before a job",
+      "intent": "Read an approved local tool with no arguments",
+      "tools": [
+        "time.now"
+      ],
+      "name": "time.now",
+      "arguments": {},
+      "expected": "allow",
+      "execution": "live_local_read"
+    },
+    {
+      "id": "LOCAL-062",
+      "kind": "dispatch",
+      "category": "Tool invocation",
+      "title": "RAM before starting a job",
+      "intent": "Read an approved local tool with no arguments",
+      "tools": [
+        "system.memory"
+      ],
+      "name": "system.memory",
+      "arguments": {},
+      "expected": "allow",
+      "execution": "live_local_read"
+    },
+    {
+      "id": "LOCAL-063",
+      "kind": "dispatch",
+      "category": "Tool invocation",
+      "title": "Disk before file output",
+      "intent": "Read an approved local tool with no arguments",
+      "tools": [
+        "system.disk"
+      ],
+      "name": "system.disk",
+      "arguments": {},
+      "expected": "allow",
+      "execution": "live_local_read"
+    },
+    {
+      "id": "LOCAL-064",
+      "kind": "dispatch",
+      "category": "Tool invocation",
+      "title": "Implicit empty arguments for clock",
+      "intent": "Read an approved local tool with no arguments",
+      "tools": [
+        "time.now"
+      ],
+      "name": "time.now",
+      "arguments": null,
+      "expected": "allow",
+      "execution": "live_local_read"
+    },
+    {
+      "id": "LOCAL-065",
+      "kind": "dispatch",
+      "category": "Tool invocation",
+      "title": "Implicit empty arguments for RAM",
+      "intent": "Read an approved local tool with no arguments",
+      "tools": [
+        "system.memory"
+      ],
+      "name": "system.memory",
+      "arguments": null,
+      "expected": "allow",
+      "execution": "live_local_read"
+    },
+    {
+      "id": "LOCAL-066",
+      "kind": "dispatch",
+      "category": "Tool authorization",
+      "title": "Block arbitrary shell execution",
+      "intent": "Reject unsupported/unsafe tool requests",
+      "tools": [],
+      "name": "system.shell",
+      "arguments": {},
+      "expected": "deny",
+      "execution": "offline_negative_test"
+    },
+    {
+      "id": "LOCAL-067",
+      "kind": "dispatch",
+      "category": "Tool authorization",
+      "title": "Block private file read",
+      "intent": "Reject unsupported/unsafe tool requests",
+      "tools": [],
+      "name": "filesystem.read",
+      "arguments": {},
+      "expected": "deny",
+      "execution": "offline_negative_test"
+    },
+    {
+      "id": "LOCAL-068",
+      "kind": "dispatch",
+      "category": "Tool authorization",
+      "title": "Block other-process memory inspection",
+      "intent": "Reject unsupported/unsafe tool requests",
+      "tools": [],
+      "name": "system.memory",
+      "arguments": {
+        "pid": 1
+      },
+      "expected": "deny",
+      "execution": "offline_negative_test"
+    },
+    {
+      "id": "LOCAL-069",
+      "kind": "dispatch",
+      "category": "Tool authorization",
+      "title": "Block arbitrary disk path",
+      "intent": "Reject unsupported/unsafe tool requests",
+      "tools": [],
+      "name": "system.disk",
+      "arguments": {
+        "path": "/etc"
+      },
+      "expected": "deny",
+      "execution": "offline_negative_test"
+    },
+    {
+      "id": "LOCAL-070",
+      "kind": "dispatch",
+      "category": "Tool authorization",
+      "title": "Block unapproved time-zone parameters",
+      "intent": "Reject unsupported/unsafe tool requests",
+      "tools": [],
+      "name": "time.now",
+      "arguments": {
+        "tz": "America/Chicago"
+      },
+      "expected": "deny",
+      "execution": "offline_negative_test"
+    },
+    {
+      "id": "LOCAL-071",
+      "kind": "dispatch",
+      "category": "Tool authorization",
+      "title": "Reject embedded shell payload",
+      "intent": "Reject unsupported/unsafe tool requests",
+      "tools": [],
+      "name": "system.memory",
+      "arguments": {
+        "script": "cat /etc/passwd"
+      },
+      "expected": "deny",
+      "execution": "offline_negative_test"
+    },
+    {
+      "id": "LOCAL-072",
+      "kind": "dispatch",
+      "category": "Tool authorization",
+      "title": "Reject unreviewed output format",
+      "intent": "Reject unsupported/unsafe tool requests",
+      "tools": [],
+      "name": "system.disk",
+      "arguments": {
+        "format": "raw"
+      },
+      "expected": "deny",
+      "execution": "offline_negative_test"
+    },
+    {
+      "id": "LOCAL-073",
+      "kind": "dispatch",
+      "category": "Tool authorization",
+      "title": "Reject string argument payload",
+      "intent": "Reject unsupported/unsafe tool requests",
+      "tools": [],
+      "name": "system.memory",
+      "arguments": "",
+      "expected": "deny",
+      "execution": "offline_negative_test"
+    },
+    {
+      "id": "LOCAL-074",
+      "kind": "dispatch",
+      "category": "Tool authorization",
+      "title": "Reject array argument payload",
+      "intent": "Reject unsupported/unsafe tool requests",
+      "tools": [],
+      "name": "time.now",
+      "arguments": [],
+      "expected": "deny",
+      "execution": "offline_negative_test"
+    },
+    {
+      "id": "LOCAL-075",
+      "kind": "dispatch",
+      "category": "Tool authorization",
+      "title": "Reject empty capability name",
+      "intent": "Reject unsupported/unsafe tool requests",
+      "tools": [],
+      "name": "",
+      "arguments": {},
+      "expected": "deny",
+      "execution": "offline_negative_test"
+    },
+    {
+      "id": "LOCAL-076",
+      "kind": "dispatch",
+      "category": "Tool authorization",
+      "title": "Reject traversal-like tool name",
+      "intent": "Reject unsupported/unsafe tool requests",
+      "tools": [],
+      "name": "../secrets",
+      "arguments": {},
+      "expected": "deny",
+      "execution": "offline_negative_test"
+    },
+    {
+      "id": "LOCAL-077",
+      "kind": "dispatch",
+      "category": "Tool authorization",
+      "title": "Reject unavailable network probe",
+      "intent": "Reject unsupported/unsafe tool requests",
+      "tools": [],
+      "name": "system.network",
+      "arguments": {},
+      "expected": "deny",
+      "execution": "offline_negative_test"
+    },
+    {
+      "id": "LOCAL-078",
+      "kind": "dispatch",
+      "category": "Tool authorization",
+      "title": "Reject filesystem traversal option",
+      "intent": "Reject unsupported/unsafe tool requests",
+      "tools": [],
+      "name": "system.disk",
+      "arguments": {
+        "follow_symlinks": true
+      },
+      "expected": "deny",
+      "execution": "offline_negative_test"
+    },
+    {
+      "id": "LOCAL-079",
+      "kind": "dispatch",
+      "category": "Tool authorization",
+      "title": "Reject environment-reading attempt",
+      "intent": "Reject unsupported/unsafe tool requests",
+      "tools": [],
+      "name": "time.now",
+      "arguments": {
+        "env": "SECRET"
+      },
+      "expected": "deny",
+      "execution": "offline_negative_test"
+    },
+    {
+      "id": "LOCAL-080",
+      "kind": "dispatch",
+      "category": "Tool authorization",
+      "title": "Reject privileged flag",
+      "intent": "Reject unsupported/unsafe tool requests",
+      "tools": [],
+      "name": "system.memory",
+      "arguments": {
+        "sudo": true
+      },
+      "expected": "deny",
+      "execution": "offline_negative_test"
+    },
+    {
+      "id": "LOCAL-081",
+      "kind": "policy",
+      "category": "Operator policy",
+      "title": "Five-minute default watch",
+      "intent": "Keep scheduled monitoring within reviewed configuration bounds",
+      "tools": [],
+      "arguments": {
+        "interval_minutes": 5
+      },
+      "expected": "allow",
+      "execution": "offline_validation"
+    },
+    {
+      "id": "LOCAL-082",
+      "kind": "policy",
+      "category": "Operator policy",
+      "title": "Hourly capacity check",
+      "intent": "Keep scheduled monitoring within reviewed configuration bounds",
+      "tools": [],
+      "arguments": {
+        "interval_minutes": 60
+      },
+      "expected": "allow",
+      "execution": "offline_validation"
+    },
+    {
+      "id": "LOCAL-083",
+      "kind": "policy",
+      "category": "Operator policy",
+      "title": "Alert at 70% RAM",
+      "intent": "Keep scheduled monitoring within reviewed configuration bounds",
+      "tools": [],
+      "arguments": {
+        "memory_warn_percent": 70
+      },
+      "expected": "allow",
+      "execution": "offline_validation"
+    },
+    {
+      "id": "LOCAL-084",
+      "kind": "policy",
+      "category": "Operator policy",
+      "title": "Sensitive RAM spike detection",
+      "intent": "Keep scheduled monitoring within reviewed configuration bounds",
+      "tools": [],
+      "arguments": {
+        "memory_jump_points": 5
+      },
+      "expected": "allow",
+      "execution": "offline_validation"
+    },
+    {
+      "id": "LOCAL-085",
+      "kind": "policy",
+      "category": "Operator policy",
+      "title": "Ten-minute early disk alert",
+      "intent": "Keep scheduled monitoring within reviewed configuration bounds",
+      "tools": [],
+      "arguments": {
+        "interval_minutes": 10,
+        "disk_warn_percent": 75
+      },
+      "expected": "allow",
+      "execution": "offline_validation"
+    },
+    {
+      "id": "LOCAL-086",
+      "kind": "policy",
+      "category": "Operator policy",
+      "title": "Reject nonexistent seven-minute interval",
+      "intent": "Keep scheduled monitoring within reviewed configuration bounds",
+      "tools": [],
+      "arguments": {
+        "interval_minutes": 7
+      },
+      "expected": "deny",
+      "execution": "offline_validation"
+    },
+    {
+      "id": "LOCAL-087",
+      "kind": "policy",
+      "category": "Operator policy",
+      "title": "Reject zero-minute interval",
+      "intent": "Keep scheduled monitoring within reviewed configuration bounds",
+      "tools": [],
+      "arguments": {
+        "interval_minutes": 0
+      },
+      "expected": "deny",
+      "execution": "offline_validation"
+    },
+    {
+      "id": "LOCAL-088",
+      "kind": "policy",
+      "category": "Operator policy",
+      "title": "Reject boolean schedule interval",
+      "intent": "Keep scheduled monitoring within reviewed configuration bounds",
+      "tools": [],
+      "arguments": {
+        "interval_minutes": true
+      },
+      "expected": "deny",
+      "execution": "offline_validation"
+    },
+    {
+      "id": "LOCAL-089",
+      "kind": "policy",
+      "category": "Operator policy",
+      "title": "Reject negative interval",
+      "intent": "Keep scheduled monitoring within reviewed configuration bounds",
+      "tools": [],
+      "arguments": {
+        "interval_minutes": -5
+      },
+      "expected": "deny",
+      "execution": "offline_validation"
+    },
+    {
+      "id": "LOCAL-090",
+      "kind": "policy",
+      "category": "Operator policy",
+      "title": "Reject memory alert above 100%",
+      "intent": "Keep scheduled monitoring within reviewed configuration bounds",
+      "tools": [],
+      "arguments": {
+        "memory_warn_percent": 101
+      },
+      "expected": "deny",
+      "execution": "offline_validation"
+    },
+    {
+      "id": "LOCAL-091",
+      "kind": "policy",
+      "category": "Operator policy",
+      "title": "Reject memory alert below minimum",
+      "intent": "Keep scheduled monitoring within reviewed configuration bounds",
+      "tools": [],
+      "arguments": {
+        "memory_warn_percent": 20
+      },
+      "expected": "deny",
+      "execution": "offline_validation"
+    },
+    {
+      "id": "LOCAL-092",
+      "kind": "policy",
+      "category": "Operator policy",
+      "title": "Reject disk alert above 100%",
+      "intent": "Keep scheduled monitoring within reviewed configuration bounds",
+      "tools": [],
+      "arguments": {
+        "disk_warn_percent": 100
+      },
+      "expected": "deny",
+      "execution": "offline_validation"
+    },
+    {
+      "id": "LOCAL-093",
+      "kind": "policy",
+      "category": "Operator policy",
+      "title": "Reject disk alert below minimum",
+      "intent": "Keep scheduled monitoring within reviewed configuration bounds",
+      "tools": [],
+      "arguments": {
+        "disk_warn_percent": 49
+      },
+      "expected": "deny",
+      "execution": "offline_validation"
+    },
+    {
+      "id": "LOCAL-094",
+      "kind": "policy",
+      "category": "Operator policy",
+      "title": "Reject negative RAM jump",
+      "intent": "Keep scheduled monitoring within reviewed configuration bounds",
+      "tools": [],
+      "arguments": {
+        "memory_jump_points": -1
+      },
+      "expected": "deny",
+      "execution": "offline_validation"
+    },
+    {
+      "id": "LOCAL-095",
+      "kind": "policy",
+      "category": "Operator policy",
+      "title": "Reject zero RAM jump",
+      "intent": "Keep scheduled monitoring within reviewed configuration bounds",
+      "tools": [],
+      "arguments": {
+        "memory_jump_points": 0
+      },
+      "expected": "deny",
+      "execution": "offline_validation"
+    },
+    {
+      "id": "LOCAL-096",
+      "kind": "policy",
+      "category": "Operator policy",
+      "title": "Reject unrealistic RAM jump",
+      "intent": "Keep scheduled monitoring within reviewed configuration bounds",
+      "tools": [],
+      "arguments": {
+        "memory_jump_points": 51
+      },
+      "expected": "deny",
+      "execution": "offline_validation"
+    },
+    {
+      "id": "LOCAL-097",
+      "kind": "policy",
+      "category": "Operator policy",
+      "title": "Reject unsupported 25-minute interval",
+      "intent": "Keep scheduled monitoring within reviewed configuration bounds",
+      "tools": [],
+      "arguments": {
+        "interval_minutes": 25
+      },
+      "expected": "deny",
+      "execution": "offline_validation"
+    },
+    {
+      "id": "LOCAL-098",
+      "kind": "policy",
+      "category": "Operator policy",
+      "title": "Reject empty alert string",
+      "intent": "Keep scheduled monitoring within reviewed configuration bounds",
+      "tools": [],
+      "arguments": {
+        "memory_warn_percent": ""
+      },
+      "expected": "deny",
+      "execution": "offline_validation"
+    },
+    {
+      "id": "LOCAL-099",
+      "kind": "policy",
+      "category": "Operator policy",
+      "title": "Reject nonsensical disk string",
+      "intent": "Keep scheduled monitoring within reviewed configuration bounds",
+      "tools": [],
+      "arguments": {
+        "disk_warn_percent": "lots"
+      },
+      "expected": "deny",
+      "execution": "offline_validation"
+    },
+    {
+      "id": "LOCAL-100",
+      "kind": "policy",
+      "category": "Operator policy",
+      "title": "Reject too-sensitive near-zero disk threshold",
+      "intent": "Keep scheduled monitoring within reviewed configuration bounds",
+      "tools": [],
+      "arguments": {
+        "disk_warn_percent": 1
+      },
+      "expected": "deny",
+      "execution": "offline_validation"
+    }
+  ]
+}
