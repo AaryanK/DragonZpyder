@@ -85,3 +85,18 @@ def test_staging_and_metered_gateway_required(monkeypatch):
     monkeypatch.setenv("DRAGONZPYDER_AGENT_PRODUCTION_MODE","1")
     monkeypatch.setenv("DRAGONZPYDER_LONG_HORIZON_DATABASE_URL","")
     with pytest.raises(CanaryError): gate()
+
+
+def test_persisted_jsonb_content_is_independently_verified():
+    import hashlib
+    import json
+    from agent_platform.persistent_tool_canary import verify_persisted_result
+    original = {"memory": {"percent": 81.5}, "ok": True}
+    canonical = json.dumps(original, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    verify_persisted_result(original, digest)
+    verify_persisted_result(json.dumps(original), digest)
+    with pytest.raises(CanaryError, match="content integrity"):
+        verify_persisted_result({"memory": {"percent": 99.5}, "ok": True}, digest)
+    with pytest.raises(CanaryError, match="result is invalid"):
+        verify_persisted_result({}, digest)
