@@ -12,6 +12,7 @@ import json
 import os
 import re
 from typing import Any
+from urllib.parse import urlsplit
 
 from .operly_broker import readonly_tools
 
@@ -36,6 +37,12 @@ class BusinessCanaryError(RuntimeError):
 def _gate() -> None:
     if os.getenv("DRAGONZPYDER_OPERLY_BUSINESS_CANARY_ENABLED") != "1" or os.getenv("DRAGONZPYDER_STAGE") != "staging":
         raise BusinessCanaryError("Operly business canary is staging-only and disabled by default")
+    # A staging canary may never silently read the public production Operly workspace.
+    endpoint = urlsplit(os.getenv("DRAGONZPYDER_OPERLY_BROKER_URL", ""))
+    if (endpoint.scheme != "http" or not endpoint.hostname or
+            not endpoint.hostname.endswith(".railway.internal") or
+            endpoint.path != "/api/internal/agent-tools"):
+        raise BusinessCanaryError("Business canary requires approved private staging broker")
 
 
 def _decode(text: Any) -> dict:
