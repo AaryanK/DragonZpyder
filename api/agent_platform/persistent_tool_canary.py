@@ -166,12 +166,34 @@ class PersistentToolCanary:
                 # One task per wake. This selects a model tool each time, but
                 # cannot reexecute any previously completed action.
                 previous = await connection.fetch(
-                    """SELECT tool_name FROM dz_staging_long_horizon_receipts
+                    """SELECT step_index,tool_name,result_json,result_sha256,bucket_start
+                       FROM dz_staging_long_horizon_receipts
                        WHERE goal_id=$1 ORDER BY step_index""", GOAL_ID,
                 )
-                already_called = {row["tool_name"] for row in previous}
+                # Historical receipts are untrusted until both content and
+                # checkpoint ordering have been verified. Never invoke a
+                # model or tool on the basis of unchecked persisted history.
+                if len(previous) != step:
+                    raise CanaryError("Persisted tool history is inconsistent")
+                already_called = set()
+                prior_bucket = None
+                for index, row in enumerate(previous):
+                    name = row["tool_name"]
+                    if (row["step_index"] != index or name not in GOAL_STEPS
+                        or name in already_called
+                        or row["bucket_start"] is None
+                        or (prior_bucket is not None
+                            and row["bucket_start"] <= prior_bucket)
+                        or (goal["last_bucket"] is not None
+                            and row["bucket_start"] > goal["last_bucket"])):
+                        raise CanaryError("Persisted tool history is inconsistent")
+                    verify_persisted_result(row["result_json"], row["result_sha256"])
+                    already_called.add(name)
+                    prior_bucket = row["bucket_start"]
+                if step and prior_bucket != goal["last_bucket"]:
+                    raise CanaryError("Persisted tool checkpoint is inconsistent")
                 remaining = tuple(name for name in GOAL_STEPS if name not in already_called)
-                if len(already_called) != step or len(remaining) != len(GOAL_STEPS)-step:
+                if len(remaining) != len(GOAL_STEPS)-step:
                     raise CanaryError("Persisted tool history is inconsistent")
                 try:
                     selected = await select_local_tool(self.model, remaining)
