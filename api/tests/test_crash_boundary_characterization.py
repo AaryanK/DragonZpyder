@@ -66,7 +66,7 @@ if row is not None:
 conn.execute('INSERT INTO operations VALUES (?, ?)', ('send', 'inflight'))
 conn.commit()
 with (root / 'external-effects.log').open('a') as f:
-    f.write('send\\n'); f.flush(); os.fsync(f.fileno())
+    f.write('send\n'); f.flush(); os.fsync(f.fileno())
 if phase == 'crash':
     os._exit(17)
 conn.execute('UPDATE operations SET state=? WHERE id=?', ('confirmed', 'send'))
