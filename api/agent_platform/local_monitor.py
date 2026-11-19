@@ -155,11 +155,16 @@ class LocalMonitorAgent:
                 if existing is not None:
                     return _format(monitor_key, bucket, existing, inserted=False)
                 older = await con.fetchrow(
-                    """SELECT observation FROM dragonzpyder_local_observations
+                    """SELECT bucket_start, observation, decision, receipt_sha256
+                       FROM dragonzpyder_local_observations
                        WHERE monitor_key=$1 AND bucket_start < $2
                        ORDER BY bucket_start DESC LIMIT 1""",
                     monitor_key, bucket,
                 )
+                # Historical data affects the new decision; verify its full
+                # persisted receipt before using it as evidence.
+                if older is not None:
+                    _format(monitor_key, older["bucket_start"], older, inserted=False)
                 previous = older["observation"] if older else None
                 if isinstance(previous, str):
                     previous = json.loads(previous)
