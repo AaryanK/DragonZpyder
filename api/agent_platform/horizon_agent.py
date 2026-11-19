@@ -15,7 +15,6 @@ from datetime import datetime, timedelta, timezone
 from urllib.parse import urlsplit
 from uuid import UUID, uuid4
 
-import httpx
 
 from .local_tools import LocalToolRegistry
 
@@ -125,6 +124,7 @@ def accept_model_choice(data: object, already: set[str]) -> str:
 
 
 async def select_with_model(base: str, model: str, *, already: set[str]) -> str:
+    import httpx
     # Strictly bounded synthetic prompt; secrets, workspace and user content
     # never enter the model request.
     payload = {
