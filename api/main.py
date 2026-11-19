@@ -23,6 +23,9 @@ from usage_ledger import ledger, token_usage
 from provider_gateway import provider_request
 from agent_platform.gateway_protocol import validate_agent_body, validate_agent_response, AgentProtocolError
 from agent_platform.router import router as agent_router
+from agent_platform.workflows.router import router as workflow_router
+from agent_platform.goal_router import router as goals_router
+from agent_platform.web_tasks_router import router as web_tasks_router
 from agent_platform.openrouter_spend_guard import PaidTestBudgetError, require_paid_test_cap
 from agent_platform.provider_pacing import AgentProviderPacer
 from agent_platform.gateway_parent_budget import ParentBudgetGateway
@@ -82,10 +85,45 @@ async def lifespan(app: FastAPI):
     setup_telemetry()
     await ledger.open()
     await parent_budget.open()
+    app.state.parent_budget = parent_budget
     log.warning("Staging atomic parent-budget gateway status=%s",
                 "ready" if parent_budget.active else "disabled")
     agent_runtime = None
+    goal_pool = None
     try:
+        if os.getenv("DRAGONZPYDER_GOAL_STORE_ENABLED") == "1":
+            # The schema must be migrated separately. Do not silently create
+            # tables or start user work from an API process.
+            import asyncpg
+            from agent_platform.goal_store import DurableGoalStore
+            goal_dsn = os.getenv("DRAGONZPYDER_GOALS_DATABASE_URL", "")
+            if not goal_dsn.startswith(("postgres://", "postgresql://")):
+                raise RuntimeError("Dedicated persistent goals database is not configured")
+            goal_pool = await asyncpg.create_pool(dsn=goal_dsn, min_size=1, max_size=4)
+            async with goal_pool.acquire() as con:
+                for required_table in (
+                    "dragonzpyder_goals", "dragonzpyder_goal_runs",
+                    "dragonzpyder_event_watches", "dragonzpyder_event_waits",
+                    "dragonzpyder_event_inbox", "dragonzpyder_event_wakes",
+                ):
+                    if await con.fetchval("SELECT to_regclass($1)", required_table) is None:
+                        raise RuntimeError("DragonZpyder goal schema migration is incomplete")
+            app.state.goal_store = DurableGoalStore(
+                goal_pool, encryption_key=os.getenv("DRAGONZPYDER_GOALS_ENCRYPTION_KEY", ""),
+            )
+        if os.getenv("DRAGONZPYDER_WEB_TASKS_ENABLED") == "1":
+            if goal_pool is None:
+                raise RuntimeError("Web tasks require the durable goals database")
+            if os.getenv("RAILWAY_ENVIRONMENT_NAME") != "staging":
+                raise RuntimeError("Browser harness tasks are staging-only")
+            from agent_platform.task_activity import ActivityStore
+            async with goal_pool.acquire() as con:
+                for table in ("dragonzpyder_ui_tasks", "dragonzpyder_ui_task_events"):
+                    if await con.fetchval("SELECT to_regclass($1)", table) is None:
+                        raise RuntimeError("Web task schema migration missing")
+            app.state.activity_store = ActivityStore(
+                goal_pool, encryption_key=os.getenv("DRAGONZPYDER_GOALS_ENCRYPTION_KEY", ""),
+            )
         if os.getenv("DRAGONZPYDER_AGENTS_ENABLED") == "1":
             from agent_platform.runtime import AgentRuntime
             agent_runtime = AgentRuntime()
@@ -112,6 +150,8 @@ async def lifespan(app: FastAPI):
     finally:
         if agent_runtime is not None:
             await agent_runtime.close()
+        if goal_pool is not None:
+            await goal_pool.close()
         await parent_budget.close()
         await ledger.close()
         shutdown_telemetry()
@@ -119,6 +159,9 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="DragonZpyder API", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
 app.include_router(agent_router)
+app.include_router(workflow_router)
+app.include_router(goals_router)
+app.include_router(web_tasks_router)
 
 
 @app.middleware("http")

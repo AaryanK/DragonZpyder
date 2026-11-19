@@ -12,6 +12,7 @@ from backend.voice import realtime
 from backend.mesh import mesh
 from backend.security import OPERLY
 from backend.chat_demo import router as chat_router
+from backend.harness_tasks import router as harness_router, private_task_request
 
 ROOT = Path(__file__).resolve().parent
 DIST = ROOT / "dist"  # Vite-built React pages and fingerprinted assets
@@ -185,6 +186,21 @@ async def admin_route(request: Request):
             return JSONResponse({"detail": "Admin frontend not built"}, status_code=503)
         return FileResponse(target, media_type="text/html",
                             headers={"cache-control": "no-store", "x-frame-options": "DENY"})
+    if request.url.path == "/admin/api/tasks":
+        return JSONResponse(
+            await private_task_request(request, "admin/list", {}),
+            headers={"cache-control": "no-store"},
+        )
+    if request.url.path.startswith("/admin/api/tasks/"):
+        task_id = request.url.path.removeprefix("/admin/api/tasks/")
+        if not re.fullmatch(r"[a-f0-9-]{36}", task_id):
+            return JSONResponse({"detail": "Invalid task reference"}, status_code=400)
+        return JSONResponse(
+            await private_task_request(
+                request, "admin/detail", {"task_id": task_id},
+            ),
+            headers={"cache-control": "no-store"},
+        )
     secret = os.getenv("DRAGONZPYDER_ADMIN_TOKEN", "")
     if len(secret) < 40:
         return JSONResponse({"detail": "Admin usage gateway is not configured"},
@@ -208,6 +224,7 @@ async def admin_route(request: Request):
                     media_type="application/json", headers={"cache-control": "no-store"})
 
 app.include_router(chat_router)
+app.include_router(harness_router)
 
 
 @app.get("/healthz")
@@ -218,7 +235,8 @@ async def healthz():
 @app.api_route("/{path:path}", methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
 async def dispatch(path: str, request: Request):
     route = "/" + path
-    if route == "/admin" or route == "/admin/api/usage":
+    if (route in ("/admin", "/admin/api/usage", "/admin/api/tasks")
+            or route.startswith("/admin/api/tasks/")):
         return await admin_route(request)
     if route.startswith("/api/"):
         return await proxy(request, OPERLY, rewrite_origin=True)

@@ -323,3 +323,35 @@ def test_parallel_guard_cannot_be_bypassed_by_a_budget_claim_env(monkeypatch):
             service_id="staging", thread_id="claimed-budget",
             tracks=[{"id": "a", "prompt": "a"}, {"id": "b", "prompt": "b"}],
         ))
+
+
+
+def test_supervisor_receives_exact_tool_availability_without_contradiction():
+    import pytest
+    from agent_platform.harness import supervisor_prompt_for_available_tools
+    baseline = supervisor_prompt_for_available_tools(
+        web_search=False, delegated_readonly=False
+    )
+    assert "External web, OS, browser, and business tools are NOT available" in baseline
+
+    delegated = supervisor_prompt_for_available_tools(
+        web_search=False, delegated_readonly=True
+    )
+    assert "Authorized, read-only tools" in delegated
+    assert "Discover tools before choosing actions" in delegated
+    assert "NOT available" not in delegated
+    assert "\\n" not in delegated
+    assert "untrusted data" in delegated
+    assert "Only explicitly delegated reads" in delegated
+
+    web = supervisor_prompt_for_available_tools(
+        web_search=True, delegated_readonly=False
+    )
+    assert "web_search tool" in web
+    assert "business tools are not available" in web
+    assert "authorized, read-only" not in web.lower()
+
+    with pytest.raises(ValueError, match="cannot be combined"):
+        supervisor_prompt_for_available_tools(
+            web_search=True, delegated_readonly=True
+        )
