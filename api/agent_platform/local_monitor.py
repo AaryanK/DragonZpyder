@@ -183,9 +183,23 @@ class LocalMonitorAgent:
 
 
 def _format(monitor_key: str, bucket: datetime, row, *, inserted: bool) -> dict:
+    """Verify the persisted observation and decision before reporting success."""
+    observation = row["observation"]
     decision = row["decision"]
+    if isinstance(observation, str):
+        observation = json.loads(observation)
     if isinstance(decision, str):
         decision = json.loads(decision)
+    encoded = json.dumps(
+        {"monitor_key": monitor_key, "bucket_start": bucket.isoformat(),
+         "observation": observation, "decision": decision},
+        sort_keys=True, separators=(",", ":"), allow_nan=False,
+    )
+    digest = hashlib.sha256(encoded.encode()).hexdigest()
+    if not isinstance(row["receipt_sha256"], str) or not __import__("hmac").compare_digest(
+        digest, row["receipt_sha256"]
+    ):
+        raise RuntimeError("Local monitor receipt integrity mismatch")
     return {
         "monitor_key": monitor_key,
         "bucket_start": bucket.isoformat(),
