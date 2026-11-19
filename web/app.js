@@ -719,11 +719,7 @@ for (const chip of document.querySelectorAll(".prompt-chip")) {
   });
 }
 $("conversation-search")?.addEventListener("input", renderConversations);
-document.addEventListener("keydown", event => {
-  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
-    event.preventDefault(); clearConversationSelection();
-  }
-});
+// Ctrl/⌘ K is reserved for the React command palette; New Chat remains a separate action.
 
 $("new-chat").addEventListener("click", clearConversationSelection);
 $("approvals-button").addEventListener("click", openApprovals);
