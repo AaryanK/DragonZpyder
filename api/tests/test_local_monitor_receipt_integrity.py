@@ -61,8 +61,7 @@ def test_receipt_bound_to_monitor_identity_and_bucket():
         _format("worker-health", BUCKET.replace(minute=5), row, inserted=False)
 
 
-@pytest.mark.asyncio
-async def test_tampered_historical_observation_fails_before_new_decision(monkeypatch):
+def test_tampered_historical_observation_fails_before_new_decision(monkeypatch):
     """Exercise tick's real historical read, not only the formatter."""
     from agent_platform import local_monitor as monitor
 
@@ -100,5 +99,6 @@ async def test_tampered_historical_observation_fails_before_new_decision(monkeyp
 
     monkeypatch.setattr(monitor, "sample_local_tools", lambda registry: OBSERVATION)
     agent = monitor.LocalMonitorAgent(FakePool())
+    import asyncio
     with pytest.raises(RuntimeError, match="receipt integrity mismatch"):
-        await agent.tick(now=BUCKET.replace(minute=5))
+        asyncio.run(agent.tick(now=BUCKET.replace(minute=5)))
