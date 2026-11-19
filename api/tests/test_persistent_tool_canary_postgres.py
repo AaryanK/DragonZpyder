@@ -157,3 +157,63 @@ def test_cancelled_goal_does_not_invoke_model_or_tool():
             try: await admin.execute(f'DROP SCHEMA IF EXISTS "{namespace}" CASCADE')
             finally: await admin.close()
     asyncio.run(run())
+
+
+@pytest.mark.skipif(not os.getenv("DRAGONZPYDER_BUDGET_TEST_DSN"),
+                    reason="Requires disposable PostgreSQL")
+def test_tampered_historical_receipt_fails_closed_before_model_or_tool():
+    """A restarted worker must reject altered JSONB even with an intact digest."""
+    import asyncpg
+    from agent_platform.persistent_tool_canary import CanaryError
+
+    async def run():
+        dsn = os.environ["DRAGONZPYDER_BUDGET_TEST_DSN"]
+        namespace = "dz_tamper_" + uuid4().hex
+        admin = await asyncpg.connect(dsn)
+        pool = None
+        try:
+            await admin.execute(f'CREATE SCHEMA "{namespace}"')
+            async def open_pool():
+                return await asyncpg.create_pool(
+                    dsn, min_size=1, max_size=2,
+                    server_settings={"search_path": namespace})
+            pool = await open_pool()
+            async with pool.acquire() as con:
+                await con.execute(SCHEMA)
+                await con.execute(
+                    "INSERT INTO dz_staging_long_horizon_goals(id) VALUES($1)",
+                    GOAL_ID)
+            start = datetime(2026, 11, 19, 9, 0, 15, tzinfo=timezone.utc)
+            model, tools = Model(), StubLocalTools()
+            first = await PersistentToolCanary(
+                pool, model=model, registry=tools).wake(now=start)
+            assert first["next_step"] == 1
+            await pool.close()
+            pool = await open_pool()
+            async with pool.acquire() as con:
+                await con.execute(
+                    """UPDATE dz_staging_long_horizon_receipts
+                       SET result_json='{"tampered":true}'::jsonb
+                       WHERE goal_id=$1 AND step_index=0""", GOAL_ID)
+            with pytest.raises(CanaryError, match="content integrity"):
+                await PersistentToolCanary(
+                    pool, model=model, registry=tools).wake(
+                        now=start + timedelta(minutes=5))
+            assert model.calls == 1
+            assert len(tools.calls) == 1
+            async with pool.acquire() as con:
+                goal = await con.fetchrow(
+                    "SELECT next_step,state FROM dz_staging_long_horizon_goals WHERE id=$1",
+                    GOAL_ID)
+                assert goal["next_step"] == 1 and goal["state"] == "active"
+                assert await con.fetchval(
+                    "SELECT count(*) FROM dz_staging_long_horizon_receipts WHERE goal_id=$1",
+                    GOAL_ID) == 1
+        finally:
+            if pool:
+                await pool.close()
+            try:
+                await admin.execute(f'DROP SCHEMA IF EXISTS "{namespace}" CASCADE')
+            finally:
+                await admin.close()
+    asyncio.run(run())
