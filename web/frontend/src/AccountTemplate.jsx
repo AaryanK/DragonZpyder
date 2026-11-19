@@ -6,7 +6,7 @@ export function AccountTemplate() {
   return (
     <>
 
-<header className="top"><a href="/" className="brand"><img alt="" src="https://raw.githubusercontent.com/AaryanK/DragonZpyder-Landing/f18fa6a100eebfa8a43036d7baad5b85d9623785/favicon.png"/>DragonZpyder</a><a href="/app">Personal AI <span aria-hidden="true">↗</span></a></header>
+<header className="top"><a href="/" className="brand"><img alt="" src="/brand-icon.png"/>DragonZpyder</a><a href="/app">Personal AI <span aria-hidden="true">↗</span></a></header>
 <main>
 <section className="intro"><span className="eyebrow">ONE IDENTITY · YOUR INTELLIGENCE</span><h1>Always <em>yours.</em></h1><p>Your conversations, personal AI, and authorised connections—all in one account, without making you use a business workspace.</p></section>
 <section className="account-card" aria-label="DragonZpyder account">
