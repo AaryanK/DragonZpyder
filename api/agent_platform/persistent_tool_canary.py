@@ -153,7 +153,14 @@ class PersistentToolCanary:
                     raise CanaryError("Invalid persisted active step index")
                 # One task per wake. This selects a model tool each time, but
                 # cannot reexecute any previously completed action.
-                remaining = GOAL_STEPS[step:]
+                previous = await connection.fetch(
+                    """SELECT tool_name FROM dz_staging_long_horizon_receipts
+                       WHERE goal_id=$1 ORDER BY step_index""", GOAL_ID,
+                )
+                already_called = {row["tool_name"] for row in previous}
+                remaining = tuple(name for name in GOAL_STEPS if name not in already_called)
+                if len(already_called) != step or len(remaining) != len(GOAL_STEPS)-step:
+                    raise CanaryError("Persisted tool history is inconsistent")
                 try:
                     selected = await select_local_tool(self.model, remaining)
                     result = self.registry.invoke(selected, {})
