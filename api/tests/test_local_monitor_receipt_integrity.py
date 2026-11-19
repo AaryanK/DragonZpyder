@@ -59,3 +59,46 @@ def test_receipt_bound_to_monitor_identity_and_bucket():
         _format("other-monitor", BUCKET, row, inserted=False)
     with pytest.raises(RuntimeError, match="receipt integrity mismatch"):
         _format("worker-health", BUCKET.replace(minute=5), row, inserted=False)
+
+
+@pytest.mark.asyncio
+async def test_tampered_historical_observation_fails_before_new_decision(monkeypatch):
+    """Exercise tick's real historical read, not only the formatter."""
+    from agent_platform import local_monitor as monitor
+
+    class FakeTransaction:
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *args):
+            return False
+
+    class FakeConnection:
+        def transaction(self):
+            return FakeTransaction()
+        async def execute(self, *args):
+            return None
+        async def fetchrow(self, query, *args):
+            if "bucket_start=$2" in query:
+                return None
+            if "bucket_start < $2" in query:
+                return {
+                    "bucket_start": BUCKET,
+                    "observation": {"memory": {"used_percent": 1.0}, "disk": {"used_percent": 50.0}},
+                    "decision": DECISION,
+                    "receipt_sha256": receipt(),
+                }
+            raise AssertionError("unexpected database query")
+
+    class FakePool:
+        def acquire(self):
+            class Acquire:
+                async def __aenter__(self):
+                    return FakeConnection()
+                async def __aexit__(self, *args):
+                    return False
+            return Acquire()
+
+    monkeypatch.setattr(monitor, "sample_local_tools", lambda registry: OBSERVATION)
+    agent = monitor.LocalMonitorAgent(FakePool())
+    with pytest.raises(RuntimeError, match="receipt integrity mismatch"):
+        await agent.tick(now=BUCKET.replace(minute=5))
