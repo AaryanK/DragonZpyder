@@ -8,7 +8,7 @@ import pytest
 from langchain_core.messages import ToolMessage, AIMessage
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from agent_platform.live_operly_mcp_smoke import _preflight, _readback_verified, _has_terminal_ai_answer
+from agent_platform.live_operly_mcp_smoke import _preflight, _readback_verified, _has_terminal_ai_answer, _revoke_and_probe
 
 
 def test_real_mcp_runner_rejects_non_staging_non_private(monkeypatch):
@@ -107,3 +107,57 @@ def test_real_mcp_rejects_duplicate_and_failed_receipts():
     failed = ToolMessage(content=valid[0].content, name=valid[0].name,
                          tool_call_id="failed", status="error")
     assert not _readback_verified([failed, valid[1]])[0]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("revoke_status,probe_status,expected", [
+    (200, 401, True),
+    (500, 401, False),
+    (200, 200, False),
+])
+async def test_staging_grant_revocation_requires_denial(
+    monkeypatch, revoke_status, probe_status, expected,
+):
+    import httpx
+    requests = []
+
+    def handler(request):
+        requests.append((request.url.path, request.headers.get("authorization")))
+        if request.url.path.endswith("/_fixture/revoke"):
+            return httpx.Response(revoke_status)
+        return httpx.Response(probe_status)
+
+    real_client = httpx.AsyncClient
+
+    def client_factory(**kwargs):
+        return real_client(transport=httpx.MockTransport(handler), **kwargs)
+
+    monkeypatch.setattr(httpx, "AsyncClient", client_factory)
+    verified = await _revoke_and_probe(
+        "http://operly-private-mcp-acceptance-20.railway.internal:8080/mcp",
+        "fixture-secret", "synthetic-test-token",
+    )
+    assert verified is expected
+    assert requests[0][0] == "/_fixture/revoke"
+    assert len(requests) == (2 if revoke_status == 200 else 1)
+    if revoke_status == 200:
+        assert requests[1][1] == "Bearer synthetic-test-token"
+
+
+@pytest.mark.asyncio
+async def test_staging_grant_revocation_network_error_fails_closed(monkeypatch):
+    import httpx
+
+    def handler(request):
+        raise httpx.ConnectError("synthetic connection failure")
+
+    real_client = httpx.AsyncClient
+    monkeypatch.setattr(
+        httpx, "AsyncClient",
+        lambda **kwargs: real_client(transport=httpx.MockTransport(handler), **kwargs),
+    )
+    with pytest.raises(httpx.ConnectError):
+        await _revoke_and_probe(
+            "http://operly-private-mcp-acceptance-20.railway.internal:8080/mcp",
+            "fixture-secret", "synthetic-test-token",
+        )
