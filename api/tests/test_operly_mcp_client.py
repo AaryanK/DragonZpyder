@@ -1,6 +1,10 @@
 """No-provider acceptance for DragonZpyder's upstream MCP adapter boundary."""
 import asyncio
+from pathlib import Path
+import sys
 from types import SimpleNamespace
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import pytest
 
