@@ -317,3 +317,68 @@ def test_operly_broker_requires_discovery_and_fails_closed(monkeypatch):
                     service_token="s" * 48, lease="lease-for-test",
                 )
     asyncio.run(run())
+
+
+def test_hatchet_delegates_via_api_and_rejects_bad_auth(monkeypatch):
+    """Actual HTTP request shape with no external network or paid inference."""
+    import json
+    import httpx
+    import pytest
+    from agent_platform.jobs import AgentJobInput, delegate_agent_job_to_api
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_SERVICE_TOKEN", "z" * 48)
+    monkeypatch.setenv("DRAGONZPYDER_HATCHET_AGENT_API_URL",
+                       "http://dragonzpyder-api.railway.internal:8080/internal/agents/run")
+    seen = []
+
+    def handler(request):
+        seen.append((request.url.path, json.loads(request.content)))
+        assert request.headers["authorization"] == "Bearer " + "z" * 48
+        data = json.loads(request.content)
+        return httpx.Response(200, json={
+            "thread_id": data["thread_id"], "answer": "API result"
+        })
+
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            result = await delegate_agent_job_to_api(
+                AgentJobInput(thread_id="scheduled-test-1", prompt="Inspect test state"),
+                client=client,
+            )
+            assert result["answer"] == "API result"
+        assert len(seen) == 1
+        monkeypatch.setenv("DRAGONZPYDER_HATCHET_AGENT_API_URL",
+                           "https://bad-host.example/internal/agents/run")
+        with pytest.raises(RuntimeError, match="not configured"):
+            await delegate_agent_job_to_api(
+                AgentJobInput(thread_id="scheduled-test-2", prompt="Do not execute"))
+    asyncio.run(run())
+
+
+def test_hatchet_cron_registration_is_explicit_and_staging_only(monkeypatch):
+    """Uses Hatchet's own cron API, never installs an implicit recurring job."""
+    import pytest
+    from agent_platform.jobs import install_staging_agent_ping_cron, PingInput
+    class FakeHatchetTask:
+        def __init__(self):
+            self.calls = []
+        async def aio_create_cron(self, **kwargs):
+            self.calls.append(kwargs)
+            return {"ok": True}
+    fake = FakeHatchetTask()
+
+    async def run():
+        monkeypatch.delenv("DRAGONZPYDER_STAGING_HATCHET_PING_CRON_ALLOWED",
+                           raising=False)
+        monkeypatch.setenv("DRAGONZPYDER_STAGE", "staging")
+        with pytest.raises(RuntimeError, match="not authorized"):
+            await install_staging_agent_ping_cron(fake)
+        monkeypatch.setenv("DRAGONZPYDER_STAGING_HATCHET_PING_CRON_ALLOWED", "1")
+        await install_staging_agent_ping_cron(fake)
+        assert len(fake.calls) == 1
+        assert fake.calls[0]["expression"] == "*/5 * * * *"
+        assert isinstance(fake.calls[0]["input"], PingInput)
+        monkeypatch.setenv("DRAGONZPYDER_STAGE", "production")
+        with pytest.raises(RuntimeError, match="not authorized"):
+            await install_staging_agent_ping_cron(fake)
+        assert len(fake.calls) == 1
+    asyncio.run(run())
