@@ -147,6 +147,14 @@ def caller_identity(request: Request) -> str | None:
     if not header.startswith("Bearer "):
         return None
     bearer = header[7:]
+    # A separately rotated token authenticates only the private agent
+    # inference protocol. Do not grant provider, admin or legacy API access.
+    dedicated_agent = os.getenv("DRAGONZPYDER_AGENT_GATEWAY_SERVICE_TOKEN", "")
+    if (request.url.path.startswith("/internal/agent/v1/")
+            and os.getenv("DRAGONZPYDER_AGENT_TOOL_CALLS_ENABLED") == "1"
+            and len(dedicated_agent) >= 40
+            and hmac.compare_digest(bearer, dedicated_agent)):
+        return "agent-runtime"
     legacy = os.getenv("DRAGONZPYDER_RUNTIME_TOKEN", "")
     if len(legacy) >= 32 and hmac.compare_digest(bearer, legacy):
         return "legacy"
