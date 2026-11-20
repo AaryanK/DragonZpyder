@@ -28,10 +28,11 @@ def test_native_mcp_adapter_applies_per_run_tool_allowlist(monkeypatch):
     monkeypatch.setenv("DRAGONZPYDER_OPERLY_MCP_ENABLED", "1")
     monkeypatch.setattr(official_adapter, "MultiServerMCPClient", FakeClient)
 
+    demo_token = "x" * 80
     async def run():
         return await load_authorized_operly_mcp_tools(
             url="https://operly.dragonzpyder.xyz/mcp",
-            access_token="fixture-access-token-" + "x" * 60,
+            access_token=demo_token,
             approved_tool_names=frozenset({"tasks.list", "system.runtime.status"}),
         )
     selected = asyncio.run(run())
