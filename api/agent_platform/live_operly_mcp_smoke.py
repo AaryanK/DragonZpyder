@@ -151,12 +151,16 @@ async def _run() -> dict:
                 },
             ), timeout=120)
             verified, names = _readback_verified(state.get("messages", []))
+            # Tool receipts alone do not establish completed user intent.
+            # A final assistant response is mandatory before claiming success.
+            final_ai = bool(state.get("messages")) and getattr(state["messages"][-1], "type", "") == "ai" and bool(str(getattr(state["messages"][-1], "content", "")).strip()) and not getattr(state["messages"][-1], "tool_calls", None)
+            verified = bool(verified and final_ai)
             metrics.update({
                 "status": "passed" if verified else "insufficient_tool_evidence",
                 "verified": verified,
                 "tool_names": names[:16],
                 "actual_tool_count": len(names),
-                "final_ai": getattr(state["messages"][-1], "type", "") == "ai",
+                "final_ai": final_ai,
             })
             # Revoke the isolated grant and assert the previous token is rejected.
             revoke = await http.post(
