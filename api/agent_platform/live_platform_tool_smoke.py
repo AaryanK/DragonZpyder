@@ -127,6 +127,34 @@ def _terminal_ai_answer(messages) -> bool:
     )
 
 
+def _semantic_answer_verified(messages) -> bool:
+    """Compare final structured answer against the seeded read-only facts."""
+    if not _terminal_ai_answer(messages):
+        return False
+    content = messages[-1].content
+    if not isinstance(content, str):
+        return False
+    try:
+        answer = json.loads(content)
+    except (TypeError, ValueError):
+        return False
+    if not isinstance(answer, dict) or set(answer) != {"open_tasks", "kernel_runtime_enabled", "scope_kind"}:
+        return False
+    tasks = answer["open_tasks"]
+    return (
+        isinstance(tasks, list)
+        and len(tasks) == 1
+        and isinstance(tasks[0], dict)
+        and tasks[0] == {
+            "id": "synth-1",
+            "title": "Review project milestones",
+            "status": "open",
+        }
+        and answer["kernel_runtime_enabled"] is True
+        and answer["scope_kind"] == "personal"
+    )
+
+
 async def _once() -> dict:
     import asyncpg
 
@@ -180,7 +208,9 @@ async def _once() -> dict:
                 "Find my open tasks and inspect the platform's runtime status. "
                 "Use the authorized discovery and execution tools to obtain both facts. "
                 "Do not create, modify, or delete anything; no delegation. "
-                "Answer only from observed tool outputs."
+                "Answer only from observed tool outputs. Return ONLY a JSON object with "
+                "keys open_tasks (array of objects with id, title, status), "
+                "kernel_runtime_enabled (boolean), and scope_kind (string)."
             )
             state = await asyncio.wait_for(graph.ainvoke(
                 {"messages": [{"role": "user", "content": prompt}]},
@@ -215,9 +245,10 @@ async def _once() -> dict:
             is True
         )
         final_ai = _terminal_ai_answer(state.get("messages", []))
+        answer_verified = _semantic_answer_verified(state.get("messages", []))
         verified = (
             {"tasks.list", "system.runtime.status"}.issubset(observed)
-            and read_only and correct_tasks and correct_runtime and final_ai
+            and read_only and correct_tasks and correct_runtime and answer_verified
         )
         metrics.update({
             "status": "passed" if verified else "insufficient_tool_evidence",
@@ -227,6 +258,7 @@ async def _once() -> dict:
             "executed_capabilities": sorted(observed),
             "read_only": read_only,
             "final_ai": final_ai,
+            "answer_verified": answer_verified,
         })
     except Exception as exc:
         cause = exc.__cause__ or exc
