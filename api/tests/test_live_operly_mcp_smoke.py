@@ -5,10 +5,10 @@ from pathlib import Path
 import sys
 
 import pytest
-from langchain_core.messages import ToolMessage
+from langchain_core.messages import ToolMessage, AIMessage
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from agent_platform.live_operly_mcp_smoke import _preflight, _readback_verified
+from agent_platform.live_operly_mcp_smoke import _preflight, _readback_verified, _has_terminal_ai_answer
 
 
 def test_real_mcp_runner_rejects_non_staging_non_private(monkeypatch):
@@ -59,3 +59,15 @@ def test_real_mcp_evidence_only_from_tool_results_not_final_model_claims():
     ]
     no, _ = _readback_verified(hallucinated)
     assert not no
+
+
+@pytest.mark.parametrize("messages,expected", [
+    ([], False),
+    ([ToolMessage(content="ok", name="operly_workspace_describe", tool_call_id="t")], False),
+    ([AIMessage(content="")], False),
+    ([AIMessage(content="   ")], False),
+    ([AIMessage(content="calling", tool_calls=[{"name": "operly_workspace_describe", "args": {}, "id": "t"}])], False),
+    ([AIMessage(content="Observed workspace and modules.")], True),
+])
+def test_real_mcp_requires_terminal_answer(messages, expected):
+    assert _has_terminal_ai_answer(messages) is expected
