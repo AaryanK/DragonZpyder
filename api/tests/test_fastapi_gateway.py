@@ -106,3 +106,34 @@ def test_parallel_inference_parent_is_reserved_and_settled_at_real_gateway_route
     assert [x[0] for x in calls]==["reserve","settle"]
     assert calls[0][1]["job_id"]==job
     assert calls[1][1]["actual_usd"]=="0.0000030000"
+
+
+def test_dedicated_agent_gateway_service_principal_is_route_scoped(monkeypatch):
+    """Production agent identity must never authorize generic provider routes."""
+    from starlette.requests import Request
+    import main
+
+    token = "private-agent-service-token-" + "x" * 48
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_GATEWAY_SERVICE_TOKEN", token)
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_TOOL_CALLS_ENABLED", "1")
+    monkeypatch.delenv("DRAGONZPYDER_APP_KEYS_JSON", raising=False)
+    monkeypatch.delenv("DRAGONZPYDER_RUNTIME_TOKEN", raising=False)
+
+    def identity(path, bearer):
+        scope = {"type": "http", "method": "POST", "scheme": "http",
+                 "path": path, "server": ("localhost", 8080),
+                 "headers": [(b"authorization", ("Bearer " + bearer).encode())]}
+        return main.caller_identity(Request(scope))
+
+    assert identity("/internal/agent/v1/chat/completions", token) == "agent-runtime"
+    assert identity("/internal/agent/v1/key-budget", token) == "agent-runtime"
+    assert identity("/internal/provider/chat/completions", token) is None
+    assert identity("/internal/v1/models", token) is None
+    assert identity("/internal/agents/run", token) is None
+    assert identity("/internal/agent/v1/chat/completions", token + "invalid") is None
+
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_TOOL_CALLS_ENABLED", "0")
+    assert identity("/internal/agent/v1/chat/completions", token) is None
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_TOOL_CALLS_ENABLED", "1")
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_GATEWAY_SERVICE_TOKEN", "too-short")
+    assert identity("/internal/agent/v1/chat/completions", "too-short") is None
