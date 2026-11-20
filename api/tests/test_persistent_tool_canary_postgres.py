@@ -217,3 +217,56 @@ def test_tampered_historical_receipt_fails_closed_before_model_or_tool():
             finally:
                 await admin.close()
     asyncio.run(run())
+
+
+@pytest.mark.skipif(not os.getenv("DRAGONZPYDER_BUDGET_TEST_DSN"),
+                    reason="Requires disposable PostgreSQL")
+def test_completed_goal_rechecks_historical_receipts_without_model_calls():
+    """Terminal completion must fail closed if persisted evidence is altered."""
+    import asyncpg
+    from agent_platform.persistent_tool_canary import CanaryError
+
+    async def run():
+        dsn = os.environ["DRAGONZPYDER_BUDGET_TEST_DSN"]
+        namespace = "dz_terminal_integrity_" + uuid4().hex
+        admin = await asyncpg.connect(dsn)
+        pool = None
+        try:
+            await admin.execute(f'CREATE SCHEMA "{namespace}"')
+            pool = await asyncpg.create_pool(
+                dsn, min_size=1, max_size=2,
+                server_settings={"search_path": namespace})
+            async with pool.acquire() as con:
+                await con.execute(SCHEMA)
+                await con.execute(
+                    "INSERT INTO dz_staging_long_horizon_goals(id) VALUES($1)",
+                    GOAL_ID)
+            model, tools = Model(), StubLocalTools()
+            worker = PersistentToolCanary(pool, model=model, registry=tools)
+            start = datetime(2026, 11, 19, 9, 0, 15, tzinfo=timezone.utc)
+            for i in range(3):
+                result = await worker.wake(now=start + timedelta(minutes=5*i))
+            assert result["state"] == "completed"
+            assert model.calls == 3 and len(tools.calls) == 3
+            assert (await worker.wake(now=start + timedelta(minutes=15)))["reason"] == "terminal"
+            async with pool.acquire() as con:
+                await con.execute(
+                    """UPDATE dz_staging_long_horizon_receipts
+                       SET result_json='{"tampered":true}'::jsonb
+                       WHERE goal_id=$1 AND step_index=0""", GOAL_ID)
+            with pytest.raises(CanaryError, match="content integrity"):
+                await worker.wake(now=start + timedelta(minutes=20))
+            assert model.calls == 3 and len(tools.calls) == 3
+            async with pool.acquire() as con:
+                goal = await con.fetchrow(
+                    "SELECT next_step,state FROM dz_staging_long_horizon_goals WHERE id=$1",
+                    GOAL_ID)
+                assert goal["next_step"] == 3 and goal["state"] == "completed"
+        finally:
+            if pool:
+                await pool.close()
+            try:
+                await admin.execute(f'DROP SCHEMA IF EXISTS "{namespace}" CASCADE')
+            finally:
+                await admin.close()
+    asyncio.run(run())
