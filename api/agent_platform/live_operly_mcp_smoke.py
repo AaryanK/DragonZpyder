@@ -73,6 +73,16 @@ def _readback_verified(messages: list) -> tuple[bool, list[str]]:
     return bool(described and modules and set(found) == TOOL_ALIASES), tool_names
 
 
+def _has_terminal_ai_answer(messages: list) -> bool:
+    if not messages:
+        return False
+    last = messages[-1]
+    content = getattr(last, "content", "")
+    return bool(getattr(last, "type", "") == "ai"
+                and isinstance(content, str) and content.strip()
+                and not getattr(last, "tool_calls", None))
+
+
 async def _run() -> dict:
     import asyncpg
     url, fixture_secret, dsn = _preflight()
@@ -153,7 +163,7 @@ async def _run() -> dict:
             verified, names = _readback_verified(state.get("messages", []))
             # Tool receipts alone do not establish completed user intent.
             # A final assistant response is mandatory before claiming success.
-            final_ai = bool(state.get("messages")) and getattr(state["messages"][-1], "type", "") == "ai" and bool(str(getattr(state["messages"][-1], "content", "")).strip()) and not getattr(state["messages"][-1], "tool_calls", None)
+            final_ai = _has_terminal_ai_answer(state.get("messages", []))
             verified = bool(verified and final_ai)
             metrics.update({
                 "status": "passed" if verified else "insufficient_tool_evidence",
