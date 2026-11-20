@@ -104,6 +104,26 @@ def _has_terminal_ai_answer(messages: list) -> bool:
                 and not getattr(last, "tool_calls", None))
 
 
+async def _revoke_and_probe(url: str, fixture_secret: str, token: str) -> bool:
+    """Bounded best-effort revocation; success requires server-confirmed denial."""
+    origin = url.removesuffix("/mcp")
+    async with httpx.AsyncClient(trust_env=False, timeout=5,
+                                 follow_redirects=False) as http:
+        revoke = await http.post(
+            origin + "/_fixture/revoke",
+            headers={"X-Fixture-Authority": fixture_secret},
+        )
+        if revoke.status_code != 200:
+            return False
+        after = await http.post(
+            url,
+            headers={"Authorization": "Bearer " + token,
+                     "MCP-Protocol-Version": "2025-06-18"},
+            json={"jsonrpc": "2.0", "id": 999, "method": "tools/list"},
+        )
+        return after.status_code == 401
+
+
 async def _run() -> dict:
     import asyncpg
     url, fixture_secret, dsn = _preflight()
@@ -193,21 +213,6 @@ async def _run() -> dict:
                 "actual_tool_count": len(names),
                 "final_ai": final_ai,
             })
-            # Revoke the isolated grant and assert the previous token is rejected.
-            revoke = await http.post(
-                origin + "/_fixture/revoke",
-                headers={"X-Fixture-Authority": fixture_secret},
-            )
-            after = await http.post(
-                url,
-                headers={"Authorization": "Bearer " + token,
-                         "MCP-Protocol-Version": "2025-06-18"},
-                json={"jsonrpc": "2.0", "id": 999, "method": "tools/list"},
-            )
-            metrics["revocation_enforced"] = revoke.status_code == 200 and after.status_code == 401
-            if not metrics["revocation_enforced"]:
-                metrics["verified"] = False
-                metrics["status"] = "revocation_not_verified"
     except Exception as exc:
         root = exc.__cause__ or exc
         metrics["status"] = "execution_failed"
@@ -244,6 +249,19 @@ async def _run() -> dict:
             except Exception as snap_error:
                 metrics["checkpoint_error"] = type(snap_error).__name__
     finally:
+        # Always attempt revocation after a token was issued, including failures
+        # during MCP discovery, graph construction, and inference.
+        if token is not None:
+            try:
+                metrics["revocation_enforced"] = await asyncio.wait_for(
+                    _revoke_and_probe(url, fixture_secret, token), timeout=12,
+                )
+            except BaseException as cleanup_error:
+                metrics["revocation_enforced"] = False
+                metrics["revocation_error_type"] = type(cleanup_error).__name__
+            if not metrics["revocation_enforced"]:
+                metrics["verified"] = False
+                metrics["status"] = "revocation_not_verified"
         metrics["elapsed_s"] = round(time.monotonic() - started, 2)
 
     conn = await asyncpg.connect(dsn=dsn, timeout=8, command_timeout=8)
