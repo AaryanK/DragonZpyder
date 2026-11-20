@@ -43,19 +43,19 @@ def test_real_mcp_runner_rejects_non_staging_non_private(monkeypatch):
 def test_real_mcp_evidence_only_from_tool_results_not_final_model_claims():
     response = [
         ToolMessage(content='{"name":"DragonZpyder Isolated MCP Evaluation"}',
-                    name="workspace.describe", tool_call_id="tool1"),
+                    name="operly_workspace_describe", tool_call_id="tool1"),
         ToolMessage(content='{"modules":[{"key":"demo","name":"Demo"}]}',
-                    name="workspace.modules.list", tool_call_id="tool2"),
+                    name="operly_workspace_modules_list", tool_call_id="tool2"),
     ]
     yes, names = _readback_verified(response)
-    assert yes and names == ["workspace.describe", "workspace.modules.list"]
+    assert yes and names == ["operly_workspace_describe", "operly_workspace_modules_list"]
     no, _ = _readback_verified(response[:1])
     assert not no
     hallucinated = [
         ToolMessage(content="Tool output contained no workspace identity",
-                    name="workspace.describe", tool_call_id="tool1"),
+                    name="operly_workspace_describe", tool_call_id="tool1"),
         ToolMessage(content='{"modules":[]}',
-                    name="workspace.modules.list", tool_call_id="tool2"),
+                    name="operly_workspace_modules_list", tool_call_id="tool2"),
     ]
     no, _ = _readback_verified(hallucinated)
     assert not no
