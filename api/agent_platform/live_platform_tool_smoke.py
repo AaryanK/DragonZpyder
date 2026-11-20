@@ -26,7 +26,7 @@ from .paid_tool_smoke import _gateway_guard_ready
 from .runtime import model_client
 
 log = logging.getLogger("dragonzpyder.live_platform_tool_smoke")
-KEY = "staging-harness-live-platform-tools-20261120-v1"
+KEY = "staging-harness-live-platform-tools-20261120-v2-diagnostic"
 TABLE = "dz_staging_live_platform_tools_v1"
 
 
@@ -149,6 +149,7 @@ async def _once() -> dict:
     started = time.monotonic()
     metrics = {"status": "failed", "verified": False}
     calls: list[dict] = []
+    graph = None
     try:
         async with httpx.AsyncClient(
             transport=httpx.MockTransport(_synthetic_handler(calls)),
@@ -175,7 +176,7 @@ async def _once() -> dict:
                 {"messages": [{"role": "user", "content": prompt}]},
                 config={
                     "configurable": {"thread_id": KEY},
-                    "recursion_limit": 28,
+                    "recursion_limit": 60,
                 },
             ), timeout=100)
         results = []
@@ -220,6 +221,26 @@ async def _once() -> dict:
         cause = exc.__cause__ or exc
         metrics["exception_type"] = type(cause).__name__
         metrics["status"] = "execution_failed"
+        metrics["broker_calls"] = len(calls)
+        metrics["attempted_capabilities"] = sorted({
+            x["capability"] for x in calls if isinstance(x.get("capability"), str)
+        })
+        if graph is not None:
+            try:
+                snapshot = await graph.aget_state({
+                    "configurable": {"thread_id": KEY}
+                })
+                messages = snapshot.values.get("messages", [])
+                metrics["checkpoint_message_count"] = len(messages)
+                metrics["checkpoint_tools"] = [
+                    m.name for m in messages if isinstance(m, ToolMessage)
+                ][:30]
+                metrics["checkpoint_model_requested_tools"] = [
+                    call.get("name", "") for m in messages if getattr(m, "type", None) == "ai"
+                    for call in (getattr(m, "tool_calls", None) or [])
+                ][:30]
+            except Exception as evidence_error:
+                metrics["checkpoint_error_type"] = type(evidence_error).__name__
     finally:
         metrics["elapsed_s"] = round(time.monotonic() - started, 2)
     conn = await asyncpg.connect(dsn=dsn, timeout=8, command_timeout=8)
