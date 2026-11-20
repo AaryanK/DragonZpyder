@@ -10,7 +10,8 @@ import httpx
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from agent_platform.live_platform_tool_smoke import _gate, _synthetic_handler
+from agent_platform.live_platform_tool_smoke import _gate, _synthetic_handler, _terminal_ai_answer
+from langchain_core.messages import AIMessage, ToolMessage
 
 
 def test_bounded_live_smoke_must_be_staging_and_private(monkeypatch):
@@ -65,3 +66,13 @@ def test_mock_broker_uses_real_operly_contract_and_refuses_writes():
     ))
     assert forbidden.status_code == 403
     assert len(seen) == 3
+
+
+def test_terminal_answer_oracle_rejects_missing_or_pending_response():
+    assert not _terminal_ai_answer([])
+    assert not _terminal_ai_answer([ToolMessage(content="ok", tool_call_id="t1")])
+    assert not _terminal_ai_answer([AIMessage(content="   ")])
+    assert not _terminal_ai_answer([AIMessage(content="", tool_calls=[{
+        "name": "operly_execute", "args": {}, "id": "t1", "type": "tool_call"
+    }])])
+    assert _terminal_ai_answer([AIMessage(content="Observed tasks and runtime status.")])
