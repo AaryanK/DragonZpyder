@@ -96,3 +96,51 @@ def test_native_mcp_adapter_rejects_discovered_privilege_escalation(monkeypatch)
             access_token="t" * 44,
             approved_tool_names=frozenset({"tasks.list"}),
         ))
+
+
+def test_native_mcp_discovery_timeout_cancels_wait_and_fails_closed(monkeypatch):
+    from langchain_mcp_adapters import client as official_adapter
+    cancelled = []
+
+    class HangingClient:
+        def __init__(self, _):
+            pass
+
+        async def get_tools(self):
+            try:
+                await asyncio.Event().wait()
+            finally:
+                cancelled.append(True)
+
+    monkeypatch.setenv("DRAGONZPYDER_OPERLY_MCP_ENABLED", "1")
+    monkeypatch.setattr(official_adapter, "MultiServerMCPClient", HangingClient)
+
+    with pytest.raises(RuntimeError, match="discovery timed out"):
+        asyncio.run(load_authorized_operly_mcp_tools(
+            url="https://operly.dragonzpyder.xyz/mcp",
+            access_token="t" * 44,
+            approved_tool_names=frozenset({"tasks.list"}),
+            discovery_timeout_s=0.01,
+        ))
+    assert cancelled == [True]
+
+
+@pytest.mark.parametrize("invalid_timeout", [0, -1, 31, True, float("nan")])
+def test_native_mcp_discovery_rejects_invalid_timeout_before_network(
+    monkeypatch, invalid_timeout
+):
+    from langchain_mcp_adapters import client as official_adapter
+
+    class UnexpectedClient:
+        def __init__(self, _):
+            raise AssertionError("Discovery should not start")
+
+    monkeypatch.setenv("DRAGONZPYDER_OPERLY_MCP_ENABLED", "1")
+    monkeypatch.setattr(official_adapter, "MultiServerMCPClient", UnexpectedClient)
+    with pytest.raises(ValueError, match="Invalid scoped"):
+        asyncio.run(load_authorized_operly_mcp_tools(
+            url="https://operly.dragonzpyder.xyz/mcp",
+            access_token="t" * 44,
+            approved_tool_names=frozenset({"tasks.list"}),
+            discovery_timeout_s=invalid_timeout,
+        ))
