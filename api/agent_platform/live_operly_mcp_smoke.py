@@ -25,9 +25,10 @@ from .runtime import model_client
 
 log = logging.getLogger("dz.real_operly_mcp_smoke")
 TABLE = "dz_staging_real_operly_mcp_v1"
-RUN_KEY = "dz-real-mcp-live-20261120-v3-negotiated"
+RUN_KEY = "dz-real-mcp-live-20261120-v4-tool-alias"
 EXPECTED_WORKSPACE = "DragonZpyder Isolated MCP Evaluation"
 ALLOWED_TOOLS = frozenset({"workspace.describe", "workspace.modules.list"})
+TOOL_ALIASES = frozenset({"operly_workspace_describe", "operly_workspace_modules_list"})
 EXPECTED_HOST = "operly-private-mcp-acceptance-20.railway.internal"
 
 
@@ -62,14 +63,14 @@ def _preflight() -> tuple[str, str, str]:
 def _readback_verified(messages: list) -> tuple[bool, list[str]]:
     receipts = [m for m in messages if isinstance(m, ToolMessage)]
     tool_names = [str(m.name) for m in receipts]
-    found = {m.name: str(m.content) for m in receipts if m.name in ALLOWED_TOOLS
+    found = {m.name: str(m.content) for m in receipts if m.name in TOOL_ALIASES
              and getattr(m, "status", "success") != "error"}
     # The exact fixture workspace label can only originate from a real
     # authorized tool's result, not the model's final untrusted assertion.
-    described = EXPECTED_WORKSPACE in found.get("workspace.describe", "")
-    modules = ('"modules"' in found.get("workspace.modules.list", "")
-               and "error" not in found.get("workspace.modules.list", "").lower()[:40])
-    return bool(described and modules and set(found) == ALLOWED_TOOLS), tool_names
+    described = EXPECTED_WORKSPACE in found.get("operly_workspace_describe", "")
+    modules = ('"modules"' in found.get("operly_workspace_modules_list", "")
+               and "error" not in found.get("operly_workspace_modules_list", "").lower()[:40])
+    return bool(described and modules and set(found) == TOOL_ALIASES), tool_names
 
 
 async def _run() -> dict:
