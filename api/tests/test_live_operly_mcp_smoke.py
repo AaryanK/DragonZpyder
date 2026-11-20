@@ -71,3 +71,39 @@ def test_real_mcp_evidence_only_from_tool_results_not_final_model_claims():
 ])
 def test_real_mcp_requires_terminal_answer(messages, expected):
     assert _has_terminal_ai_answer(messages) is expected
+
+
+@pytest.mark.parametrize("bad_content,tool_name", [
+    ('{"error":"DragonZpyder Isolated MCP Evaluation"}', "operly_workspace_describe"),
+    ('{"name":"wrong","message":"DragonZpyder Isolated MCP Evaluation"}', "operly_workspace_describe"),
+    ('{"note":"\\\"modules\\\" mentioned but not returned"}', "operly_workspace_modules_list"),
+    ('{"modules":"not-a-list"}', "operly_workspace_modules_list"),
+    ('{"modules":[{"key":"","name":"Demo"}]}', "operly_workspace_modules_list"),
+    ('not-json', "operly_workspace_describe"),
+])
+def test_real_mcp_rejects_malformed_receipts(bad_content, tool_name):
+    messages = [
+        ToolMessage(content='{"name":"DragonZpyder Isolated MCP Evaluation"}',
+                    name="operly_workspace_describe", tool_call_id="one"),
+        ToolMessage(content='{"modules":[{"key":"demo","name":"Demo"}]}',
+                    name="operly_workspace_modules_list", tool_call_id="two"),
+    ]
+    index = 0 if tool_name == "operly_workspace_describe" else 1
+    messages[index] = ToolMessage(content=bad_content, name=tool_name,
+                                  tool_call_id="bad")
+    verified, _ = _readback_verified(messages)
+    assert not verified
+
+
+def test_real_mcp_rejects_duplicate_and_failed_receipts():
+    valid = [
+        ToolMessage(content='{"name":"DragonZpyder Isolated MCP Evaluation"}',
+                    name="operly_workspace_describe", tool_call_id="one"),
+        ToolMessage(content='{"modules":[]}', name="operly_workspace_modules_list",
+                    tool_call_id="two"),
+    ]
+    assert _readback_verified(valid)[0]
+    assert not _readback_verified([valid[0], valid[0], valid[1]])[0]
+    failed = ToolMessage(content=valid[0].content, name=valid[0].name,
+                         tool_call_id="failed", status="error")
+    assert not _readback_verified([failed, valid[1]])[0]
