@@ -25,7 +25,7 @@ from .runtime import model_client
 
 log = logging.getLogger("dz.real_operly_mcp_smoke")
 TABLE = "dz_staging_real_operly_mcp_v1"
-RUN_KEY = "dz-real-mcp-live-20261120-v2-protocol"
+RUN_KEY = "dz-real-mcp-live-20261120-v3-negotiated"
 EXPECTED_WORKSPACE = "DragonZpyder Isolated MCP Evaluation"
 ALLOWED_TOOLS = frozenset({"workspace.describe", "workspace.modules.list"})
 EXPECTED_HOST = "operly-private-mcp-acceptance-20.railway.internal"
