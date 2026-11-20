@@ -117,6 +117,16 @@ def _synthetic_handler(calls: list[dict]):
     return handler
 
 
+def _terminal_ai_answer(messages) -> bool:
+    """Require a nonempty final AI answer with no outstanding tool calls."""
+    final = messages[-1] if messages else None
+    return (
+        getattr(final, "type", "") == "ai"
+        and bool(str(getattr(final, "content", "")).strip())
+        and not (getattr(final, "tool_calls", None) or [])
+    )
+
+
 async def _once() -> dict:
     import asyncpg
 
@@ -204,12 +214,7 @@ async def _once() -> dict:
             by_name.get("system.runtime.status", {}).get("kernel_runtime_enabled")
             is True
         )
-        final_message = state.get("messages", [])[-1] if state.get("messages") else None
-        final_ai = (
-            getattr(final_message, "type", "") == "ai"
-            and bool(str(getattr(final_message, "content", "")).strip())
-            and not (getattr(final_message, "tool_calls", None) or [])
-        )
+        final_ai = _terminal_ai_answer(state.get("messages", []))
         verified = (
             {"tasks.list", "system.runtime.status"}.issubset(observed)
             and read_only and correct_tasks and correct_runtime and final_ai
