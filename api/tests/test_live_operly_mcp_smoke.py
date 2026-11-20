@@ -1,6 +1,7 @@
 """No-paid acceptance for the real Operly MCP staging runner."""
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 import sys
 
@@ -109,13 +110,12 @@ def test_real_mcp_rejects_duplicate_and_failed_receipts():
     assert not _readback_verified([failed, valid[1]])[0]
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("revoke_status,probe_status,expected", [
     (200, 401, True),
     (500, 401, False),
     (200, 200, False),
 ])
-async def test_staging_grant_revocation_requires_denial(
+def test_staging_grant_revocation_requires_denial(
     monkeypatch, revoke_status, probe_status, expected,
 ):
     import httpx
@@ -133,10 +133,10 @@ async def test_staging_grant_revocation_requires_denial(
         return real_client(transport=httpx.MockTransport(handler), **kwargs)
 
     monkeypatch.setattr(httpx, "AsyncClient", client_factory)
-    verified = await _revoke_and_probe(
+    verified = asyncio.run(_revoke_and_probe(
         "http://operly-private-mcp-acceptance-20.railway.internal:8080/mcp",
         "fixture-secret", "synthetic-test-token",
-    )
+    ))
     assert verified is expected
     assert requests[0][0] == "/_fixture/revoke"
     assert len(requests) == (2 if revoke_status == 200 else 1)
@@ -144,8 +144,7 @@ async def test_staging_grant_revocation_requires_denial(
         assert requests[1][1] == "Bearer synthetic-test-token"
 
 
-@pytest.mark.asyncio
-async def test_staging_grant_revocation_network_error_fails_closed(monkeypatch):
+def test_staging_grant_revocation_network_error_fails_closed(monkeypatch):
     import httpx
 
     def handler(request):
@@ -157,7 +156,7 @@ async def test_staging_grant_revocation_network_error_fails_closed(monkeypatch):
         lambda **kwargs: real_client(transport=httpx.MockTransport(handler), **kwargs),
     )
     with pytest.raises(httpx.ConnectError):
-        await _revoke_and_probe(
+        asyncio.run(_revoke_and_probe(
             "http://operly-private-mcp-acceptance-20.railway.internal:8080/mcp",
             "fixture-secret", "synthetic-test-token",
-        )
+        ))
