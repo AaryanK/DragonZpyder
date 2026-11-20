@@ -154,15 +154,7 @@ class PersistentToolCanary:
                 )
                 if goal is None:
                     raise CanaryError("Goal not initialized; explicit migration required")
-                if goal["state"] != "active":
-                    return {"state":goal["state"],"tool_calls":0,"model_calls":0,
-                            "next_step":goal["next_step"],"reason":"terminal"}
-                if goal["last_bucket"] is not None and bucket <= goal["last_bucket"]:
-                    return {"state":"sleeping","tool_calls":0,"model_calls":0,
-                            "next_step":goal["next_step"],"reason":"same_interval"}
                 step = int(goal["next_step"])
-                if step >= len(GOAL_STEPS):
-                    raise CanaryError("Invalid persisted active step index")
                 # One task per wake. This selects a model tool each time, but
                 # cannot reexecute any previously completed action.
                 previous = await connection.fetch(
@@ -195,6 +187,16 @@ class PersistentToolCanary:
                 remaining = tuple(name for name in GOAL_STEPS if name not in already_called)
                 if len(remaining) != len(GOAL_STEPS)-step:
                     raise CanaryError("Persisted tool history is inconsistent")
+                # A terminal completion must not bypass evidence verification.
+                # Cancelled/blocked goals retain their existing no-work semantics.
+                if goal["state"] != "active":
+                    return {"state":goal["state"],"tool_calls":0,"model_calls":0,
+                            "next_step":step,"reason":"terminal"}
+                if goal["last_bucket"] is not None and bucket <= goal["last_bucket"]:
+                    return {"state":"sleeping","tool_calls":0,"model_calls":0,
+                            "next_step":step,"reason":"same_interval"}
+                if step >= len(GOAL_STEPS):
+                    raise CanaryError("Invalid persisted active step index")
                 try:
                     selected = await select_local_tool(self.model, remaining)
                     result = self.registry.invoke(selected, {})
