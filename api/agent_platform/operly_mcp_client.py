@@ -7,6 +7,7 @@ automatic refresh, or user-identity inference occurs in this module.
 """
 from __future__ import annotations
 
+import asyncio
 import os
 import re
 from urllib.parse import urlsplit
@@ -36,7 +37,8 @@ def _validated_url(url: str) -> str:
 
 async def load_authorized_operly_mcp_tools(*, url: str, access_token: str,
                                             approved_tool_names: frozenset[str],
-                                            max_tools: int = 20) -> list:
+                                            max_tools: int = 20,
+                                            discovery_timeout_s: float = 10.0) -> list:
     """Load only current-run, explicitly authorized Operly MCP tools.
 
     The workspace-scoped OAuth token itself MUST be obtained outside the model
@@ -50,6 +52,9 @@ async def load_authorized_operly_mcp_tools(*, url: str, access_token: str,
             or not 1 <= len(approved_tool_names) <= 40
             or any(not isinstance(s, str) or not _TOOL.fullmatch(s)
                    for s in approved_tool_names)
+            or not isinstance(discovery_timeout_s, (int, float))
+            or isinstance(discovery_timeout_s, bool)
+            or not 0 < discovery_timeout_s <= 30
             or not 1 <= max_tools <= 20):
         raise ValueError("Invalid scoped MCP tool delegation")
 
@@ -63,7 +68,10 @@ async def load_authorized_operly_mcp_tools(*, url: str, access_token: str,
             "headers": {"Authorization": "Bearer " + access_token},
         }
     })
-    discovered = await client.get_tools()
+    try:
+        discovered = await asyncio.wait_for(client.get_tools(), timeout=discovery_timeout_s)
+    except TimeoutError as exc:
+        raise RuntimeError("Operly MCP discovery timed out") from exc
     seen = set()
     selected = []
     for item in discovered:
