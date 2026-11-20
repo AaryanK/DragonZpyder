@@ -204,9 +204,15 @@ async def _once() -> dict:
             by_name.get("system.runtime.status", {}).get("kernel_runtime_enabled")
             is True
         )
+        final_message = state.get("messages", [])[-1] if state.get("messages") else None
+        final_ai = (
+            getattr(final_message, "type", "") == "ai"
+            and bool(str(getattr(final_message, "content", "")).strip())
+            and not (getattr(final_message, "tool_calls", None) or [])
+        )
         verified = (
             {"tasks.list", "system.runtime.status"}.issubset(observed)
-            and read_only and correct_tasks and correct_runtime
+            and read_only and correct_tasks and correct_runtime and final_ai
         )
         metrics.update({
             "status": "passed" if verified else "insufficient_tool_evidence",
@@ -215,7 +221,7 @@ async def _once() -> dict:
             "broker_calls": len(calls),
             "executed_capabilities": sorted(observed),
             "read_only": read_only,
-            "final_ai": getattr(state["messages"][-1], "type", "") == "ai",
+            "final_ai": final_ai,
         })
     except Exception as exc:
         cause = exc.__cause__ or exc
