@@ -256,7 +256,7 @@ async def _run() -> dict:
                 metrics["revocation_enforced"] = await asyncio.wait_for(
                     _revoke_and_probe(url, fixture_secret, token), timeout=12,
                 )
-            except BaseException as cleanup_error:
+            except Exception as cleanup_error:
                 metrics["revocation_enforced"] = False
                 metrics["revocation_error_type"] = type(cleanup_error).__name__
             if not metrics["revocation_enforced"]:
