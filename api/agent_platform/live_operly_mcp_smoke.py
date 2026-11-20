@@ -1,0 +1,214 @@
+"""ONE-SHOT live DragonZpyder -> real Operly MCP server acceptance.
+
+Operly runs its actual MCP router and canonical Workspace Kernel in a PRIVATE
+staging service with an isolated SQLite database and synthetic Workspace.
+The model uses official langchain-mcp-adapters over real network HTTP, never
+a fake transport. Upstream inference is capped by the DragonZpyder gateway.
+"""
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+import os
+import time
+from urllib.parse import urlsplit
+
+import httpx
+from langchain_core.messages import ToolMessage
+from langgraph.checkpoint.memory import MemorySaver
+
+from .harness import build_frontier_agent
+from .operly_mcp_client import load_authorized_operly_mcp_tools
+from .paid_tool_smoke import _gateway_guard_ready
+from .runtime import model_client
+
+log = logging.getLogger("dz.real_operly_mcp_smoke")
+TABLE = "dz_staging_real_operly_mcp_v1"
+RUN_KEY = "dz-real-mcp-live-20261120-v1"
+EXPECTED_WORKSPACE = "DragonZpyder Isolated MCP Evaluation"
+ALLOWED_TOOLS = frozenset({"workspace.describe", "workspace.modules.list"})
+EXPECTED_HOST = "operly-private-mcp-acceptance-20.railway.internal"
+
+
+def _preflight() -> tuple[str, str, str]:
+    if any(os.getenv(k) != "1" for k in (
+        "DRAGONZPYDER_AGENT_USE_GATEWAY",
+        "DRAGONZPYDER_AGENT_PRODUCTION_MODE",
+        "DRAGONZPYDER_AGENT_EVAL_ALLOW_PAID",
+        "DRAGONZPYDER_OPERLY_TOOLS_ENABLED",
+        "DRAGONZPYDER_OPERLY_MCP_ENABLED",
+    )) or os.getenv("DRAGONZPYDER_STAGE") != "staging":
+        raise RuntimeError("Private staging MCP test not authorized")
+    parsed = urlsplit(os.getenv("DRAGONZPYDER_OPERLY_MCP_FIXTURE_URL", ""))
+    if (parsed.scheme != "http" or parsed.hostname != EXPECTED_HOST
+            or parsed.port != 8080 or parsed.path != "/mcp"
+            or parsed.username or parsed.password or parsed.query or parsed.fragment):
+        raise RuntimeError("Private staging Operly MCP origin not allowlisted")
+    key = os.getenv("DRAGONZPYDER_OPERLY_MCP_FIXTURE_AUTH", "")
+    if len(key) < 40:
+        raise RuntimeError("Missing isolated staging fixture authority")
+    dsn = os.getenv("DRAGONZPYDER_HARNESS_SMOKE_DATABASE_URL", "")
+    if not dsn.startswith(("postgres://", "postgresql://")):
+        raise RuntimeError("A dedicated PostgreSQL idempotency record is required")
+    gateway = urlsplit(os.getenv("DRAGONZPYDER_AGENT_GATEWAY_BASE_URL", ""))
+    if (gateway.scheme != "http"
+            or gateway.hostname != "dragonzpyder-gateway.railway.internal"
+            or gateway.port != 8080 or gateway.path != "/internal/agent/v1"):
+        raise RuntimeError("Refused unapproved model inference endpoint")
+    return parsed.geturl(), key, dsn
+
+
+def _readback_verified(messages: list) -> tuple[bool, list[str]]:
+    receipts = [m for m in messages if isinstance(m, ToolMessage)]
+    tool_names = [str(m.name) for m in receipts]
+    found = {m.name: str(m.content) for m in receipts if m.name in ALLOWED_TOOLS
+             and getattr(m, "status", "success") != "error"}
+    # The exact fixture workspace label can only originate from a real
+    # authorized tool's result, not the model's final untrusted assertion.
+    described = EXPECTED_WORKSPACE in found.get("workspace.describe", "")
+    modules = ('"modules"' in found.get("workspace.modules.list", "")
+               and "error" not in found.get("workspace.modules.list", "").lower()[:40])
+    return bool(described and modules and set(found) == ALLOWED_TOOLS), tool_names
+
+
+async def _run() -> dict:
+    import asyncpg
+    url, fixture_secret, dsn = _preflight()
+    if not await _gateway_guard_ready():
+        return {"status": "blocked", "reason": "gateway_spend_cap_not_verified"}
+
+    conn = await asyncpg.connect(dsn=dsn, timeout=8, command_timeout=8)
+    try:
+        await conn.execute(f"""
+            CREATE TABLE IF NOT EXISTS {TABLE} (
+                run_key text PRIMARY KEY,
+                state text NOT NULL,
+                metrics jsonb,
+                created_at timestamptz NOT NULL DEFAULT now()
+            )
+        """)
+        claimed = await conn.fetchval(f"""
+            INSERT INTO {TABLE}(run_key,state) VALUES($1,'reserved')
+            ON CONFLICT DO NOTHING RETURNING run_key
+        """, RUN_KEY)
+        if not claimed:
+            previous = await conn.fetchval(
+                f"SELECT state FROM {TABLE} WHERE run_key=$1", RUN_KEY
+            )
+            return {"status": "already_reserved", "previous": previous}
+    finally:
+        await conn.close()
+
+    metrics = {"status": "execution_failed", "verified": False}
+    started = time.monotonic()
+    model_graph = None
+    token = None
+    try:
+        async with httpx.AsyncClient(trust_env=False, timeout=12,
+                                     follow_redirects=False) as http:
+            origin = url.removesuffix("/mcp")
+            auth = await http.post(
+                origin + "/_fixture/auth",
+                headers={"X-Fixture-Authority": fixture_secret},
+            )
+            if auth.status_code != 200 or len(auth.content) > 5000:
+                raise RuntimeError("Private staging credential grant denied")
+            token_data = auth.json()
+            token = token_data.get("access_token")
+            if not isinstance(token, str) or len(token) < 32:
+                raise RuntimeError("Invalid staging access token")
+
+            tools = await asyncio.wait_for(
+                load_authorized_operly_mcp_tools(
+                    url=url, access_token=token,
+                    approved_tool_names=ALLOWED_TOOLS,
+                    max_tools=2,
+                ), timeout=30,
+            )
+            model_graph = build_frontier_agent(
+                model_client(), MemorySaver(), delegated_tools=tools,
+            )
+            prompt = (
+                "You are connected to an isolated Operly staging Workspace over MCP. "
+                "Call the available MCP tools to find the exact workspace name and "
+                "list its currently visible modules. Both tools are read-only and "
+                "have already been authorized. Do not use subagents, write files, "
+                "mutate data, or claim any data that was not returned by a tool. "
+                "Summarize the observed workspace identity and modules."
+            )
+            state = await asyncio.wait_for(model_graph.ainvoke(
+                {"messages": [{"role": "user", "content": prompt}]},
+                config={
+                    "configurable": {"thread_id": RUN_KEY},
+                    "recursion_limit": 64,
+                },
+            ), timeout=120)
+            verified, names = _readback_verified(state.get("messages", []))
+            metrics.update({
+                "status": "passed" if verified else "insufficient_tool_evidence",
+                "verified": verified,
+                "tool_names": names[:16],
+                "actual_tool_count": len(names),
+                "final_ai": getattr(state["messages"][-1], "type", "") == "ai",
+            })
+            # Revoke the isolated grant and assert the previous token is rejected.
+            revoke = await http.post(
+                origin + "/_fixture/revoke",
+                headers={"X-Fixture-Authority": fixture_secret},
+            )
+            after = await http.post(
+                url,
+                headers={"Authorization": "Bearer " + token,
+                         "MCP-Protocol-Version": "2025-06-18"},
+                json={"jsonrpc": "2.0", "id": 999, "method": "tools/list"},
+            )
+            metrics["revocation_enforced"] = revoke.status_code == 200 and after.status_code == 401
+            if not metrics["revocation_enforced"]:
+                metrics["verified"] = False
+                metrics["status"] = "revocation_not_verified"
+    except Exception as exc:
+        root = exc.__cause__ or exc
+        metrics["status"] = "execution_failed"
+        metrics["exception_type"] = type(root).__name__
+        if model_graph is not None:
+            try:
+                snapshot = await model_graph.aget_state({
+                    "configurable": {"thread_id": RUN_KEY}
+                })
+                messages = snapshot.values.get("messages", [])
+                metrics["checkpoint_tools"] = [
+                    m.name for m in messages if isinstance(m, ToolMessage)
+                ][:16]
+                metrics["checkpoint_model_tool_requests"] = [
+                    call.get("name", "")
+                    for m in messages if getattr(m, "type", None) == "ai"
+                    for call in (getattr(m, "tool_calls", None) or [])
+                ][:16]
+            except Exception as snap_error:
+                metrics["checkpoint_error"] = type(snap_error).__name__
+    finally:
+        metrics["elapsed_s"] = round(time.monotonic() - started, 2)
+
+    conn = await asyncpg.connect(dsn=dsn, timeout=8, command_timeout=8)
+    try:
+        await conn.execute(
+            f"UPDATE {TABLE} SET state=$2, metrics=$3::jsonb WHERE run_key=$1",
+            RUN_KEY, metrics["status"], json.dumps(metrics),
+        )
+    finally:
+        await conn.close()
+    return metrics
+
+
+def main() -> None:
+    logging.basicConfig(level=logging.WARNING)
+    try:
+        metrics = asyncio.run(_run())
+    except Exception as exc:
+        metrics = {"status": "refused", "exception_type": type(exc).__name__}
+    print("DRAGONZPYDER_REAL_OPERLY_MCP_RESULT " + json.dumps(metrics, sort_keys=True))
+
+
+if __name__ == "__main__":
+    main()
