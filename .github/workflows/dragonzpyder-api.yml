@@ -1,7 +1,7 @@
 name: DragonZpyder API
 on:
   push:
-    branches: [codex/consolidate-dragonzpyder-web, codex/python-fastapi-migration]
+    branches: [develop, codex/consolidate-dragonzpyder-web, codex/python-fastapi-migration]
     paths: ["api/**", ".github/workflows/dragonzpyder-api.yml"]
   pull_request:
     paths: ["api/**", ".github/workflows/dragonzpyder-api.yml"]
