@@ -10,7 +10,7 @@ import httpx
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from agent_platform.live_platform_tool_smoke import _gate, _synthetic_handler, _terminal_ai_answer
+from agent_platform.live_platform_tool_smoke import _gate, _synthetic_handler, _terminal_ai_answer, _semantic_answer_verified
 from langchain_core.messages import AIMessage, ToolMessage
 
 
@@ -76,3 +76,20 @@ def test_terminal_answer_oracle_rejects_missing_or_pending_response():
         "name": "operly_execute", "args": {}, "id": "t1", "type": "tool_call"
     }])])
     assert _terminal_ai_answer([AIMessage(content="Observed tasks and runtime status.")])
+
+
+def test_semantic_answer_oracle_requires_exact_observed_facts():
+    good = {
+        "open_tasks": [{"id": "synth-1", "title": "Review project milestones", "status": "open"}],
+        "kernel_runtime_enabled": True,
+        "scope_kind": "personal",
+    }
+    assert _semantic_answer_verified([AIMessage(content=json.dumps(good))])
+    assert not _semantic_answer_verified([AIMessage(content="I completed the task.")])
+    assert not _semantic_answer_verified([AIMessage(content=json.dumps({**good, "kernel_runtime_enabled": False}))])
+    assert not _semantic_answer_verified([AIMessage(content=json.dumps({**good, "open_tasks": []}))])
+    assert not _semantic_answer_verified([AIMessage(content=json.dumps({**good, "scope_kind": "business"}))])
+    assert not _semantic_answer_verified([AIMessage(content=json.dumps({**good, "unexpected": "extra"}))])
+    assert not _semantic_answer_verified([AIMessage(content=json.dumps(good), tool_calls=[
+        {"name": "operly_execute", "args": {}, "id": "pending", "type": "tool_call"}
+    ])])
