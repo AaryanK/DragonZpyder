@@ -186,10 +186,18 @@ def build_frontier_agent(model, checkpointer, *, specialist_models=None, synthet
                    "inventory, email or deployed changes. Tool-side approvals and "
                    "idempotency remain mandatory.")
     if delegated_tools:
-        prompt += ("\nOperly capabilities are read-only, explicitly delegated through "
-                   "an expiring lease. Use operly_search before operly_execute. "
-                   "Never invent capability IDs or present Operly data as public. "
-                   "Do not claim account writes, publishing, or authorization.")
+        delegated_names = {getattr(item, "name", "") for item in delegated_tools}
+        if {"operly_search", "operly_execute"}.issubset(delegated_names):
+            prompt += ("\nOperly capabilities are read-only, explicitly delegated through "
+                       "an expiring lease. Use operly_search before operly_execute. "
+                       "Never invent capability IDs or present Operly data as public. "
+                       "Do not claim account writes, publishing, or authorization.")
+        else:
+            prompt += ("\nThe listed external MCP tools have already been discovered and "
+                       "explicitly scoped by the trusted runtime. Invoke relevant MCP tools "
+                       "directly by their advertised name; do not assume operly_search or "
+                       "operly_execute exist. Never request wider authorization, execute a "
+                       "mutating capability, or claim outcomes without tool evidence.")
     stress_mode = all(os.getenv(key) == "1" for key in (
         "DRAGONZPYDER_AGENT_STRESS_EVAL_ENABLED",
         "DRAGONZPYDER_AGENT_EVAL_ALLOW_PAID",
