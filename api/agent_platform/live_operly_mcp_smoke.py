@@ -63,14 +63,35 @@ def _preflight() -> tuple[str, str, str]:
 def _readback_verified(messages: list) -> tuple[bool, list[str]]:
     receipts = [m for m in messages if isinstance(m, ToolMessage)]
     tool_names = [str(m.name) for m in receipts]
-    found = {m.name: str(m.content) for m in receipts if m.name in TOOL_ALIASES
-             and getattr(m, "status", "success") != "error"}
-    # The exact fixture workspace label can only originate from a real
-    # authorized tool's result, not the model's final untrusted assertion.
-    described = EXPECTED_WORKSPACE in found.get("operly_workspace_describe", "")
-    modules = ('"modules"' in found.get("operly_workspace_modules_list", "")
-               and "error" not in found.get("operly_workspace_modules_list", "").lower()[:40])
-    return bool(described and modules and set(found) == TOOL_ALIASES), tool_names
+    # Require one successful, structured receipt for each authorized tool.
+    # Reject duplicates instead of allowing a later receipt to overwrite one.
+    if len(receipts) != len(TOOL_ALIASES):
+        return False, tool_names
+    found = {}
+    for receipt in receipts:
+        if receipt.name not in TOOL_ALIASES or receipt.name in found:
+            return False, tool_names
+        if getattr(receipt, "status", "success") != "success":
+            return False, tool_names
+        try:
+            payload = json.loads(receipt.content)
+        except (TypeError, ValueError):
+            return False, tool_names
+        if not isinstance(payload, dict) or payload.get("error"):
+            return False, tool_names
+        found[receipt.name] = payload
+    workspace = found.get("operly_workspace_describe", {})
+    modules = found.get("operly_workspace_modules_list", {})
+    described = workspace.get("name") == EXPECTED_WORKSPACE
+    module_list = modules.get("modules")
+    valid_modules = (isinstance(module_list, list)
+                     and all(isinstance(item, dict)
+                             and isinstance(item.get("key"), str)
+                             and item["key"].strip()
+                             and isinstance(item.get("name"), str)
+                             and item["name"].strip()
+                             for item in module_list))
+    return bool(described and valid_modules and set(found) == TOOL_ALIASES), tool_names
 
 
 def _has_terminal_ai_answer(messages: list) -> bool:
