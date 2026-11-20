@@ -25,7 +25,7 @@ from .runtime import model_client
 
 log = logging.getLogger("dz.real_operly_mcp_smoke")
 TABLE = "dz_staging_real_operly_mcp_v1"
-RUN_KEY = "dz-real-mcp-live-20261120-v1"
+RUN_KEY = "dz-real-mcp-live-20261120-v2-protocol"
 EXPECTED_WORKSPACE = "DragonZpyder Isolated MCP Evaluation"
 ALLOWED_TOOLS = frozenset({"workspace.describe", "workspace.modules.list"})
 EXPECTED_HOST = "operly-private-mcp-acceptance-20.railway.internal"
@@ -104,10 +104,12 @@ async def _run() -> dict:
     started = time.monotonic()
     model_graph = None
     token = None
+    phase = "preauth"
     try:
         async with httpx.AsyncClient(trust_env=False, timeout=12,
                                      follow_redirects=False) as http:
             origin = url.removesuffix("/mcp")
+            phase = "token_issue"
             auth = await http.post(
                 origin + "/_fixture/auth",
                 headers={"X-Fixture-Authority": fixture_secret},
@@ -119,6 +121,7 @@ async def _run() -> dict:
             if not isinstance(token, str) or len(token) < 32:
                 raise RuntimeError("Invalid staging access token")
 
+            phase = "mcp_initialize"
             tools = await asyncio.wait_for(
                 load_authorized_operly_mcp_tools(
                     url=url, access_token=token,
@@ -126,6 +129,7 @@ async def _run() -> dict:
                     max_tools=2,
                 ), timeout=30,
             )
+            phase = "graph_construction"
             model_graph = build_frontier_agent(
                 model_client(), MemorySaver(), delegated_tools=tools,
             )
@@ -137,6 +141,7 @@ async def _run() -> dict:
                 "mutate data, or claim any data that was not returned by a tool. "
                 "Summarize the observed workspace identity and modules."
             )
+            phase = "graph_invoke"
             state = await asyncio.wait_for(model_graph.ainvoke(
                 {"messages": [{"role": "user", "content": prompt}]},
                 config={
@@ -170,7 +175,22 @@ async def _run() -> dict:
     except Exception as exc:
         root = exc.__cause__ or exc
         metrics["status"] = "execution_failed"
+        metrics["phase"] = phase
         metrics["exception_type"] = type(root).__name__
+        errors = []
+        def descend(error):
+            if isinstance(error, BaseExceptionGroup):
+                for child in error.exceptions:
+                    descend(child)
+            else:
+                safe = str(error).split(chr(10), 1)[0][:100]
+                if any(marker in safe.lower() for marker in (
+                    "token", "bearer", "authorization", "secret", "http://", "https://"
+                )):
+                    safe = "[redacted]"
+                errors.append({"type": type(error).__name__, "hint": safe})
+        descend(exc)
+        metrics["leaf_errors"] = errors[:5]
         if model_graph is not None:
             try:
                 snapshot = await model_graph.aget_state({
