@@ -197,3 +197,123 @@ def test_synthetic_tools_must_be_explicitly_enabled(monkeypatch):
             ToolScript(responses=[AIMessage(content="no action")]),
             MemorySaver(), synthetic_tools=SyntheticBusiness().tools(),
         )
+
+
+def test_operly_real_graph_discover_execute_verify_with_http_broker(monkeypatch):
+    """Actual Deep Agents tool loop using native HTTP broker contract (stub transport).
+
+    Operly's separate CI verifies the real broker/Kernel/database contract.
+    This test verifies model-to-transport orchestration; no live model or secrets.
+    """
+    import httpx
+    import json
+    from langchain_core.messages import ToolMessage
+    from agent_platform.operly_readonly_tools import OperlyReadOnlyTools
+
+    monkeypatch.setenv("DRAGONZPYDER_OPERLY_TOOLS_ENABLED", "1")
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_QUICKJS_ENABLED", "0")
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_WEB_SEARCH_ENABLED", "0")
+    calls = []
+
+    def handler(request):
+        calls.append((request.url.path, json.loads(request.content)))
+        assert request.headers["x-operly-agent-lease"] == "lease-for-test"
+        assert request.headers["authorization"] == "Bearer " + "s" * 48
+        if request.url.path.endswith("/search"):
+            query = calls[-1][1]["query"]
+            spec = {
+                "system.runtime.status": {
+                    "id": "system.runtime.status", "risk": "read_only",
+                    "description": "Runtime status", "input_schema": {
+                        "type": "object", "properties": {},
+                    },
+                },
+                "tasks.list": {
+                    "id": "tasks.list", "risk": "read_only",
+                    "description": "List personal tasks", "input_schema": {
+                        "type": "object", "properties": {"limit": {"type": "integer"}},
+                    },
+                },
+            }
+            name = "tasks.list" if "tasks" in query else "system.runtime.status"
+            return httpx.Response(200, json={"source": "operly", "tools": [spec[name]]})
+        if request.url.path.endswith("/execute"):
+            action = calls[-1][1]["capability_id"]
+            if action == "tasks.list":
+                return httpx.Response(200, json={"ok": True, "result": {
+                    "tasks": [{"title": "Synthetic project follow-up", "status": "open"}]}})
+            if action == "system.runtime.status":
+                return httpx.Response(200, json={"ok": True, "result": {
+                    "kernel_runtime_enabled": True, "scope_kind": "personal"}})
+        raise AssertionError("Unexpected broker request")
+
+    model = ToolScript(responses=[
+        scripted_call("operly_search", {"query": "my tasks"}),
+        scripted_call("operly_execute", {
+            "capability_id": "tasks.list", "arguments": {"limit": 5},
+        }),
+        scripted_call("operly_search", {"query": "runtime status"}),
+        scripted_call("operly_execute", {
+            "capability_id": "system.runtime.status", "arguments": {},
+        }),
+        AIMessage(content="One synthetic open task; runtime is enabled."),
+    ])
+
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            broker = OperlyReadOnlyTools(
+                client=client, origin="https://operly.dragonzpyder.xyz",
+                service_token="s" * 48, lease="lease-for-test",
+            )
+            graph = build_frontier_agent(
+                model, MemorySaver(), delegated_tools=broker.langchain_tools(),
+            )
+            state = await graph.ainvoke({
+                "messages": [{"role": "user", "content": "Find open tasks and runtime status"}],
+            }, config={"configurable": {"thread_id": "native-platform-tool-acceptance"}})
+            replies = [json.loads(m.content) for m in state["messages"]
+                       if isinstance(m, ToolMessage) and m.name in {
+                           "operly_search", "operly_execute"}]
+            assert len(replies) == 4
+            assert all(reply["ok"] for reply in replies)
+            assert replies[1]["result"]["tasks"][0]["title"] == "Synthetic project follow-up"
+            assert replies[3]["result"]["kernel_runtime_enabled"]
+            assert [path.rsplit("/", 1)[-1] for path, _ in calls] == [
+                "search", "execute", "search", "execute"]
+            assert summarize_agent_result(state)["objective_verified"] is False
+    asyncio.run(run())
+
+
+def test_operly_broker_requires_discovery_and_fails_closed(monkeypatch):
+    import json
+    import httpx
+    import pytest
+    from agent_platform.operly_readonly_tools import (
+        OperlyReadOnlyTools, OperlyBrokerError,
+    )
+    monkeypatch.delenv("DRAGONZPYDER_OPERLY_TOOLS_ENABLED", raising=False)
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(
+            lambda req: (_ for _ in ()).throw(
+                AssertionError("Broker should not be called"))
+        )) as client:
+            broker = OperlyReadOnlyTools(
+                client=client, origin="https://operly.dragonzpyder.xyz",
+                service_token="s" * 48, lease="lease-for-test", max_calls=1,
+            )
+            tools = {t.name: t for t in broker.langchain_tools()}
+            denied = json.loads(await tools["operly_execute"].ainvoke({
+                "capability_id": "tasks.create", "arguments": {"title": "unsafe"},
+            }))
+            assert denied["error_code"] == "capability_not_discovered"
+            with pytest.raises(ValueError, match="disabled"):
+                build_frontier_agent(
+                    ToolScript(responses=[AIMessage(content="No action")]),
+                    MemorySaver(), delegated_tools=broker.langchain_tools(),
+                )
+            with pytest.raises(OperlyBrokerError):
+                OperlyReadOnlyTools(
+                    client=client, origin="http://attacker.example",
+                    service_token="s" * 48, lease="lease-for-test",
+                )
+    asyncio.run(run())
