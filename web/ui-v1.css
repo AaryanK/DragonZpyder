@@ -888,3 +888,13 @@ html[data-workspace-theme] .dz-execution-evidence p{
 html[data-workspace-theme] .dz-execution-evidence:focus-within{
   border-color:var(--dz-focus);
 }
+
+
+html[data-workspace-theme] .dz-conversation-group{
+  margin:18px 10px 6px;padding:0 2px;
+  font-size:10px;line-height:1.6;font-weight:720;
+  letter-spacing:.065em;text-transform:uppercase;
+}
+html[data-workspace-theme="light"] .dz-conversation-group{color:#8c8075}
+html[data-workspace-theme="dark"] .dz-conversation-group{color:#87978a}
+html[data-workspace-theme] .conversation-list .dz-conversation-group:first-child{margin-top:8px}
