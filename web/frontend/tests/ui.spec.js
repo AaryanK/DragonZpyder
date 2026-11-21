@@ -171,5 +171,5 @@ test("identical legacy and Kernel approval IDs render once with Kernel authority
       body: JSON.stringify({ ...approval, status: "rejected" }) });
   });
   await page.locator("#approval-list .reject-btn").click();
-  expect(decisionPath).toBe("/api/kernel/personal/approvals/" + approval.id + "/decision");
+  await expect.poll(() => decisionPath).toBe("/api/kernel/personal/approvals/" + approval.id + "/decision");
 });
