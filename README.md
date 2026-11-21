@@ -172,7 +172,7 @@ The agent, MCP, personal delegated execution, schedule registration, model spend
 
 For current security and ownership details, see [security baseline](docs/security-baseline.md), [platform ownership](docs/platform-ownership.md), [agent harness notes](api/agent_platform/AGENT_HARNESS_V3.md), and [long-horizon canary specification](api/agent_platform/REAL_LONG_HORIZON_STAGING.md). Some older engineering notes describe earlier branches; use current source, CI, and deployment evidence to resolve their historical status.
 
-## What needs to happen next
+## Roadmap: what needs to happen next
 
 **P0 — make the actual user experience trustworthy**
 
