@@ -33,6 +33,11 @@ def main() -> None:
         from .personal_wake import make_personal_mcp_wake_task, require_wake_gate
         require_wake_gate()
         workflows.append(make_personal_mcp_wake_task(hatchet))
+    if os.getenv("DRAGONZPYDER_PERSONAL_GOAL_CONTROLLER_ENABLED") == "1":
+        # Operator-opt-in registration only. Explicit trusted dispatch is
+        # required to start a Personal goal; no default cron or user trigger.
+        from .personal_wake import make_personal_goal_controller_task
+        workflows.append(make_personal_goal_controller_task(hatchet))
     worker = hatchet.worker("dragonzpyder-agent-worker", slots=2, workflows=workflows)
     worker.start()
 
