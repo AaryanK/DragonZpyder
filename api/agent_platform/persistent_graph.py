@@ -290,13 +290,29 @@ async def execute_graph_wake(wake: GraphWake) -> dict:
             if isinstance(value, str):
                 value = json.loads(value)
             if _sha(value) != item["output_sha256"]:
-                raise RuntimeError("Stored output integrity mismatch")
+                async with pool.acquire() as broken:
+                    await broken.execute(
+                        """UPDATE dz_execution_graphs SET state='blocked',
+                           blocked_reason='prior_output_integrity_failed',
+                           updated_at=now()
+                           WHERE goal_id=$1 AND state='inflight'""", wake.goal_id,
+                    )
+                return {"state": "blocked", "reason": "prior_output_integrity_failed",
+                        "executed": False}
             outputs[item["step_id"]] = {
                 "tool": item["tool_name"], "hash": item["output_sha256"],
                 "data": value,
             }
         if any(dep not in outputs for dep in step.depends_on):
-            raise RuntimeError("unsatisfied_dependency")
+            async with pool.acquire() as broken:
+                await broken.execute(
+                    """UPDATE dz_execution_graphs SET state='blocked',
+                       blocked_reason='unsatisfied_dependency',
+                       updated_at=now()
+                       WHERE goal_id=$1 AND state='inflight'""", wake.goal_id,
+                )
+            return {"state": "blocked", "reason": "unsatisfied_dependency",
+                    "executed": False}
         try:
             # Even native compose/verify stages revalidate the original user's
             # active Personal session rather than continuing after revocation.
