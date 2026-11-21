@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import "./voice-orb.css";
 
 // All visible voice UI is React (including SVG, captions, controls and transcript).
@@ -49,10 +49,8 @@ function VoiceOrbArtwork({ level, activity }) {
     "--dz-voice-wave-scale": (0.55 + energy * 1.8).toFixed(3),
     "--dz-voice-glow-opacity": (0.63 + energy * 0.36).toFixed(3),
   };
-  return (
-    <div className="dz-voice-artwork" data-activity={activity} style={variables} aria-hidden="true">
-      <div className="dz-voice-atmosphere" />
-      <svg className="dz-voice-art-svg" viewBox="0 0 760 760" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+  const nativeSvg = useMemo(() => (
+    <svg className="dz-voice-art-svg" viewBox="0 0 760 760" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
         <defs>
           <radialGradient id="dz-orb-background">
             <stop offset="0" stopColor="#24435b" stopOpacity=".30" />
@@ -159,9 +157,12 @@ function VoiceOrbArtwork({ level, activity }) {
           <path d="M 110 636 C 165 635 173 623 210 636 S 258 654 284 634 S 326 605 347 638 S 369 661 387 635 S 429 599 449 633 S 484 652 511 637 S 574 632 649 636" fill="none" stroke="url(#dz-orb-wave)" strokeWidth="2.2" />
           <path d="M 122 637 C 184 638 203 623 230 637 S 281 649 301 636 S 337 621 356 637 S 393 649 417 636 S 462 622 481 636 S 544 642 637 637" fill="none" stroke="#91d7ed" strokeWidth=".85" opacity=".36" />
         </g>
-      </svg>
-    </div>
-  );
+    </svg>
+  ), []);
+  return <div className="dz-voice-artwork" data-activity={activity} style={variables} aria-hidden="true">
+    <div className="dz-voice-atmosphere" />
+    {nativeSvg}
+  </div>;
 }
 
 function useVoiceEnergy(inputStream, outputStream) {
