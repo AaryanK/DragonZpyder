@@ -35,9 +35,9 @@ def test_google_start_and_verified_proof_links_same_account(monkeypatch):
         yield object()
     async def start(conn, *, provider):
         assert provider == "google"
-        return ProviderChallenge("google", "state-opaque", "binding-opaque", "google-nonce")
+        return ProviderChallenge("google", ("s" * 48), ("b" * 48), "google-nonce")
     async def consume(conn, *, provider, state, binding):
-        assert (provider, state, binding) == ("google", "state-opaque", "binding-opaque")
+        assert (provider, state, binding) == ("google", ("s" * 48), ("b" * 48))
         return ProviderChallenge(provider, state, binding, "google-nonce")
     def proof(token, *, expected_nonce):
         assert expected_nonce == "google-nonce"
@@ -60,11 +60,11 @@ def test_google_start_and_verified_proof_links_same_account(monkeypatch):
         assert first.json()["nonce"] == "google-nonce"
         assert "HttpOnly" in first.headers["set-cookie"]
         final = c.post("/identity/v1/provider/google/complete",
-                       json={"state": "state-opaque".ljust(40, "s"), "credential": "synthetic-id-token"},
+                       json={"state": ("s" * 48).ljust(40, "s"), "credential": "synthetic-id-token"},
                        headers={"Origin": ISSUER})
-        # The fake consume asserts the exact state; this ensures length constraints
-        # are validated before reaching the database (not a successful grant).
-        assert final.status_code == 500 if False else final.status_code in (200, 422)
+        assert final.status_code == 200
+        assert final.json()["authenticated"] is True
+        assert "__Host-dz_identity" in final.headers["set-cookie"]
 
 
 def test_provider_start_checks_origin(monkeypatch):
