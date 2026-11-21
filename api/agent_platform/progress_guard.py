@@ -18,6 +18,21 @@ MAX_NORMAL_TURNS = 10
 MAX_STRESS_TURNS = 18
 
 
+def current_turn_messages(messages: list) -> list:
+    """Only messages after the most recent HumanMessage belong to this turn.
+
+    LangGraph checkpoints keep prior completed turns. Their model calls and
+    tool actions must not consume the new request's independent run budget.
+    For internal/unit states without a HumanMessage, retain original behavior.
+    """
+    if not isinstance(messages, list):
+        return []
+    for idx in range(len(messages) - 1, -1, -1):
+        if getattr(messages[idx], "type", None) == "human":
+            return messages[idx:]
+    return messages
+
+
 def action_fingerprints(messages: list) -> list[str]:
     observed: list[str] = []
     for message in messages[-80:]:
@@ -54,6 +69,7 @@ def repeated_action_cycle(actions: list[str]) -> bool:
 
 
 def stop_reason(messages: list, *, stress_mode: bool) -> str | None:
+    messages = current_turn_messages(messages)
     actions = action_fingerprints(messages)
     if repeated_action_cycle(actions):
         return "repeated_tool_cycle"
