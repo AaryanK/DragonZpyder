@@ -196,8 +196,14 @@ def build_frontier_agent(model, checkpointer, *, specialist_models=None, synthet
             prompt += ("\nThe listed external MCP tools have already been discovered and "
                        "explicitly scoped by the trusted runtime. Invoke relevant MCP tools "
                        "directly by their advertised name; do not assume operly_search or "
-                       "operly_execute exist. Never request wider authorization, execute a "
-                       "mutating capability, or claim outcomes without tool evidence.")
+                       "operly_execute exist. Mutating tools remain governed by "
+                       "Operly approvals and stable request identities. If a tool "
+                       "returns waiting_for_approval or approval_required, stop; "
+                       "tell the user to review the exact action in the approval "
+                       "drawer, and never retry or assert that the write completed. "
+                       "Only report a completed external change after a successful "
+                       "tool receipt or independent readback. Never request wider "
+                       "authorization or claim outcomes without evidence.")
     stress_mode = all(os.getenv(key) == "1" for key in (
         "DRAGONZPYDER_AGENT_STRESS_EVAL_ENABLED",
         "DRAGONZPYDER_AGENT_EVAL_ALLOW_PAID",
