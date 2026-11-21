@@ -97,3 +97,52 @@ def test_inference_failure_classification_only_trusts_sdk_exception_types():
     wrapper = RuntimeError("safe wrapper")
     wrapper.__cause__ = FakeProviderError(429)
     assert inference_failure_code(wrapper) == "INFERENCE_LIMIT_REACHED"
+
+
+def test_operly_product_profile_is_trusted_server_side_and_scope_limited():
+    from agent_platform.harness import OPERLY_PRODUCT_PROMPT, build_frontier_agent
+    import inspect
+    assert "Personal scope only" in OPERLY_PRODUCT_PROMPT
+    assert "never authorizes any business Workspace" in OPERLY_PRODUCT_PROMPT
+    assert "verified user outcomes" in OPERLY_PRODUCT_PROMPT
+    assert "product_profile=None" in str(inspect.signature(build_frontier_agent))
+    from agent_platform import personal_bridge
+    source = inspect.getsource(personal_bridge.operly_personal_run)
+    assert 'product_profile="operly_personal"' in source
+    assert "product_profile" not in personal_bridge.OperlyPersonalRun.model_fields
+
+
+def test_operly_profile_is_applied_at_supervisor_boundary(monkeypatch):
+    from types import SimpleNamespace
+    from agent_platform import harness
+
+    captured = {}
+    monkeypatch.setenv("DRAGONZPYDER_OPERLY_TOOLS_ENABLED", "1")
+    monkeypatch.delenv("DRAGONZPYDER_AGENT_WEB_SEARCH_ENABLED", raising=False)
+    monkeypatch.delenv("DRAGONZPYDER_AGENT_QUICKJS_ENABLED", raising=False)
+    monkeypatch.setattr(harness, "create_deep_agent", lambda **kwargs: captured.update(kwargs) or kwargs)
+    allowed = SimpleNamespace(name="operly_tasks_list")
+    result = harness.build_frontier_agent(
+        model=object(), checkpointer=object(),
+        delegated_tools=[allowed], product_profile="operly_personal",
+    )
+    assert allowed in result["tools"]
+    assert "You are Operly" in captured["system_prompt"]
+    assert "Personal scope only" in captured["system_prompt"]
+    assert "External web, OS, browser, and business tools are NOT available" not in captured["system_prompt"]
+    assert "Only tools explicitly attached" in captured["system_prompt"]
+
+
+def test_operly_profile_requires_authorized_tools(monkeypatch):
+    import pytest
+    from agent_platform import harness
+
+    monkeypatch.setenv("DRAGONZPYDER_OPERLY_TOOLS_ENABLED", "1")
+    with pytest.raises(ValueError, match="requires authorized delegated tools"):
+        harness.build_frontier_agent(
+            model=object(), checkpointer=object(), product_profile="operly_personal",
+        )
+    with pytest.raises(ValueError, match="Unknown trusted product profile"):
+        harness.build_frontier_agent(
+            model=object(), checkpointer=object(), product_profile="operly_workspace",
+        )
