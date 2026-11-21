@@ -37,11 +37,11 @@ class FakeDB:
         raise AssertionError(query)
     async def execute(self, query, *args):
         if "INSERT INTO identity_authorization_codes" in query:
-            digest, subject, client, redirect, challenge, scope, audience, deadline = args
+            digest, subject, client, redirect, challenge, scope, audience, deadline, nonce = args
             self.codes[digest] = {
                 "subject": subject, "client_id": client, "redirect_uri": redirect,
                 "pkce_s256": challenge, "scope": scope, "audience": audience,
-                "expires_at": deadline, "consumed_at": None,
+                "expires_at": deadline, "consumed_at": None, "nonce": nonce,
             }
             return "INSERT 0 1"
         if "UPDATE identity_authorization_codes" in query:
@@ -127,3 +127,26 @@ async def test_expired_grant_and_invalid_redirect_rejected(monkeypatch):
         await authorize_code(db, authenticated_subject="existing-operly-id",
                              client_id="operly-web", redirect_uri="http://operly.example/cb",
                              scope="operly:access", pkce_s256=pkce_challenge(VERIFIER))
+
+
+@pytest.mark.asyncio
+async def test_oidc_code_requires_and_persists_nonce(monkeypatch):
+    monkeypatch.setenv("DRAGONZPYDER_IDENTITY_GRANT_HASH_KEY", "g" * 48)
+    db = FakeDB()
+    db.clients["operly-web"]["allowed_scope"] = "openid offline_access operly:access"
+    with pytest.raises(OAuthGrantDenied):
+        await authorize_code(db, authenticated_subject="existing-operly-id",
+                             client_id="operly-web", redirect_uri=REDIRECT,
+                             scope="openid operly:access", pkce_s256=pkce_challenge(VERIFIER))
+    with pytest.raises(OAuthGrantDenied):
+        await authorize_code(db, authenticated_subject="existing-operly-id",
+                             client_id="operly-web", redirect_uri=REDIRECT,
+                             scope="offline_access operly:access", pkce_s256=pkce_challenge(VERIFIER))
+    value = "c" * 32
+    code = await authorize_code(db, authenticated_subject="existing-operly-id",
+                                client_id="operly-web", redirect_uri=REDIRECT,
+                                scope="openid offline_access operly:access",
+                                pkce_s256=pkce_challenge(VERIFIER), nonce=value)
+    grant = await redeem_code(db, code=code.code, client_id="operly-web",
+                              redirect_uri=REDIRECT, pkce_verifier=VERIFIER)
+    assert grant.nonce == value
