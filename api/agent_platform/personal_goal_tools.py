@@ -14,7 +14,7 @@ from uuid import UUID, uuid4
 import asyncpg
 from langchain_core.tools import tool
 
-from .personal_wake import PersonalWakeInput, make_personal_mcp_wake_task
+from .personal_wake import SCHEMA, PersonalWakeInput, make_personal_mcp_wake_task
 
 
 def _canonical(value: str) -> str:
@@ -77,6 +77,12 @@ def personal_goal_tools(*, user_id: str, session_id: str, conversation_id: str):
         objective_hash = hashlib.sha256(objective.encode()).hexdigest()
         pool = await asyncpg.create_pool(dsn=dsn, min_size=1, max_size=2)
         try:
+            # Operator-controlled bootstrap for installations where an
+            # external SQL migration runner is not available. This is not
+            # model-controlled, and no table is dropped or overwritten.
+            if os.getenv("DRAGONZPYDER_PERSONAL_GOAL_SCHEMA_INSTALL_ALLOWED") == "1":
+                async with pool.acquire() as schema_con:
+                    await schema_con.execute(SCHEMA)
             async with pool.acquire() as con:
                 async with con.transaction():
                     # Do not create several metered tasks for the same active chat.
