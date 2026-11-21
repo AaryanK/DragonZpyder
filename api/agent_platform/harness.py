@@ -199,6 +199,15 @@ def build_frontier_agent(model, checkpointer, *, specialist_models=None, synthet
                 "dispatch acceptance; final task success requires observed "
                 "wake receipts. Never invent a goal ID or a future outcome."
             )
+        if {"native_canary_start", "native_canary_status", "native_canary_cancel"}.issubset(delegated_names):
+            prompt += (
+                "\nFor explicit internal scheduler diagnostics ONLY, use "
+                "native_canary_start to schedule exactly TWO wake-ups calling "
+                "the native check_quadratic_gradient_step tool without MCP or "
+                "Operly. Use native_canary_status to verify BOTH durable "
+                "execution receipts. Do not report completion from the "
+                "schedule acknowledgement. native_canary_cancel stops it."
+            )
         if {"operly_search", "operly_execute"}.issubset(delegated_names):
             prompt += ("\nOperly capabilities are read-only, explicitly delegated through "
                        "an expiring lease. Use operly_search before operly_execute. "
