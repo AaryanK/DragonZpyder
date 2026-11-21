@@ -101,13 +101,13 @@ def test_valid_code_token_exchange_never_trusts_request_subject(monkeypatch):
         def issue_access_token(self, *, authenticated_subject, audience, scope):
             assert (authenticated_subject, audience, scope) == ("trusted-subject", "operly-api", "operly:access")
             return "signed-synthetic-token"
-    async def redeem(db, **kwargs):
+    async def exchange(db, signer, **kwargs):
         assert kwargs["client_id"] == "operly-web"
-        return RedeemedGrant(subject="trusted-subject", audience="operly-api",
-                             scope="operly:access", client_id="operly-web")
+        return {"access_token": "signed-synthetic-token", "token_type": "Bearer",
+                "expires_in": 300, "scope": "operly:access"}
     monkeypatch.setattr(bridge, "_identity_db", db)
     monkeypatch.setattr(bridge, "SigningIdentity", DummyIssuer)
-    monkeypatch.setattr(bridge, "redeem_code", redeem)
+    monkeypatch.setattr(bridge, "exchange_code", exchange)
     body = {"grant_type": "authorization_code", "client_id": "operly-web",
             "redirect_uri": REDIRECT, "code": "synthetic-secret", "code_verifier": "v" * 50}
     with TestClient(app) as c:
