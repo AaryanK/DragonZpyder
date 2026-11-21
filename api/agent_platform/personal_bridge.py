@@ -161,6 +161,16 @@ async def operly_personal_run(
             approved_tool_names=approved,
             max_tools=20,
         ), timeout=20)
+        # Internal goal tools are native DragonZpyder capabilities, not
+        # Operly MCP permissions. The signed service payload fixes identity.
+        # Never allow model arguments to choose another user/session.
+        if os.getenv("DRAGONZPYDER_PERSONAL_GOAL_TOOLS_ENABLED") == "1":
+            from .personal_goal_tools import personal_goal_tools
+            tools = [*tools, *personal_goal_tools(
+                user_id=payload.user_id,
+                session_id=payload.session_id,
+                conversation_id=payload.conversation_id,
+            )]
         agent = build_frontier_agent(
             model_client(), checkpointer, delegated_tools=tools,
         )
