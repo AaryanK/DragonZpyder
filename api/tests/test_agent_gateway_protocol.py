@@ -195,3 +195,21 @@ def test_tool_choice_requires_tools_for_all_modes(choice):
             "model": MODEL, "messages": [{"role": "user", "content": "hello"}],
             "tool_choice": choice,
         }, [MODEL])
+
+
+def test_personal_mcp_gateway_accepts_bounded_combined_agent_registry():
+    """Real Deep Agents includes built-ins plus up to 20 user-scoped MCP tools."""
+    def tool(i):
+        return {
+            "type": "function",
+            "function": {
+                "name": f"operly_capability_{i}",
+                "description": "Scoped test tool",
+                "parameters": {"type": "object", "properties": {}},
+            },
+        }
+    base = {"model": MODEL, "messages": [{"role": "user", "content": "list my tasks"}]}
+    allowed = validate_agent_body({**base, "tools": [tool(i) for i in range(40)]}, [MODEL])
+    assert len(allowed["tools"]) == 40
+    with pytest.raises(AgentProtocolError, match="Invalid tool count"):
+        validate_agent_body({**base, "tools": [tool(i) for i in range(41)]}, [MODEL])
