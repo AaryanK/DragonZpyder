@@ -138,6 +138,32 @@ def _final_answer_matches_receipts(messages: list) -> bool:
 
 
 
+
+def _tool_calls_match_receipts(messages: list) -> bool:
+    """Require each tool receipt to correspond to one preceding model-issued call."""
+    pending = {}
+    completed = set()
+    for message in messages:
+        if getattr(message, "type", None) == "ai":
+            for call in (getattr(message, "tool_calls", None) or []):
+                call_id = call.get("id")
+                name = call.get("name")
+                if (not isinstance(call_id, str) or not call_id
+                        or not isinstance(name, str) or not name
+                        or call_id in pending or call_id in completed):
+                    return False
+                pending[call_id] = name
+        elif isinstance(message, ToolMessage):
+            call_id = message.tool_call_id
+            if (not isinstance(call_id, str) or call_id not in pending
+                    or message.name != pending.pop(call_id)
+                    or call_id in completed):
+                return False
+            completed.add(call_id)
+    return not pending and bool(completed)
+
+
+
 def _has_terminal_ai_answer(messages: list) -> bool:
     if not messages:
         return False
@@ -252,7 +278,8 @@ async def _run() -> dict:
             # A final assistant response is mandatory before claiming success.
             final_ai = _has_terminal_ai_answer(state.get("messages", []))
             answer_verified = _final_answer_matches_receipts(state.get("messages", []))
-            verified = bool(verified and final_ai and answer_verified)
+            calls_verified = _tool_calls_match_receipts(state.get("messages", []))
+            verified = bool(verified and final_ai and answer_verified and calls_verified)
             metrics.update({
                 "status": "passed" if verified else "insufficient_tool_evidence",
                 "verified": verified,
@@ -260,6 +287,7 @@ async def _run() -> dict:
                 "actual_tool_count": len(names),
                 "final_ai": final_ai,
                 "answer_verified": answer_verified,
+                "tool_call_ids_verified": calls_verified,
             })
     except Exception as exc:
         root = exc.__cause__ or exc
