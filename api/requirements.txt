@@ -19,3 +19,6 @@ langchain-mcp-adapters>=0.3,<0.4
 # Opt-in harness modules may import these at runtime.
 langfuse>=3,<5
 langchain-quickjs>=0.2,<1
+
+# Token issuance primitives for the opt-in central identity module.
+PyJWT[crypto]>=2.10,<3
