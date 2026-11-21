@@ -22,3 +22,9 @@ langchain-quickjs>=0.2,<1
 
 # User-scoped scheduling is available in the Personal API only behind a gate.
 hatchet-sdk>=1.38,<2
+
+# Token issuance primitives for the opt-in central identity module.
+PyJWT[crypto]>=2.15,<3
+
+# Verify Google login ID token signatures with trusted issuer/audience.
+google-auth[requests]>=2.40,<3
