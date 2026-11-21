@@ -1,13 +1,18 @@
--- Staging-only, additive schema for a future DragonZpyder-owned identity DB.
--- Never automatically run on production startup. Review and apply using a
--- separately approved, backed-up database migration.
--- Canonical subject is an opaque immutable identifier, not an email.
+-- Phase D: staging-only identity schema. NEVER applied automatically by API startup.
+-- Review and run against an isolated restored DB before approving production.
+-- A canonical subject is the existing Operly UUID (no identity duplication).
 CREATE TABLE IF NOT EXISTS identity_accounts (
     subject VARCHAR(160) PRIMARY KEY,
     source_operly_user_id VARCHAR(120) NOT NULL UNIQUE,
+    email VARCHAR(320) NOT NULL UNIQUE,
+    password_hash TEXT,
+    display_name VARCHAR(200) NOT NULL,
+    email_verified_at TIMESTAMPTZ,
+    source_active BOOLEAN NOT NULL,
     status VARCHAR(24) NOT NULL DEFAULT 'pending',
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    CONSTRAINT identity_account_status CHECK (status IN ('pending', 'active', 'disabled'))
+    CONSTRAINT identity_account_status CHECK (status IN ('pending', 'active', 'disabled')),
+    CONSTRAINT identity_account_pending_or_disabled CHECK (status <> 'active')
 );
 CREATE TABLE IF NOT EXISTS identity_provider_links (
     id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -21,5 +26,7 @@ CREATE TABLE IF NOT EXISTS identity_provider_links (
     CONSTRAINT identity_link_source CHECK (source IN ('auth', 'external')),
     CONSTRAINT identity_external_not_login CHECK (source <> 'external' OR login_eligible = FALSE)
 );
--- Import should run in one transaction with strict row-count reconciliation
--- against the validated snapshot and should not issue any access tokens.
+-- All imports use pending accounts only, even if source Operly users are active.
+-- The CHECK deliberately forbids activation until an audited auth issuer,
+-- revocation and rollback process is ready. Any future activation requires
+-- a separately reviewed schema migration; this script is not a login system.
