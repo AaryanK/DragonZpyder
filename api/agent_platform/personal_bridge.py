@@ -147,7 +147,11 @@ async def operly_personal_run(
         "execution_receipts": {
             "tool_names": tool_names,
             "failed_tool_count": min(100, max(0, int(report.get("failed_tool_count", 0)))),
-            "artifact_readback_count": min(30, len(report.get("artifact_readback_paths", []))),
+            # A historical checkpoint readback is not a current-turn receipt.
+            "artifact_readback_count": (
+                min(30, len(report.get("artifact_readback_paths", [])))
+                if "write_file" in tool_names and "read_file" in tool_names else 0
+            ),
             "status": report["status"],
             "objective_verified": False,
         },
