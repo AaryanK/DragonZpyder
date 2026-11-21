@@ -46,6 +46,12 @@ CREATE TABLE IF NOT EXISTS model_usage_events (
 CREATE INDEX IF NOT EXISTS model_usage_events_time_idx ON model_usage_events(occurred_at DESC);
 CREATE INDEX IF NOT EXISTS model_usage_events_app_time_idx ON model_usage_events(app_id, occurred_at DESC);
 CREATE INDEX IF NOT EXISTS model_usage_events_model_time_idx ON model_usage_events(requested_model, occurred_at DESC);
+-- Hourly global admission counter, separate from the append-only usage ledger.
+-- PostgreSQL ON CONFLICT UPDATE serializes every API replica on the same bucket.
+CREATE TABLE IF NOT EXISTS agent_hourly_call_budget (
+  bucket timestamptz PRIMARY KEY,
+  call_count bigint NOT NULL CHECK (call_count >= 0)
+);
 """
 
 
@@ -126,6 +132,27 @@ class UsageLedger:
                 self.pool = None
             if self.required:
                 raise
+
+    async def charge_agent_hour(self, limit: int) -> bool:
+        """Atomically admit an agent inference call across all API replicas.
+
+        A failed or indeterminate database operation NEVER admits paid inference.
+        This is call-count admission, not a USD spending or per-run budget.
+        """
+        if type(limit) is not int or not 1 <= limit <= 1000:
+            raise ValueError("Invalid agent hourly call ceiling")
+        if self.pool is None:
+            raise RuntimeError("Shared inference quota requires PostgreSQL")
+        async with self.pool.acquire() as con:
+            row = await con.fetchrow(
+                """INSERT INTO agent_hourly_call_budget(bucket,call_count)
+                   VALUES(date_trunc('hour', now()), 1)
+                   ON CONFLICT(bucket) DO UPDATE
+                     SET call_count = agent_hourly_call_budget.call_count + 1
+                   WHERE agent_hourly_call_budget.call_count < $1
+                   RETURNING call_count""", limit,
+            )
+        return row is not None
 
     async def close(self):
         if self.pool:
