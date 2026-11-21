@@ -111,8 +111,8 @@ def test_real_postgres_graph_receipts_and_cross_user_isolation():
                 "operly_workflow_list","operly_tasks_list",
                 "native_graph_compose","native_graph_verify"]
             assert all(r["integrity_valid"] for r in status["receipts"])
-            assert "workflow.list" in status["report_markdown"]
-            assert "tasks.list" in status["report_markdown"]
+            assert "operly_workflow_list" in status["report_markdown"]
+            assert "operly_tasks_list" in status["report_markdown"]
             assert (await outsider[2].ainvoke({"goal_id":goal}))["status"]=="not_cancellable"
         finally:
             await _cleanup(dsn,goal)
