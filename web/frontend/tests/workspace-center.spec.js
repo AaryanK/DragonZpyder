@@ -108,7 +108,7 @@ test("workspace creation is explicit and uses the existing authenticated endpoin
   let created = null;
   await prepare(page, async (path, method, route) => {
     if (path === "/api/auth/workspaces" && method === "GET") {
-      await route.fulfill(json([])); return true;
+      await route.fulfill(json(created ? [{id:"ws-1",name:created.name,role:"owner"}] : [])); return true;
     }
     if (path === "/api/auth/workspaces" && method === "POST") {
       created = route.request().postDataJSON();
