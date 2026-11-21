@@ -110,6 +110,8 @@ async def authorize_code(conn, *, authenticated_subject: str, client_id: str,
                          nonce: str | None = None) -> AuthorizationGrant:
     """A trusted interactive login handler calls this after session+CSRF checks."""
     _validate_pkce_challenge(pkce_s256)
+    if "offline_access" in scope.split() and "openid" not in scope.split():
+        raise OAuthGrantDenied("offline_access requires openid scope")
     if "openid" in scope.split():
         if (not isinstance(nonce, str) or not 24 <= len(nonce) <= 128
                 or not re.fullmatch(r"[A-Za-z0-9._~-]+", nonce)):
