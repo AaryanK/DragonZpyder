@@ -43,6 +43,21 @@ def test_wake_requires_explicit_gate_and_backend_authority():
             require_wake_gate()
 
 
+def test_wake_database_can_be_bound_to_personal_api_without_overwriting_worker_checkpoints():
+    with patch.dict(os.environ, _base(), clear=False):
+        # A worker may have a different checkpoint database for unrelated
+        # jobs, but Personal wake receipts MUST share the API goal database.
+        os.environ["DRAGONZPYDER_PERSONAL_MCP_DATABASE_URL"] = (
+            "postgresql://fixture.invalid/personal_goal_store"
+        )
+        assert require_wake_gate()[0] == (
+            "postgresql://fixture.invalid/personal_goal_store"
+        )
+        assert os.environ["DRAGONZPYDER_AGENT_DATABASE_URL"] == (
+            "postgresql://fixture.invalid/checkpoints"
+        )
+
+
 def test_wake_rejects_unapproved_host_and_writes():
     with patch.dict(os.environ, _base(), clear=False):
         os.environ["DRAGONZPYDER_OPERLY_PERSONAL_RENEW_URL"] = (
