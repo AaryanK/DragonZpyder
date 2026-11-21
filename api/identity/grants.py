@@ -51,10 +51,14 @@ def _secret_digest(value: str) -> str:
 def _validate_redirect(uri: str) -> None:
     if not isinstance(uri, str) or not 12 <= len(uri) <= 2048:
         raise OAuthGrantDenied("Invalid redirect URI")
-    value = urlsplit(uri)
+    try:
+        value = urlsplit(uri)
+        valid_port = value.port in (None, 443)
+    except ValueError as exc:
+        raise OAuthGrantDenied("Invalid redirect URI") from exc
     if (value.scheme != "https" or not value.hostname or value.username or
             value.password or value.fragment or value.hostname in ("localhost", "127.0.0.1")
-            or value.port not in (None, 443)):
+            or not valid_port):
         raise OAuthGrantDenied("Only registered HTTPS redirect URIs are supported")
 
 
