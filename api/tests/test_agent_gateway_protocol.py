@@ -213,3 +213,29 @@ def test_personal_mcp_gateway_accepts_bounded_combined_agent_registry():
     assert len(allowed["tools"]) == 40
     with pytest.raises(AgentProtocolError, match="Invalid tool count"):
         validate_agent_body({**base, "tools": [tool(i) for i in range(41)]}, [MODEL])
+
+
+def test_gpt_oss_agent_requests_use_low_reasoning_without_raising_output_ceiling():
+    for model in ("openai/gpt-oss-120b", "openai/gpt-oss-20b"):
+        request = {
+            "model": model,
+            "messages": [{"role": "user", "content": "hy"}],
+            "tools": [FUNCTION],
+            "max_tokens": 768,
+        }
+        parsed = validate_agent_body(request, [model])
+        assert parsed["reasoning"] == {"effort": "low"}
+        assert parsed["max_tokens"] == 768
+        assert parsed["provider"] == {"require_parameters": True}
+        assert "temperature" not in parsed
+
+
+def test_unrelated_models_do_not_get_gpt_oss_reasoning_override():
+    other = "other/example"
+    parsed = validate_agent_body({
+        "model": other,
+        "messages": [{"role": "user", "content": "hy"}],
+        "max_tokens": 768,
+    }, [other])
+    assert "reasoning" not in parsed
+    assert parsed["max_tokens"] == 768

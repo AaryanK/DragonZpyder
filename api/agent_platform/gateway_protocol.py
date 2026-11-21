@@ -159,6 +159,12 @@ def validate_agent_body(value: Any, allowed_models: list[str]) -> dict:
         _reject("Streaming is not enabled for agent gateway")
     body = {"model": model, "messages": sanitized, "max_tokens": tokens,
             "stream": False}
+    # gpt-oss can consume an entire small completion budget in hidden
+    # reasoning, returning finish_reason=length without text or tool calls.
+    # Request a smaller reasoning share for the internal agent protocol;
+    # preserve the exact output ceiling and cost/accounting limits.
+    if model in {"openai/gpt-oss-120b", "openai/gpt-oss-20b"}:
+        body["reasoning"] = {"effort": "low"}
     # Never inject a temperature default. Some providers/models reject it,
     # particularly when strict parameter routing is enabled.
     if "temperature" in value:
