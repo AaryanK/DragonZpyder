@@ -13,7 +13,7 @@ identity and MCP permission authority; users do not name Hatchet.
 - PostgreSQL sequence fence, durable receipts, and LangGraph
   conversation checkpoint reuse by the existing `personal_wake.py`.
 - A deliberately narrow scheduled MCP capability allowlist:
-  `workflow.list`, `system.runtime.status`.
+  `workflow.list`, `system.runtime.status`, `tasks.list`.
 - Child wake executions cannot call the native goal-creation tools.
 - Cancellation marks a goal cancelled so later scheduled wakes become no-ops.
   Currently queued Hatchet events may remain in the scheduler until fired.
