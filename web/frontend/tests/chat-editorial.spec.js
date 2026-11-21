@@ -85,3 +85,68 @@ test("compact mobile conversation doesn't cause horizontal overflow", async ({pa
   expect(size.width).toBeLessThanOrEqual(size.viewport+1);
   await expect(page.locator("#message-input")).toBeVisible();
 });
+
+test("a long Agent prompt clears and the pending response remains visible on mobile", async ({page}) => {
+  await page.setViewportSize({width:390,height:844});
+  await fixture(page);
+  await page.evaluate(() => { document.cookie = "operly_csrf=ui-fixture; path=/"; });
+
+  let resolveRequest;
+  let markStarted;
+  const started = new Promise(resolve => { markStarted = resolve; });
+  await page.route("**/api/personal-agent/chat", async route => {
+    markStarted();
+    await new Promise(resolve => { resolveRequest = resolve; });
+    await route.fulfill({
+      status:200, contentType:"application/json",
+      body:JSON.stringify({conversation_id:"fixture-1",message:"Scheduled successfully."}),
+    });
+  });
+
+  const prompt = Array.from({length:12}, (_,i) => `Step ${i+1}: Verify the persistent scheduler and preserve execution receipts.`).join("\n");
+  const editor = page.locator("#message-input");
+  await editor.fill(prompt);
+  const expandedHeight = await editor.evaluate(node => node.getBoundingClientRect().height);
+  expect(expandedHeight).toBeGreaterThan(100);
+  await page.locator("#send-button").click();
+  await started;
+  try {
+    await expect(editor).toHaveValue("");
+    await expect(editor).toBeDisabled();
+    await expect(page.locator(".message.user").last()).toContainText("Step 12:");
+    await expect(page.locator(".dz-running").last()).toBeVisible();
+    await page.waitForFunction(() => {
+      const composer = document.querySelector(".composer-wrap");
+      const messages = document.querySelector(".messages");
+      const pending = document.querySelector(".dz-running");
+      if (!composer || !messages || !pending) return false;
+      const clearance = parseFloat(getComputedStyle(messages).paddingBottom);
+      return clearance >= composer.getBoundingClientRect().height + 28 &&
+        pending.getBoundingClientRect().bottom <= composer.getBoundingClientRect().top + 2;
+    });
+    const collapsedHeight = await editor.evaluate(node => node.getBoundingClientRect().height);
+    expect(collapsedHeight).toBeLessThan(expandedHeight);
+  } finally {
+    resolveRequest?.();
+  }
+  await expect(editor).toBeEnabled();
+  await expect(editor).toHaveValue("");
+  await expect(page.locator(".message.assistant").last()).toContainText("Scheduled successfully.");
+});
+
+test("failed Agent submissions recover the draft for deliberate retry", async ({page}) => {
+  await fixture(page);
+  await page.evaluate(() => { document.cookie = "operly_csrf=ui-fixture; path=/"; });
+  await page.route("**/api/personal-agent/chat", async route => {
+    await route.fulfill({
+      status:503, contentType:"application/json",
+      body:JSON.stringify({detail:{code:"SERVICE_UNAVAILABLE",message:"Temporarily unavailable",retryable:true}}),
+    });
+  });
+  const input = page.locator("#message-input");
+  await input.fill("Keep this prompt available after failure.");
+  await page.locator("#send-button").click();
+  await expect(page.locator(".message.assistant").last()).toContainText("Temporarily unavailable");
+  await expect(input).toBeEnabled();
+  await expect(input).toHaveValue("Keep this prompt available after failure.");
+});

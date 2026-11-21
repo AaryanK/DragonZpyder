@@ -32,6 +32,7 @@ const emptyState = $("empty-state");
 const messages = $("messages");
 const chatMain = $("chat-main");
 const composer = $("composer");
+const composerWrap = document.querySelector(".composer-wrap");
 const messageInput = $("message-input");
 const sendButton = $("send-button");
 const statusDot = $("status-dot");
@@ -373,6 +374,21 @@ function scrollToBottom(force = false) {
   });
 }
 
+// Keep the final message above the floating composer, even when a long draft,
+// attachments, or mobile viewport changes alter its height.
+function syncComposerClearance() {
+  if (!composerWrap) return;
+  const height = Math.ceil(composerWrap.getBoundingClientRect().height);
+  if (!height) return;
+  document.documentElement.style.setProperty("--dz-composer-height", `${height}px`);
+  if (followingLatest) scrollToBottom();
+}
+if (composerWrap && typeof ResizeObserver !== "undefined") {
+  new ResizeObserver(syncComposerClearance).observe(composerWrap);
+}
+window.addEventListener("resize", syncComposerClearance);
+requestAnimationFrame(syncComposerClearance);
+
 function clearConversationSelection() {
   state.conversationId = null;
   for (const button of conversationList.querySelectorAll(".conversation-button")) button.classList.remove("active");
@@ -487,13 +503,21 @@ async function submitViaClientAdapter(message, requestId) {
   return result;
 }
 
-async function sendMessage(message, { companion = false } = {}) {
+async function sendMessage(message, { companion = false, fromComposer = false } = {}) {
   const clean = String(message || "").trim();
   if (!clean || state.sending) { if (companion) throw Error("Personal agent is busy"); return; }
   if (!state.session) { showAuth(); if (companion) throw Error("Sign in first"); return; }
 
   state.sending = true;
   sendButton.disabled = true;
+  // The accepted prompt now lives in the conversation, not in the editor.
+  // Clear synchronously before awaiting the agent, and preserve unrelated drafts
+  // when the request came from a suggestion or voice rather than the composer.
+  if (fromComposer) {
+    messageInput.value = "";
+    autoSizeInput();
+    if (window.matchMedia("(max-width: 820px)").matches) messageInput.blur();
+  }
   messageInput.disabled = true;
   appendMessage("user", clean);
   const pending = appendMessage("assistant", "", { pending: true });
@@ -605,6 +629,12 @@ async function sendMessage(message, { companion = false } = {}) {
   } catch (error) {
     pending.wrap.classList.remove("dz-running");
     pending.value.classList.add("error");
+    // The draft is recoverable on an ordinary failure, but never restore an
+    // uncertain-delivery request where pressing Send could duplicate an action.
+    if (fromComposer && !(error instanceof ApiError && error.code === "execution_outcome_uncertain")) {
+      messageInput.value = clean;
+      autoSizeInput();
+    }
     if (error instanceof ApiError && error.code === "execution_outcome_uncertain") {
       const stable = error.details?.rfc822_message_id ? ` Stable message identity: ${error.details.rfc822_message_id}.` : "";
       pending.value.textContent = `Delivery may already have happened. Do not send again until it is reconciled.${stable}`;
@@ -624,9 +654,9 @@ async function sendMessage(message, { companion = false } = {}) {
     state.sending = false;
     sendButton.disabled = false;
     messageInput.disabled = false;
-    if (!companion) messageInput.value = "";
     autoSizeInput();
-    if (!companion) messageInput.focus();
+    // Focusing the textarea reopens the mobile keyboard over the response.
+    if (!companion && !window.matchMedia("(max-width: 820px)").matches) messageInput.focus();
     scrollToBottom();
   }
 }
@@ -897,7 +927,7 @@ loginForm.addEventListener("submit", async (event) => {
 composer.addEventListener("submit", (event) => {
   event.preventDefault();
   if(window.dragonzpyderMesh?.isActive())window.dragonzpyderMesh.submit(messageInput.value);
-  else sendMessage(messageInput.value);
+  else sendMessage(messageInput.value, { fromComposer: true });
 });
 messageInput.addEventListener("input", autoSizeInput);
 messageInput.addEventListener("keydown", (event) => {
