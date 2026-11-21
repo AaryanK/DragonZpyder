@@ -268,7 +268,7 @@ async def operly_personal_run(
             try:
                 checkpoint = await agent.aget_state(config)
                 if checkpoint_advanced_for_prompt(
-                    previous_checkpoint, checkpoint, payload.prompt
+                    previous_checkpoint, checkpoint, instruction
                 ):
                     report = summarize_checkpoint_evidence(
                         checkpoint.values, termination_reason="inference_limit_reached"
