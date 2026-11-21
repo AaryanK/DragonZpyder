@@ -73,14 +73,9 @@
   font-size:clamp(12px,1.4vw,16px);font-weight:750;letter-spacing:.1em;color:#e8f3f8;
 }
 .dz-voice-brandmark{
-  width:29px;height:29px;flex:0 0 29px;position:relative;
-  border:1.5px solid #f5b17d;border-radius:38% 62% 48% 52%;
-  transform:rotate(-24deg);
-  box-shadow:0 0 22px #f4986866,inset 0 0 12px #f4986844;
-}
-.dz-voice-brandmark::after{
-  content:"";position:absolute;inset:8px 5px 6px 9px;border-radius:50% 45% 62% 30%;
-  background:#ffd5ae;box-shadow:0 0 16px #ffaf7e;
+  width:30px;height:30px;flex:0 0 30px;display:block;
+  object-fit:cover;border-radius:9px;
+  filter:drop-shadow(0 0 10px rgba(244,152,104,.18));
 }
 .dz-voice-orb-brand span span{color:#f4a674;font-weight:500}
 .dz-voice-orb-brand small{color:#83909c;font-size:10px;font-weight:500;letter-spacing:.12em}
@@ -133,8 +128,15 @@
 .dz-voice-orb-mic svg{height:25px;width:25px}
 .dz-voice-orb-mic.is-muted{background:linear-gradient(145deg,#d0f3ff,#74b5f3);border-color:#c7e9ff;box-shadow:0 0 35px #7cb9eb77}
 .dz-voice-orb-mic:disabled{opacity:.65;cursor:not-allowed}
-.dz-voice-orb-end{border:0;background:transparent;color:#93aab8;font-size:12px;letter-spacing:.035em;padding:12px}
-.dz-voice-orb-end:hover{color:#e8f3f8}
+/* Higher specificity than the legacy global #companion-end rule in app.css. */
+#companion-end.dz-voice-orb-end{
+  display:inline-flex;align-items:center;justify-content:center;gap:7px;
+  min-height:42px;padding:9px 14px;border:1px solid #36505b;
+  border-radius:999px;background:rgba(12,26,37,.64);box-shadow:none;
+  color:#b8cad4;font-size:12px;font-weight:550;
+  letter-spacing:.02em;white-space:nowrap;line-height:1.2;
+}
+#companion-end.dz-voice-orb-end:hover{color:#fff;background:#223a45;border-color:#9d8273}
 .dz-voice-orb-transcript-panel{
   position:absolute;right:clamp(22px,4.4vw,72px);bottom:118px;
   width:min(410px,calc(100vw - 44px));max-height:min(45dvh,380px);
@@ -167,8 +169,16 @@
   .dz-voice-orb-conversation h2{font-size:24px}
   .dz-voice-orb-conversation #companion-status{font-size:12px}
   .dz-voice-orb-footnote{display:none}
-  .dz-voice-orb-footer{justify-content:center}
-  .dz-voice-orb-end{position:absolute;right:16px;bottom:118px;font-size:11px}
+  .dz-voice-orb-footer{
+    display:flex;flex-direction:column;align-items:center;
+    justify-content:center;gap:14px;
+    padding-bottom:max(6px,env(safe-area-inset-bottom));
+  }
+  #companion-end.dz-voice-orb-end{
+    position:static;right:auto;bottom:auto;
+    min-height:34px;padding:7px 13px;font-size:11px;
+    background:rgba(12,26,37,.50);border-color:rgba(98,127,143,.40);
+  }
   .dz-voice-orb-transcript-panel{right:18px;bottom:150px}
 }
 @media (max-height:640px){
