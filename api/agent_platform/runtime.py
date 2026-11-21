@@ -261,7 +261,9 @@ def summarize_agent_result(result: dict) -> dict:
     files = result.get("files", {})
     artifacts = list(files.keys())[:30] if isinstance(files, dict) else []
     from .artifact_evidence import artifact_readback_paths
-    readback_paths = artifact_readback_paths(messages, files)
+    # Per-response receipts must never credit a historical file readback.
+    # Cross-turn artifact state is still preserved by the checkpoint itself.
+    readback_paths = artifact_readback_paths(turn_messages, files)
     raw_todos = result.get("todos", [])
     todos = raw_todos[:30] if isinstance(raw_todos, list) else []
     return {
