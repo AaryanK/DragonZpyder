@@ -453,7 +453,20 @@ async def inference(prefix: str, request: Request):
                         "Paid agent provider cap verified limit_usd=%s remaining_usd=%s",
                         key_limit, remaining,
                     )
-                if not await runtime.charge():
+                # Opt-in atomic global admission shared across Railway replicas.
+                # Preserve the existing ceiling and do not silently fall back
+                # to per-process counters when PostgreSQL is unavailable.
+                if agent_protocol and os.getenv("DRAGONZPYDER_SHARED_AGENT_HOURLY_QUOTA") == "1":
+                    hourly_limit = max(1, min(1000, int(os.getenv(
+                        "DRAGONZPYDER_RUNTIME_CALLS_PER_HOUR", "120"
+                    ))))
+                    try:
+                        admitted = await ledger.charge_agent_hour(hourly_limit)
+                    except Exception:
+                        raise GatewayError(503, "Shared inference quota unavailable") from None
+                else:
+                    admitted = await runtime.charge()
+                if not admitted:
                     raise GatewayError(429, "DragonZpyder internal inference test quota reached")
                 if parent_job_id is not None:
                     if not parent_budget.active:
