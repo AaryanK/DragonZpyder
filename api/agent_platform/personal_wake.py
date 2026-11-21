@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import os
 import json
+import hashlib
 from urllib.parse import urlsplit
 from uuid import UUID
 
@@ -36,6 +37,7 @@ CREATE TABLE IF NOT EXISTS dz_personal_mcp_goals (
     session_id text NOT NULL,
     conversation_id text NOT NULL,
     total_wakes integer NOT NULL,
+    objective_hash char(64) NOT NULL,
     next_sequence integer NOT NULL DEFAULT 0,
     state text NOT NULL DEFAULT 'active',
     created_at timestamptz NOT NULL DEFAULT now(),
@@ -108,6 +110,7 @@ async def perform_personal_wake(wake: PersonalWakeInput, *, http=None) -> dict:
     except ValueError:
         raise RuntimeError("Canonical user, session, conversation and goal IDs are required") from None
     dsn, service_secret, agent_secret, operly, dragon = require_wake_gate()
+    objective_hash = hashlib.sha256(wake.prompt.encode("utf-8")).hexdigest()
     pool = await asyncpg.create_pool(
         dsn=dsn, min_size=1, max_size=2, timeout=10, command_timeout=150,
     )
@@ -120,20 +123,20 @@ async def perform_personal_wake(wake: PersonalWakeInput, *, http=None) -> dict:
             async with con.transaction():
                 await con.execute(
                     """INSERT INTO dz_personal_mcp_goals
-                       (goal_id, user_id, session_id, conversation_id, total_wakes)
-                       VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING""",
+                       (goal_id, user_id, session_id, conversation_id, total_wakes, objective_hash)
+                       VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING""",
                     wake.goal_id, wake.user_id, wake.session_id, wake.conversation_id,
-                    wake.total_wakes,
+                    wake.total_wakes, objective_hash,
                 )
                 row = await con.fetchrow(
-                    """SELECT user_id, session_id, conversation_id, total_wakes, state, next_sequence
+                    """SELECT user_id, session_id, conversation_id, total_wakes, objective_hash, state, next_sequence
                        FROM dz_personal_mcp_goals WHERE goal_id=$1 FOR UPDATE""",
                     wake.goal_id,
                 )
                 if (row["user_id"], row["session_id"], row["conversation_id"],
-                    row["total_wakes"]) != (
+                    row["total_wakes"], row["objective_hash"]) != (
                     wake.user_id, wake.session_id, wake.conversation_id,
-                    wake.total_wakes,
+                    wake.total_wakes, objective_hash,
                 ):
                     raise RuntimeError("Persistent goal authority changed")
                 if row["state"] != "active" or row["next_sequence"] > wake.sequence:
