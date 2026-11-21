@@ -402,7 +402,25 @@ function renderConversations() {
     conversationList.append(empty);
     return;
   }
+  const now = new Date();
+  const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  let previousGroup = "";
   for (const item of filtered) {
+    // Date grouping uses server timestamps when present. No inferred activity.
+    const stamp = item.updated_at || item.created_at || null;
+    const epoch = typeof stamp === "string" || typeof stamp === "number" ? new Date(stamp).getTime() : NaN;
+    const daysAgo = Number.isFinite(epoch) ? Math.floor((dayStart - epoch) / 86400000) : null;
+    const group = daysAgo === null ? "Conversations"
+      : daysAgo <= 0 ? "Today"
+      : daysAgo === 1 ? "Yesterday"
+      : daysAgo < 7 ? "Previous 7 days" : "Earlier";
+    if (group !== previousGroup) {
+      const heading = document.createElement("div");
+      heading.className = "dz-conversation-group";
+      heading.textContent = group;
+      conversationList.appendChild(heading);
+      previousGroup = group;
+    }
     const button = document.createElement("button");
     button.type = "button";
     button.className = `conversation-button${item.id === state.conversationId ? " active" : ""}`;
