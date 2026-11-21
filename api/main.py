@@ -25,6 +25,7 @@ from agent_platform.gateway_protocol import validate_agent_body, validate_agent_
 from agent_platform.router import router as agent_router
 from identity.router import router as identity_public_keys_router
 from identity.http_bridge import router as identity_http_bridge_router
+from identity.browser_authorize import router as identity_browser_authorize_router
 from identity.login_http import router as identity_login_router
 from identity.provider_http import router as identity_provider_router
 from agent_platform.personal_bridge import router as operly_personal_bridge_router
@@ -125,6 +126,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="DragonZpyder API", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
 app.include_router(identity_public_keys_router)
 app.include_router(identity_http_bridge_router)
+app.include_router(identity_browser_authorize_router)
 app.include_router(identity_login_router)
 app.include_router(identity_provider_router)
 app.include_router(agent_router)
