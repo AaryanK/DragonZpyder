@@ -13,6 +13,7 @@ import os
 import re
 import secrets
 from dataclasses import dataclass
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlsplit
 
@@ -35,6 +36,16 @@ class RedeemedGrant:
     audience: str
     scope: str
     client_id: str
+    nonce: str | None = None
+
+
+@asynccontextmanager
+async def _transaction(conn, *, inside: bool):
+    if inside:
+        yield
+    else:
+        async with conn.transaction():
+            yield
 
 
 def _now():
@@ -95,9 +106,16 @@ async def _registered_client(conn, *, client_id: str, redirect_uri: str, scope: 
 
 
 async def authorize_code(conn, *, authenticated_subject: str, client_id: str,
-                         redirect_uri: str, scope: str, pkce_s256: str) -> AuthorizationGrant:
+                         redirect_uri: str, scope: str, pkce_s256: str,
+                         nonce: str | None = None) -> AuthorizationGrant:
     """A trusted interactive login handler calls this after session+CSRF checks."""
     _validate_pkce_challenge(pkce_s256)
+    if "openid" in scope.split():
+        if (not isinstance(nonce, str) or not 24 <= len(nonce) <= 128
+                or not re.fullmatch(r"[A-Za-z0-9._~-]+", nonce)):
+            raise OAuthGrantDenied("OIDC nonce is required for openid scope")
+    elif nonce is not None:
+        raise OAuthGrantDenied("Nonce without openid scope")
     if not isinstance(authenticated_subject, str) or not 1 <= len(authenticated_subject) <= 160:
         raise OAuthGrantDenied("Authenticated subject required")
     async with conn.transaction():
@@ -112,24 +130,24 @@ async def authorize_code(conn, *, authenticated_subject: str, client_id: str,
         deadline = _now() + timedelta(seconds=90)
         await conn.execute(
             """INSERT INTO identity_authorization_codes
-               (code_hash, subject, client_id, redirect_uri, pkce_s256, scope, audience, expires_at)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8)""",
+               (code_hash, subject, client_id, redirect_uri, pkce_s256, scope, audience, expires_at, nonce)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)""",
             _secret_digest(code), authenticated_subject, client_id, redirect_uri,
-            pkce_s256, scope, client["audience"], deadline,
+            pkce_s256, scope, client["audience"], deadline, nonce,
         )
         return AuthorizationGrant(code=code, expires_at=deadline)
 
 
 async def redeem_code(conn, *, code: str, client_id: str, redirect_uri: str,
-                      pkce_verifier: str) -> RedeemedGrant:
+                      pkce_verifier: str, in_transaction: bool = False) -> RedeemedGrant:
     """Atomically consume a single-use code; no token issued by this method."""
     if not isinstance(code, str) or not 20 <= len(code) <= 128:
         raise OAuthGrantDenied("Invalid authorization code")
     _validate_client_id(client_id)
     _validate_redirect(redirect_uri)
-    async with conn.transaction():
+    async with _transaction(conn, inside=in_transaction):
         row = await conn.fetchrow(
-            """SELECT subject, client_id, redirect_uri, pkce_s256, scope, audience,
+            """SELECT subject, client_id, redirect_uri, pkce_s256, scope, audience, nonce,
                       expires_at, consumed_at FROM identity_authorization_codes
                WHERE code_hash=$1 FOR UPDATE""",
             _secret_digest(code),
@@ -156,4 +174,4 @@ async def redeem_code(conn, *, code: str, client_id: str, redirect_uri: str,
         if updated != "UPDATE 1":
             raise OAuthGrantDenied("Authorization code already redeemed")
         return RedeemedGrant(subject=row["subject"], audience=row["audience"],
-                             scope=row["scope"], client_id=row["client_id"])
+                             scope=row["scope"], client_id=row["client_id"], nonce=row["nonce"])
