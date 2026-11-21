@@ -192,6 +192,22 @@ async def perform_personal_wake(wake: PersonalWakeInput, *, http=None) -> dict:
                         },
                         timeout=100,
                     )
+                    pause_reason = pause_reason_from_reply(reply)
+                    if pause_reason is not None:
+                        # The current wake can have unknown partial tool effects.
+                        # Freeze at the SAME sequence without replaying it, and
+                        # require a separate authorized recovery decision.
+                        await con.execute(
+                            """UPDATE dz_personal_mcp_goals SET state='paused_budget',
+                               updated_at=now() WHERE goal_id=$1""", wake.goal_id,
+                        )
+                        return {
+                            "state": "paused_budget",
+                            "next_sequence": wake.sequence,
+                            "model_calls": None,
+                            "reason": pause_reason,
+                            "requires_authorized_resume": True,
+                        }
                     if reply.status_code != 200:
                         raise RuntimeError("Personal MCP agent execution rejected")
                     result = reply.json()
@@ -228,6 +244,30 @@ async def perform_personal_wake(wake: PersonalWakeInput, *, http=None) -> dict:
                         await http.aclose()
     finally:
         await pool.close()
+
+
+def pause_reason_from_reply(reply) -> str | None:
+    """Only signed, internal run responses can cause a budget pause.
+
+    Never interpret arbitrary provider prose or an ambiguous 503 as a quota.
+    The run route validates its own inference errors before returning this code.
+    """
+    if reply.status_code == 503:
+        try:
+            detail = reply.json().get("detail", {})
+        except (ValueError, AttributeError, TypeError):
+            return None
+        if isinstance(detail, dict) and detail.get("code") == "INFERENCE_LIMIT_REACHED":
+            return "inference_limit_reached"
+    if reply.status_code == 200:
+        try:
+            result = reply.json()
+        except (ValueError, AttributeError, TypeError):
+            return None
+        if (isinstance(result, dict) and result.get("status") == "incomplete"
+                and result.get("termination_reason") == "inference_limit_reached"):
+            return "inference_limit_reached"
+    return None
 
 
 def make_personal_mcp_wake_task(hatchet):
