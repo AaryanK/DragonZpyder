@@ -123,6 +123,16 @@ async def operly_personal_run(
         report = summarize_checkpoint_evidence(state, termination_reason=reason)
     else:
         report = summarize_agent_result(result)
+    # Verify actual persisted LangGraph checkpoint readback before claiming
+    # that a future Hatchet wake can resume this user's conversation.
+    try:
+        readback = await agent.aget_state(config)
+        saved_messages = readback.values.get("messages", [])
+        checkpointed = isinstance(saved_messages, list) and len(saved_messages) > 0
+    except Exception:
+        checkpointed = False
+    if not checkpointed:
+        raise HTTPException(503, "Personal agent checkpoint verification failed")
     return {
         "status": report["status"],
         "answer": report["answer"][:16000],
@@ -131,6 +141,6 @@ async def operly_personal_run(
             if isinstance(name, str) and name.startswith("operly_")
         ][:40],
         "termination_reason": report.get("termination_reason"),
-        "thread_checkpointed": True,
+        "thread_checkpointed": checkpointed,
         "objective_verified": False,
     }
