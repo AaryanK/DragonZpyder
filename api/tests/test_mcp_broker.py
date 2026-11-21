@@ -112,7 +112,7 @@ def test_invocation_receipt_proves_observed_call_and_digest():
     assert outcome.receipt.alias == "canva_documents_list"
     assert outcome.receipt.provider_id == "canva"
     assert len(outcome.receipt.result_sha256) == 64
-    assert "documents" not in repr(outcome.receipt)
+    assert "[1]" not in repr(outcome.receipt)
 
 
 def test_no_call_for_missing_grant_or_unattended_permission():
