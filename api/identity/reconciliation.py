@@ -60,7 +60,7 @@ def reconcile(
 
     # One provider-subject tuple can belong to exactly one person globally.
     subjects: dict[tuple[str, str], str] = {}
-    links: dict[tuple[str, str, str], IdentityLink] = {}
+    links: dict[tuple[str, str], IdentityLink] = {}
 
     def ingest(rows: Iterable[Mapping], *, source: str, eligible: bool) -> None:
         for row in rows:
@@ -78,10 +78,15 @@ def reconcile(
             previous_owner = subjects.setdefault(identity_key, owner)
             if previous_owner != owner:
                 raise IdentityMigrationConflict("Provider subject belongs to multiple users")
-            key = (source, provider, subject)
-            if key in links:
+            key = (provider, subject)
+            previous = links.get(key)
+            if previous is not None and previous.source == source:
                 raise IdentityMigrationConflict("Duplicate provider identity row")
-            links[key] = IdentityLink(owner, provider, subject, source, eligible)
+            # The same human may have a verified provider sign-in record and
+            # a channel linkage. Preserve one canonical provider subject and
+            # prefer the explicit sign-in record; never elevate a channel link.
+            if previous is None or source == "auth":
+                links[key] = IdentityLink(owner, provider, subject, source, eligible)
 
     ingest(auth_identities, source="auth", eligible=True)
     ingest(external_identities, source="external", eligible=False)
