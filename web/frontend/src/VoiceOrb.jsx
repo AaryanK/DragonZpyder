@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import "./voice-orb.css";
 
 // All visible voice UI is React (including SVG, captions, controls and transcript).
@@ -43,7 +43,12 @@ function VoiceOrbArtwork({ level, activity }) {
   // Independent CSS keyframes animate the flowing ribbons; energy is measured
   // from the actual microphone/provider audio, not generated demo sound.
   const energy = clamp(level);
-  const variables = { "--dz-voice-energy": energy.toFixed(3) };
+  const variables = {
+    "--dz-voice-energy": energy.toFixed(3),
+    "--dz-voice-scale": (1 + energy * 0.085).toFixed(4),
+    "--dz-voice-wave-scale": (0.55 + energy * 1.8).toFixed(3),
+    "--dz-voice-glow-opacity": (0.63 + energy * 0.36).toFixed(3),
+  };
   return (
     <div className="dz-voice-artwork" data-activity={activity} style={variables} aria-hidden="true">
       <div className="dz-voice-atmosphere" />
