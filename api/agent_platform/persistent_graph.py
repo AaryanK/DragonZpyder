@@ -146,18 +146,26 @@ def validate_plan(steps: list[GraphStep]) -> list[dict]:
     return plan
 
 
-def require_graph_gate() -> str:
+def require_graph_gate(*, worker: bool = False) -> str:
     if os.getenv("DRAGONZPYDER_EXECUTION_GRAPH_ENABLED") != "1":
         raise RuntimeError("Execution graph is disabled")
-    dsn, *_ = require_wake_gate()
     if os.getenv("DRAGONZPYDER_EXECUTION_GRAPH_SCHEMA_INSTALL_ALLOWED") != "1":
         raise RuntimeError("Graph schema was not operator-approved")
+    if worker:
+        dsn, *_ = require_wake_gate()
+    else:
+        if (os.getenv("DRAGONZPYDER_PERSONAL_GOAL_TOOLS_ENABLED") != "1"
+                or os.getenv("DRAGONZPYDER_PERSONAL_MCP_SCHEDULED_ENABLED") != "1"):
+            raise RuntimeError("Signed Personal goal scheduling is unavailable")
+        dsn = os.getenv("DRAGONZPYDER_AGENT_DATABASE_URL", "")
+        if not dsn.startswith(("postgresql://", "postgres://")):
+            raise RuntimeError("Personal graph database unavailable")
     return dsn
 
 
-async def _pool():
+async def _pool(*, worker: bool = False):
     return await asyncpg.create_pool(
-        dsn=require_graph_gate(), min_size=1, max_size=2,
+        dsn=require_graph_gate(worker=worker), min_size=1, max_size=2,
         timeout=10, command_timeout=40,
     )
 
@@ -241,7 +249,7 @@ async def execute_graph_wake(wake: GraphWake) -> dict:
     separately reviewed action instead of hiding transport uncertainty.
     """
     _uuid(wake.goal_id)
-    pool = await _pool()
+    pool = await _pool(worker=True)
     try:
         async with pool.acquire() as con:
             async with con.transaction():
@@ -372,8 +380,9 @@ async def execute_graph_wake(wake: GraphWake) -> dict:
         await pool.close()
 
 
-def make_graph_hatchet_task(hatchet):
-    require_graph_gate()
+def make_graph_hatchet_task(hatchet, *, validate_worker: bool = True):
+    if validate_worker:
+        require_graph_gate(worker=True)
     @hatchet.task(
         name="dragonzpyder-personal-execution-graph",
         input_validator=GraphWake, concurrency=1, retries=0,
@@ -438,7 +447,7 @@ def graph_tools(*, user_id: str, session_id: str, conversation_id: str):
                     )
             from hatchet_sdk import Hatchet
             hatchet=Hatchet()
-            task=make_graph_hatchet_task(hatchet)
+            task=make_graph_hatchet_task(hatchet, validate_worker=False)
             base=datetime.now(timezone.utc)+timedelta(minutes=1)
             count=0
             try:
