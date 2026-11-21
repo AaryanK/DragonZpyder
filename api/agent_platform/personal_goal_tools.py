@@ -172,6 +172,12 @@ def personal_goal_tools(*, user_id: str, session_id: str, conversation_id: str):
             return {"status":"rejected","reason":"invalid_goal_id"}
         pool = await asyncpg.create_pool(dsn=dsn,min_size=1,max_size=2)
         try:
+            # Existing accounts can ask for status without scheduling
+            # another goal. The operator-approved migration must still be
+            # applied before selecting the new blocked_reason column.
+            if os.getenv("DRAGONZPYDER_PERSONAL_GOAL_SCHEMA_INSTALL_ALLOWED") == "1":
+                async with pool.acquire() as schema_con:
+                    await schema_con.execute(SCHEMA)
             async with pool.acquire() as con:
                 row = await con.fetchrow(
                     """SELECT goal_id,state,blocked_reason,next_sequence,total_wakes,updated_at
@@ -213,6 +219,12 @@ def personal_goal_tools(*, user_id: str, session_id: str, conversation_id: str):
             return {"status":"rejected","reason":"invalid_goal_id"}
         pool = await asyncpg.create_pool(dsn=dsn,min_size=1,max_size=2)
         try:
+            # Existing accounts can ask for status without scheduling
+            # another goal. The operator-approved migration must still be
+            # applied before selecting the new blocked_reason column.
+            if os.getenv("DRAGONZPYDER_PERSONAL_GOAL_SCHEMA_INSTALL_ALLOWED") == "1":
+                async with pool.acquire() as schema_con:
+                    await schema_con.execute(SCHEMA)
             async with pool.acquire() as con:
                 result = await con.execute(
                     """UPDATE dz_personal_mcp_goals SET state='cancelled',
