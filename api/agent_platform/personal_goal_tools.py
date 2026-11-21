@@ -159,7 +159,12 @@ def personal_goal_tools(*, user_id: str, session_id: str, conversation_id: str):
 
     @tool("goal_status")
     async def goal_status(goal_id: str) -> dict:
-        """Read durable status and wake-up receipts of your own scheduled goal."""
+        """Read durable receipts and terminal state of your own goal.
+
+        IMPORTANT: state=blocked or cancelled is terminal, NOT awaiting its
+        first run. Do not promise future wake-ups after a blocked status.
+        A completed Hatchet step is not a successful Operly tool receipt.
+        """
         dsn = _goal_db_dsn()
         try:
             _canonical(goal_id)
@@ -169,7 +174,7 @@ def personal_goal_tools(*, user_id: str, session_id: str, conversation_id: str):
         try:
             async with pool.acquire() as con:
                 row = await con.fetchrow(
-                    """SELECT goal_id,state,next_sequence,total_wakes,updated_at
+                    """SELECT goal_id,state,blocked_reason,next_sequence,total_wakes,updated_at
                        FROM dz_personal_mcp_goals WHERE goal_id=$1
                          AND user_id=$2 AND conversation_id=$3""",
                     goal_id,user_id,conversation_id,
@@ -182,13 +187,16 @@ def personal_goal_tools(*, user_id: str, session_id: str, conversation_id: str):
                        ORDER BY sequence""", goal_id,
                 )
                 return {"goal_id":goal_id,"state":row["state"],
+                        "terminal": row["state"] in ("blocked", "cancelled", "completed"),
+                        "blocked_reason": row["blocked_reason"] if row["state"] == "blocked" else None,
                         "completed_wakes":row["next_sequence"],
                         "total_wakes":row["total_wakes"],
                         "receipts":[{"sequence":x["sequence"],"status":x["status"],
                                      "tool_names":x["tool_names"],
                                      "at":x["created_at"].isoformat()} for x in receipts],
                         "verified":row["state"] == "completed"
-                                   and len(receipts) == row["total_wakes"]}
+                                   and len(receipts) == row["total_wakes"]
+                                   and all(x["status"] == "completed" for x in receipts)}
         finally:
             await pool.close()
 
