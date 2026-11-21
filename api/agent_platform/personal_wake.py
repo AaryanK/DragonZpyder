@@ -67,6 +67,21 @@ def _approved_url(name: str, *, path: str, public_host: str) -> str:
     return url
 
 
+def select_readonly_wake_tool(objective: str, approved: list[str]) -> str | None:
+    """Choose a matching, audited read capability, never a mutation or fallback."""
+    query = objective.lower()
+    candidates = (
+        ("workflow", "workflow.list"),
+        ("task", "tasks.list"),
+        ("runtime", "system.runtime.status"),
+        ("status", "system.runtime.status"),
+    )
+    for keyword, tool in candidates:
+        if keyword in query and tool in approved:
+            return tool
+    return None
+
+
 def require_wake_gate() -> tuple[str, str, str, str, str]:
     required = (
         "DRAGONZPYDER_PERSONAL_MCP_SCHEDULED_ENABLED",
@@ -234,6 +249,17 @@ async def perform_personal_wake(wake: PersonalWakeInput, *, http=None) -> dict:
                         )
                         return {"state":"blocked","next_sequence":wake.sequence,
                                 "model_calls":0,"reason":"read_only_tools_unavailable"}
+                    scheduled_tool_name = select_readonly_wake_tool(
+                        wake.prompt, approved,
+                    )
+                    if scheduled_tool_name is None:
+                        await con.execute(
+                            """UPDATE dz_personal_mcp_goals SET state='blocked',
+                               updated_at=now() WHERE goal_id=$1""",
+                            wake.goal_id,
+                        )
+                        return {"state":"blocked","next_sequence":wake.sequence,
+                                "model_calls":0,"reason":"no_matching_read_only_tool"}
                     reply = await http.post(
                         dragon,
                         headers={
@@ -249,6 +275,7 @@ async def perform_personal_wake(wake: PersonalWakeInput, *, http=None) -> dict:
                             "mcp_access_token": data["access_token"],
                             "approved_tool_names": approved,
                             "scheduled_wake": True,
+                            "scheduled_tool_name": scheduled_tool_name,
                         },
                         timeout=100,
                     )
@@ -276,9 +303,19 @@ async def perform_personal_wake(wake: PersonalWakeInput, *, http=None) -> dict:
                     names = result.get("successful_tools", [])
                     if not isinstance(names, list):
                         names = []
-                    if not any(isinstance(item, str) and item.startswith("operly_")
-                               for item in names):
-                        raise RuntimeError("No verified Operly tool receipt in scheduled wake")
+                    expected_alias = "operly_" + scheduled_tool_name.replace(
+                        ".", "_").replace("-", "_").replace(":", "_")
+                    if expected_alias not in names:
+                        # A returned 200 without the required, observed
+                        # read tool is a terminal failure, not an uncertain
+                        # in-flight mutation. No later wake can pass.
+                        await con.execute(
+                            """UPDATE dz_personal_mcp_goals SET state='blocked',
+                               updated_at=now() WHERE goal_id=$1""",
+                            wake.goal_id,
+                        )
+                        return {"state":"blocked","next_sequence":wake.sequence,
+                                "model_calls":None,"reason":"missing_expected_tool_receipt"}
                     state = ("completed" if wake.sequence + 1 == wake.total_wakes
                              else "active")
                     if result["status"] != "completed":
