@@ -544,7 +544,17 @@ async function refreshApprovals() {
       ...row, approval_source: source,
     }));
   }));
-  state.approvals = results.flatMap(result => result.status === "fulfilled" ? result.value : []);
+  // Both legacy and Kernel endpoints may project the SAME KernelApproval.
+  // Deduplicate by immutable approval ID, preferring the Kernel source so
+  // the correct decision/continuation handlers are used for MCP actions.
+  const unique = new Map();
+  const rows = results.flatMap(result => result.status === "fulfilled" ? result.value : []);
+  for (const approval of rows) {
+    const id = typeof approval.id === "string" ? approval.id.trim() : "";
+    if (!id) continue;
+    if (!unique.has(id) || approval.approval_source === "kernel") unique.set(id, approval);
+  }
+  state.approvals = Array.from(unique.values());
   for (const result of results) {
     if (result.status === "rejected" && !(result.reason instanceof ApiError && result.reason.status === 401)) {
       console.warn("Could not load one approval source", result.reason);
