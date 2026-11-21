@@ -299,7 +299,7 @@ export function VoiceOrb() {
     <div className="dz-voice-orb-vignette" aria-hidden="true"/>
     <div className="dz-voice-orb-ui">
       <header className="dz-voice-orb-head">
-        <div className="dz-voice-orb-brand"><span className="dz-voice-brandmark" aria-hidden="true"/><span>DRAGON<span>ZPYDER</span><small> / VOICE</small></span></div>
+        <div className="dz-voice-orb-brand"><img className="dz-voice-brandmark" src="/brand-icon.png" alt="" width="30" height="30"/><span>DRAGON<span>ZPYDER</span><small> / VOICE</small></span></div>
         <span className="dz-voice-orb-connection"><i aria-hidden="true"/>{label}</span>
       </header>
       <main className="dz-voice-orb-main">
