@@ -85,6 +85,19 @@ def personal_goal_tools(*, user_id: str, session_id: str, conversation_id: str):
                     await schema_con.execute(SCHEMA)
             async with pool.acquire() as con:
                 async with con.transaction():
+                    # Serialize user-scoped goal submissions to prevent duplicate
+                    # schedules and runaway cross-conversation model spending.
+                    await con.execute(
+                        "SELECT pg_advisory_xact_lock(hashtext($1))", user_id,
+                    )
+                    active_count = await con.fetchval(
+                        """SELECT count(*) FROM dz_personal_mcp_goals
+                           WHERE user_id=$1
+                           AND state IN ('preparing','active','inflight','paused_budget')""",
+                        user_id,
+                    )
+                    if active_count >= 2:
+                        return {"status":"rejected","reason":"active_goal_limit"}
                     # Do not create several metered tasks for the same active chat.
                     existing = await con.fetchrow(
                         """SELECT goal_id,state FROM dz_personal_mcp_goals
