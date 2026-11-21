@@ -73,3 +73,5 @@
 .dz-center-rail-caption,.dz-center-rail-foot{display:none}.dz-center-rail nav{display:flex;overflow-x:auto;gap:6px;margin-top:13px;padding-bottom:2px}.dz-center-rail nav button{height:37px;white-space:nowrap;flex:0 0 auto;padding:0 11px;font-size:11px;gap:7px}
 .dz-center-content{min-height:0}.dz-center-top{height:48px;padding:0 20px}.dz-center-body{padding:28px 19px 46px}.dz-center-feature-grid{grid-template-columns:1fr}.dz-center-feature{min-height:auto;padding:17px}.dz-center-feature strong{margin-top:12px}.dz-center-row{flex-wrap:wrap}.dz-center-row-actions{width:100%;padding-left:55px;justify-content:flex-start}}
 @media(prefers-reduced-motion:reduce){.dz-center-shell *{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+
+.dz-center-arguments{max-width:100%;font-size:11px;color:#e2c7a6}.dz-center-arguments summary{cursor:pointer;padding:7px}.dz-center-arguments pre{max-width:min(480px,75vw);max-height:190px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;background:#0d120f;border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:12px;color:#c4d0c4;line-height:1.5}
