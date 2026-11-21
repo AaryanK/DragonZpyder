@@ -429,6 +429,19 @@ async function sendMessage(message, { companion = false } = {}) {
     const blocker = result.error_code ? String(result.error_code) : "";
     const text = runtimeMessage(result);
     renderMessageContent(pending.value, text);
+    // The server chooses the trusted execution engine; the model cannot
+    // declare itself a DragonZpyder harness run in the answer text.
+    if (result.dispatch === "dragonzpyder_personal_mcp") {
+      const tools = Array.isArray(result.capability_calls)
+        ? result.capability_calls.filter(name => typeof name === "string" && /^operly_[a-zA-Z0-9_-]{1,64}$/.test(name)).slice(0, 20)
+        : [];
+      const meta = document.createElement("div");
+      meta.className = "message-meta";
+      meta.textContent = "DragonZpyder harness · " +
+        (tools.length ? "MCP tools: " + tools.join(", ") : "No verified MCP tool calls") +
+        (result.run_id ? " · Run: " + String(result.run_id).slice(0, 90) : "");
+      pending.body.appendChild(meta);
+    }
     if (blocker) {
       pending.value.classList.add("error");
       const meta = document.createElement("div");
