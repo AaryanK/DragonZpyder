@@ -84,3 +84,19 @@ def test_tool_call_receipts_are_correlated_to_model_requests():
         tool_call_id="unissued",
     )
     assert not _tool_calls_match_receipts([request, unknown, receipts[1], receipts[2]])
+
+
+def test_duplicate_json_keys_in_final_answer_fail_closed():
+    # Standard json.loads silently keeps the last occurrence of a key.
+    # Ambiguous user-facing claims must never count as verified completion.
+    duplicate_top_level = (
+        '{"workspace":"Fabricated","workspace":'
+        + json.dumps(EXPECTED_WORKSPACE)
+        + ',"modules":["crm","billing"]}'
+    )
+    assert not _final_answer_matches_receipts(_messages(duplicate_top_level))
+    duplicate_nested = (
+        '{"workspace":' + json.dumps(EXPECTED_WORKSPACE)
+        + ',"modules":["crm","billing"],"metadata":{"id":1,"id":2}}'
+    )
+    assert not _final_answer_matches_receipts(_messages(duplicate_nested))
