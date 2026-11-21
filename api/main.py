@@ -29,6 +29,7 @@ from identity.browser_authorize import router as identity_browser_authorize_rout
 from identity.login_http import router as identity_login_router
 from identity.provider_http import router as identity_provider_router
 from agent_platform.personal_bridge import router as operly_personal_bridge_router
+from agent_platform.personal_artifacts import router as personal_artifacts_router
 from agent_platform.openrouter_spend_guard import PaidTestBudgetError, require_paid_test_cap
 from agent_platform.provider_pacing import AgentProviderPacer
 from agent_platform.gateway_parent_budget import ParentBudgetGateway
