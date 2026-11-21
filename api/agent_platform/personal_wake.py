@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS dz_personal_mcp_goals (
     objective_hash char(64) NOT NULL,
     next_sequence integer NOT NULL DEFAULT 0,
     state text NOT NULL DEFAULT 'active',
+    blocked_reason text,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now()
 );
@@ -51,6 +52,8 @@ CREATE TABLE IF NOT EXISTS dz_personal_mcp_receipts (
     created_at timestamptz NOT NULL DEFAULT now(),
     PRIMARY KEY (goal_id, sequence)
 );
+ALTER TABLE dz_personal_mcp_goals
+    ADD COLUMN IF NOT EXISTS blocked_reason text;
 """
 
 
@@ -131,6 +134,11 @@ async def perform_personal_wake(wake: PersonalWakeInput, *, http=None) -> dict:
         raise RuntimeError("Canonical user, session, conversation and goal IDs are required") from None
     dsn, service_secret, agent_secret, operly, dragon = require_wake_gate()
     objective_hash = hashlib.sha256(wake.prompt.encode("utf-8")).hexdigest()
+    # Choose a specific *candidate* from a fixed audited read-only catalog.
+    # It is NOT authority until Operly grants that exact capability.
+    selected_read = select_readonly_wake_tool(
+        wake.prompt, ["workflow.list", "tasks.list", "system.runtime.status"],
+    )
     pool = await asyncpg.create_pool(
         dsn=dsn, min_size=1, max_size=2, timeout=10, command_timeout=150,
     )
@@ -215,15 +223,20 @@ async def perform_personal_wake(wake: PersonalWakeInput, *, http=None) -> dict:
                             "user_id": wake.user_id,
                             "session_id": wake.session_id,
                             "conversation_id": wake.conversation_id,
-                            "query": wake.prompt[:200],
+                            # A free-text objective is a poor search hint for
+                            # Operly's relevance-filtered capability search.
+                            # Exact IDs receive stronger matching, but NEVER
+                            # grant permissions absent from the renewal token.
+                            "query": selected_read or wake.prompt[:200],
                         },
                         timeout=12,
                     )
                     if renewed.status_code in (401, 403):
                         await con.execute(
-                            """UPDATE dz_personal_mcp_goals SET state='blocked',
-                               updated_at=now() WHERE goal_id=$1""",
-                            wake.goal_id,
+                            """UPDATE dz_personal_mcp_goals
+                               SET state='blocked', blocked_reason=$2,
+                                   updated_at=now() WHERE goal_id=$1""",
+                            wake.goal_id, "personal_authority_revoked",
                         )
                         return {"state": "blocked", "next_sequence": wake.sequence,
                                 "model_calls": 0, "reason": "personal_authority_revoked"}
@@ -243,23 +256,31 @@ async def perform_personal_wake(wake: PersonalWakeInput, *, http=None) -> dict:
                     )
                     if not approved:
                         await con.execute(
-                            """UPDATE dz_personal_mcp_goals SET state='blocked',
-                               updated_at=now() WHERE goal_id=$1""",
-                            wake.goal_id,
+                            """UPDATE dz_personal_mcp_goals
+                               SET state='blocked', blocked_reason=$2,
+                                   updated_at=now() WHERE goal_id=$1""",
+                            wake.goal_id, "read_only_tools_unavailable",
                         )
                         return {"state":"blocked","next_sequence":wake.sequence,
                                 "model_calls":0,"reason":"read_only_tools_unavailable"}
-                    scheduled_tool_name = select_readonly_wake_tool(
-                        wake.prompt, approved,
+                    scheduled_tool_name = (
+                        selected_read if selected_read in approved else None
                     )
                     if scheduled_tool_name is None:
                         await con.execute(
-                            """UPDATE dz_personal_mcp_goals SET state='blocked',
-                               updated_at=now() WHERE goal_id=$1""",
+                            """UPDATE dz_personal_mcp_goals
+                               SET state='blocked', blocked_reason=$2,
+                                   updated_at=now() WHERE goal_id=$1""",
                             wake.goal_id,
+                            ("unauthorized_requested_read"
+                             if selected_read is not None
+                             else "no_matching_read_only_tool"),
                         )
                         return {"state":"blocked","next_sequence":wake.sequence,
-                                "model_calls":0,"reason":"no_matching_read_only_tool"}
+                                "model_calls":0,
+                                "reason": ("unauthorized_requested_read"
+                                           if selected_read is not None
+                                           else "no_matching_read_only_tool")}
                     reply = await http.post(
                         dragon,
                         headers={
@@ -310,9 +331,10 @@ async def perform_personal_wake(wake: PersonalWakeInput, *, http=None) -> dict:
                         # read tool is a terminal failure, not an uncertain
                         # in-flight mutation. No later wake can pass.
                         await con.execute(
-                            """UPDATE dz_personal_mcp_goals SET state='blocked',
-                               updated_at=now() WHERE goal_id=$1""",
-                            wake.goal_id,
+                            """UPDATE dz_personal_mcp_goals
+                               SET state='blocked', blocked_reason=$2,
+                                   updated_at=now() WHERE goal_id=$1""",
+                            wake.goal_id, "missing_expected_tool_receipt",
                         )
                         return {"state":"blocked","next_sequence":wake.sequence,
                                 "model_calls":None,"reason":"missing_expected_tool_receipt"}
