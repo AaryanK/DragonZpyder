@@ -138,6 +138,7 @@ export function PersonalTemplate() {
       <div className="sidebar-spacer"></div>
       <div className="sidebar-footer-label">WORKSPACE</div>
       <WorkspaceHub />
+      <button className="side-action" type="button" onClick={() => window.dispatchEvent(new CustomEvent("dragonzpyder:center-open", { detail: { page: "connections" } }))}><span>Connections &amp; tools</span><span aria-hidden="true">⌘</span></button>
       <button className="side-action" id="approvals-button"><span>Approvals</span><span className="badge-count" id="approval-count" hidden>0</span></button>
       <a className="side-action" href="https://operly.dragonzpyder.xyz/" target="_blank" rel="noreferrer"><span>Open Operly</span><span aria-hidden="true">↗</span></a>
       <a className="side-action" href="/"><span>About DragonZpyder</span><span aria-hidden="true">↗</span></a>
