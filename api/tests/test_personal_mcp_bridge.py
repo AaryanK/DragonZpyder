@@ -77,3 +77,23 @@ def test_execution_receipts_count_only_with_observed_write_and_read():
     assert report["status"] == "incomplete"
     assert report["artifact_readback_count"] == 1
     assert report["failed_tool_count"] == 100
+
+
+def test_inference_failure_classification_only_trusts_sdk_exception_types():
+    from agent_platform.personal_bridge import inference_failure_code
+
+    class FakeProviderError(Exception):
+        __module__ = "openai._exceptions"
+        def __init__(self, status_code):
+            self.status_code = status_code
+    assert inference_failure_code(FakeProviderError(429)) == "INFERENCE_LIMIT_REACHED"
+    assert inference_failure_code(FakeProviderError(502)) == "INFERENCE_PROVIDER_UNAVAILABLE"
+    assert inference_failure_code(FakeProviderError(503)) == "INFERENCE_PROVIDER_UNAVAILABLE"
+    assert inference_failure_code(FakeProviderError(400)) is None
+
+    class FakeMcpError(Exception):
+        status_code = 429
+    assert inference_failure_code(FakeMcpError()) is None
+    wrapper = RuntimeError("safe wrapper")
+    wrapper.__cause__ = FakeProviderError(429)
+    assert inference_failure_code(wrapper) == "INFERENCE_LIMIT_REACHED"
