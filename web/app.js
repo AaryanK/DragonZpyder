@@ -202,7 +202,7 @@ async function bootstrapAuth() {
     await ensurePersonalSession();
     hideAuth();
     setRuntimeStatus("online", "Personal runtime connected");
-    await Promise.all([loadConversations(), refreshApprovals()]);
+    await Promise.all([loadConversations({ restoreLatest: true }), refreshApprovals()]);
   } catch (error) {
     setSession(null);
     if (error instanceof ApiError && [401, 403, 404].includes(error.status)) {
@@ -361,11 +361,17 @@ function renderConversations() {
   }
 }
 
-async function loadConversations() {
+async function loadConversations({ restoreLatest = false } = {}) {
   try {
     const rows = await api("/api/personal-agent/conversations", { csrf: false });
     state.conversations = Array.isArray(rows) ? rows : [];
     renderConversations();
+    // Initial authentication populates the sidebar but otherwise leaves a
+    // blank message pane. Restore the newest authorized Personal conversation.
+    // Ordinary post-send refreshes must not change the current selection.
+    if (restoreLatest && !state.conversationId && state.conversations.length) {
+      await openConversation(state.conversations[0].id);
+    }
   } catch (error) {
     if (error instanceof ApiError && error.status === 401) return showAuth();
     console.warn("Could not load conversations", error);
@@ -461,7 +467,7 @@ async function sendMessage(message, { companion = false } = {}) {
       inline.appendChild(button);
       pending.body.appendChild(inline);
     }
-    await Promise.all([loadConversations(), refreshApprovals()]);
+    await Promise.all([loadConversations({ restoreLatest: true }), refreshApprovals()]);
     return { message: text, approval_required: Boolean(result.approval_id), blocked: Boolean(blocker) };
   } catch (error) {
     pending.value.classList.add("error");
