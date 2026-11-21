@@ -150,7 +150,10 @@ test("identical legacy and Kernel approval IDs render once with Kernel authority
     conversation_id: "test-conversation",
   };
   // Both existing projections may return the SAME underlying Kernel row.
-  await page.route(/\\/api\\/(?:personal-tools|kernel\\/personal)\\/approvals\\?status=pending/, async route => {
+  await page.route(url => {
+    const path = new URL(url).pathname;
+    return path === "/api/personal-tools/approvals" || path === "/api/kernel/personal/approvals";
+  }, async route => {
     await route.fulfill({
       status: 200, contentType: "application/json",
       body: JSON.stringify({ approvals: [approval] }),
