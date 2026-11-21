@@ -28,6 +28,7 @@ class OperlyPersonalRun(BaseModel):
     prompt: str = Field(min_length=1, max_length=12000)
     mcp_access_token: str = Field(min_length=32, max_length=8192)
     approved_tool_names: list[str] = Field(min_length=1, max_length=20)
+    scheduled_wake: bool = False
 
 
 def _authorized(authorization: str, proof: str) -> bool:
@@ -164,7 +165,8 @@ async def operly_personal_run(
         # Internal goal tools are native DragonZpyder capabilities, not
         # Operly MCP permissions. The signed service payload fixes identity.
         # Never allow model arguments to choose another user/session.
-        if os.getenv("DRAGONZPYDER_PERSONAL_GOAL_TOOLS_ENABLED") == "1":
+        if (not payload.scheduled_wake and
+                os.getenv("DRAGONZPYDER_PERSONAL_GOAL_TOOLS_ENABLED") == "1"):
             from .personal_goal_tools import personal_goal_tools
             tools = [*tools, *personal_goal_tools(
                 user_id=payload.user_id,
