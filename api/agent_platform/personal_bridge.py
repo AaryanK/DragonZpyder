@@ -153,13 +153,25 @@ async def invoke_scheduled_read(tools: list, requested_name: str) -> tuple[str, 
     schema = selected.get_input_schema().model_json_schema()
     if schema.get("required"):
         raise ValueError("Scheduled read requires unavailable structured inputs")
-    result = await asyncio.wait_for(selected.ainvoke({}), timeout=18)
-    if (getattr(result, "status", "success") == "error"
-            or (isinstance(result, dict) and result.get("isError") is True)):
-        raise RuntimeError("Signed MCP read returned an error")
-    # The actual result stays scoped to the user's model invocation and
-    # LangGraph thread; only the verified tool NAME goes into wake receipts.
-    return alias, str(result)[:6000]
+    # The SAME execution primitive can invoke any trusted MCP provider, with
+    # signed capability membership and unattended-risk gates kept separate.
+    # Scheduling never calls an Operly-specific method or network transport.
+    from .mcp_broker import invoke_granted_mcp_tool
+    try:
+        outcome = await invoke_granted_mcp_tool(
+            tools=tools,
+            provider_id="operly",
+            capability_id=requested_name,
+            approved_ids=frozenset({requested_name}),
+            unattended_read_ids=SCHEDULED_READ_TOOLS,
+            arguments={},
+            timeout_seconds=18,
+        )
+    except RuntimeError as error:
+        raise RuntimeError("Signed MCP read returned an error") from error
+    # The actual result stays scoped to this invocation and its LangGraph
+    # thread; the durable wake receipt records only verified tool identity.
+    return outcome.receipt.alias, str(outcome.result)[:6000]
 
 
 @router.post("/internal/agents/operly/personal/run")
