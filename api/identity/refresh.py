@@ -10,7 +10,7 @@ import secrets
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
-from .grants import _secret_digest, OAuthGrantDenied, _registered_client
+from .grants import _secret_digest, OAuthGrantDenied, _registered_client, _transaction
 
 
 @dataclass(frozen=True)
@@ -33,13 +33,14 @@ def _now():
 
 
 async def issue_refresh(conn, *, subject: str, client_id: str, redirect_uri: str,
-                        scope: str, duration_days: int = 30) -> IssuedRefresh:
+                        scope: str, duration_days: int = 30,
+                        in_transaction: bool = False) -> IssuedRefresh:
     if not 1 <= duration_days <= 30:
         raise OAuthGrantDenied("Invalid refresh lifetime")
     token = secrets.token_urlsafe(48)
     expiry = _now() + timedelta(days=duration_days)
     family = secrets.token_urlsafe(24)
-    async with conn.transaction():
+    async with _transaction(conn, inside=in_transaction):
         client = await _registered_client(
             conn, client_id=client_id, redirect_uri=redirect_uri, scope=scope,
         )
