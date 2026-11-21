@@ -241,6 +241,37 @@ export function WorkspaceCenter() {
     </section>}
   </div>;
 
+  const decideApproval = (approval, approved) => {
+    if (approval.status !== "pending") return;
+    const label = approval.capability_id || "this action";
+    if (!window.confirm(approved ? `Allow ${label} once? Check its arguments and Personal scope first.` : `Deny ${label}?`)) return;
+    void act(approved ? "Approval" : "Denial", () => request(
+      `/api/personal-tools/approvals/${boundId(approval.id)}/decision`,
+      { method: "POST", body: { approved } }
+    ), "approvals");
+  };
+
+  const workflowAction = (workflow, capability) => {
+    const ids = new Set(asArray(data.tasks?.ids));
+    if (!ids.has(capability) || busy) return;
+    const label = capability === "workflow.run.start" ? "Run" : capability === "workflow.disable" ? "Pause" : "Enable";
+    if (!window.confirm(`${label} Personal workflow "${workflow.name}"?`)) return;
+    setBusy(capability); setMessage("");
+    void (async () => {
+      try {
+        const response = await request(`/api/personal-tools/${boundId(capability)}/execute`, {
+          method: "POST", body: { arguments: { workflow_id: workflow.id }, goal: `${label} workflow ${workflow.name}` },
+        });
+        setMessage(response.done === false
+          ? "Action has not finished. Check approvals or execution status."
+          : response.status === "failed" ? "Operation failed. Inspect execution record."
+          : "Operation completed.");
+        await loadTasks();
+      } catch (error) { setMessage(errorText(error)); }
+      finally { setBusy(""); }
+    })();
+  };
+
   const renderApprovals = () => <div className="dz-center-stack">
     <div className="dz-center-intro"><span className="dz-center-eyebrow">Human control</span><h2>Approvals</h2><p>Review requested actions before an agent is allowed to perform them. Only the existing governed approval route can authorize execution.</p></div>
     <div className="dz-center-section-header"><h3>Personal approvals</h3><button type="button" onClick={() => void load("approvals", true)}>Refresh</button></div>
@@ -251,7 +282,13 @@ export function WorkspaceCenter() {
         <strong>{approval.capability_id || approval.title || "Capability approval"}</strong>
         <small>{approval.status || "Status unavailable"}</small>
         <p>{approval.summary || approval.reason || "Review the action in your existing approvals interface."}</p></div>
-        <button type="button" className="dz-center-small-button" onClick={() => {setOpen(false);document.getElementById("approvals-top")?.click();}}>Review</button>
+        <div className="dz-center-row-actions">
+          {approval.arguments && <details className="dz-center-arguments"><summary>Arguments</summary><pre>{JSON.stringify(approval.arguments, null, 2)}</pre></details>}
+          {approval.status === "pending" ? <>
+            <button type="button" disabled={!!busy} onClick={() => decideApproval(approval, false)}>Deny</button>
+            <button type="button" disabled={!!busy} onClick={() => decideApproval(approval, true)}>Allow once</button>
+          </> : <Tag>{approval.status || "Resolved"}</Tag>}
+        </div>
       </article>)}</div> : <Empty title="No Personal approvals found">There are no approvals returned for this session.</Empty>}
   </div>;
 
