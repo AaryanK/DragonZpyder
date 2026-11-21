@@ -22,3 +22,6 @@ langchain-quickjs>=0.2,<1
 
 # Token issuance primitives for the opt-in central identity module.
 PyJWT[crypto]>=2.10,<3
+
+# Verify Google login ID token signatures with trusted issuer/audience.
+google-auth[requests]>=2.40,<3
