@@ -108,3 +108,33 @@ class SigningIdentity:
             self.private_key_pem, algorithm="RS256",
             headers={"kid": self.kid, "typ": "at+jwt"},
         )
+
+    def issue_id_token(self, *, authenticated_subject: str, client_id: str,
+                       nonce: str, access_token: str, now: int | None = None) -> str:
+        """OIDC ID token, always audience-bound to the registered client.
+
+        Nonce originates from the persisted authorization-code request, never
+        from /token request parameters. at_hash binds the paired access token.
+        """
+        if not isinstance(authenticated_subject, str) or not 1 <= len(authenticated_subject) <= 160:
+            raise ValueError("Invalid authenticated subject")
+        if (not isinstance(client_id, str) or not 3 <= len(client_id) <= 100
+                or any(ch not in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-"
+                       for ch in client_id)):
+            raise ValueError("Invalid OIDC client")
+        if (not isinstance(nonce, str) or not 24 <= len(nonce) <= 128
+                or any(ch not in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~"
+                       for ch in nonce)):
+            raise ValueError("Invalid OIDC nonce")
+        if not isinstance(access_token, str) or not 16 <= len(access_token) <= 8192:
+            raise ValueError("Access token required for at_hash")
+        now_seconds = int(time.time()) if now is None else now
+        access_digest = hashlib.sha256(access_token.encode("ascii")).digest()
+        at_hash = base64.urlsafe_b64encode(access_digest[:16]).rstrip(b"=").decode("ascii")
+        return jwt.encode(
+            {"iss": self.issuer, "sub": authenticated_subject, "aud": client_id,
+             "iat": now_seconds, "exp": now_seconds + 300,
+             "nonce": nonce, "at_hash": at_hash, "token_use": "id"},
+            self.private_key_pem, algorithm="RS256",
+            headers={"kid": self.kid, "typ": "JWT"},
+        )
