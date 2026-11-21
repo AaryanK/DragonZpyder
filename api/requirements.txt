@@ -23,6 +23,12 @@ langchain-quickjs>=0.2,<1
 # User-scoped scheduling is available in the Personal API only behind a gate.
 hatchet-sdk>=1.38,<2
 
+# Native, deterministic Personal report/PDF/PowerPoint generation.
+reportlab>=4.2,<5
+python-pptx>=1.0,<2
+python-docx>=1.1,<2
+pypdf>=5,<7
+
 # Token issuance primitives for the opt-in central identity module.
 PyJWT[crypto]>=2.15,<3
 
