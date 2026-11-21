@@ -119,6 +119,44 @@ async def perform_personal_wake(wake: PersonalWakeInput, *, http=None) -> dict:
                 and os.getenv("DRAGONZPYDER_PERSONAL_MCP_SCHEMA_INSTALL_ALLOWED") == "1"):
             async with pool.acquire() as con:
                 await con.execute(SCHEMA)
+        # Commit the in-flight fence BEFORE requesting fresh authority or
+        # invoking remote inference. If the worker dies mid-request, a later
+        # Hatchet dispatch must not replay an action with unknown effects.
+        async with pool.acquire() as claim_con:
+            async with claim_con.transaction():
+                await claim_con.execute(
+                    """INSERT INTO dz_personal_mcp_goals
+                       (goal_id, user_id, session_id, conversation_id, total_wakes, objective_hash)
+                       VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING""",
+                    wake.goal_id, wake.user_id, wake.session_id, wake.conversation_id,
+                    wake.total_wakes, objective_hash,
+                )
+                claimed = await claim_con.fetchrow(
+                    """SELECT user_id, session_id, conversation_id, total_wakes,
+                              objective_hash, state, next_sequence
+                       FROM dz_personal_mcp_goals WHERE goal_id=$1 FOR UPDATE""",
+                    wake.goal_id,
+                )
+                if (claimed["user_id"], claimed["session_id"],
+                    claimed["conversation_id"], claimed["total_wakes"],
+                    claimed["objective_hash"]) != (
+                    wake.user_id, wake.session_id, wake.conversation_id,
+                    wake.total_wakes, objective_hash,
+                ):
+                    raise RuntimeError("Persistent goal authority changed")
+                if claimed["state"] != "active" or claimed["next_sequence"] > wake.sequence:
+                    return {
+                        "state": claimed["state"], "next_sequence": claimed["next_sequence"],
+                        "model_calls": 0,
+                        "reason": ("inflight_outcome_uncertain"
+                                   if claimed["state"] == "inflight" else "already_processed"),
+                    }
+                if claimed["next_sequence"] != wake.sequence:
+                    raise RuntimeError("Out-of-order durable Personal wake")
+                await claim_con.execute(
+                    """UPDATE dz_personal_mcp_goals SET state='inflight',
+                       updated_at=now() WHERE goal_id=$1""", wake.goal_id,
+                )
         async with pool.acquire() as con:
             async with con.transaction():
                 await con.execute(
@@ -139,7 +177,7 @@ async def perform_personal_wake(wake: PersonalWakeInput, *, http=None) -> dict:
                     wake.total_wakes, objective_hash,
                 ):
                     raise RuntimeError("Persistent goal authority changed")
-                if row["state"] != "active" or row["next_sequence"] > wake.sequence:
+                if row["state"] != "inflight" or row["next_sequence"] != wake.sequence:
                     return {
                         "state": row["state"], "next_sequence": row["next_sequence"],
                         "model_calls": 0, "reason": "already_processed",
