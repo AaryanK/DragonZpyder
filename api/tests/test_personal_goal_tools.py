@@ -4,11 +4,14 @@ Run from api/: python -m pytest -q tests/test_personal_goal_tools.py
 These tests deliberately do not contact Hatchet, Operly or PostgreSQL.
 """
 import asyncio
+import sys
+from pathlib import Path
 from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from agent_platform.personal_goal_tools import personal_goal_tools
 
 
