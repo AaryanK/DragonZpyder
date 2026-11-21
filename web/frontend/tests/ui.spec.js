@@ -66,7 +66,7 @@ test("workspace navigation discloses planned items rather than promising working
   await page.locator("#dz-workspace-trigger").click();
   const drawer = page.getByRole("dialog",{name:"Everything, in one place."});
   await expect(drawer).toBeVisible();
-  await expect(drawer.getByRole("button",{name:/Jobs & automations/})).toBeDisabled();
+  await expect(drawer.getByRole("button",{name:/Jobs & automations/})).toBeEnabled();
   await expect(drawer.getByRole("button",{name:/Conversations/})).toBeEnabled();
   await page.keyboard.press("Escape");
   await expect(drawer).toHaveCount(0);
