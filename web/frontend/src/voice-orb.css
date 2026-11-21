@@ -1,44 +1,182 @@
-/* User-supplied DragonZpyder Voice aesthetic, scoped to the existing companion dialog. */
-.companion-panel.dz-voice-orb-panel{position:fixed;inset:0;z-index:110;padding:0;display:block;background:#08090d;backdrop-filter:none;overflow:hidden}
+@import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap");
+/* Native React voice presentation. Every visible visual is JSX/SVG or scoped CSS.
+   The WebRTC controller remains in web/companion.js; no injected HTML/canvas. */
+.companion-panel.dz-voice-orb-panel {
+  position:fixed;inset:0;z-index:110;padding:0;display:block;
+  background:#08090d;overflow:hidden;backdrop-filter:none;
+}
 .companion-panel.dz-voice-orb-panel[hidden]{display:none!important}
-.dz-voice-orb-shell{position:absolute;inset:0;overflow:hidden;background:#08090d;color:#e8f3f8;font-family:Inter,system-ui,sans-serif}
-.dz-voice-orb-stage{position:absolute;inset:0;width:100%;height:100%;display:block;pointer-events:none}
-.dz-voice-orb-vignette{position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse at 50% 45%,transparent 17%,rgba(3,6,13,.2) 62%,rgba(2,4,10,.65) 100%)}
-.dz-voice-orb-ui{position:relative;min-height:100dvh;height:100dvh;display:flex;flex-direction:column;padding:clamp(20px,3vw,44px) clamp(22px,4.4vw,72px);pointer-events:none}
+.dz-voice-orb-shell {
+  position:absolute;inset:0;overflow:hidden;isolation:isolate;
+  background:#08090d;color:#e8f3f8;
+  font-family:"DM Sans",Inter,system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+.dz-voice-artwork {
+  position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:0;
+  --dz-voice-scale:1;--dz-voice-wave-scale:.55;--dz-voice-glow-opacity:.75;
+}
+.dz-voice-atmosphere {
+  position:absolute;inset:0;
+  background:
+    radial-gradient(ellipse 41% 45% at 50% 43%,rgba(33,65,84,.43),transparent 100%),
+    radial-gradient(ellipse 50% 55% at 50% 75%,rgba(13,41,63,.20),transparent 100%),
+    #08090d;
+}
+.dz-voice-art-svg {
+  position:absolute;left:50%;top:46%;transform:translate(-50%,-50%);
+  width:min(100vw,930px);height:auto;max-height:110dvh;
+  aspect-ratio:1/1;overflow:visible;
+  filter:drop-shadow(0 0 32px rgba(144,91,137,.13));
+}
+.dz-voice-halo{opacity:var(--dz-voice-glow-opacity);transition:opacity .15s ease}
+.dz-voice-sphere {
+  transform-origin:380px 350px;
+  transform:scale(var(--dz-voice-scale));
+  transition:transform .085s ease-out;
+}
+.dz-voice-fluid-ribbons,.dz-voice-fluid-filaments{transform-origin:380px 350px}
+.dz-voice-fluid-ribbons path{animation:dz-voice-ribbon-flow 5.5s ease-in-out infinite alternate}
+.dz-voice-fluid-filaments path{animation:dz-voice-filament-flow 8s ease-in-out infinite alternate}
+.dz-voice-orbit{transform-origin:380px 350px}
+.dz-voice-orbit-one{animation:dz-voice-orbit-one 41s linear infinite}
+.dz-voice-orbit-two{animation:dz-voice-orbit-two 55s linear infinite}
+.dz-voice-ripple{transform-origin:380px 350px;animation:dz-voice-ripple 8s ease-in-out infinite}
+.dz-voice-motes{transform-origin:380px 350px;animation:dz-voice-orbit-two 115s linear infinite}
+.dz-voice-audio-wave{transform-origin:380px 636px;transform:scaleY(var(--dz-voice-wave-scale));transition:transform .095s ease-out}
+.dz-voice-vignette,.dz-voice-orb-vignette {
+  position:absolute;inset:0;pointer-events:none;z-index:1;
+  background:radial-gradient(ellipse at 50% 43%,transparent 15%,rgba(3,6,13,.20) 65%,rgba(2,4,10,.70) 100%);
+}
+@keyframes dz-voice-ribbon-flow{
+  0%{transform:translate(-16px,5px) rotate(-2deg)}
+  50%{transform:translate(12px,-8px) rotate(1deg)}
+  100%{transform:translate(-5px,12px) rotate(3deg)}
+}
+@keyframes dz-voice-filament-flow{
+  0%{transform:translate(10px,-7px)}
+  100%{transform:translate(-15px,12px)}
+}
+@keyframes dz-voice-orbit-one{to{transform:rotate(360deg)}}
+@keyframes dz-voice-orbit-two{to{transform:rotate(-360deg)}}
+@keyframes dz-voice-ripple{0%,100%{opacity:.3;scale:.985}50%{opacity:.72;scale:1.075}}
+.dz-voice-orb-ui {
+  position:relative;z-index:2;min-height:100dvh;height:100dvh;
+  display:flex;flex-direction:column;pointer-events:none;
+  padding:clamp(21px,3vw,44px) clamp(22px,4.4vw,72px);
+  background:linear-gradient(180deg,rgba(8,9,13,.10),transparent 40%,rgba(8,9,13,.28));
+}
 .dz-voice-orb-ui button{pointer-events:auto;font:inherit;cursor:pointer}
-.dz-voice-orb-ui button:focus-visible{outline:2px solid #f2ad80;outline-offset:4px}
-.dz-voice-orb-head{display:flex;align-items:center;justify-content:space-between;gap:16px}
-.dz-voice-orb-brand{display:flex;align-items:center;gap:13px;font-size:clamp(12px,1.3vw,16px);font-weight:750;letter-spacing:.13em;color:#e8f3f8}
-.dz-voice-orb-brand img{width:30px;height:30px;object-fit:contain}
-.dz-voice-orb-brand span span{color:#f4a674;font-weight:550}
-.dz-voice-orb-brand small{color:#83909c;font-size:10px;font-weight:500;letter-spacing:.08em}
-.dz-voice-orb-connection{display:flex;align-items:center;gap:9px;border:1px solid rgba(244,166,116,.18);border-radius:99px;background:rgba(12,20,30,.46);padding:10px 14px;color:#d7ae93;font-size:10px;letter-spacing:.12em;white-space:nowrap}
-.dz-voice-orb-connection i{display:block;height:6px;width:6px;border-radius:50%;background:#d8ae90}
-.companion-panel.dz-voice-orb-panel[data-state="active"] .dz-voice-orb-connection i{background:#a5e1ce;box-shadow:0 0 10px #8edfc1}
-.companion-panel.dz-voice-orb-panel[data-state="error"] .dz-voice-orb-connection i{background:#ef817e}
-.dz-voice-orb-main{flex:1;min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
-.dz-voice-orb-eyebrow{margin:0;color:#f3b18b;letter-spacing:.3em;font-size:10px;font-weight:700;white-space:nowrap}
-.dz-voice-orb-space{width:100%;height:clamp(240px,43vh,480px);max-width:620px;flex:none}
-.dz-voice-orb-conversation{display:flex;flex-direction:column;align-items:center;gap:12px;max-width:min(680px,90vw);min-height:90px}
-.dz-voice-orb-conversation h2{font:500 clamp(23px,2.7vw,34px)/1.2 Inter,system-ui,sans-serif;letter-spacing:-.05em;color:#e8f3f8;margin:0}
-.dz-voice-orb-conversation #companion-status{font-size:13px;color:#a5bac6;line-height:1.7;max-width:510px;margin:0}
-.companion-panel.dz-voice-orb-panel[data-state="error"] #companion-status{color:#e5a4a0}
-.dz-voice-orb-footer{display:flex;justify-content:space-between;align-items:end;gap:24px}
-.dz-voice-orb-footnote{font-size:10px;line-height:1.9;letter-spacing:.11em;color:#728998;margin:0}
+.dz-voice-orb-ui button:focus-visible{outline:2px solid #ffbf9e;outline-offset:5px}
+.dz-voice-orb-head{display:flex;align-items:center;justify-content:space-between;gap:15px}
+.dz-voice-orb-brand {
+  display:flex;align-items:center;gap:13px;font-family:"Space Grotesk",Inter,system-ui,sans-serif;
+  font-size:clamp(12px,1.4vw,16px);font-weight:750;letter-spacing:.1em;color:#e8f3f8;
+}
+.dz-voice-brandmark{
+  width:29px;height:29px;flex:0 0 29px;position:relative;
+  border:1.5px solid #f5b17d;border-radius:38% 62% 48% 52%;
+  transform:rotate(-24deg);
+  box-shadow:0 0 22px #f4986866,inset 0 0 12px #f4986844;
+}
+.dz-voice-brandmark::after{
+  content:"";position:absolute;inset:8px 5px 6px 9px;border-radius:50% 45% 62% 30%;
+  background:#ffd5ae;box-shadow:0 0 16px #ffaf7e;
+}
+.dz-voice-orb-brand span span{color:#f4a674;font-weight:500}
+.dz-voice-orb-brand small{color:#83909c;font-size:10px;font-weight:500;letter-spacing:.12em}
+.dz-voice-orb-connection{
+  display:inline-flex;align-items:center;gap:10px;
+  border:1px solid rgba(244,166,116,.18);border-radius:50px;
+  background:rgba(12,20,30,.46);backdrop-filter:blur(12px);
+  padding:10px 14px;color:#e6bd9f;font-size:10px;
+  letter-spacing:.13em;white-space:nowrap;text-transform:uppercase;
+}
+.dz-voice-orb-connection i{height:6px;width:6px;flex:0 0 6px;border-radius:50%;background:#f3a975;box-shadow:0 0 11px #f3a97560}
+.dz-voice-orb-shell[data-connected="true"] .dz-voice-orb-connection i{background:#98e8ca;box-shadow:0 0 12px #8fdfca}
+.dz-voice-orb-shell[data-session="error"] .dz-voice-orb-connection i{background:#f19591;box-shadow:0 0 12px #f1959199}
+.dz-voice-orb-main {
+  flex:1;min-height:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;text-align:center;
+}
+.dz-voice-orb-eyebrow {
+  margin:0 0 0;font-size:11px;letter-spacing:.35em;font-weight:700;
+  color:#f3b18b;text-shadow:0 0 16px #f4a47733;
+}
+.dz-voice-orb-space{height:clamp(240px,43vh,480px);width:100%;max-width:620px;flex-shrink:0;pointer-events:none}
+.dz-voice-orb-conversation{
+  position:relative;display:flex;flex-direction:column;align-items:center;
+  gap:12px;max-width:min(680px,90vw);min-height:94px;
+}
+.dz-voice-orb-conversation h2{
+  font:500 clamp(22px,2.6vw,34px)/1.22 "Space Grotesk",Inter,system-ui,sans-serif;
+  letter-spacing:-.045em;color:#eaf2f7;margin:0;
+}
+.dz-voice-orb-conversation #companion-status{
+  color:#9caeba;font-size:13px;line-height:1.65;max-width:510px;text-align:center;margin:0;
+}
+.dz-voice-orb-shell[data-session="error"] #companion-status{color:#f2a09b}
+.dz-voice-orb-footer{display:flex;align-items:end;justify-content:space-between;gap:20px}
+.dz-voice-orb-footnote{font-size:10px;line-height:1.9;letter-spacing:.12em;color:#67818e;text-transform:uppercase;margin:0}
 .dz-voice-orb-controls{display:flex;align-items:center;gap:13px}
-.dz-voice-orb-circle{height:53px;width:53px;border:1px solid #36505b;border-radius:50%;background:rgba(12,26,37,.68);color:#c5dce1;display:grid;place-items:center;transition:background .18s,border-color .18s}
-.dz-voice-orb-circle:hover:not(:disabled){background:#233944;border-color:#e6ad8a}
-.dz-voice-orb-circle svg{width:21px;height:21px}
-.dz-voice-orb-mic{height:68px;width:68px;border:1px solid #ffddb7;background:linear-gradient(150deg,#ffdfbb,#f4a476 70%,#d36d63);color:#251320;font-size:12px;font-weight:750}
-.dz-voice-orb-mic:disabled{opacity:.6;cursor:default}
-.dz-voice-orb-end{border:0;background:none;color:#b3c4ce;font-size:12px;letter-spacing:.02em;padding:12px 4px}
-.dz-voice-orb-end:hover{color:#fff}
-.dz-voice-orb-transcript-panel{position:absolute;right:clamp(20px,4.4vw,72px);bottom:118px;width:min(390px,calc(100vw - 40px));max-height:min(45dvh,360px);overflow:hidden;padding:18px;border:1px solid rgba(244,166,116,.25);border-radius:16px;background:rgba(10,16,25,.93);backdrop-filter:blur(18px);box-shadow:0 25px 70px #0008;display:none;pointer-events:auto}
-.dz-voice-orb-transcript-panel.is-open{display:flex;flex-direction:column}
-.dz-voice-orb-transcript-heading{display:flex;align-items:center;justify-content:space-between;color:#eac5a8;font-size:12px;font-weight:680}
-.dz-voice-orb-transcript-heading button{border:0;background:transparent;color:#eac5a8;font-size:23px}
-.dz-voice-orb-transcript-panel .companion-transcript{min-height:60px;max-height:240px;width:100%;overflow-y:auto;margin:9px 0;border-color:#354652;color:#cbd5dd;text-align:left}
-.dz-voice-orb-transcript-panel .companion-transcript strong{color:#edb48e}
-.dz-voice-orb-transcript-panel>p{font-size:10px;line-height:1.6;color:#8096a5}
-@media(max-width:680px){.dz-voice-orb-ui{padding:20px 19px 26px}.dz-voice-orb-head{align-items:flex-start}.dz-voice-orb-brand{gap:8px;font-size:12px;letter-spacing:.07em}.dz-voice-orb-brand img{width:24px;height:24px}.dz-voice-orb-brand small{font-size:9px}.dz-voice-orb-connection{padding:8px 10px;font-size:9px}.dz-voice-orb-eyebrow{font-size:9px}.dz-voice-orb-space{height:40vh;min-height:190px}.dz-voice-orb-conversation h2{font-size:24px}.dz-voice-orb-conversation #companion-status{font-size:12px}.dz-voice-orb-footnote{display:none}.dz-voice-orb-footer{justify-content:center}.dz-voice-orb-end{position:absolute;bottom:116px;right:20px;font-size:11px}.dz-voice-orb-transcript-panel{right:15px;bottom:150px}}
-@media(prefers-reduced-motion:reduce){.dz-voice-orb-circle{transition:none}}
+.dz-voice-orb-circle{
+  height:52px;width:52px;border:1px solid #34505b;background:rgba(12,26,37,.65);
+  color:#b9dbe2;backdrop-filter:blur(16px);border-radius:50%;
+  display:grid;place-items:center;transition:background .2s,border-color .2s,transform .2s;
+}
+.dz-voice-orb-circle svg{height:21px;width:21px}
+.dz-voice-orb-circle:hover:not(:disabled){background:#203d4d;color:#fff;border-color:#e6ad8a;transform:translateY(-2px)}
+.dz-voice-orb-mic{
+  height:68px;width:68px;border-color:#ffddb7;
+  background:linear-gradient(150deg,#ffdfbb,#f4a476 70%,#d36d63);
+  color:#251320;box-shadow:0 0 28px #ff9b6660,0 0 65px #ff9b6622;
+}
+.dz-voice-orb-mic svg{height:25px;width:25px}
+.dz-voice-orb-mic.is-muted{background:linear-gradient(145deg,#d0f3ff,#74b5f3);border-color:#c7e9ff;box-shadow:0 0 35px #7cb9eb77}
+.dz-voice-orb-mic:disabled{opacity:.65;cursor:not-allowed}
+.dz-voice-orb-end{border:0;background:transparent;color:#93aab8;font-size:12px;letter-spacing:.035em;padding:12px}
+.dz-voice-orb-end:hover{color:#e8f3f8}
+.dz-voice-orb-transcript-panel{
+  position:absolute;right:clamp(22px,4.4vw,72px);bottom:118px;
+  width:min(410px,calc(100vw - 44px));max-height:min(45dvh,380px);
+  display:none;pointer-events:auto;flex-direction:column;
+  border:1px solid rgba(244,166,116,.23);border-radius:16px;
+  padding:16px 18px;background:rgba(11,17,27,.94);
+  backdrop-filter:blur(20px);box-shadow:0 26px 80px #0009;
+}
+.dz-voice-orb-transcript-panel.is-open{display:flex}
+.dz-voice-orb-transcript-heading{display:flex;align-items:center;justify-content:space-between;color:#f1c2a2;font-size:12px;font-weight:700}
+.dz-voice-orb-transcript-heading button{border:0;background:transparent;color:#d7b8a6;font-size:24px;line-height:1}
+.dz-voice-orb-transcript-panel .companion-transcript {
+  margin:13px 0 3px;max-height:235px;min-height:64px;width:100%;overflow-y:auto;
+  border-color:#32434d;color:#cbdae3;font-size:12px;text-align:left;
+}
+.dz-voice-orb-transcript-panel .companion-transcript p{line-height:1.7;margin:7px 0;overflow-wrap:anywhere}
+.dz-voice-orb-transcript-panel .companion-transcript strong{color:#f2b68e}
+.dz-voice-transcript-empty{color:#849eaa}
+.dz-voice-orb-transcript-panel>p{font-size:10px;line-height:1.6;color:#92a6b2}
+.dz-voice-orb-shell #companion-audio{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+@media (max-width:680px) {
+  .dz-voice-orb-ui{padding:21px 18px 26px}
+  .dz-voice-orb-brand{gap:9px;font-size:12px;letter-spacing:.07em}
+  .dz-voice-brandmark{width:25px;height:25px;flex-basis:25px}
+  .dz-voice-orb-brand small{font-size:9px}
+  .dz-voice-orb-connection{font-size:9px;padding:9px 10px;gap:7px}
+  .dz-voice-orb-eyebrow{font-size:9px}
+  .dz-voice-orb-space{height:40vh;min-height:205px}
+  .dz-voice-art-svg{width:min(148vw,630px);max-height:none;top:45%}
+  .dz-voice-orb-conversation h2{font-size:24px}
+  .dz-voice-orb-conversation #companion-status{font-size:12px}
+  .dz-voice-orb-footnote{display:none}
+  .dz-voice-orb-footer{justify-content:center}
+  .dz-voice-orb-end{position:absolute;right:16px;bottom:118px;font-size:11px}
+  .dz-voice-orb-transcript-panel{right:18px;bottom:150px}
+}
+@media (max-height:640px){
+  .dz-voice-orb-space{height:35vh;min-height:150px}
+  .dz-voice-art-svg{top:43%;max-height:112vh}
+}
+@media (prefers-reduced-motion:reduce){
+  .dz-voice-fluid-ribbons path,.dz-voice-fluid-filaments path,.dz-voice-orbit,
+  .dz-voice-ripple,.dz-voice-motes{animation:none!important}
+  .dz-voice-orb-circle,.dz-voice-sphere,.dz-voice-audio-wave{transition:none!important}
+}
