@@ -227,6 +227,13 @@ async def operly_personal_run(
                 session_id=payload.session_id,
                 conversation_id=payload.conversation_id,
             )]
+        if (not payload.scheduled_wake and
+                os.getenv("DRAGONZPYDER_NATIVE_CANARY_ENABLED") == "1"):
+            from .native_canary import native_canary_tools
+            tools = [*tools, *native_canary_tools(
+                user_id=payload.user_id,
+                conversation_id=payload.conversation_id,
+            )]
         direct_receipt = None
         instruction = payload.prompt
         if payload.scheduled_wake:
