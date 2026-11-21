@@ -27,6 +27,12 @@ def main() -> None:
         from .local_monitor import make_local_monitor_task, require_monitor_gate
         require_monitor_gate()
         workflows.append(make_local_monitor_task(hatchet))
+    if os.getenv("DRAGONZPYDER_PERSONAL_MCP_SCHEDULED_ENABLED") == "1":
+        # Register only. Creating a cron or accepting a user job is a separate
+        # explicit authorization; credentials are rechecked at every wake.
+        from .personal_wake import make_personal_mcp_wake_task, require_wake_gate
+        require_wake_gate()
+        workflows.append(make_personal_mcp_wake_task(hatchet))
     worker = hatchet.worker("dragonzpyder-agent-worker", slots=2, workflows=workflows)
     worker.start()
 
