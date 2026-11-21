@@ -270,6 +270,88 @@ def pause_reason_from_reply(reply) -> str | None:
     return None
 
 
+async def operator_resume_paused_personal_goal(wake: PersonalWakeInput, *, http=None) -> dict:
+    """Internal-only, operator-authorized resume of a read-only paused goal.
+
+    Does NOT dispatch a Hatchet task. A trusted caller must separately enqueue
+    the exact same sequence. Never expose this helper to model/MCP/user input:
+    the operator flag is NOT itself proof of end-user consent.
+    """
+    if os.getenv("DRAGONZPYDER_PERSONAL_MCP_RESUME_OPERATOR_ALLOWED") != "1":
+        raise RuntimeError("Operator-authorized Personal goal resumption is disabled")
+    dsn, service_secret, _agent_secret, operly, _dragon = require_wake_gate()
+    try:
+        canonical = [str(UUID(item)) for item in (
+            wake.goal_id, wake.user_id, wake.session_id, wake.conversation_id,
+        )]
+        if canonical != [wake.goal_id, wake.user_id, wake.session_id, wake.conversation_id]:
+            raise ValueError("noncanonical")
+    except ValueError:
+        raise RuntimeError("Canonical goal and Personal authority IDs required") from None
+    import asyncpg
+    own_http = http is None
+    if own_http:
+        http = httpx.AsyncClient(trust_env=False, follow_redirects=False, timeout=12)
+    try:
+        # Revalidate live Personal authority *before* permitting another wake.
+        try:
+            renewed = await http.post(
+                operly, headers={"X-Operly-Agent-Service": service_secret},
+                json={
+                    "user_id": wake.user_id,
+                    "session_id": wake.session_id,
+                    "conversation_id": wake.conversation_id,
+                    "query": wake.prompt[:200],
+                }, timeout=12,
+            )
+        except httpx.HTTPError:
+            raise RuntimeError("Personal session renewal unavailable") from None
+        if renewed.status_code != 200:
+            raise RuntimeError("Personal session cannot authorize resume")
+        try:
+            renewed_body = renewed.json()
+        except ValueError:
+            raise RuntimeError("Personal session renewal invalid") from None
+        if (not isinstance(renewed_body, dict)
+                or not isinstance(renewed_body.get("approved_tool_names"), list)
+                or not renewed_body["approved_tool_names"]):
+            raise RuntimeError("No current Personal read-only capabilities")
+        pool = await asyncpg.create_pool(
+            dsn=dsn, min_size=1, max_size=2, timeout=10, command_timeout=15,
+        )
+        try:
+            async with pool.acquire() as con:
+                async with con.transaction():
+                    row = await con.fetchrow(
+                        """SELECT user_id,session_id,conversation_id,total_wakes,
+                                  objective_hash,next_sequence,state
+                           FROM dz_personal_mcp_goals WHERE goal_id=$1 FOR UPDATE""",
+                        wake.goal_id,
+                    )
+                    if row is None or (
+                        row["user_id"], row["session_id"], row["conversation_id"],
+                        row["total_wakes"], row["objective_hash"], row["next_sequence"],
+                    ) != (
+                        wake.user_id, wake.session_id, wake.conversation_id,
+                        wake.total_wakes, hashlib.sha256(wake.prompt.encode("utf-8")).hexdigest(),
+                        wake.sequence,
+                    ):
+                        raise RuntimeError("Personal resume authority or sequence mismatch")
+                    if row["state"] != "paused_budget":
+                        raise RuntimeError("Personal goal is not paused for budget")
+                    await con.execute(
+                        """UPDATE dz_personal_mcp_goals SET state='active',updated_at=now()
+                           WHERE goal_id=$1""", wake.goal_id,
+                    )
+                    return {"state": "active", "next_sequence": wake.sequence,
+                            "scheduled": False, "requires_hatchet_dispatch": True}
+        finally:
+            await pool.close()
+    finally:
+        if own_http:
+            await http.aclose()
+
+
 def make_personal_mcp_wake_task(hatchet):
     """Register a gated Hatchet task; never create a cron automatically."""
     from datetime import timedelta
