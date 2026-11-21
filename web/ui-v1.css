@@ -867,3 +867,24 @@ html[data-workspace-theme="dark"] .dz-jump-latest{
 @media(prefers-reduced-motion:reduce){
   html[data-workspace-theme] .dz-message-actions{transition:none}
 }
+
+
+/* Backend-issued tool receipts; never treat model prose as execution evidence. */
+html[data-workspace-theme] .dz-execution-evidence{
+  margin:16px 0 4px;padding:13px 15px;
+  border-radius:11px;border:1px solid var(--dz-border);
+  background:var(--dz-elevated);font-size:12px;
+}
+html[data-workspace-theme] .dz-execution-evidence summary{
+  cursor:pointer;font-weight:640;color:var(--dz-text);
+  list-style-position:inside;
+}
+html[data-workspace-theme] .dz-execution-evidence ul{
+  margin:12px 0;padding-left:24px;line-height:1.8;color:var(--dz-subtle);
+}
+html[data-workspace-theme] .dz-execution-evidence p{
+  font-size:11px;line-height:1.65;margin:9px 0 0;color:var(--dz-subtle);
+}
+html[data-workspace-theme] .dz-execution-evidence:focus-within{
+  border-color:var(--dz-focus);
+}
