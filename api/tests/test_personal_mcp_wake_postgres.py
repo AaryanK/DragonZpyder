@@ -298,3 +298,54 @@ def test_operator_resume_revalidates_session_and_never_dispatches_automatically(
         "DRAGONZPYDER_PERSONAL_MCP_RESUME_OPERATOR_ALLOWED": "0",
     }, clear=False):
         asyncio.run(run())
+
+
+class AmbiguousAgentRemote(SimulatedRemote):
+    async def post(self, url, **kwargs):
+        self.calls.append((url, kwargs.get("json", {})))
+        if "/personal-mcp-delegation" in url:
+            return SimpleNamespace(
+                status_code=200,
+                json=lambda: {"access_token": "temporary-fixture-" + "t" * 64,
+                              "approved_tool_names": ["tasks.list"]},
+            )
+        # A remote agent may have performed a tool effect before its connection
+        # dropped or returned 502; neither outcome proves it is safe to retry.
+        assert url.endswith("/internal/agents/operly/personal/run")
+        return SimpleNamespace(status_code=502, json=lambda: {})
+
+
+def test_ambiguous_remote_failure_persists_inflight_fence_and_never_replays():
+    dsn = os.environ["DRAGONZPYDER_BUDGET_TEST_DSN"]
+    ids = [str(uuid4()) for _ in range(4)]
+    async def run():
+        first = _input(goal_id=ids[0], user_id=ids[1],
+                       session_id=ids[2], conversation_id=ids[3], sequence=0)
+        remote = AmbiguousAgentRemote()
+        with pytest.raises(RuntimeError, match="execution rejected"):
+            await perform_personal_wake(first, http=remote)
+        assert len(remote.calls) == 2
+        # Simulate another worker/connection after a restart: no HTTP is sent.
+        next_worker = SimulatedRemote()
+        outcome = await perform_personal_wake(first, http=next_worker)
+        assert outcome == {
+            "state": "inflight", "next_sequence": 0,
+            "model_calls": 0, "reason": "inflight_outcome_uncertain",
+        }
+        assert next_worker.calls == []
+        con = await asyncpg.connect(dsn)
+        try:
+            row = await con.fetchrow(
+                "SELECT state, next_sequence FROM dz_personal_mcp_goals WHERE goal_id=$1",
+                ids[0],
+            )
+            assert row["state"] == "inflight"
+            assert row["next_sequence"] == 0
+            assert await con.fetchval(
+                "SELECT count(*) FROM dz_personal_mcp_receipts WHERE goal_id=$1",
+                ids[0],
+            ) == 0
+        finally:
+            await con.close()
+    with patch.dict(os.environ, _vars(dsn), clear=False):
+        asyncio.run(run())
