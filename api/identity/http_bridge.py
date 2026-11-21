@@ -15,7 +15,8 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field
 
-from .grants import OAuthGrantDenied, authorize_code, redeem_code
+from .grants import OAuthGrantDenied, authorize_code
+from .exchange import exchange_code, exchange_refresh
 from .sessions import SessionDenied, resolve_browser_session
 from .tokens import SigningIdentity, IdentityIssuerUnavailable, _origin
 
@@ -30,6 +31,7 @@ class AuthorizeInput(BaseModel):
     state: str = Field(min_length=16, max_length=256)
     code_challenge_method: str
     code_challenge: str = Field(min_length=43, max_length=43)
+    nonce: str | None = Field(default=None, min_length=24, max_length=128)
 
 
 def _enabled():
@@ -81,7 +83,7 @@ async def browser_authorize(payload: AuthorizeInput, request: Request):
             grant = await authorize_code(
                 db, authenticated_subject=subject, client_id=payload.client_id,
                 redirect_uri=payload.redirect_uri, scope=payload.scope,
-                pkce_s256=payload.code_challenge,
+                pkce_s256=payload.code_challenge, nonce=payload.nonce,
             )
     except (SessionDenied, OAuthGrantDenied) as exc:
         raise HTTPException(403, "Authorization denied") from exc
@@ -107,27 +109,33 @@ async def authorization_code_token(request: Request):
         params = parse_qs(raw.decode("ascii"), keep_blank_values=True, strict_parsing=True)
     except (UnicodeDecodeError, ValueError):
         raise HTTPException(400, "Malformed token request") from None
-    required = {"grant_type", "code", "client_id", "redirect_uri", "code_verifier"}
-    if set(params) != required or any(len(v) != 1 for v in params.values()):
+    values = {key: items[0] for key, items in params.items() if len(items) == 1}
+    if len(values) != len(params) or "grant_type" not in values:
         raise HTTPException(400, "Invalid token request fields")
-    values = {name: params[name][0] for name in required}
-    if values["grant_type"] != "authorization_code":
-        raise HTTPException(400, "Unsupported OAuth grant type")
+    code_fields = {"grant_type", "code", "client_id", "redirect_uri", "code_verifier"}
+    refresh_fields = {"grant_type", "refresh_token", "client_id", "redirect_uri"}
+    kind = values["grant_type"]
+    if (kind == "authorization_code" and set(values) != code_fields
+            or kind == "refresh_token" and set(values) != refresh_fields
+            or kind not in ("authorization_code", "refresh_token")):
+        raise HTTPException(400, "Unsupported or invalid OAuth grant")
     try:
         signer = SigningIdentity.from_environment()
         async with _identity_db() as db:
-            grant = await redeem_code(
-                db, code=values["code"], client_id=values["client_id"],
-                redirect_uri=values["redirect_uri"], pkce_verifier=values["code_verifier"],
-            )
-        token = signer.issue_access_token(
-            authenticated_subject=grant.subject, audience=grant.audience, scope=grant.scope,
-        )
+            if kind == "authorization_code":
+                result = await exchange_code(
+                    db, signer, code=values["code"], client_id=values["client_id"],
+                    redirect_uri=values["redirect_uri"], code_verifier=values["code_verifier"],
+                )
+            else:
+                result = await exchange_refresh(
+                    db, signer, refresh_token=values["refresh_token"],
+                    client_id=values["client_id"], redirect_uri=values["redirect_uri"],
+                )
     except IdentityIssuerUnavailable:
         raise HTTPException(503, "Identity issuer unavailable") from None
     except (OAuthGrantDenied, ValueError):
-        raise HTTPException(400, "Authorization code rejected") from None
+        raise HTTPException(400, "OAuth grant rejected") from None
     return JSONResponse(
-        {"access_token": token, "token_type": "Bearer", "expires_in": 300, "scope": grant.scope},
-        headers={"Cache-Control": "no-store", "Pragma": "no-cache"},
+        result, headers={"Cache-Control": "no-store", "Pragma": "no-cache"},
     )
