@@ -171,6 +171,11 @@ def test_existing_goal_cannot_be_retargeted_to_another_user():
         wrong = first.model_copy(update={"user_id": str(uuid4()), "sequence": 1})
         with pytest.raises(RuntimeError, match="authority changed"):
             await perform_personal_wake(wrong, http=SimulatedRemote())
+        shifted = first.model_copy(update={
+            "sequence": 1, "prompt": "Do an unrelated task instead",
+        })
+        with pytest.raises(RuntimeError, match="authority changed"):
+            await perform_personal_wake(shifted, http=SimulatedRemote())
 
     with patch.dict(os.environ, _vars(dsn), clear=False):
         asyncio.run(run())
