@@ -87,3 +87,27 @@
 .dz-center-create-workspace button{border:1px solid #d6a573;background:#e3c19c;color:#1b1d17;border-radius:8px;padding:0 18px;font-size:12px;font-weight:700;cursor:pointer}
 .dz-center-create-workspace button:disabled{opacity:.5;cursor:default}
 .dz-center-create-workspace p{margin:0;color:#8b9a8e;font-size:11px;line-height:1.65}
+
+/* Respect the existing Personal light appearance instead of spawning a second visual identity. */
+html[data-workspace-theme="light"] .dz-center-shell{background:#faf9f6;color:#2f312d;border-color:#ddd5ca;box-shadow:0 32px 100px #302a2140}
+html[data-workspace-theme="light"] .dz-center-rail{background:#f0ede7;border-color:#ddd8d0}
+html[data-workspace-theme="light"] .dz-center-rail-caption,html[data-workspace-theme="light"] .dz-center-rail-foot{color:#93877b}
+html[data-workspace-theme="light"] .dz-center-rail nav button{color:#645c53}
+html[data-workspace-theme="light"] .dz-center-rail nav button:hover{background:#e5ded5;color:#332a24}
+html[data-workspace-theme="light"] .dz-center-rail nav button.selected{background:#e5d8c8;color:#3a2920}
+html[data-workspace-theme="light"] .dz-center-top{border-color:#e2dcd4;color:#82786b}
+html[data-workspace-theme="light"] .dz-center-top button{color:#6e5a4a;border-color:#dbd3ca}
+html[data-workspace-theme="light"] .dz-center-intro p,html[data-workspace-theme="light"] .dz-center-feature p,html[data-workspace-theme="light"] .dz-center-row-body small,html[data-workspace-theme="light"] .dz-center-row-body p,html[data-workspace-theme="light"] .dz-center-tool-name small,html[data-workspace-theme="light"] .dz-center-fineprint,html[data-workspace-theme="light"] .dz-center-muted{color:#786f64}
+html[data-workspace-theme="light"] .dz-center-feature,html[data-workspace-theme="light"] .dz-center-list,html[data-workspace-theme="light"] .dz-center-create-workspace{background:#fff;border-color:#e2dcd3}
+html[data-workspace-theme="light"] .dz-center-row,html[data-workspace-theme="light"] .dz-center-tool{border-color:#ece5dd}
+html[data-workspace-theme="light"] .dz-center-provider{background:#f4ede4;border-color:#e4d5c6;color:#9b663f}
+html[data-workspace-theme="light"] .dz-center-small-button,html[data-workspace-theme="light"] .dz-center-row-actions button,html[data-workspace-theme="light"] .dz-center-tag{color:#654d3d;border-color:#ddd2c4}
+html[data-workspace-theme="light"] .dz-center-tool{color:#2f312d}
+html[data-workspace-theme="light"] .dz-center-tool:hover,html[data-workspace-theme="light"] .dz-center-tool[aria-pressed="true"]{background:#f5efe8}
+html[data-workspace-theme="light"] .dz-center-empty,html[data-workspace-theme="light"] .dz-center-detail,html[data-workspace-theme="light"] .dz-center-info{background:#f8f3eb;color:#645b50;border-color:#e5d8c8}
+html[data-workspace-theme="light"] .dz-center-empty p,html[data-workspace-theme="light"] .dz-center-detail p{color:#7b6e60}
+html[data-workspace-theme="light"] .dz-center-search{background:white;border-color:#e3dace}
+html[data-workspace-theme="light"] .dz-center-search input{color:#2f312d}
+html[data-workspace-theme="light"] .dz-center-create-workspace input{background:#fff;color:#312b27;border-color:#ddd2c8}
+html[data-workspace-theme="light"] .dz-center-message{background:#f0e7d9;color:#60492f;border-color:#e0c8ac}
+html[data-workspace-theme="light"] .dz-center-tag.active{background:#e9f2e6;color:#426447;border-color:#cadcc9}
