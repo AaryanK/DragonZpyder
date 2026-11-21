@@ -448,6 +448,23 @@ async function sendMessage(message, { companion = false } = {}) {
         (tools.length ? "MCP tools: " + tools.join(", ") : "No verified MCP tool calls") +
         (result.run_id ? " · Run: " + String(result.run_id).slice(0, 90) : "");
       pending.body.appendChild(meta);
+      // Only show backend-issued tool receipts; assistant prose is not proof
+      // of an executed tool. Tools may complete without proving the goal.
+      const evidence = result.execution_receipts;
+      if (evidence && typeof evidence === "object") {
+        const names = Array.isArray(evidence.tool_names)
+          ? evidence.tool_names.filter(x => typeof x === "string" && /^[A-Za-z_][A-Za-z0-9_-]{0,79}$/.test(x)).slice(0, 40)
+          : [];
+        const failures = Number.isInteger(evidence.failed_tool_count)
+          && evidence.failed_tool_count >= 0 && evidence.failed_tool_count <= 100
+          ? evidence.failed_tool_count : 0;
+        const receipt = document.createElement("div");
+        receipt.className = "message-meta";
+        receipt.textContent = "Harness tool receipts: " + (names.length ? names.join(", ") : "none") +
+          (failures ? " · Failed tool calls: " + failures : "") +
+          " · Objective not independently verified";
+        pending.body.appendChild(receipt);
+      }
     }
     if (blocker) {
       pending.value.classList.add("error");
