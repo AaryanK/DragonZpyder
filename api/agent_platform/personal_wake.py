@@ -10,6 +10,7 @@ MCP tools only until explicit audit of write/approval resumptions.
 from __future__ import annotations
 
 import os
+import json
 from urllib.parse import urlsplit
 from uuid import UUID
 
@@ -34,6 +35,7 @@ CREATE TABLE IF NOT EXISTS dz_personal_mcp_goals (
     user_id text NOT NULL,
     session_id text NOT NULL,
     conversation_id text NOT NULL,
+    total_wakes integer NOT NULL,
     next_sequence integer NOT NULL DEFAULT 0,
     state text NOT NULL DEFAULT 'active',
     created_at timestamptz NOT NULL DEFAULT now(),
@@ -118,17 +120,20 @@ async def perform_personal_wake(wake: PersonalWakeInput, *, http=None) -> dict:
             async with con.transaction():
                 await con.execute(
                     """INSERT INTO dz_personal_mcp_goals
-                       (goal_id, user_id, session_id, conversation_id)
-                       VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING""",
+                       (goal_id, user_id, session_id, conversation_id, total_wakes)
+                       VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING""",
                     wake.goal_id, wake.user_id, wake.session_id, wake.conversation_id,
+                    wake.total_wakes,
                 )
                 row = await con.fetchrow(
-                    """SELECT user_id, session_id, conversation_id, state, next_sequence
+                    """SELECT user_id, session_id, conversation_id, total_wakes, state, next_sequence
                        FROM dz_personal_mcp_goals WHERE goal_id=$1 FOR UPDATE""",
                     wake.goal_id,
                 )
-                if (row["user_id"], row["session_id"], row["conversation_id"]) != (
-                    wake.user_id, wake.session_id, wake.conversation_id
+                if (row["user_id"], row["session_id"], row["conversation_id"],
+                    row["total_wakes"]) != (
+                    wake.user_id, wake.session_id, wake.conversation_id,
+                    wake.total_wakes,
                 ):
                     raise RuntimeError("Persistent goal authority changed")
                 if row["state"] != "active" or row["next_sequence"] > wake.sequence:
@@ -153,8 +158,16 @@ async def perform_personal_wake(wake: PersonalWakeInput, *, http=None) -> dict:
                         },
                         timeout=12,
                     )
+                    if renewed.status_code in (401, 403):
+                        await con.execute(
+                            """UPDATE dz_personal_mcp_goals SET state='blocked',
+                               updated_at=now() WHERE goal_id=$1""",
+                            wake.goal_id,
+                        )
+                        return {"state": "blocked", "next_sequence": wake.sequence,
+                                "model_calls": 0, "reason": "personal_authority_revoked"}
                     if renewed.status_code != 200:
-                        raise RuntimeError("Personal session denied or expired; wake stopped")
+                        raise RuntimeError("Personal authorization service unavailable")
                     data = renewed.json()
                     if (not isinstance(data.get("access_token"), str)
                             or not isinstance(data.get("approved_tool_names"), list)):
@@ -184,6 +197,9 @@ async def perform_personal_wake(wake: PersonalWakeInput, *, http=None) -> dict:
                     names = result.get("successful_tools", [])
                     if not isinstance(names, list):
                         names = []
+                    if not any(isinstance(item, str) and item.startswith("operly_")
+                               for item in names):
+                        raise RuntimeError("No verified Operly tool receipt in scheduled wake")
                     state = ("completed" if wake.sequence + 1 == wake.total_wakes
                              else "active")
                     if result["status"] != "completed":
@@ -193,7 +209,7 @@ async def perform_personal_wake(wake: PersonalWakeInput, *, http=None) -> dict:
                            (goal_id, sequence, status, tool_names)
                            VALUES($1,$2,$3,$4::jsonb)""",
                         wake.goal_id, wake.sequence, result["status"],
-                        __import__("json").dumps(names[:20]),
+                        json.dumps(names[:20]),
                     )
                     await con.execute(
                         """UPDATE dz_personal_mcp_goals SET next_sequence=$2,
