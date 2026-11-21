@@ -190,3 +190,166 @@
   .dz-voice-ripple,.dz-voice-motes{animation:none!important}
   .dz-voice-orb-circle,.dz-voice-sphere,.dz-voice-audio-wave{transition:none!important}
 }
+
+
+/*
+ * Voice composition v2: artwork is part of the React main content grid.
+ * Previously the SVG was positioned against the entire viewport while
+ * headings followed a separately sized invisible spacer. That caused the
+ * orb and status copy to collide, especially on narrow/short screens.
+ */
+.dz-voice-orb-shell {
+  background:radial-gradient(ellipse 65% 55% at 50% 47%,#122333 0%,#090e16 58%,#08090d 100%);
+}
+.dz-voice-orb-ui {
+  display:grid;
+  grid-template-rows:auto minmax(0,1fr) auto;
+}
+.dz-voice-orb-main {
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  align-items:center;
+  gap:clamp(8px,1.6dvh,17px);
+  padding:clamp(12px,2dvh,25px) 0;
+  min-width:0;
+  min-height:0;
+}
+.dz-voice-orb-space {
+  position:relative;
+  width:min(100%,640px);
+  height:min(44dvh,400px);
+  min-height:170px;
+  max-width:640px;
+  flex:0 0 auto;
+  isolation:isolate;
+}
+.dz-voice-artwork {
+  position:absolute;
+  inset:0;
+  overflow:visible;
+  z-index:0;
+}
+.dz-voice-atmosphere {
+  inset:-10%;
+  background:radial-gradient(ellipse 51% 52% at 50% 47%,rgba(42,60,96,.3),rgba(19,32,46,.10) 65%,transparent 100%);
+}
+.dz-voice-art-svg {
+  position:absolute;
+  left:50%;
+  top:50%;
+  width:min(115%,680px);
+  height:auto;
+  max-height:none;
+  transform:translate(-50%,-50%);
+  overflow:visible;
+}
+.dz-voice-orb-vignette {
+  z-index:0;
+  background:radial-gradient(ellipse 60% 50% at 50% 45%,transparent 22%,rgba(4,6,12,.22) 68%,rgba(3,5,10,.62) 100%);
+}
+.dz-voice-orb-conversation {
+  width:100%;
+  min-height:0;
+  gap:8px;
+  margin:0 auto;
+  max-width:min(540px,calc(100vw - 40px));
+  flex:0 0 auto;
+}
+.dz-voice-orb-conversation h2 {
+  font-size:clamp(20px,2.35vw,29px);
+  line-height:1.3;
+}
+.dz-voice-error-message {
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:7px;
+  max-width:100%;
+  padding:11px 18px 0;
+  border-top:1px solid rgba(233,174,140,.24);
+}
+.dz-voice-error-message h2 {
+  color:#e9e7e5;
+  font-size:clamp(16px,2vw,20px);
+  font-weight:580;
+  letter-spacing:-.03em;
+}
+.dz-voice-error-message #companion-status {
+  font-size:12px;
+  color:#d7a49e;
+  line-height:1.45;
+  overflow-wrap:anywhere;
+}
+.dz-voice-orb-shell[data-session="error"] .dz-voice-orb-eyebrow {opacity:.6}
+.dz-voice-orb-shell[data-session="error"] .dz-voice-halo {opacity:.43}
+.dz-voice-orb-shell[data-session="error"] .dz-voice-ripple {animation:none}
+.dz-voice-orb-footer {position:relative;z-index:3}
+
+@media (max-width:680px) {
+  .dz-voice-orb-ui {
+    padding:18px 17px max(17px,env(safe-area-inset-bottom));
+    grid-template-rows:auto minmax(0,1fr) auto;
+  }
+  .dz-voice-orb-head {gap:9px}
+  .dz-voice-orb-brand {min-width:0;gap:8px;font-size:12px;letter-spacing:.04em}
+  .dz-voice-orb-brand small {font-size:9px;letter-spacing:.08em}
+  .dz-voice-orb-connection {font-size:8px;gap:6px;padding:8px 10px}
+  .dz-voice-orb-main {gap:8px;padding:10px 0 12px}
+  .dz-voice-orb-eyebrow {
+    font-size:8px;
+    letter-spacing:.22em;
+    line-height:1.6;
+  }
+  .dz-voice-orb-space {
+    width:100%;
+    height:min(38dvh,310px);
+    min-height:165px;
+    max-width:none;
+  }
+  .dz-voice-art-svg {
+    width:min(128vw,72dvh,520px);
+    top:calc(50% + 10px);
+    max-height:none;
+    transform:translate(-50%,-50%);
+  }
+  .dz-voice-orbit-field {opacity:.6}
+  .dz-voice-stars {opacity:.55}
+  /* The original bottom waveform intruded into the error message on mobile.
+   * Orb reactivity remains in the SVG sphere and its light/halo. */
+  .dz-voice-audio-wave {display:none}
+  .dz-voice-orb-conversation {max-width:min(340px,100%);min-height:0;gap:6px}
+  .dz-voice-orb-conversation h2 {
+    font-size:clamp(17px,4.45vw,20px);
+    line-height:1.26;
+    letter-spacing:-.025em;
+  }
+  .dz-voice-orb-conversation #companion-status {font-size:12px;line-height:1.45}
+  .dz-voice-error-message {padding:10px 8px 0;gap:5px}
+  .dz-voice-error-message h2 {font-size:16px}
+  .dz-voice-orb-footer {gap:8px;padding:0;align-items:center}
+  .dz-voice-orb-controls {gap:clamp(15px,5vw,23px)}
+  .dz-voice-orb-circle {width:48px;height:48px}
+  .dz-voice-orb-mic {width:64px;height:64px}
+  #companion-end.dz-voice-orb-end {
+    min-height:34px;
+    padding:7px 14px;
+    font-size:11px;
+  }
+  .dz-voice-orb-transcript-panel {
+    bottom:122px;
+    right:16px;
+    width:min(390px,calc(100vw - 32px));
+  }
+}
+@media(max-height:620px) {
+  .dz-voice-orb-ui{padding-top:10px;padding-bottom:max(9px,env(safe-area-inset-bottom))}
+  .dz-voice-orb-main{gap:5px;padding:5px 0}
+  .dz-voice-orb-space{height:min(33dvh,215px);min-height:112px}
+  .dz-voice-art-svg{width:min(120vw,70dvh,440px);top:calc(50% + 6px)}
+  .dz-voice-orb-footer{gap:5px}
+  .dz-voice-orb-conversation h2{font-size:16px}
+  .dz-voice-orb-circle{width:45px;height:45px}
+  .dz-voice-orb-mic{height:56px;width:56px}
+}

@@ -111,3 +111,45 @@ test("native SVG voice view fits phone without horizontal overflow", async ({ pa
   expect(style.width).toBeLessThan(200);
   await panel.getByRole("button", { name:"End conversation" }).click();
 });
+
+
+test("mobile error state keeps the rendered orb separate from diagnostics and controls", async ({ page }) => {
+  await page.setViewportSize({ width:390, height:700 });
+  await page.locator("#companion-open").click();
+  const panel = page.getByRole("dialog", { name:"Live companion" });
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent("dragonzpyder:voice-state", {
+    detail:{kind:"error", message:"Live voice is not configured"}
+  })));
+  await expect(panel.getByRole("button", { name:"Back to chat" })).toBeVisible();
+  await expect(panel.getByRole("alert")).toContainText("Live voice is not configured");
+  const positions = await page.evaluate(() => {
+    const globe = document.querySelector(".dz-voice-sphere > circle").getBoundingClientRect();
+    const alert = document.querySelector(".dz-voice-error-message").getBoundingClientRect();
+    const controls = document.querySelector(".dz-voice-orb-controls").getBoundingClientRect();
+    const back = document.querySelector("#companion-end").getBoundingClientRect();
+    return {globeBottom:globe.bottom,alertTop:alert.top,alertBottom:alert.bottom,
+      controlsTop:controls.top,controlsBottom:controls.bottom,backTop:back.top,
+      backBottom:back.bottom,viewHeight:innerHeight};
+  });
+  expect(positions.alertTop - positions.globeBottom).toBeGreaterThan(6);
+  expect(positions.controlsTop - positions.alertBottom).toBeGreaterThan(8);
+  expect(positions.backTop - positions.controlsBottom).toBeGreaterThanOrEqual(-2);
+  expect(positions.backBottom).toBeLessThanOrEqual(positions.viewHeight);
+  await panel.getByRole("button", { name:"Back to chat" }).click();
+  await expect(panel).toBeHidden();
+});
+
+test("short phone viewport preserves a usable exit from voice error", async ({ page }) => {
+  await page.setViewportSize({ width:360, height:600 });
+  await page.locator("#companion-open").click();
+  const panel = page.getByRole("dialog", { name:"Live companion" });
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent("dragonzpyder:voice-state", {
+    detail:{kind:"error", message:"Live voice is not configured"}
+  })));
+  const exit = panel.getByRole("button", { name:"Back to chat" });
+  await expect(exit).toBeInViewport();
+  const globe = await panel.locator(".dz-voice-sphere > circle").first().boundingBox();
+  const alert = await panel.locator(".dz-voice-error-message").boundingBox();
+  expect(globe.bottom).toBeLessThan(alert.y - 4);
+  await exit.click();
+});

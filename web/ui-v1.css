@@ -898,3 +898,18 @@ html[data-workspace-theme] .dz-conversation-group{
 html[data-workspace-theme="light"] .dz-conversation-group{color:#8c8075}
 html[data-workspace-theme="dark"] .dz-conversation-group{color:#87978a}
 html[data-workspace-theme] .conversation-list .dz-conversation-group:first-child{margin-top:8px}
+
+/* Keep the last response unobscured by the fixed composer at every draft size. */
+html[data-workspace-theme] .messages {
+  padding-bottom: calc(var(--dz-composer-height, 190px) + 32px);
+}
+html[data-workspace-theme] .dz-jump-latest {
+  bottom: calc(var(--dz-composer-height, 160px) + 14px);
+}
+@media (max-width: 820px) {
+  html[data-workspace-theme] .unified-composer #message-input {
+    max-height: min(132px, 26dvh);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+}
