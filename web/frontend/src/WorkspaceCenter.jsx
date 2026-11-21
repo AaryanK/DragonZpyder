@@ -311,12 +311,38 @@ export function WorkspaceCenter() {
     <div className="dz-center-info">Sign-in with Google is separate from authorizing Gmail or Calendar access. For session and password management, use the existing Account page.</div>
   </div>;
 
-  const renderTasks = () => <div className="dz-center-stack">
-    <div className="dz-center-intro"><span className="dz-center-eyebrow">Persistent intelligence</span><h2>Tasks & goals</h2>
-      <p>Long-running goals will appear here after DragonZpyder's authenticated Personal task-list contract is enabled and verified.</p></div>
-    <Empty title="Personal task management is not yet connected">The current frontend does not have a verified user-scoped Personal tasks API. Scheduled execution infrastructure by itself does not prove that a particular user's jobs are available or safe to manage.</Empty>
-    <button type="button" className="dz-center-small-button" onClick={() => { setOpen(false); document.getElementById("new-chat")?.click(); }}>Start a conversation instead ↗</button>
-  </div>;
+  const renderTasks = () => {
+    const taskData = toRecord(data.tasks), workflows = asArray(taskData.workflows), runs = asArray(taskData.runs);
+    const ids = new Set(asArray(taskData.ids));
+    return <div className="dz-center-stack">
+      <div className="dz-center-intro"><span className="dz-center-eyebrow">Persistent intelligence</span><h2>Tasks & goals</h2>
+        <p>Your Personal workflows and recent executions, retrieved through the same scoped Kernel used by authorized agents.</p></div>
+      <div className="dz-center-section-header"><h3>My workflows</h3><button type="button" onClick={() => void loadTasks()} disabled={pending.tasks}>Refresh</button></div>
+      {pending.tasks ? <p className="dz-center-muted">Loading workflows and executions…</p>
+        : errors.tasks ? <div className="dz-center-error" role="alert">{errors.tasks}</div>
+        : taskData.available === false ? <Empty title="Personal workflows unavailable">This session has no authorized workflow-list capability. Scheduling infrastructure alone does not grant access.</Empty>
+        : workflows.length ? <div className="dz-center-list">{workflows.map(w => <article className="dz-center-row" key={w.id}>
+          <span className="dz-center-provider" aria-hidden="true">◷</span>
+          <div className="dz-center-row-body"><strong>{w.name || "Unnamed workflow"}</strong>
+            <small>{w.status || "Unknown"} {w.next_run_at ? " · Next: " + new Date(w.next_run_at).toLocaleString() : ""}</small>
+            {w.description && <p>{w.description}</p>}</div>
+          <div className="dz-center-row-actions">
+            {ids.has("workflow.run.start") && <button type="button" disabled={!!busy} onClick={() => workflowAction(w, "workflow.run.start")}>Run now</button>}
+            {w.status === "enabled" && ids.has("workflow.disable")
+              ? <button type="button" disabled={!!busy} onClick={() => workflowAction(w, "workflow.disable")}>Pause</button>
+              : ids.has("workflow.enable") && <button type="button" disabled={!!busy} onClick={() => workflowAction(w, "workflow.enable")}>Enable</button>}
+          </div>
+        </article>)}</div>
+        : <Empty title="No Personal workflows found">Your account has no workflow definitions visible to its current permissions.</Empty>}
+      {!!runs.length && <><div className="dz-center-section-header"><h3>Recent execution</h3><span className="dz-center-muted">{runs.length} runs returned</span></div>
+      <div className="dz-center-list">{runs.slice(0,20).map((run,index) => <div className="dz-center-row" key={run.id || index}>
+        <span className="dz-center-provider" aria-hidden="true">◈</span>
+        <div className="dz-center-row-body"><strong>{workflows.find(w => w.id === run.workflow_id)?.name || "Workflow execution"}</strong>
+          <small>{run.status || "Unknown"} · {run.created_at ? new Date(run.created_at).toLocaleString() : "Time unavailable"}</small></div>
+        <Tag>{run.status || "Unknown"}</Tag></div>)}</div></>}
+      <p className="dz-center-fineprint">Run, pause and enable use live Personal capabilities. Some actions may require a separate human approval. Creating or editing workflow definitions needs a validated workflow builder.</p>
+    </div>;
+  };
 
   if (!open) return null;
   return createPortal(<div className="dz-center-scrim" onMouseDown={e=>{if(e.target===e.currentTarget)setOpen(false);}}>
