@@ -69,7 +69,7 @@ def execution_receipt_report(report: dict) -> dict:
             if isinstance(readbacks, list)
             and "write_file" in names and "read_file" in names else 0
         ),
-        "status": "incomplete" if report.get("status") == "incomplete" else "completed",
+        "status": "completed" if report.get("status") == "completed" else "incomplete",
         "objective_verified": False,
     }
 
