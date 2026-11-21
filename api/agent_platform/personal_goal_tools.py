@@ -107,7 +107,7 @@ def personal_goal_tools(*, user_id: str, session_id: str, conversation_id: str):
                         total_wakes=occurrences,prompt=objective,
                     )
                     await wake_task.aio_schedule(
-                        trigger_at=base + timedelta(minutes=seq * interval_minutes),
+                        run_at=base + timedelta(minutes=seq * interval_minutes),
                         input=wake,
                     )
                     accepted += 1
