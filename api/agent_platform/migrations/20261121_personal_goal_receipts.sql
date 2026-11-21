@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS dz_personal_mcp_goals (
     objective_hash char(64) NOT NULL,
     next_sequence integer NOT NULL DEFAULT 0,
     state text NOT NULL DEFAULT 'active',
+    blocked_reason text,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now()
 );
@@ -24,3 +25,6 @@ CREATE TABLE IF NOT EXISTS dz_personal_mcp_receipts (
 );
 CREATE INDEX IF NOT EXISTS idx_dz_personal_goals_owner
     ON dz_personal_mcp_goals(user_id, conversation_id, created_at DESC);
+
+-- Safe for existing production installations created before this migration.
+ALTER TABLE dz_personal_mcp_goals ADD COLUMN IF NOT EXISTS blocked_reason text;
