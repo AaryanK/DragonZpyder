@@ -1,6 +1,7 @@
 import React from "react";
 import { createPortal } from "react-dom";
 import { CommandPalette, QuickAddMenu, WorkspaceHub, SidebarToggle, ModeSwitchConfirm, useModalFocus } from "./WorkspaceControls.jsx";
+import { WorkspaceCenter } from "./WorkspaceCenter.jsx";
 
 
 /**
@@ -126,7 +127,8 @@ export function PersonalTemplate() {
       </div>
       <div className="sidebar-navigation" aria-label="Navigation">
         <a className="nav-link selected" href="/app" aria-current="page"><span className="nav-glyph" aria-hidden="true">▣</span> Conversations <span className="nav-current">Current</span></a>
-        <a className="nav-link" href="/account"><span className="nav-glyph" aria-hidden="true">◎</span> Account &amp; connections</a>
+        <button type="button" className="nav-link dz-center-nav-link" onClick={() => window.dispatchEvent(new CustomEvent("dragonzpyder:center-open", { detail: { page: "connections" } }))}><span className="nav-glyph" aria-hidden="true">⌘</span> Connections &amp; tools</button>
+        <a className="nav-link" href="/account"><span className="nav-glyph" aria-hidden="true">◎</span> Account &amp; security</a>
       </div>
       <button className="new-chat" id="new-chat"><span aria-hidden="true">＋</span> New chat</button>
       <div className="sidebar-search-wrap"><span aria-hidden="true">⌕</span><input type="search" id="conversation-search" placeholder="Find conversations" aria-label="Find conversations" autoComplete="off"/></div>
@@ -196,6 +198,7 @@ export function PersonalTemplate() {
     </section>
   </div>
   <CommandPalette />
+  <WorkspaceCenter />
   <ModeSwitchConfirm />
   <section className="companion-panel" id="companion-panel" role="dialog" aria-modal="true" aria-label="Live companion" hidden>
     <div className="companion-card"><div className="eyebrow">DragonZpyder / Live companion</div><h2>Let's talk.</h2>
