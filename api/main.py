@@ -132,6 +132,7 @@ app.include_router(identity_login_router)
 app.include_router(identity_provider_router)
 app.include_router(agent_router)
 app.include_router(operly_personal_bridge_router)
+app.include_router(personal_artifacts_router)
 
 
 @app.middleware("http")
