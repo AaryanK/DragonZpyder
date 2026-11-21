@@ -31,6 +31,26 @@ def _base():
     }
 
 
+def test_scheduled_read_selects_exact_authorized_capability():
+    from agent_platform.personal_wake import select_readonly_wake_tool
+    capabilities = ["workflow.list", "tasks.list", "system.runtime.status"]
+    assert select_readonly_wake_tool(
+        "Check my Operly workflows every two minutes", capabilities
+    ) == "workflow.list"
+    assert select_readonly_wake_tool(
+        "List my personal tasks", capabilities
+    ) == "tasks.list"
+    assert select_readonly_wake_tool(
+        "Monitor system status", capabilities
+    ) == "system.runtime.status"
+    assert select_readonly_wake_tool(
+        "Delete the invoices", capabilities
+    ) is None
+    assert select_readonly_wake_tool(
+        "Check my workflows", ["tasks.list"]
+    ) is None
+
+
 def test_wake_requires_explicit_gate_and_backend_authority():
     with patch.dict(os.environ, _base(), clear=False):
         dsn, proof, token, source, target = require_wake_gate()
