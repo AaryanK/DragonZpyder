@@ -191,3 +191,47 @@ def test_subagent_stops_after_five_ai_turns_without_model_spend():
     assert decision["messages"][0].content.startswith(STOP_PREFIX)
     assert "specialist_step_budget_exhausted" in decision["messages"][0].content
     assert specialist_progress_decision({"messages":messages[:4]}) is None
+
+
+def test_new_human_turn_resets_checkpoint_step_budget_and_repetition():
+    from langchain_core.messages import HumanMessage
+    from agent_platform.progress_guard import current_turn_messages, MAX_NORMAL_TURNS
+    old = [HumanMessage(content="old turn")] + [
+        AIMessage(content="prior answer") for _ in range(MAX_NORMAL_TURNS + 2)
+    ]
+    current = [HumanMessage(content="new turn"), AIMessage(content="new answer")]
+    assert len(current_turn_messages(old + current)) == 2
+    assert stop_reason(old + current, stress_mode=False) is None
+
+    old_calls = [HumanMessage(content="older request")] + [
+        _model_tool("operly_tasks_list", {"limit": 1}, i) for i in range(4)
+    ]
+    assert stop_reason(old_calls, stress_mode=False) == "repeated_tool_cycle"
+    assert stop_reason(old_calls + [HumanMessage(content="a different request")],
+                       stress_mode=False) is None
+
+
+def test_current_turn_tool_receipts_exclude_prior_checkpointed_calls():
+    from langchain_core.messages import HumanMessage
+    msgs = [
+        HumanMessage(content="list tasks"),
+        _model_tool("operly_tasks_list", {}, 1),
+        ToolMessage(content="tasks returned", name="operly_tasks_list",
+                    tool_call_id="run-1", status="success"),
+        AIMessage(content="Tasks listed"),
+        HumanMessage(content="What's the earlier marker?"),
+        AIMessage(content="ORBIT-7319"),
+    ]
+    current = summarize_agent_result({"messages": msgs})
+    assert current["successful_tools"] == []
+    assert current["failed_tool_count"] == 0
+
+    follow = [
+        HumanMessage(content="list the tasks again"),
+        _model_tool("operly_tasks_list", {}, 2),
+        ToolMessage(content="new tasks", name="operly_tasks_list",
+                    tool_call_id="run-2", status="success"),
+        AIMessage(content="Listed the tasks again"),
+    ]
+    report = summarize_agent_result({"messages": msgs + follow})
+    assert report["successful_tools"] == ["operly_tasks_list"]
