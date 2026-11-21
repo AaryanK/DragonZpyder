@@ -104,9 +104,44 @@ export function WorkspaceCenter() {
     return () => window.removeEventListener("dragonzpyder:center-open", show);
   }, []);
 
+  const loadTasks = useCallback(async () => {
+    setPending(state => ({ ...state, tasks: true }));
+    setErrors(state => ({ ...state, tasks: "" }));
+    try {
+      const catalog = await request("/api/personal-tools?query=workflow&limit=100");
+      const ids = new Set(asArray(catalog.tools).map(tool => tool.id));
+      if (!ids.has("workflow.list")) {
+        setData(state => ({ ...state, tasks: { available: false, workflows: [], runs: [], ids: [] } }));
+        return;
+      }
+      const read = async (id, argumentsValue) => {
+        if (!ids.has(id)) return {};
+        const response = await request(`/api/personal-tools/${boundId(id)}/execute`, {
+          method: "POST", body: { arguments: argumentsValue, goal: "View my Personal workflow activity" },
+        });
+        if (response.done === false || response.status === "failed") throw new Error(`Cannot read ${id}; check the governed execution record.`);
+        const result = toRecord(response.result);
+        return toRecord(result.value || result);
+      };
+      const [definitions, activity] = await Promise.all([
+        read("workflow.list", { limit: 100 }),
+        read("workflow.run.list", { limit: 100 }),
+      ]);
+      setData(state => ({ ...state, tasks: {
+        available: true, workflows: asArray(definitions.workflows), runs: asArray(activity.runs), ids: [...ids],
+      } }));
+    } catch (error) {
+      setErrors(state => ({ ...state, tasks: errorText(error) }));
+    } finally {
+      setPending(state => ({ ...state, tasks: false }));
+    }
+  }, []);
+
   useEffect(() => {
-    if (open && routes[page]) void load(page);
-  }, [open, page, load]);
+    if (!open) return;
+    if (page === "tasks") void loadTasks();
+    else if (routes[page]) void load(page);
+  }, [open, page, load, loadTasks]);
 
   useEffect(() => {
     if (!open) return;
