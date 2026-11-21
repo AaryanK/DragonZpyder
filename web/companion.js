@@ -1,7 +1,10 @@
 const launch=document.getElementById("companion-open"),panel=document.getElementById("companion-panel"),end=document.getElementById("companion-end"),mute=document.getElementById("companion-mute"),status=document.getElementById("companion-status"),history=document.getElementById("companion-transcript"),audio=document.getElementById("companion-audio");
 let peer=null,channel=null,mic=null,controller=null,live=false,starting=false,silent=false,version=0;
 const calls=new Set(),rows=new Map();
-function setStatus(message,kind="idle"){status.textContent=message;panel.dataset.state=kind}
+function setStatus(message,kind="idle"){
+  status.textContent=message;panel.dataset.state=kind;
+  window.dispatchEvent(new CustomEvent("dragonzpyder:voice-state",{detail:{kind,message}}));
+}
 function csrf(){for(const k of ["__Host-operly_csrf","operly_csrf"]){const c=document.cookie.split(";").map(s=>s.trim()).find(s=>s.startsWith(k+"="));if(c)return decodeURIComponent(c.slice(k.length+1))}return ""}
 function row(id,label,value,add=false){
   if(!value)return;
@@ -14,7 +17,10 @@ function cleanup(){
   version++;controller?.abort();controller=null;
   for(const t of mic?.getTracks()||[])t.stop();mic=null;
   if(channel)channel.close();channel=null;if(peer)peer.close();peer=null;
-  audio.pause();audio.srcObject=null;live=false;starting=false;silent=false;mute.disabled=true;mute.textContent="Mute";launch.setAttribute("aria-expanded","false");
+  audio.pause();audio.srcObject=null;live=false;starting=false;silent=false;
+  mute.disabled=true;mute.textContent="Mute";mute.setAttribute("aria-label","Mute microphone");
+  launch.setAttribute("aria-expanded","false");
+  window.dispatchEvent(new Event("dragonzpyder:voice-closed"));
 }
 function close(){cleanup();panel.hidden=true;setStatus("Ended");launch.focus()}
 async function handleTool(item,v){
@@ -49,13 +55,19 @@ async function start(){
   if(live||starting)return;
   window.dispatchEvent(new Event("dragonzpyder:live-start"));
   panel.hidden=false;launch.setAttribute("aria-expanded","true");
+  window.dispatchEvent(new Event("dragonzpyder:voice-open"));
   if(!navigator.mediaDevices?.getUserMedia||!window.RTCPeerConnection){setStatus("This browser cannot stream live audio","error");return}
   const v=++version;starting=true;controller=new AbortController();history.replaceChildren();rows.clear();calls.clear();setStatus("Requesting microphone…","connecting");
   try{
     const acquired=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}});
     if(v!==version){ acquired.getTracks().forEach(track=>track.stop()); return; }
     mic=acquired;
-    peer=new RTCPeerConnection();peer.ontrack=e=>{audio.srcObject=e.streams[0];audio.play().catch(()=>setStatus("Tap to enable audio playback","error"))};
+    window.dispatchEvent(new CustomEvent("dragonzpyder:voice-input",{detail:{stream:mic}}));
+    peer=new RTCPeerConnection();peer.ontrack=e=>{
+      audio.srcObject=e.streams[0];
+      window.dispatchEvent(new CustomEvent("dragonzpyder:voice-output",{detail:{stream:e.streams[0]}}));
+      audio.play().catch(()=>setStatus("Tap to enable audio playback","error"));
+    };
     for(const t of mic.getAudioTracks())peer.addTrack(t,mic);
     channel=peer.createDataChannel("oai-events");channel.onmessage=e=>onEvent(e.data,v);
     channel.onclose=()=>{if(v===version&&live)close()};
@@ -67,6 +79,12 @@ async function start(){
   }catch(e){if(v!==version)return;cleanup();panel.hidden=false;setStatus(e.name==="NotAllowedError"?"Microphone permission denied":String(e.message||"Connection failed"),"error")}
 }
 launch.addEventListener("click",start);end.addEventListener("click",close);
-mute.addEventListener("click",()=>{if(!mic||!live)return;silent=!silent;mic.getAudioTracks().forEach(t=>t.enabled=!silent);mute.textContent=silent?"Unmute":"Mute";setStatus(silent?"Microphone muted":"Listening — speak naturally","active")});
+mute.addEventListener("click",()=>{
+  if(!mic||!live)return;
+  silent=!silent;mic.getAudioTracks().forEach(t=>t.enabled=!silent);
+  mute.textContent=silent?"Unmute":"Mute";
+  mute.setAttribute("aria-label",silent?"Unmute microphone":"Mute microphone");
+  setStatus(silent?"Microphone muted":"Listening — speak naturally","active");
+});
 window.addEventListener("keydown",e=>{if(e.ctrlKey&&e.code==="Space"&&!e.repeat&&!e.altKey&&!e.metaKey){e.preventDefault();if(panel.hidden)start();else close()}else if(e.key==="Escape"&&!panel.hidden)close()});
 window.addEventListener("pagehide",cleanup);window.addEventListener("dragonzpyder:logout",close);
