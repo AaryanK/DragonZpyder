@@ -352,6 +352,60 @@ async def operator_resume_paused_personal_goal(wake: PersonalWakeInput, *, http=
             await http.aclose()
 
 
+class PersonalGoalPlanInput(BaseModel):
+    """Tiny bounded Hatchet plan, not a free-form model-defined workflow."""
+    model_config = ConfigDict(extra="forbid")
+    goal_id: str
+    user_id: str
+    session_id: str
+    conversation_id: str
+    total_wakes: int = Field(ge=2, le=3)
+    prompt: str = Field(min_length=1, max_length=12000)
+
+
+async def execute_personal_goal_plan(plan: PersonalGoalPlanInput) -> dict:
+    """Run sequential durable wake steps and stop at the first unsafe boundary.
+
+    The same plan can be explicitly re-dispatched after a worker restart.
+    Persisted goal sequence fencing skips already committed steps, while an
+    uncertain in-flight wake is never automatically replayed by Hatchet.
+    """
+    require_wake_gate()
+    for seq in range(plan.total_wakes):
+        wake = PersonalWakeInput(**plan.model_dump(), sequence=seq)
+        outcome = await perform_personal_wake(wake)
+        state = outcome.get("state")
+        next_seq = outcome.get("next_sequence")
+        if state in ("paused_budget", "blocked"):
+            return {"state": state, "next_sequence": next_seq,
+                    "requires_authorized_resume": state == "paused_budget"}
+        if state == "completed":
+            return {"state": "completed", "next_sequence": next_seq,
+                    "verification": "postgres_receipts_only"}
+        if state != "active" or type(next_seq) is not int or next_seq <= seq:
+            raise RuntimeError("Personal goal did not advance; refusing replay")
+    raise RuntimeError("Personal goal sequence exhausted without durable completion")
+
+
+def make_personal_goal_controller_task(hatchet):
+    """Opt-in bounded Hatchet controller registration; never schedules a cron."""
+    if os.getenv("DRAGONZPYDER_PERSONAL_GOAL_CONTROLLER_ENABLED") != "1":
+        raise RuntimeError("Personal goal controller is not enabled")
+    require_wake_gate()
+    from datetime import timedelta
+
+    @hatchet.task(
+        name="dragonzpyder-personal-goal-controller",
+        input_validator=PersonalGoalPlanInput,
+        concurrency=1,
+        retries=0,
+        execution_timeout=timedelta(minutes=8),
+    )
+    async def run_plan(input: PersonalGoalPlanInput, ctx) -> dict:
+        return await execute_personal_goal_plan(input)
+    return run_plan
+
+
 def make_personal_mcp_wake_task(hatchet):
     """Register a gated Hatchet task; never create a cron automatically."""
     from datetime import timedelta
