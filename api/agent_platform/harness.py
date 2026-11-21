@@ -190,9 +190,9 @@ def build_frontier_agent(model, checkpointer, *, specialist_models=None, synthet
         # The base prompt describes an unconnected harness. Replace that
         # statement when first-party authorization has actually provided tools.
         prompt = prompt.replace(
-            "- External web, OS, browser, and business tools are NOT available in this\\n"
+            "- External web, OS, browser, and business tools are NOT available in this\n"
             "  harness. Say so if the objective genuinely requires them.",
-            "- Only tools explicitly attached to this run are available.\\n"
+            "- Only tools explicitly attached to this run are available.\n"
             "  Never assume access to other external systems.",
         )
     if product_profile == "operly_personal":
