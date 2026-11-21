@@ -68,7 +68,9 @@ export function WorkspaceCenter() {
   const [message, setMessage] = useState("");
   const [search, setSearch] = useState("");
   const [selectedTool, setSelectedTool] = useState(null);
-  const [approvalScope, setApprovalScope] = useState("personal");
+  const [googleTier, setGoogleTier] = useState("basic");
+  const [workspaceName, setWorkspaceName] = useState("");
+  const [sessions, setSessions] = useState([]);
   const dialogRef = useRef(null);
   useModalFocus(dialogRef, open);
 
@@ -179,7 +181,7 @@ export function WorkspaceCenter() {
 
   const connect = provider => act(`Connect ${providerName(provider)}`, async () => {
     const path = provider === "google"
-      ? "/api/personal-connectors/google/connect?tier=assistant"
+      ? `/api/personal-connectors/google/connect?tier=${googleTier}`
       : "/api/personal-connectors/canva/connect";
     const result = await request(path, { method: "POST" });
     const url = asString(result.authorization_url);
@@ -203,6 +205,10 @@ export function WorkspaceCenter() {
         const linked = connectors.some(c => c.provider === id);
         return <article key={id} className="dz-center-feature">
           <span className="dz-center-provider" aria-hidden="true">{icon}</span><strong>{name}</strong><p>{detail}</p>
+          {id === "google" && !linked && <fieldset className="dz-center-google-tiers"><legend>Access level</legend>
+            <label><input type="radio" name="google-tier" checked={googleTier==="basic"} onChange={() => setGoogleTier("basic")} /> Read-only</label>
+            <label><input type="radio" name="google-tier" checked={googleTier==="assistant"} onChange={() => setGoogleTier("assistant")} /> Assistant access</label>
+          </fieldset>}
           <button type="button" className="dz-center-small-button" onClick={() => void connect(id)} disabled={!!busy || linked}>{linked ? "Linked — manage below" : "Connect"} <span aria-hidden="true">↗</span></button>
         </article>;
       })}
@@ -292,13 +298,31 @@ export function WorkspaceCenter() {
       </article>)}</div> : <Empty title="No Personal approvals found">There are no approvals returned for this session.</Empty>}
   </div>;
 
+  const createWorkspace = event => {
+    event.preventDefault();
+    const name = workspaceName.trim();
+    if (name.length < 2 || name.length > 160) { setMessage("Enter a workspace name between 2 and 160 characters."); return; }
+    if (!window.confirm(`Create a business workspace named "${name}"? This creates a separate governed workspace.`)) return;
+    void act("Create workspace", async () => {
+      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+      const result = await request("/api/auth/workspaces", { method: "POST", body: { name, timezone } });
+      if (!result?.workspace?.id) throw new Error("The workspace creation response was incomplete.");
+      setWorkspaceName("");
+    }, "workspaces");
+  };
+
   const renderWorkspaces = () => <div className="dz-center-stack">
     <div className="dz-center-intro"><span className="dz-center-eyebrow">Permission boundaries</span><h2>Workspaces</h2><p>Your Personal identity stays separate from business memberships. Workspace actions require the corresponding workspace authority.</p></div>
     {pending.workspaces ? <p className="dz-center-muted">Loading memberships…</p> : errors.workspaces ? <div className="dz-center-error" role="alert">{errors.workspaces}</div>
       : workspaces.length ? <div className="dz-center-list">{workspaces.map(w => <article key={w.id} className="dz-center-row">
         <span className="dz-center-provider" aria-hidden="true">▦</span><div className="dz-center-row-body"><strong>{w.name}</strong><small>{w.role || "Membership"}</small></div><Tag>Workspace</Tag>
       </article>)}</div> : <Empty title="No business workspaces">Your Personal account remains usable without joining a business workspace.</Empty>}
-    <p className="dz-center-fineprint">Workspace creation, role changes, and business connector management are not silently performed in Personal scope.</p>
+    <form className="dz-center-create-workspace" onSubmit={createWorkspace}>
+      <label htmlFor="dz-workspace-name">Create a workspace</label>
+      <div><input id="dz-workspace-name" value={workspaceName} maxLength={160} onChange={event => setWorkspaceName(event.target.value)}
+        placeholder="Workspace name" required minLength={2} /><button type="submit" disabled={!!busy || workspaceName.trim().length < 2}>Create</button></div>
+      <p>Workspace creation is an explicit action and requires the signed-in account's authorization. Business tools remain governed by workspace membership.</p>
+    </form>
   </div>;
 
   const renderIdentity = () => <div className="dz-center-stack">
