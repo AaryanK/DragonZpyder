@@ -97,3 +97,16 @@ def test_inference_failure_classification_only_trusts_sdk_exception_types():
     wrapper = RuntimeError("safe wrapper")
     wrapper.__cause__ = FakeProviderError(429)
     assert inference_failure_code(wrapper) == "INFERENCE_LIMIT_REACHED"
+
+
+def test_operly_product_profile_is_trusted_server_side_and_scope_limited():
+    from agent_platform.harness import OPERLY_PRODUCT_PROMPT, build_frontier_agent
+    import inspect
+    assert "Personal scope only" in OPERLY_PRODUCT_PROMPT
+    assert "never authorizes any business Workspace" in OPERLY_PRODUCT_PROMPT
+    assert "verified user outcomes" in OPERLY_PRODUCT_PROMPT
+    assert "product_profile=None" in str(inspect.signature(build_frontier_agent))
+    from agent_platform import personal_bridge
+    source = inspect.getsource(personal_bridge.operly_personal_run)
+    assert 'product_profile="operly_personal"' in source
+    assert "product_profile" not in personal_bridge.OperlyPersonalRun.model_fields
