@@ -33,6 +33,10 @@ def main() -> None:
         from .personal_wake import make_personal_mcp_wake_task, require_wake_gate
         require_wake_gate()
         workflows.append(make_personal_mcp_wake_task(hatchet))
+    if os.getenv("DRAGONZPYDER_EXECUTION_GRAPH_ENABLED") == "1":
+        # User-created bounded read DAGs; registration never creates a schedule.
+        from .persistent_graph import make_graph_hatchet_task
+        workflows.append(make_graph_hatchet_task(hatchet))
     if os.getenv("DRAGONZPYDER_NATIVE_CANARY_ENABLED") == "1":
         # Native-only scheduling smoke test. No Operly/MCP/user token/model.
         from .native_canary import make_native_canary_hatchet_task
