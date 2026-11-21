@@ -104,6 +104,27 @@ def personal_thread(user_id: str, conversation_id: str) -> str:
     ).hexdigest()
 
 
+def checkpoint_advanced_for_prompt(before: object, after: object, prompt: str) -> bool:
+    """Only a NEW persisted user turn can be represented as a paused run.
+
+    An old successful conversation checkpoint is not evidence that a failed
+    request was saved. Fail closed on missing/compacted/ambiguous history.
+    """
+    old = getattr(before, "values", None)
+    new = getattr(after, "values", None)
+    old_messages = old.get("messages") if isinstance(old, dict) else None
+    new_messages = new.get("messages") if isinstance(new, dict) else None
+    if not isinstance(old_messages, list) or not isinstance(new_messages, list):
+        return False
+    if len(new_messages) <= len(old_messages):
+        return False
+    return any(
+        getattr(message, "type", None) == "human"
+        and getattr(message, "content", None) == prompt
+        for message in new_messages[len(old_messages):]
+    )
+
+
 @router.post("/internal/agents/operly/personal/run")
 async def operly_personal_run(
     payload: OperlyPersonalRun,
@@ -152,6 +173,12 @@ async def operly_personal_run(
         },
         "recursion_limit": 48,
     }
+    # Record the prior checkpoint BEFORE invoking paid inference. Recovery may
+    # only claim a paused current request if the durable state advances.
+    try:
+        previous_checkpoint = await agent.aget_state(config)
+    except Exception:
+        previous_checkpoint = None
     try:
         result = await asyncio.wait_for(
             agent.ainvoke({
@@ -161,24 +188,45 @@ async def operly_personal_run(
         )
     except Exception as error:
         reason = controlled_termination_reason(error)
-        if not reason:
-            failure_code = inference_failure_code(error)
+        failure_code = inference_failure_code(error) if not reason else None
+        if failure_code == "INFERENCE_LIMIT_REACHED":
+            # Do not silently retry an upstream 429, recreate the model call,
+            # or replay authorized MCP actions. Report a paused run ONLY when
+            # its new turn was actually recorded in PostgreSQL.
+            try:
+                checkpoint = await agent.aget_state(config)
+                if checkpoint_advanced_for_prompt(
+                    previous_checkpoint, checkpoint, payload.prompt
+                ):
+                    report = summarize_checkpoint_evidence(
+                        checkpoint.values, termination_reason="inference_limit_reached"
+                    )
+                else:
+                    raise HTTPException(503, detail={
+                        "code": failure_code,
+                        "message": "Inference quota reached; current turn not checkpointed.",
+                    })
+            except HTTPException:
+                raise
+            except Exception:
+                raise HTTPException(503, detail={
+                    "code": failure_code,
+                    "message": "Inference quota reached; checkpoint unavailable.",
+                }) from error
+        elif not reason:
             if failure_code:
                 raise HTTPException(503, detail={
                     "code": failure_code,
-                    "message": (
-                        "Model request limit reached; retry after the allowance resets."
-                        if failure_code == "INFERENCE_LIMIT_REACHED" else
-                        "Model provider temporarily unavailable or returned invalid output."
-                    ),
+                    "message": "Model provider temporarily unavailable or returned invalid output.",
                 }) from error
             raise HTTPException(503, "Personal agent execution failed") from error
-        try:
-            checkpoint = await agent.aget_state(config)
-            state = checkpoint.values
-        except Exception:
-            state = None
-        report = summarize_checkpoint_evidence(state, termination_reason=reason)
+        else:
+            try:
+                checkpoint = await agent.aget_state(config)
+                state = checkpoint.values
+            except Exception:
+                state = None
+            report = summarize_checkpoint_evidence(state, termination_reason=reason)
     else:
         report = summarize_agent_result(result)
     # Verify actual persisted LangGraph checkpoint readback before claiming

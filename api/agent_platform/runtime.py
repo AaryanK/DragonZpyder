@@ -189,6 +189,10 @@ def summarize_checkpoint_evidence(values: Any, *, termination_reason: str) -> di
         messages = []
     files = state.get("files", {})
     files = files if isinstance(files, dict) else {}
+    # Persisted checkpoint history contains previous successful turns. A
+    # stopped run must not claim those earlier operations as fresh receipts.
+    from .progress_guard import current_turn_messages
+    messages = current_turn_messages(messages)
     successful: list[str] = []
     failed = 0
     for msg in messages:
