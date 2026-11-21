@@ -100,3 +100,25 @@ def test_duplicate_json_keys_in_final_answer_fail_closed():
         + ',"modules":["crm","billing"],"metadata":{"id":1,"id":2}}'
     )
     assert not _final_answer_matches_receipts(_messages(duplicate_nested))
+
+
+@pytest.mark.parametrize(("receipt_index", "ambiguous_content"), [
+    (0, '{"name":"Fabricated","name":' + json.dumps(EXPECTED_WORKSPACE) + '}'),
+    (1, '{"modules":[{"key":"fake","key":"crm","name":"CRM"},'
+        '{"key":"billing","name":"Billing"}]}'),
+    (1, '{"modules":[{"key":"crm","name":"CRM"},'
+        '{"key":"billing","name":"Billing"}],'
+        '"modules":[{"key":"crm","name":"CRM"},'
+        '{"key":"billing","name":"Billing"}]}'),
+])
+def test_duplicate_keys_in_tool_receipts_fail_closed(receipt_index, ambiguous_content):
+    messages = _messages(json.dumps({
+        "workspace": EXPECTED_WORKSPACE, "modules": ["crm", "billing"]
+    }))
+    original = messages[receipt_index]
+    messages[receipt_index] = ToolMessage(
+        content=ambiguous_content, name=original.name,
+        tool_call_id=original.tool_call_id,
+    )
+    assert not _readback_verified(messages)[0]
+    assert not _final_answer_matches_receipts(messages)
