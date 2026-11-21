@@ -72,6 +72,30 @@ def execution_receipt_report(report: dict) -> dict:
     }
 
 
+def inference_failure_code(error: Exception) -> str | None:
+    """Classify only known OpenAI-compatible SDK failures; never expose text.
+
+    Do not classify MCP/tool errors as inference failures based on their HTTP
+    status alone. A nested provider APIStatusError may be wrapped by LangGraph.
+    """
+    seen: set[int] = set()
+    current: BaseException | None = error
+    for _ in range(5):
+        if current is None or id(current) in seen:
+            break
+        seen.add(id(current))
+        if type(current).__module__.startswith("openai"):
+            status = getattr(current, "status_code", None)
+            if status == 429:
+                return "INFERENCE_LIMIT_REACHED"
+            if status in (502, 503, 504):
+                return "INFERENCE_PROVIDER_UNAVAILABLE"
+            if type(current).__name__ in ("APIConnectionError", "APITimeoutError"):
+                return "INFERENCE_PROVIDER_UNAVAILABLE"
+        current = current.__cause__ or current.__context__
+    return None
+
+
 def personal_thread(user_id: str, conversation_id: str) -> str:
     # Never use the untrusted conversation ID on its own as a checkpoint key.
     # This prevents different users from landing in the same persisted thread.
@@ -138,6 +162,16 @@ async def operly_personal_run(
     except Exception as error:
         reason = controlled_termination_reason(error)
         if not reason:
+            failure_code = inference_failure_code(error)
+            if failure_code:
+                raise HTTPException(503, detail={
+                    "code": failure_code,
+                    "message": (
+                        "Model request limit reached; retry after the allowance resets."
+                        if failure_code == "INFERENCE_LIMIT_REACHED" else
+                        "Model provider temporarily unavailable or returned invalid output."
+                    ),
+                }) from error
             raise HTTPException(503, "Personal agent execution failed") from error
         try:
             checkpoint = await agent.aget_state(config)
