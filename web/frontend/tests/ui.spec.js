@@ -139,3 +139,34 @@ test("dark-mode shortcuts remain readable", async ({page}) => {
   await expect(page.getByRole("dialog",{name:"What would you like to do?"})).toBeVisible();
   await expect(page.locator(".dz-command-foot kbd").first()).toBeVisible();
 });
+
+
+test("identical legacy and Kernel approval IDs render once with Kernel authority", async ({page}) => {
+  const approval = {
+    id: "571daf1e-fb54-484a-875a-4701992165cf",
+    capability_id: "workspace.create",
+    status: "pending",
+    arguments: { name: "DragonZpyder MCP Experiment", timezone: "America/Chicago" },
+    conversation_id: "test-conversation",
+  };
+  // Both existing projections may return the SAME underlying Kernel row.
+  await page.route(/\\/api\\/(?:personal-tools|kernel\\/personal)\\/approvals\\?status=pending/, async route => {
+    await route.fulfill({
+      status: 200, contentType: "application/json",
+      body: JSON.stringify({ approvals: [approval] }),
+    });
+  });
+  await page.locator("#approvals-top").click();
+  await expect(page.locator("#approvals-drawer")).toBeVisible();
+  await expect(page.locator("#approval-list .approval-card")).toHaveCount(1);
+  await expect(page.locator("#approval-count")).toHaveText("1");
+  // The preferred Kernel source must own the actionable button, not legacy.
+  let decisionPath = "";
+  await page.route("**/api/kernel/personal/approvals/*/decision", async route => {
+    decisionPath = new URL(route.request().url()).pathname;
+    await route.fulfill({ status: 200, contentType: "application/json",
+      body: JSON.stringify({ ...approval, status: "rejected" }) });
+  });
+  await page.locator("#approval-list .reject-btn").click();
+  expect(decisionPath).toBe("/api/kernel/personal/approvals/" + approval.id + "/decision");
+});
