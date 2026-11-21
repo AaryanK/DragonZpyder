@@ -9,6 +9,8 @@ from fastapi.testclient import TestClient
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from identity.passwords import hash_password
+
+SAMPLE_PASSPHRASE = "An Example Password 2026!"
 from identity.password_login import password_login, LoginDenied
 import identity.login_http as route
 from identity.sessions import BrowserSession
@@ -47,7 +49,7 @@ async def test_correct_password_uses_existing_identity_and_bad_password_fails(mo
                               expires_at=datetime.now(timezone.utc) + timedelta(days=7))
     monkeypatch.setattr(login, "create_browser_session", make_session)
     assert (await password_login(db, email="PERSON@EXAMPLE.TEST",
-                                 password="An Example Password 2026!")).secret == "session-secret"
+                                 password=SAMPLE_PASSPHRASE)).secret == "session-secret"
     with pytest.raises(LoginDenied):
         await password_login(db, email=db.email, password="incorrect")
     assert db.count == 2
@@ -59,11 +61,11 @@ async def test_disabled_user_and_brute_force_limit(monkeypatch):
     db = FakeDB(hash_password("An Example Password 2026!"))
     db.active = False
     with pytest.raises(LoginDenied):
-        await password_login(db, email=db.email, password="An Example Password 2026!")
+        await password_login(db, email=db.email, password=SAMPLE_PASSPHRASE)
     db.active = True
     db.count = 8
     with pytest.raises(LoginDenied):
-        await password_login(db, email=db.email, password="An Example Password 2026!")
+        await password_login(db, email=db.email, password=SAMPLE_PASSPHRASE)
 
 
 def test_routes_hidden_by_default():
