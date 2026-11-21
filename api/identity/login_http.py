@@ -2,8 +2,7 @@
 
 Production is expressly blocked until migration and auth security review.
 """
-import os
-from urllib.parse import urlsplit
+import hmac
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -11,7 +10,7 @@ from pydantic import BaseModel, Field
 
 from .http_bridge import _enabled, _identity_db, _issuer
 from .password_login import password_login, LoginDenied
-from .sessions import SessionDenied, revoke_browser_session
+from .sessions import SessionDenied, revoke_browser_session, resolve_browser_session
 
 router = APIRouter(prefix="/identity/v1", tags=["identity-bridge"])
 
@@ -51,11 +50,15 @@ async def logout_identity(request: Request):
     secret = request.cookies.get("__Host-dz_identity", "")
     csrf = request.cookies.get("__Host-dz_csrf", "")
     submitted_csrf = request.headers.get("x-dz-csrf", "")
-    if not csrf or not submitted_csrf or csrf != submitted_csrf:
+    if not csrf or not submitted_csrf or not hmac.compare_digest(csrf, submitted_csrf):
         raise HTTPException(403, "Invalid logout CSRF")
     if secret:
-        async with _identity_db() as conn:
-            await revoke_browser_session(conn, secret=secret)
+        try:
+            async with _identity_db() as conn:
+                await resolve_browser_session(conn, secret=secret, csrf=submitted_csrf, require_csrf=True)
+                await revoke_browser_session(conn, secret=secret)
+        except SessionDenied:
+            raise HTTPException(403, "Invalid logout session") from None
     response = JSONResponse({"authenticated": False}, headers={"Cache-Control": "no-store"})
     response.delete_cookie("__Host-dz_identity", secure=True, httponly=True, samesite="lax", path="/")
     response.delete_cookie("__Host-dz_csrf", secure=True, httponly=False, samesite="lax", path="/")
