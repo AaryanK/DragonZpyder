@@ -27,18 +27,23 @@ def _canonical(value: str) -> str:
     return result
 
 
-def _schedule_gate() -> str:
+def _goal_db_dsn() -> str:
     if os.getenv("DRAGONZPYDER_PERSONAL_GOAL_TOOLS_ENABLED") != "1":
         raise RuntimeError("Personal goal management is disabled")
+    dsn = os.getenv("DRAGONZPYDER_AGENT_DATABASE_URL", "")
+    if not dsn.startswith(("postgresql://", "postgres://")):
+        raise RuntimeError("Durable goal database is unavailable")
+    return dsn
+
+
+def _schedule_gate() -> str:
+    dsn = _goal_db_dsn()
     if os.getenv("DRAGONZPYDER_PERSONAL_MCP_SCHEDULED_ENABLED") != "1":
         raise RuntimeError("Scheduled Personal MCP worker is not enabled")
     if os.getenv("DRAGONZPYDER_PERSONAL_MCP_MUTATIONS_ENABLED") == "1":
         raise RuntimeError("Scheduled MCP writes are not supported")
     if not os.getenv("HATCHET_CLIENT_TOKEN"):
         raise RuntimeError("Private Hatchet dispatch is unavailable")
-    dsn = os.getenv("DRAGONZPYDER_AGENT_DATABASE_URL", "")
-    if not dsn.startswith(("postgresql://", "postgres://")):
-        raise RuntimeError("Durable goal database is unavailable")
     return dsn
 
 
@@ -136,7 +141,7 @@ def personal_goal_tools(*, user_id: str, session_id: str, conversation_id: str):
     @tool("goal_status")
     async def goal_status(goal_id: str) -> dict:
         """Read durable status and wake-up receipts of your own scheduled goal."""
-        dsn = _schedule_gate()
+        dsn = _goal_db_dsn()
         try:
             _canonical(goal_id)
         except RuntimeError:
@@ -174,7 +179,7 @@ def personal_goal_tools(*, user_id: str, session_id: str, conversation_id: str):
 
         A currently in-flight external read might already be executing.
         """
-        dsn = _schedule_gate()
+        dsn = _goal_db_dsn()
         try:
             _canonical(goal_id)
         except RuntimeError:
