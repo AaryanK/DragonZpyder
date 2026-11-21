@@ -199,6 +199,20 @@ def build_frontier_agent(model, checkpointer, *, specialist_models=None, synthet
                 "dispatch acceptance; final task success requires observed "
                 "wake receipts. Never invent a goal ID or a future outcome."
             )
+        if {"artifact_create", "artifact_status"}.issubset(delegated_names):
+            prompt += (
+                "\\nFor on-demand DOCUMENTS and PRESENTATIONS, use "
+                "artifact_create to render actual PDF, DOCX or PPTX bytes "
+                "from bounded headings, body paragraphs, and bullets. "
+                "Never present a virtual /workspace/ text file as a "
+                "downloadable PDF or PowerPoint. Only claim a real artifact "
+                "when artifact_create returns status completed and "
+                "verified true. Include its exact download_url and inform "
+                "the user that links expire after 15 minutes. To renew a "
+                "link for this conversation call artifact_status with the "
+                "actual artifact ID. Do not claim the artifact was "
+                "published to third-party storage or external accounts."
+            )
         if {"native_canary_start", "native_canary_status", "native_canary_cancel"}.issubset(delegated_names):
             prompt += (
                 "\nFor explicit internal scheduler diagnostics ONLY, use "
