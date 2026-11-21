@@ -113,3 +113,33 @@ jobs:
         run: |
           python -m compileall -q api/identity api/tests
           pytest -q api/tests/test_identity_*.py
+
+  identity-postgres-integration:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: identity_test
+          POSTGRES_PASSWORD: disposable_ci_only
+          POSTGRES_DB: identity_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U identity_test -d identity_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DRAGONZPYDER_IDENTITY_TEST_DSN: postgresql://identity_test:disposable_ci_only@localhost:5432/identity_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install isolated identity database test dependencies
+        run: pip install asyncpg "cryptography>=44,<50" "PyJWT[crypto]>=2.10,<3" pytest pytest-asyncio
+      - name: Verify PostgreSQL nonce, atomic code redemption, and family replay
+        run: pytest -q api/tests/test_identity_postgres_integration.py
