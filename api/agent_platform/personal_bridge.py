@@ -234,6 +234,14 @@ async def operly_personal_run(
                 user_id=payload.user_id,
                 conversation_id=payload.conversation_id,
             )]
+        if (not payload.scheduled_wake and
+                os.getenv("DRAGONZPYDER_EXECUTION_GRAPH_ENABLED") == "1"):
+            from .persistent_graph import graph_tools
+            tools = [*tools, *graph_tools(
+                user_id=payload.user_id,
+                session_id=payload.session_id,
+                conversation_id=payload.conversation_id,
+            )]
         direct_receipt = None
         instruction = payload.prompt
         if payload.scheduled_wake:
