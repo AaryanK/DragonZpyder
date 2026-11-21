@@ -213,6 +213,22 @@ async def perform_personal_wake(wake: PersonalWakeInput, *, http=None) -> dict:
                     if (not isinstance(data.get("access_token"), str)
                             or not isinstance(data.get("approved_tool_names"), list)):
                         raise RuntimeError("Invalid fresh Personal MCP delegation")
+                    # A service flag alone cannot enforce read-only authority.
+                    # Never pass a renewed mutation capability to the agent.
+                    read_only_names = {
+                        "workflow.list", "system.runtime.status", "tasks.list",
+                    }
+                    approved = sorted(
+                        set(data["approved_tool_names"]) & read_only_names
+                    )
+                    if not approved:
+                        await con.execute(
+                            """UPDATE dz_personal_mcp_goals SET state='blocked',
+                               updated_at=now() WHERE goal_id=$1""",
+                            wake.goal_id,
+                        )
+                        return {"state":"blocked","next_sequence":wake.sequence,
+                                "model_calls":0,"reason":"read_only_tools_unavailable"}
                     reply = await http.post(
                         dragon,
                         headers={
@@ -226,7 +242,8 @@ async def perform_personal_wake(wake: PersonalWakeInput, *, http=None) -> dict:
                             "conversation_id": wake.conversation_id,
                             "prompt": wake.prompt,
                             "mcp_access_token": data["access_token"],
-                            "approved_tool_names": data["approved_tool_names"],
+                            "approved_tool_names": approved,
+                            "scheduled_wake": True,
                         },
                         timeout=100,
                     )
