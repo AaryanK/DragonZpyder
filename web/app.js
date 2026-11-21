@@ -486,6 +486,20 @@ async function sendMessage(message, { companion = false } = {}) {
       pending.body.appendChild(inline);
     }
     await Promise.all([loadConversations({ restoreLatest: true }), refreshApprovals()]);
+    // MCP tools may request Kernel approval inside the model run. The agent's
+    // visible prose is not a trustworthy approval ID; use only backend rows.
+    if (state.approvals.some(row => row.approval_source === "kernel"
+        && row.conversation_id === state.conversationId)) {
+      const inline = document.createElement("div");
+      inline.className = "approval-inline";
+      inline.textContent = "An Operly action needs your exact approval. ";
+      const review = document.createElement("button");
+      review.type = "button"; review.className = "approve-btn";
+      review.textContent = "Review";
+      review.addEventListener("click", openApprovals);
+      inline.appendChild(review);
+      pending.body.appendChild(inline);
+    }
     return { message: text, approval_required: Boolean(result.approval_id), blocked: Boolean(blocker) };
   } catch (error) {
     pending.value.classList.add("error");
@@ -517,12 +531,24 @@ async function sendMessage(message, { companion = false } = {}) {
 window.dragonzpyderDelegatePersonalTask = (request) => sendMessage(request, { companion: true });
 
 async function refreshApprovals() {
-  try {
-    const payload = await api("/api/personal-tools/approvals?status=pending", { csrf: false });
-    state.approvals = payload && Array.isArray(payload.approvals) ? payload.approvals : [];
-  } catch (error) {
-    if (error instanceof ApiError && error.status === 401) state.approvals = [];
-    else console.warn("Could not load approvals", error);
+  // Workspace provisioning uses Operly Kernel approvals, not the legacy
+  // Personal-tools approvals table. Both are authenticated same-origin APIs.
+  // No approval can be created or executed merely by rendering a card.
+  const sources = [
+    ["/api/personal-tools/approvals?status=pending", "legacy"],
+    ["/api/kernel/personal/approvals?status=pending", "kernel"],
+  ];
+  const results = await Promise.allSettled(sources.map(async ([path, source]) => {
+    const payload = await api(path, { csrf: false });
+    return (Array.isArray(payload?.approvals) ? payload.approvals : []).map(row => ({
+      ...row, approval_source: source,
+    }));
+  }));
+  state.approvals = results.flatMap(result => result.status === "fulfilled" ? result.value : []);
+  for (const result of results) {
+    if (result.status === "rejected" && !(result.reason instanceof ApiError && result.reason.status === 401)) {
+      console.warn("Could not load one approval source", result.reason);
+    }
   }
   approvalCount.textContent = String(state.approvals.length);
   approvalCount.hidden = state.approvals.length === 0;
@@ -621,10 +647,10 @@ function closeApprovals() {
 async function rejectAction(approval, button) {
   button.disabled = true;
   try {
-    await api(`/api/personal-tools/approvals/${encodeURIComponent(approval.id)}/decision`, {
-      method: "POST",
-      body: { approved: false },
-    });
+    const decisionPath = approval.approval_source === "kernel"
+      ? `/api/kernel/personal/approvals/${encodeURIComponent(approval.id)}/decision`
+      : `/api/personal-tools/approvals/${encodeURIComponent(approval.id)}/decision`;
+    await api(decisionPath, { method: "POST", body: { approved: false } });
     showToast("Action rejected. Nothing was executed.");
     await refreshApprovals();
   } catch (error) {
@@ -637,6 +663,28 @@ async function rejectAction(approval, button) {
 async function approveAction(approval, button) {
   button.disabled = true;
   try {
+    if (approval.approval_source === "kernel") {
+      // The backend re-opens the frozen, exact approved MCP request from the
+      // Kernel approval row. Neither the model nor the UI may alter arguments.
+      await api(`/api/kernel/personal/approvals/${encodeURIComponent(approval.id)}/decision`, {
+        method: "POST", body: { approved: true },
+      });
+      const executed = await api(`/api/kernel/personal/approvals/${encodeURIComponent(approval.id)}/execute`, {
+        method: "POST", body: {},
+      });
+      if (executed?.status !== "completed" || executed?.workspace_ownership_verified !== true) {
+        throw new ApiError("Workspace creation could not be independently verified; do not repeat it.", {
+          code: "WORKSPACE_VERIFICATION_FAILED",
+        });
+      }
+      const created = executed.result || {};
+      closeApprovals();
+      appendMessage("assistant", `Operly confirmed workspace “${created.name}” was created under your account. Workspace ID: ${created.id}. Ownership verified. Adding workspace records requires separate workspace authorization.`, {
+        meta: "Operly Kernel approval · database readback verified",
+      });
+      await refreshApprovals();
+      return;
+    }
     const decided = await api(`/api/personal-tools/approvals/${encodeURIComponent(approval.id)}/decision`, {
       method: "POST",
       body: { approved: true },
