@@ -175,6 +175,10 @@ function useVoiceEnergy(inputStream, outputStream) {
     const analysers = [];
     try {
       context = new AudioContextClass();
+      // Keep analyser nodes running without duplicating audible voice output.
+      const silentSink = context.createGain();
+      silentSink.gain.value = 0;
+      silentSink.connect(context.destination);
       for (const stream of streams) {
         // Meter only: do not route the remote stream to the speakers a second time.
         const source = context.createMediaStreamSource(stream);
@@ -182,6 +186,7 @@ function useVoiceEnergy(inputStream, outputStream) {
         analyser.fftSize = 512;
         analyser.smoothingTimeConstant = .78;
         source.connect(analyser);
+        analyser.connect(silentSink);
         analysers.push({ analyser, data: new Uint8Array(analyser.fftSize) });
       }
       context.resume().catch(() => {});
