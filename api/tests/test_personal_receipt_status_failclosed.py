@@ -1,6 +1,6 @@
 """Fail-closed status classification for user-visible execution receipts."""
 import pytest
-from api.agent_platform.personal_bridge import execution_receipt_report
+from agent_platform.personal_bridge import execution_receipt_report
 
 
 @pytest.mark.parametrize("status", [None, "", "failed", "paused", "cancelled", "running", 0, False, "COMPLETED", "incomplete"])
