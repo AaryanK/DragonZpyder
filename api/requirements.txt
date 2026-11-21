@@ -6,3 +6,16 @@ cryptography>=44,<50
 opentelemetry-api>=1.30,<2
 opentelemetry-sdk>=1.30,<2
 opentelemetry-exporter-otlp-proto-http>=1.30,<2
+
+# The production API hosts /internal/agents/operly/personal/run when enabled.
+# Keep its dependency set aligned with the opt-in Hatchet/Deep Agents runtime;
+# otherwise DRAGONZPYDER_AGENTS_ENABLED=1 crashes at module import.
+deepagents>=0.7,<1
+langchain-openrouter>=0.2,<1
+langchain-openai>=0.3,<2
+langgraph-checkpoint-postgres>=2,<5
+psycopg[binary]>=3,<4
+langchain-mcp-adapters>=0.3,<0.4
+# Opt-in harness modules may import these at runtime.
+langfuse>=3,<5
+langchain-quickjs>=0.2,<1
