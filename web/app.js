@@ -252,6 +252,8 @@ function showMessages() {
 }
 
 function showEmptyState() {
+  followingLatest = true;
+  if (jumpLatest) jumpLatest.hidden = true;
   emptyState.hidden = false;
   emptyState.style.removeProperty("display");
   messages.classList.remove("active");
@@ -528,12 +530,23 @@ async function sendMessage(message, { companion = false } = {}) {
         const failures = Number.isInteger(evidence.failed_tool_count)
           && evidence.failed_tool_count >= 0 && evidence.failed_tool_count <= 100
           ? evidence.failed_tool_count : 0;
-        const receipt = document.createElement("div");
-        receipt.className = "message-meta";
-        receipt.textContent = "Harness tool receipts: " + (names.length ? names.join(", ") : "none") +
-          (failures ? " · Failed tool calls: " + failures : "") +
-          " · Objective not independently verified";
-        pending.body.appendChild(receipt);
+        // Do not label a backend tool receipt as independently verified objective completion.
+        const trace = document.createElement("details");
+        trace.className = "dz-execution-evidence";
+        const summary = document.createElement("summary");
+        summary.textContent = failures ? "Tool execution · " + failures + " failed" : "Tool execution · View receipts";
+        trace.appendChild(summary);
+        const list = document.createElement("ul");
+        for (const name of names) {
+          const li = document.createElement("li");
+          li.textContent = name;
+          list.appendChild(li);
+        }
+        if (names.length) trace.appendChild(list);
+        const note = document.createElement("p");
+        note.textContent = "Backend-reported tool activity only. The overall objective has not been independently verified.";
+        trace.appendChild(note);
+        pending.body.appendChild(trace);
       }
     }
     if (blocker) {
