@@ -48,6 +48,30 @@ def _authorized(authorization: str, proof: str) -> bool:
             and hmac.compare_digest(proof, mcp_secret))
 
 
+def execution_receipt_report(report: dict) -> dict:
+    """Current-turn tool outcomes only; never disclose calls, arguments or data."""
+    names = [
+        name for name in report.get("successful_tools", [])
+        if isinstance(name, str) and 1 <= len(name) <= 80
+        and name.replace("_", "").replace("-", "").isalnum()
+    ][:40]
+    failures = report.get("failed_tool_count", 0)
+    if type(failures) is not int or failures < 0:
+        failures = 0
+    readbacks = report.get("artifact_readback_paths", [])
+    return {
+        "tool_names": names,
+        "failed_tool_count": min(100, failures),
+        "artifact_readback_count": (
+            min(30, len(readbacks))
+            if isinstance(readbacks, list)
+            and "write_file" in names and "read_file" in names else 0
+        ),
+        "status": "incomplete" if report.get("status") == "incomplete" else "completed",
+        "objective_verified": False,
+    }
+
+
 def personal_thread(user_id: str, conversation_id: str) -> str:
     # Never use the untrusted conversation ID on its own as a checkpoint key.
     # This prevents different users from landing in the same persisted thread.
@@ -133,28 +157,10 @@ async def operly_personal_run(
         checkpointed = False
     if not checkpointed:
         raise HTTPException(503, "Personal agent checkpoint verification failed")
-    # Return bounded current-turn tool receipts without tool arguments, model
-    # text, raw outputs or provider credentials. A completed tool call is NOT
-    # independent verification that the user's objective succeeded.
-    tool_names = [
-        name for name in report.get("successful_tools", [])
-        if isinstance(name, str) and 1 <= len(name) <= 80
-        and name.replace("_", "").replace("-", "").isalnum()
-    ][:40]
     return {
         "status": report["status"],
         "answer": report["answer"][:16000],
-        "execution_receipts": {
-            "tool_names": tool_names,
-            "failed_tool_count": min(100, max(0, int(report.get("failed_tool_count", 0)))),
-            # A historical checkpoint readback is not a current-turn receipt.
-            "artifact_readback_count": (
-                min(30, len(report.get("artifact_readback_paths", [])))
-                if "write_file" in tool_names and "read_file" in tool_names else 0
-            ),
-            "status": report["status"],
-            "objective_verified": False,
-        },
+        "execution_receipts": execution_receipt_report(report),
         "successful_tools": [
             name for name in report.get("successful_tools", [])
             if isinstance(name, str) and name.startswith("operly_")
