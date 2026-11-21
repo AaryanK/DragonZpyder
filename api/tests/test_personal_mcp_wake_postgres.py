@@ -258,3 +258,43 @@ def test_quota_pause_never_allows_later_sequence_to_run():
 
     with patch.dict(os.environ, _vars(dsn), clear=False):
         asyncio.run(run())
+
+
+def test_operator_resume_revalidates_session_and_never_dispatches_automatically():
+    from agent_platform.personal_wake import operator_resume_paused_personal_goal
+    dsn = os.environ["DRAGONZPYDER_BUDGET_TEST_DSN"]
+    goal_id, user_id, session_id, conversation_id = (str(uuid4()) for _ in range(4))
+
+    async def run():
+        wake = _input(goal_id=goal_id, user_id=user_id,
+                      session_id=session_id, conversation_id=conversation_id,
+                      sequence=0)
+        await perform_personal_wake(wake, http=QuotaRemote())
+        with pytest.raises(RuntimeError, match="disabled"):
+            await operator_resume_paused_personal_goal(wake, http=SimulatedRemote())
+        os.environ["DRAGONZPYDER_PERSONAL_MCP_RESUME_OPERATOR_ALLOWED"] = "1"
+        with pytest.raises(RuntimeError, match="cannot authorize resume"):
+            await operator_resume_paused_personal_goal(
+                wake, http=SimulatedRemote(revoke=True)
+            )
+        with pytest.raises(RuntimeError, match="mismatch"):
+            await operator_resume_paused_personal_goal(
+                wake.model_copy(update={"prompt": "Different objective"}),
+                http=SimulatedRemote(),
+            )
+        renewed = SimulatedRemote()
+        resumed = await operator_resume_paused_personal_goal(wake, http=renewed)
+        assert resumed == {"state": "active", "next_sequence": 0,
+                           "scheduled": False, "requires_hatchet_dispatch": True}
+        assert len(renewed.calls) == 1  # Only authority revalidation, no agent run.
+        with pytest.raises(RuntimeError, match="not paused"):
+            await operator_resume_paused_personal_goal(wake, http=SimulatedRemote())
+        complete = await perform_personal_wake(wake, http=SimulatedRemote())
+        assert complete["state"] == "active"
+        assert complete["next_sequence"] == 1
+
+    with patch.dict(os.environ, {
+        **_vars(dsn),
+        "DRAGONZPYDER_PERSONAL_MCP_RESUME_OPERATOR_ALLOWED": "0",
+    }, clear=False):
+        asyncio.run(run())
