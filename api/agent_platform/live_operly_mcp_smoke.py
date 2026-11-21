@@ -110,8 +110,18 @@ def _final_answer_matches_receipts(messages: list) -> bool:
             by_name[receipt.name] = json.loads(receipt.content)
         except (TypeError, ValueError):
             return False
+    # Duplicate JSON keys are ambiguous across parsers and must not be
+    # accepted as verified user-facing facts (last-key-wins is unsafe).
+    def reject_duplicate_keys(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("duplicate JSON key")
+            result[key] = value
+        return result
+
     try:
-        answer = json.loads(messages[-1].content)
+        answer = json.loads(messages[-1].content, object_pairs_hook=reject_duplicate_keys)
     except (TypeError, ValueError):
         return False
     if not isinstance(answer, dict) or set(answer) != {"workspace", "modules"}:
