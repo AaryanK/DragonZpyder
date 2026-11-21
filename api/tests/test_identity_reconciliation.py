@@ -42,3 +42,19 @@ def test_conflicting_snapshots_fail_closed(users, auth, external):
 def test_no_users_is_not_a_successful_migration():
     with pytest.raises(IdentityMigrationConflict):
         reconcile([], [], [])
+
+
+def test_same_provider_subject_cannot_create_second_account_via_external_link():
+    plan = reconcile(_users(),
+                     [{"user_id": "u-a", "provider": "google", "provider_subject": "g-1"}],
+                     [{"user_id": "u-a", "provider": "google", "provider_subject": "g-1", "verified_at": "2026-11-21"}])
+    assert len(plan.links) == 1
+    assert plan.links[0].source == "auth"
+    assert plan.links[0].login_eligible is True
+
+
+def test_overlapping_provider_subject_with_different_owners_is_rejected():
+    with pytest.raises(IdentityMigrationConflict):
+        reconcile(_users(),
+                  [{"user_id": "u-a", "provider": "google", "provider_subject": "g-1"}],
+                  [{"user_id": "u-b", "provider": "google", "provider_subject": "g-1", "verified_at": "2026-11-21"}])
