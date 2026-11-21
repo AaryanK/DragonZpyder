@@ -216,7 +216,7 @@ async def perform_personal_wake(wake: PersonalWakeInput, *, http=None) -> dict:
                     # A service flag alone cannot enforce read-only authority.
                     # Never pass a renewed mutation capability to the agent.
                     read_only_names = {
-                        "workflow.list", "system.runtime.status",
+                        "workflow.list", "system.runtime.status", "tasks.list",
                     }
                     approved = sorted(
                         set(data["approved_tool_names"]) & read_only_names
