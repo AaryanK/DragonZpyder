@@ -94,6 +94,50 @@ def _readback_verified(messages: list) -> tuple[bool, list[str]]:
     return bool(described and valid_modules and set(found) == TOOL_ALIASES), tool_names
 
 
+
+def _final_answer_matches_receipts(messages: list) -> bool:
+    """Require the terminal JSON answer to agree exactly with MCP observations."""
+    if not _has_terminal_ai_answer(messages):
+        return False
+    receipts = [m for m in messages if isinstance(m, ToolMessage)]
+    if len(receipts) != len(TOOL_ALIASES):
+        return False
+    by_name = {}
+    for receipt in receipts:
+        if receipt.name in by_name or receipt.name not in TOOL_ALIASES:
+            return False
+        try:
+            by_name[receipt.name] = json.loads(receipt.content)
+        except (TypeError, ValueError):
+            return False
+    try:
+        answer = json.loads(messages[-1].content)
+    except (TypeError, ValueError):
+        return False
+    if not isinstance(answer, dict) or set(answer) != {"workspace", "modules"}:
+        return False
+    workspace = by_name.get("operly_workspace_describe")
+    modules = by_name.get("operly_workspace_modules_list")
+    if not isinstance(workspace, dict) or not isinstance(modules, dict):
+        return False
+    observed = modules.get("modules")
+    if not isinstance(observed, list) or not all(
+        isinstance(item, dict) and isinstance(item.get("key"), str)
+        for item in observed
+    ):
+        return False
+    keys = [item["key"] for item in observed]
+    reported = answer["modules"]
+    return bool(
+        answer["workspace"] == workspace.get("name")
+        and isinstance(reported, list)
+        and all(isinstance(key, str) for key in reported)
+        and len(reported) == len(set(reported))
+        and sorted(reported) == sorted(keys)
+    )
+
+
+
 def _has_terminal_ai_answer(messages: list) -> bool:
     if not messages:
         return False
@@ -191,7 +235,9 @@ async def _run() -> dict:
                 "list its currently visible modules. Both tools are read-only and "
                 "have already been authorized. Do not use subagents, write files, "
                 "mutate data, or claim any data that was not returned by a tool. "
-                "Summarize the observed workspace identity and modules."
+                "Return ONLY a JSON object with exactly two fields: workspace (the exact "
+                "name from workspace.describe) and modules (an array of exact module key "
+                "strings from workspace.modules.list). No Markdown or additional fields."
             )
             phase = "graph_invoke"
             state = await asyncio.wait_for(model_graph.ainvoke(
@@ -205,13 +251,15 @@ async def _run() -> dict:
             # Tool receipts alone do not establish completed user intent.
             # A final assistant response is mandatory before claiming success.
             final_ai = _has_terminal_ai_answer(state.get("messages", []))
-            verified = bool(verified and final_ai)
+            answer_verified = _final_answer_matches_receipts(state.get("messages", []))
+            verified = bool(verified and final_ai and answer_verified)
             metrics.update({
                 "status": "passed" if verified else "insufficient_tool_evidence",
                 "verified": verified,
                 "tool_names": names[:16],
                 "actual_tool_count": len(names),
                 "final_ai": final_ai,
+                "answer_verified": answer_verified,
             })
     except Exception as exc:
         root = exc.__cause__ or exc
