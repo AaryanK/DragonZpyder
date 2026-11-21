@@ -110,3 +110,39 @@ def test_operly_product_profile_is_trusted_server_side_and_scope_limited():
     source = inspect.getsource(personal_bridge.operly_personal_run)
     assert 'product_profile="operly_personal"' in source
     assert "product_profile" not in personal_bridge.OperlyPersonalRun.model_fields
+
+
+def test_operly_profile_is_applied_at_supervisor_boundary(monkeypatch):
+    from types import SimpleNamespace
+    from agent_platform import harness
+
+    captured = {}
+    monkeypatch.setenv("DRAGONZPYDER_OPERLY_TOOLS_ENABLED", "1")
+    monkeypatch.delenv("DRAGONZPYDER_AGENT_WEB_SEARCH_ENABLED", raising=False)
+    monkeypatch.delenv("DRAGONZPYDER_AGENT_QUICKJS_ENABLED", raising=False)
+    monkeypatch.setattr(harness, "create_deep_agent", lambda **kwargs: captured.update(kwargs) or kwargs)
+    allowed = SimpleNamespace(name="operly_tasks_list")
+    result = harness.build_frontier_agent(
+        model=object(), checkpointer=object(),
+        delegated_tools=[allowed], product_profile="operly_personal",
+    )
+    assert allowed in result["tools"]
+    assert "You are Operly" in captured["system_prompt"]
+    assert "Personal scope only" in captured["system_prompt"]
+    assert "External web, OS, browser, and business tools are NOT available" not in captured["system_prompt"]
+    assert "Only tools explicitly attached" in captured["system_prompt"]
+
+
+def test_operly_profile_requires_authorized_tools(monkeypatch):
+    import pytest
+    from agent_platform import harness
+
+    monkeypatch.setenv("DRAGONZPYDER_OPERLY_TOOLS_ENABLED", "1")
+    with pytest.raises(ValueError, match="requires authorized delegated tools"):
+        harness.build_frontier_agent(
+            model=object(), checkpointer=object(), product_profile="operly_personal",
+        )
+    with pytest.raises(ValueError, match="Unknown trusted product profile"):
+        harness.build_frontier_agent(
+            model=object(), checkpointer=object(), product_profile="operly_workspace",
+        )
