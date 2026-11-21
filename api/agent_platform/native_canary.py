@@ -314,7 +314,9 @@ def native_canary_tools(*, user_id: str, conversation_id: str):
                         {"sequence": r["sequence"],
                          "tool": r["tool_name"],
                          "result_sha256": r["result_sha256"],
-                         "output": r["result_data"],
+                         "output": (json.loads(r["result_data"])
+                                    if isinstance(r["result_data"], str)
+                                    else r["result_data"]),
                          "executed_at_utc": r["created_at"].isoformat()}
                         for r in receipts
                     ],
