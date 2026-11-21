@@ -242,9 +242,14 @@ def summarize_agent_result(result: dict) -> dict:
         raise RuntimeError("Agent returned an empty final answer")
     from .progress_guard import STOP_PREFIX
     incomplete = content.startswith(STOP_PREFIX)
+    # Checkpointed messages contain every prior conversation turn. Reporting
+    # old successful MCP calls on a new answer is misleading and can make a
+    # tool-free response appear to have executed a fresh capability.
+    from .progress_guard import current_turn_messages
+    turn_messages = current_turn_messages(messages)
     successful = []
     failures = 0
-    for message in messages:
+    for message in turn_messages:
         if getattr(message, "type", None) != "tool":
             continue
         if getattr(message, "status", "success") == "error":
