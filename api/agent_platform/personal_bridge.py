@@ -234,6 +234,15 @@ async def operly_personal_run(
                 user_id=payload.user_id,
                 conversation_id=payload.conversation_id,
             )]
+        if (not payload.scheduled_wake and
+                os.getenv("DRAGONZPYDER_PERSONAL_ARTIFACTS_ENABLED") == "1"):
+            # Artifact ownership comes only from Operly's signed Personal user
+            # and conversation context; the model cannot retarget it.
+            from .personal_artifacts import personal_artifact_tools
+            tools = [*tools, *personal_artifact_tools(
+                user_id=payload.user_id,
+                conversation_id=payload.conversation_id,
+            )]
         direct_receipt = None
         instruction = payload.prompt
         if payload.scheduled_wake:
