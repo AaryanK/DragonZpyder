@@ -1,0 +1,246 @@
+"""Opt-in durable, sequential Personal MCP wake executor.
+
+Hatchet handles scheduling, PostgreSQL fences one authorized wake at a time,
+Operly reissues an exact-capability token after checking the original Personal
+session on *every* wake, and LangGraph resumes the user-scoped checkpoint.
+
+No recurring task is created by importing/registering this module. Read-only
+MCP tools only until explicit audit of write/approval resumptions.
+"""
+from __future__ import annotations
+
+import os
+import json
+import hashlib
+from urllib.parse import urlsplit
+from uuid import UUID
+
+import httpx
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class PersonalWakeInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    goal_id: str
+    user_id: str
+    session_id: str
+    conversation_id: str
+    sequence: int = Field(ge=0, le=20)
+    total_wakes: int = Field(ge=2, le=20)
+    prompt: str = Field(min_length=1, max_length=12000)
+
+
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS dz_personal_mcp_goals (
+    goal_id text PRIMARY KEY,
+    user_id text NOT NULL,
+    session_id text NOT NULL,
+    conversation_id text NOT NULL,
+    total_wakes integer NOT NULL,
+    objective_hash char(64) NOT NULL,
+    next_sequence integer NOT NULL DEFAULT 0,
+    state text NOT NULL DEFAULT 'active',
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS dz_personal_mcp_receipts (
+    goal_id text NOT NULL REFERENCES dz_personal_mcp_goals(goal_id),
+    sequence integer NOT NULL,
+    status text NOT NULL,
+    tool_names jsonb NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (goal_id, sequence)
+);
+"""
+
+
+def _approved_url(name: str, *, path: str, public_host: str) -> str:
+    url = os.getenv(name, "").strip()
+    p = urlsplit(url)
+    public = p.scheme == "https" and p.hostname == public_host and p.port in (None, 443)
+    private = (os.getenv("DRAGONZPYDER_STAGE") == "staging"
+               and p.scheme == "http" and p.hostname is not None
+               and p.hostname.endswith(".railway.internal")
+               and p.port in (None, 8080))
+    if not (public or private) or p.path != path or p.query or p.fragment or p.username or p.password:
+        raise RuntimeError("Unapproved Personal wake service endpoint")
+    return url
+
+
+def require_wake_gate() -> tuple[str, str, str, str, str]:
+    required = (
+        "DRAGONZPYDER_PERSONAL_MCP_SCHEDULED_ENABLED",
+        "DRAGONZPYDER_AGENT_USE_GATEWAY",
+        "DRAGONZPYDER_AGENT_PRODUCTION_MODE",
+        "DRAGONZPYDER_OPERLY_MCP_ENABLED",
+        "DRAGONZPYDER_OPERLY_TOOLS_ENABLED",
+    )
+    if any(os.getenv(flag) != "1" for flag in required):
+        raise RuntimeError("Personal MCP scheduling is disabled")
+    if os.getenv("DRAGONZPYDER_PERSONAL_MCP_MUTATIONS_ENABLED") == "1":
+        raise RuntimeError("Personal writes cannot run on the read-only wake executor")
+    dsn = os.getenv("DRAGONZPYDER_AGENT_DATABASE_URL", "")
+    if not dsn.startswith(("postgresql://", "postgres://")):
+        raise RuntimeError("Durable Personal wake PostgreSQL is required")
+    service_secret = os.getenv("DRAGONZPYDER_OPERLY_MCP_SERVICE_SECRET", "")
+    agent_secret = os.getenv("DRAGONZPYDER_OPERLY_PERSONAL_AGENT_TOKEN", "")
+    if min(len(service_secret), len(agent_secret)) < 40:
+        raise RuntimeError("Personal wake requires distinct backend authority")
+    operly = _approved_url(
+        "DRAGONZPYDER_OPERLY_PERSONAL_RENEW_URL",
+        path="/api/internal/dragonzpyder/personal-mcp-delegation",
+        public_host="operly.dragonzpyder.xyz",
+    )
+    dragon = _approved_url(
+        "DRAGONZPYDER_OPERLY_PERSONAL_RUN_URL",
+        path="/internal/agents/operly/personal/run",
+        public_host="api.dragonzpyder.xyz",
+    )
+    return dsn, service_secret, agent_secret, operly, dragon
+
+
+async def perform_personal_wake(wake: PersonalWakeInput, *, http=None) -> dict:
+    import asyncpg
+    # Stable caller-assigned IDs prevent a scheduled run from shifting scopes.
+    try:
+        UUID(wake.goal_id)
+        UUID(wake.user_id)
+        UUID(wake.session_id)
+        UUID(wake.conversation_id)
+    except ValueError:
+        raise RuntimeError("Canonical user, session, conversation and goal IDs are required") from None
+    dsn, service_secret, agent_secret, operly, dragon = require_wake_gate()
+    objective_hash = hashlib.sha256(wake.prompt.encode("utf-8")).hexdigest()
+    pool = await asyncpg.create_pool(
+        dsn=dsn, min_size=1, max_size=2, timeout=10, command_timeout=150,
+    )
+    try:
+        if (os.getenv("DRAGONZPYDER_STAGE") == "staging"
+                and os.getenv("DRAGONZPYDER_PERSONAL_MCP_SCHEMA_INSTALL_ALLOWED") == "1"):
+            async with pool.acquire() as con:
+                await con.execute(SCHEMA)
+        async with pool.acquire() as con:
+            async with con.transaction():
+                await con.execute(
+                    """INSERT INTO dz_personal_mcp_goals
+                       (goal_id, user_id, session_id, conversation_id, total_wakes, objective_hash)
+                       VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING""",
+                    wake.goal_id, wake.user_id, wake.session_id, wake.conversation_id,
+                    wake.total_wakes, objective_hash,
+                )
+                row = await con.fetchrow(
+                    """SELECT user_id, session_id, conversation_id, total_wakes, objective_hash, state, next_sequence
+                       FROM dz_personal_mcp_goals WHERE goal_id=$1 FOR UPDATE""",
+                    wake.goal_id,
+                )
+                if (row["user_id"], row["session_id"], row["conversation_id"],
+                    row["total_wakes"], row["objective_hash"]) != (
+                    wake.user_id, wake.session_id, wake.conversation_id,
+                    wake.total_wakes, objective_hash,
+                ):
+                    raise RuntimeError("Persistent goal authority changed")
+                if row["state"] != "active" or row["next_sequence"] > wake.sequence:
+                    return {
+                        "state": row["state"], "next_sequence": row["next_sequence"],
+                        "model_calls": 0, "reason": "already_processed",
+                    }
+                if row["next_sequence"] != wake.sequence:
+                    raise RuntimeError("Out-of-order durable Personal wake")
+                own_http = http is None
+                if own_http:
+                    http = httpx.AsyncClient(trust_env=False, follow_redirects=False, timeout=105)
+                try:
+                    renewed = await http.post(
+                        operly,
+                        headers={"X-Operly-Agent-Service": service_secret},
+                        json={
+                            "user_id": wake.user_id,
+                            "session_id": wake.session_id,
+                            "conversation_id": wake.conversation_id,
+                            "query": wake.prompt[:200],
+                        },
+                        timeout=12,
+                    )
+                    if renewed.status_code in (401, 403):
+                        await con.execute(
+                            """UPDATE dz_personal_mcp_goals SET state='blocked',
+                               updated_at=now() WHERE goal_id=$1""",
+                            wake.goal_id,
+                        )
+                        return {"state": "blocked", "next_sequence": wake.sequence,
+                                "model_calls": 0, "reason": "personal_authority_revoked"}
+                    if renewed.status_code != 200:
+                        raise RuntimeError("Personal authorization service unavailable")
+                    data = renewed.json()
+                    if (not isinstance(data.get("access_token"), str)
+                            or not isinstance(data.get("approved_tool_names"), list)):
+                        raise RuntimeError("Invalid fresh Personal MCP delegation")
+                    reply = await http.post(
+                        dragon,
+                        headers={
+                            "Authorization": "Bearer " + agent_secret,
+                            "X-Operly-Agent-Service": service_secret,
+                        },
+                        json={
+                            "scope_kind": "personal",
+                            "user_id": wake.user_id,
+                            "session_id": wake.session_id,
+                            "conversation_id": wake.conversation_id,
+                            "prompt": wake.prompt,
+                            "mcp_access_token": data["access_token"],
+                            "approved_tool_names": data["approved_tool_names"],
+                        },
+                        timeout=100,
+                    )
+                    if reply.status_code != 200:
+                        raise RuntimeError("Personal MCP agent execution rejected")
+                    result = reply.json()
+                    if result.get("status") not in ("completed", "incomplete"):
+                        raise RuntimeError("Personal agent response is not a valid state")
+                    names = result.get("successful_tools", [])
+                    if not isinstance(names, list):
+                        names = []
+                    if not any(isinstance(item, str) and item.startswith("operly_")
+                               for item in names):
+                        raise RuntimeError("No verified Operly tool receipt in scheduled wake")
+                    state = ("completed" if wake.sequence + 1 == wake.total_wakes
+                             else "active")
+                    if result["status"] != "completed":
+                        raise RuntimeError("Personal agent did not complete wake")
+                    await con.execute(
+                        """INSERT INTO dz_personal_mcp_receipts
+                           (goal_id, sequence, status, tool_names)
+                           VALUES($1,$2,$3,$4::jsonb)""",
+                        wake.goal_id, wake.sequence, result["status"],
+                        json.dumps(names[:20]),
+                    )
+                    await con.execute(
+                        """UPDATE dz_personal_mcp_goals SET next_sequence=$2,
+                           state=$3, updated_at=now() WHERE goal_id=$1""",
+                        wake.goal_id, wake.sequence + 1, state,
+                    )
+                    return {
+                        "state": state, "next_sequence": wake.sequence + 1,
+                        "tools": names[:20], "verification": "postgres_receipt",
+                    }
+                finally:
+                    if own_http:
+                        await http.aclose()
+    finally:
+        await pool.close()
+
+
+def make_personal_mcp_wake_task(hatchet):
+    """Register a gated Hatchet task; never create a cron automatically."""
+    from datetime import timedelta
+
+    @hatchet.task(
+        name="dragonzpyder-personal-mcp-wake",
+        input_validator=PersonalWakeInput,
+        concurrency=1, retries=0,
+        execution_timeout=timedelta(minutes=3),
+    )
+    async def wake(input: PersonalWakeInput, ctx) -> dict:
+        return await perform_personal_wake(input)
+
+    return wake
