@@ -179,3 +179,122 @@ def test_existing_goal_cannot_be_retargeted_to_another_user():
 
     with patch.dict(os.environ, _vars(dsn), clear=False):
         asyncio.run(run())
+
+
+class QuotaRemote(SimulatedRemote):
+    async def post(self, url, **kwargs):
+        self.calls.append((url, kwargs.get("json", {})))
+        if "/personal-mcp-delegation" in url:
+            return SimpleNamespace(
+                status_code=200,
+                json=lambda: {
+                    "access_token": "temporary-fixture-" + "t" * 64,
+                    "approved_tool_names": ["tasks.list"],
+                },
+            )
+        assert url.endswith("/internal/agents/operly/personal/run")
+        return SimpleNamespace(
+            status_code=503,
+            json=lambda: {"detail": {"code": "INFERENCE_LIMIT_REACHED"}},
+        )
+
+
+def test_quota_pauses_goal_without_advancing_or_replaying_next_wake():
+    dsn = os.environ["DRAGONZPYDER_BUDGET_TEST_DSN"]
+    goal_id, user_id, session_id, conversation_id = (str(uuid4()) for _ in range(4))
+
+    async def run():
+        wake = _input(goal_id=goal_id, user_id=user_id,
+                      session_id=session_id, conversation_id=conversation_id,
+                      sequence=0)
+        quota = QuotaRemote()
+        outcome = await perform_personal_wake(wake, http=quota)
+        assert outcome["state"] == "paused_budget"
+        assert outcome["reason"] == "inference_limit_reached"
+        assert outcome["requires_authorized_resume"] is True
+        assert outcome["next_sequence"] == 0
+        assert len(quota.calls) == 2
+        second_attempt = SimulatedRemote()
+        duplicate = await perform_personal_wake(wake, http=second_attempt)
+        assert duplicate["state"] == "paused_budget"
+        assert duplicate["reason"] == "already_processed"
+        assert duplicate["model_calls"] == 0
+        assert second_attempt.calls == []
+        con = await asyncpg.connect(dsn)
+        try:
+            result = await con.fetchrow(
+                "SELECT state,next_sequence FROM dz_personal_mcp_goals WHERE goal_id=$1",
+                goal_id,
+            )
+            assert result["state"] == "paused_budget"
+            assert result["next_sequence"] == 0
+            assert await con.fetchval(
+                "SELECT count(*) FROM dz_personal_mcp_receipts WHERE goal_id=$1",
+                goal_id,
+            ) == 0
+        finally:
+            await con.close()
+
+    with patch.dict(os.environ, _vars(dsn), clear=False):
+        asyncio.run(run())
+
+
+def test_quota_pause_never_allows_later_sequence_to_run():
+    dsn = os.environ["DRAGONZPYDER_BUDGET_TEST_DSN"]
+    goal_id, user_id, session_id, conversation_id = (str(uuid4()) for _ in range(4))
+
+    async def run():
+        first = _input(goal_id=goal_id, user_id=user_id,
+                       session_id=session_id, conversation_id=conversation_id,
+                       sequence=0)
+        await perform_personal_wake(first, http=QuotaRemote())
+        later = SimulatedRemote()
+        result = await perform_personal_wake(
+            first.model_copy(update={"sequence": 1}), http=later
+        )
+        assert result["state"] == "paused_budget"
+        assert result["model_calls"] == 0
+        assert later.calls == []
+
+    with patch.dict(os.environ, _vars(dsn), clear=False):
+        asyncio.run(run())
+
+
+def test_operator_resume_revalidates_session_and_never_dispatches_automatically():
+    from agent_platform.personal_wake import operator_resume_paused_personal_goal
+    dsn = os.environ["DRAGONZPYDER_BUDGET_TEST_DSN"]
+    goal_id, user_id, session_id, conversation_id = (str(uuid4()) for _ in range(4))
+
+    async def run():
+        wake = _input(goal_id=goal_id, user_id=user_id,
+                      session_id=session_id, conversation_id=conversation_id,
+                      sequence=0)
+        await perform_personal_wake(wake, http=QuotaRemote())
+        with pytest.raises(RuntimeError, match="disabled"):
+            await operator_resume_paused_personal_goal(wake, http=SimulatedRemote())
+        os.environ["DRAGONZPYDER_PERSONAL_MCP_RESUME_OPERATOR_ALLOWED"] = "1"
+        with pytest.raises(RuntimeError, match="cannot authorize resume"):
+            await operator_resume_paused_personal_goal(
+                wake, http=SimulatedRemote(revoke=True)
+            )
+        with pytest.raises(RuntimeError, match="mismatch"):
+            await operator_resume_paused_personal_goal(
+                wake.model_copy(update={"prompt": "Different objective"}),
+                http=SimulatedRemote(),
+            )
+        renewed = SimulatedRemote()
+        resumed = await operator_resume_paused_personal_goal(wake, http=renewed)
+        assert resumed == {"state": "active", "next_sequence": 0,
+                           "scheduled": False, "requires_hatchet_dispatch": True}
+        assert len(renewed.calls) == 1  # Only authority revalidation, no agent run.
+        with pytest.raises(RuntimeError, match="not paused"):
+            await operator_resume_paused_personal_goal(wake, http=SimulatedRemote())
+        complete = await perform_personal_wake(wake, http=SimulatedRemote())
+        assert complete["state"] == "active"
+        assert complete["next_sequence"] == 1
+
+    with patch.dict(os.environ, {
+        **_vars(dsn),
+        "DRAGONZPYDER_PERSONAL_MCP_RESUME_OPERATOR_ALLOWED": "0",
+    }, clear=False):
+        asyncio.run(run())

@@ -67,3 +67,93 @@ def test_personal_wake_input_bounds_and_no_extra_authority():
         PersonalWakeInput(**{**known, "total_wakes": 1})
     with pytest.raises(ValidationError):
         PersonalWakeInput(**{**known, "service_token": "forbidden"})
+
+
+def test_only_authored_inference_quota_responses_pause_a_wake():
+    from types import SimpleNamespace
+    from agent_platform.personal_wake import pause_reason_from_reply
+
+    rate_limited = SimpleNamespace(status_code=503, json=lambda: {
+        "detail": {"code": "INFERENCE_LIMIT_REACHED", "message": "retry later"}
+    })
+    checkpointed = SimpleNamespace(status_code=200, json=lambda: {
+        "status": "incomplete",
+        "termination_reason": "inference_limit_reached",
+        "successful_tools": [],
+    })
+    assert pause_reason_from_reply(rate_limited) == "inference_limit_reached"
+    assert pause_reason_from_reply(checkpointed) == "inference_limit_reached"
+    unknown_error = SimpleNamespace(status_code=503, json=lambda: {
+        "detail": {"code": "INFERENCE_PROVIDER_UNAVAILABLE"}
+    })
+    assert pause_reason_from_reply(unknown_error) is None
+    arbitrary_error = SimpleNamespace(status_code=503, json=lambda: {
+        "detail": "Inference limit reached"
+    })
+    assert pause_reason_from_reply(arbitrary_error) is None
+    malformed_error = SimpleNamespace(status_code=503, json=lambda: (_ for _ in ()).throw(ValueError()))
+    assert pause_reason_from_reply(malformed_error) is None
+    assert pause_reason_from_reply(SimpleNamespace(status_code=429, json=lambda: {})) is None
+
+
+def test_goal_controller_plan_is_bounded_and_requires_opt_in():
+    import asyncio
+    from unittest.mock import AsyncMock
+    from agent_platform.personal_wake import (
+        PersonalGoalPlanInput, execute_personal_goal_plan,
+        make_personal_goal_controller_task,
+    )
+    base = dict(
+        goal_id="01234567-89ab-4cde-8123-000000000001",
+        user_id="01234567-89ab-4cde-8123-000000000002",
+        session_id="01234567-89ab-4cde-8123-000000000003",
+        conversation_id="01234567-89ab-4cde-8123-000000000004",
+        total_wakes=2,
+        prompt="Check my personal tasks",
+    )
+    plan = PersonalGoalPlanInput(**base)
+    with pytest.raises(ValidationError):
+        PersonalGoalPlanInput(**{**base, "total_wakes": 4})
+    with pytest.raises(ValidationError):
+        PersonalGoalPlanInput(**{**base, "access_token": "unsafe"})
+    with patch.dict(os.environ, _base(), clear=False):
+        os.environ["DRAGONZPYDER_PERSONAL_GOAL_CONTROLLER_ENABLED"] = "0"
+        with pytest.raises(RuntimeError, match="not enabled"):
+            make_personal_goal_controller_task(object())
+        with patch("agent_platform.personal_wake.perform_personal_wake",
+                   new_callable=AsyncMock) as wake:
+            wake.side_effect = [
+                {"state": "active", "next_sequence": 1},
+                {"state": "completed", "next_sequence": 2},
+            ]
+            result = asyncio.run(execute_personal_goal_plan(plan))
+            assert result["state"] == "completed"
+            assert result["verification"] == "postgres_receipts_only"
+            assert [call.args[0].sequence for call in wake.await_args_list] == [0, 1]
+
+
+def test_goal_controller_never_proceeds_after_pause_or_fails_stale_state():
+    import asyncio
+    from unittest.mock import AsyncMock
+    from agent_platform.personal_wake import PersonalGoalPlanInput, execute_personal_goal_plan
+    plan = PersonalGoalPlanInput(
+        goal_id="01234567-89ab-4cde-8123-000000000001",
+        user_id="01234567-89ab-4cde-8123-000000000002",
+        session_id="01234567-89ab-4cde-8123-000000000003",
+        conversation_id="01234567-89ab-4cde-8123-000000000004",
+        total_wakes=2,
+        prompt="Check tasks",
+    )
+    with patch.dict(os.environ, _base(), clear=False):
+        with patch("agent_platform.personal_wake.perform_personal_wake",
+                   new_callable=AsyncMock) as wake:
+            wake.return_value = {"state": "paused_budget", "next_sequence": 0}
+            paused = asyncio.run(execute_personal_goal_plan(plan))
+            assert paused["requires_authorized_resume"] is True
+            wake.assert_awaited_once()
+        with patch("agent_platform.personal_wake.perform_personal_wake",
+                   new_callable=AsyncMock) as wake:
+            wake.return_value = {"state": "active", "next_sequence": 0}
+            with pytest.raises(RuntimeError, match="refusing replay"):
+                asyncio.run(execute_personal_goal_plan(plan))
+            wake.assert_awaited_once()
