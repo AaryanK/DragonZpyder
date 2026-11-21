@@ -75,3 +75,15 @@
 @media(prefers-reduced-motion:reduce){.dz-center-shell *{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
 
 .dz-center-arguments{max-width:100%;font-size:11px;color:#e2c7a6}.dz-center-arguments summary{cursor:pointer;padding:7px}.dz-center-arguments pre{max-width:min(480px,75vw);max-height:190px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;background:#0d120f;border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:12px;color:#c4d0c4;line-height:1.5}
+
+.dz-center-google-tiers{border:0;padding:0;margin:0 0 14px;display:flex;flex-wrap:wrap;gap:11px;color:#b7c1b4;font-size:11px}
+.dz-center-google-tiers legend{color:#87968b;font-size:10px;margin-bottom:8px;padding:0}
+.dz-center-google-tiers label{display:inline-flex;align-items:center;gap:5px;cursor:pointer}
+.dz-center-google-tiers input{accent-color:#d6a573}
+.dz-center-create-workspace{border:1px solid rgba(255,255,255,.1);border-radius:12px;background:#181f1a;padding:21px;display:grid;gap:12px}
+.dz-center-create-workspace>label{font-weight:650;font-size:13px}
+.dz-center-create-workspace>div{display:flex;gap:9px}
+.dz-center-create-workspace input{min-width:0;flex:1;border:1px solid rgba(255,255,255,.15);background:#101710;border-radius:8px;padding:12px;color:#f4f1e9;font-size:13px}
+.dz-center-create-workspace button{border:1px solid #d6a573;background:#e3c19c;color:#1b1d17;border-radius:8px;padding:0 18px;font-size:12px;font-weight:700;cursor:pointer}
+.dz-center-create-workspace button:disabled{opacity:.5;cursor:default}
+.dz-center-create-workspace p{margin:0;color:#8b9a8e;font-size:11px;line-height:1.65}
