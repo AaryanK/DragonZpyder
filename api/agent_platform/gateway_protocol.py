@@ -69,7 +69,7 @@ def _tool_call(value: Any) -> dict:
 
 
 def _tools(value: Any) -> list:
-    if not isinstance(value, list) or not 1 <= len(value) <= 16:
+    # Deep Agents adds virtual filesystem/delegation tools alongside up to 20\n    # independently scoped Personal MCP tools. Preserve a strict finite cap.\n    if not isinstance(value, list) or not 1 <= len(value) <= 40:
         _reject("Invalid tool count")
     out = []
     seen = set()
