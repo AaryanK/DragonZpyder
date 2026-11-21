@@ -189,7 +189,7 @@ def build_frontier_agent(model, checkpointer, *, specialist_models=None, synthet
         delegated_names = {getattr(item, "name", "") for item in delegated_tools}
         if {"goal_schedule", "goal_status", "goal_cancel"}.issubset(delegated_names):
             prompt += (
-                "\\nYou have NATIVE DragonZpyder persistent-goal tools. "
+                "\nYou have NATIVE DragonZpyder persistent-goal tools. "
                 "When the user explicitly asks you to continue a bounded "
                 "read-only task over time, call goal_schedule with a concise "
                 "objective and the requested interval/count. "
