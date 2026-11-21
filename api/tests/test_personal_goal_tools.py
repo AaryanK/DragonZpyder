@@ -3,6 +3,7 @@
 Run from api/: python -m pytest -q tests/test_personal_goal_tools.py
 These tests deliberately do not contact Hatchet, Operly or PostgreSQL.
 """
+import asyncio
 from unittest.mock import patch
 from uuid import uuid4
 
@@ -33,27 +34,25 @@ def test_noncanonical_scope_fails_closed():
                             conversation_id=str(uuid4()))
 
 
-@pytest.mark.asyncio
-async def test_rejects_unbounded_wakes_before_database_access():
+def test_rejects_unbounded_wakes_before_database_access():
     schedule = personal_goal_tools(**_ids())[0]
     with patch("agent_platform.personal_goal_tools._schedule_gate",
                return_value="postgresql://fake"):
-        reply = await schedule.ainvoke({
+        reply = asyncio.run(schedule.ainvoke({
             "objective": "Read workflow status",
             "interval_minutes": 2, "occurrences": 30,
-        })
+        }))
     assert reply["status"] == "rejected"
     assert reply["reason"] == "occurrences_out_of_bounds"
 
 
-@pytest.mark.asyncio
-async def test_rejects_too_frequent_scheduling():
+def test_rejects_too_frequent_scheduling():
     schedule = personal_goal_tools(**_ids())[0]
     with patch("agent_platform.personal_goal_tools._schedule_gate",
                return_value="postgresql://fake"):
         reply = await schedule.ainvoke({
             "objective": "Read workflow status",
             "interval_minutes": 1, "occurrences": 5,
-        })
+        }))
     assert reply["status"] == "rejected"
     assert reply["reason"] == "interval_out_of_bounds"
