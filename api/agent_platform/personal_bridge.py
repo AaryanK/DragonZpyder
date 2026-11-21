@@ -133,9 +133,24 @@ async def operly_personal_run(
         checkpointed = False
     if not checkpointed:
         raise HTTPException(503, "Personal agent checkpoint verification failed")
+    # Return bounded current-turn tool receipts without tool arguments, model
+    # text, raw outputs or provider credentials. A completed tool call is NOT
+    # independent verification that the user's objective succeeded.
+    tool_names = [
+        name for name in report.get("successful_tools", [])
+        if isinstance(name, str) and 1 <= len(name) <= 80
+        and name.replace("_", "").replace("-", "").isalnum()
+    ][:40]
     return {
         "status": report["status"],
         "answer": report["answer"][:16000],
+        "execution_receipts": {
+            "tool_names": tool_names,
+            "failed_tool_count": min(100, max(0, int(report.get("failed_tool_count", 0)))),
+            "artifact_readback_count": min(30, len(report.get("artifact_readback_paths", []))),
+            "status": report["status"],
+            "objective_verified": False,
+        },
         "successful_tools": [
             name for name in report.get("successful_tools", [])
             if isinstance(name, str) and name.startswith("operly_")
