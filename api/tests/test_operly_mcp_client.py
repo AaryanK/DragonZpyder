@@ -36,7 +36,7 @@ def test_native_mcp_adapter_applies_per_run_tool_allowlist(monkeypatch):
             approved_tool_names=frozenset({"tasks.list", "system.runtime.status"}),
         )
     selected = asyncio.run(run())
-    assert [item.name for item in selected] == ["tasks.list", "system.runtime.status"]
+    assert [item.name for item in selected] == ["operly_tasks_list", "operly_system_runtime_status"]
     assert seen[0]["operly"]["transport"] == "streamable_http"
     assert seen[0]["operly"]["url"].endswith("/mcp")
     assert seen[0]["operly"]["headers"]["Authorization"].startswith("Bearer ")

@@ -73,6 +73,7 @@ async def load_authorized_operly_mcp_tools(*, url: str, access_token: str,
     except TimeoutError as exc:
         raise RuntimeError("Operly MCP discovery timed out") from exc
     seen = set()
+    seen_aliases = set()
     selected = []
     for item in discovered:
         name = getattr(item, "name", None)
@@ -81,6 +82,16 @@ async def load_authorized_operly_mcp_tools(*, url: str, access_token: str,
         if name in seen:
             raise ValueError("Duplicate MCP tool name")
         seen.add(name)
+        # Adapt the SDK tool's *model-facing* function identifier to the
+        # conservative OpenAI/OpenRouter naming contract. The underlying
+        # LangChain MCP closure still invokes the original server-side ID.
+        alias = "operly_" + name.replace(".", "_").replace("-", "_").replace(":", "_")
+        if (not 1 <= len(alias) <= 64 or
+                not re.fullmatch(r"[a-zA-Z0-9_-]+", alias) or
+                alias in seen_aliases):
+            raise ValueError("MCP tool alias is invalid or ambiguous")
+        seen_aliases.add(alias)
+        item.name = alias
         selected.append(item)
         if len(selected) > max_tools:
             raise RuntimeError("Operly MCP tool budget exceeded")
