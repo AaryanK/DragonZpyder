@@ -36,7 +36,8 @@ def _validated_url(url: str) -> str:
 
 async def load_authorized_operly_mcp_tools(*, url: str, access_token: str,
                                             approved_tool_names: frozenset[str],
-                                            max_tools: int = 20) -> list:
+                                            max_tools: int = 20,
+                                            service_proof: str | None = None) -> list:
     """Load only current-run, explicitly authorized Operly MCP tools.
 
     The workspace-scoped OAuth token itself MUST be obtained outside the model
@@ -53,6 +54,10 @@ async def load_authorized_operly_mcp_tools(*, url: str, access_token: str,
             or not 1 <= max_tools <= 20):
         raise ValueError("Invalid scoped MCP tool delegation")
 
+    if service_proof is not None and (
+        not isinstance(service_proof, str) or len(service_proof) < 40
+    ):
+        raise ValueError("Invalid first-party Operly service authority")
     # The standard SDK handles MCP protocol negotiation and tool adaptation.
     from langchain_mcp_adapters.client import MultiServerMCPClient
 
@@ -60,7 +65,11 @@ async def load_authorized_operly_mcp_tools(*, url: str, access_token: str,
         "operly": {
             "url": endpoint,
             "transport": "streamable_http",
-            "headers": {"Authorization": "Bearer " + access_token},
+            "headers": {
+                "Authorization": "Bearer " + access_token,
+                **({"X-Operly-Agent-Service": service_proof}
+                   if service_proof is not None else {}),
+            },
         }
     })
     discovered = await client.get_tools()
