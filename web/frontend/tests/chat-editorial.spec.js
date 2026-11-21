@@ -27,6 +27,7 @@ async function fixture(page) {
   }));
   await page.goto("/app");
   await expect(page.locator("#app-shell")).toBeVisible();
+  await expect(page.locator(".message.assistant")).toHaveCount(22);
   await expect(page.locator(".message.assistant").first()).toBeVisible();
 }
 
@@ -54,6 +55,7 @@ test("editorial chat keeps assistant document layout and distinct user turns", a
 test("reading old messages does not auto-jump, jump control restores latest", async ({page}) => {
   await fixture(page);
   const main = page.locator("#chat-main");
+  await page.waitForFunction(() => { const e=document.querySelector("#chat-main");return e && e.scrollHeight-e.scrollTop-e.clientHeight<120; });
   await main.evaluate(element => { element.scrollTop = 0; element.dispatchEvent(new Event("scroll")); });
   const jump = page.getByRole("button",{name:"Jump to latest message"});
   await expect(jump).toBeVisible();
