@@ -58,44 +58,27 @@ async def load_authorized_operly_mcp_tools(*, url: str, access_token: str,
         not isinstance(service_proof, str) or len(service_proof) < 40
     ):
         raise ValueError("Invalid first-party Operly service authority")
-    # The standard SDK handles MCP protocol negotiation and tool adaptation.
-    from langchain_mcp_adapters.client import MultiServerMCPClient
+    # Operly owns user authorization. The provider-neutral broker owns MCP
+    # transport, schema adaptation, namespacing, and tool discovery.
+    from .mcp_broker import McpGrant, discover_granted_mcp_tools
 
-    client = MultiServerMCPClient({
-        "operly": {
-            "url": endpoint,
-            "transport": "streamable_http",
-            "headers": {
-                "Authorization": "Bearer " + access_token,
-                **({"X-Operly-Agent-Service": service_proof}
-                   if service_proof is not None else {}),
-            },
-        }
-    })
-    discovered = await client.get_tools()
-    seen = set()
-    seen_aliases = set()
-    selected = []
-    for item in discovered:
-        name = getattr(item, "name", None)
-        if name not in approved_tool_names:
-            continue
-        if name in seen:
-            raise ValueError("Duplicate MCP tool name")
-        seen.add(name)
-        # Adapt the SDK tool's *model-facing* function identifier to the
-        # conservative OpenAI/OpenRouter naming contract. The underlying
-        # LangChain MCP closure still invokes the original server-side ID.
-        alias = "operly_" + name.replace(".", "_").replace("-", "_").replace(":", "_")
-        if (not 1 <= len(alias) <= 64 or
-                not re.fullmatch(r"[a-zA-Z0-9_-]+", alias) or
-                alias in seen_aliases):
-            raise ValueError("MCP tool alias is invalid or ambiguous")
-        seen_aliases.add(alias)
-        item.name = alias
-        selected.append(item)
-        if len(selected) > max_tools:
-            raise RuntimeError("Operly MCP tool budget exceeded")
-    if not selected:
-        raise RuntimeError("No approved Operly MCP tools were available")
-    return selected
+    return await discover_granted_mcp_tools(
+        [
+            McpGrant(
+                provider_id="operly",
+                url=endpoint,
+                allowed_hosts=frozenset({
+                    os.getenv("DRAGONZPYDER_OPERLY_MCP_HOST", "operly.dragonzpyder.xyz")
+                    .strip().lower(),
+                    *(("operly.railway.internal",)
+                      if os.getenv("DRAGONZPYDER_STAGE") == "staging" else ()),
+                }),
+                headers={
+                    "Authorization": "Bearer " + access_token,
+                    **({"X-Operly-Agent-Service": service_proof}
+                       if service_proof is not None else {}),
+                },
+                capability_ids=approved_tool_names,
+            )
+        ], max_tools=max_tools,
+    )
