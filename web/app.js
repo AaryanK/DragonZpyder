@@ -283,9 +283,9 @@ function messageNode(role, content, { pending = false, error = false, meta = "",
   value.className = `message-content${error ? " error" : ""}`;
   if (pending) {
     value.innerHTML = '<span class="thinking"><i></i><i></i><i></i></span>';
-  } else {
-    renderMessageContent(value, content, role);
   }
+  // Markdown rendering requires an element attached to the live document.
+  // The caller renders saved messages after appending their DOM nodes.
   body.append(label, value);
   if (meta) {
     const m = document.createElement("div");
@@ -313,6 +313,7 @@ function appendMessage(role, content, options = {}) {
   showMessages();
   const node = messageNode(role, content, options);
   messages.appendChild(node.wrap);
+  if (!options.pending) renderMessageContent(node.value, content, role);
   scrollToBottom();
   return node;
 }
