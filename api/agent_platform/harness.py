@@ -186,6 +186,15 @@ def build_frontier_agent(model, checkpointer, *, specialist_models=None, synthet
     if product_profile == "operly_personal" and not delegated_tools:
         raise ValueError("Operly product profile requires authorized delegated tools")
     prompt = SUPERVISOR_PROMPT
+    if delegated_tools:
+        # The base prompt describes an unconnected harness. Replace that
+        # statement when first-party authorization has actually provided tools.
+        prompt = prompt.replace(
+            "- External web, OS, browser, and business tools are NOT available in this\\n"
+            "  harness. Say so if the objective genuinely requires them.",
+            "- Only tools explicitly attached to this run are available.\\n"
+            "  Never assume access to other external systems.",
+        )
     if product_profile == "operly_personal":
         prompt += "\n\n" + OPERLY_PRODUCT_PROMPT
     if allow_search:
