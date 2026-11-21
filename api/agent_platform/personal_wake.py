@@ -243,6 +243,7 @@ async def perform_personal_wake(wake: PersonalWakeInput, *, http=None) -> dict:
                             "prompt": wake.prompt,
                             "mcp_access_token": data["access_token"],
                             "approved_tool_names": approved,
+                            "scheduled_wake": True,
                         },
                         timeout=100,
                     )
