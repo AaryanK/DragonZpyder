@@ -97,3 +97,19 @@ jobs:
         with:
           node-version: '22'
       - run: npm test
+
+  identity-contracts:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install identity testing dependencies
+        run: pip install -r api/requirements.txt pytest pytest-asyncio
+      - name: Compile and run the identity contract suite
+        run: |
+          python -m compileall -q api/identity api/tests
+          pytest -q api/tests/test_identity_*.py
