@@ -2,6 +2,7 @@ import React from "react";
 import { createPortal } from "react-dom";
 import { CommandPalette, QuickAddMenu, WorkspaceHub, SidebarToggle, ModeSwitchConfirm, useModalFocus } from "./WorkspaceControls.jsx";
 import { WorkspaceCenter } from "./WorkspaceCenter.jsx";
+import "./workspace-center.css";
 
 
 /**
