@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "issuer": "https://auth.dragonzpyder.xyz",
+  "authorization_endpoint": "https://auth.dragonzpyder.xyz/oauth/authorize",
+  "token_endpoint": "https://auth.dragonzpyder.xyz/oauth/token",
+  "jwks_uri": "https://auth.dragonzpyder.xyz/.well-known/jwks.json",
+  "response_types_supported": [
+    "code"
+  ],
+  "grant_types_supported": [
+    "authorization_code"
+  ],
+  "code_challenge_methods_supported": [
+    "S256"
+  ],
+  "id_token_signing_alg_values_supported": [
+    "RS256"
+  ],
+  "client": {
+    "client_id": "operly-web",
+    "redirect_uris": [
+      "https://operly.dragonzpyder.xyz/api/identities/dragonzpyder/callback"
+    ],
+    "token_endpoint_auth_method": "client_secret_basic"
+  },
+  "account_mapping": {
+    "key": [
+      "issuer",
+      "sub"
+    ],
+    "never_link_by_email": true
+  },
+  "status": "planned_not_active"
+}

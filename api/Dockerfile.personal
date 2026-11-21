@@ -1,0 +1,11 @@
+FROM python:3.12-slim
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+WORKDIR /app
+COPY requirements.txt requirements-personal.txt ./
+RUN pip install --no-cache-dir -r requirements-personal.txt && useradd --create-home --uid 10001 personal
+COPY personal_core /app/personal_core
+COPY usage_ledger.py /app/usage_ledger.py
+RUN chown -R personal:personal /app
+USER personal
+EXPOSE 8080
+CMD ["sh", "-c", "exec uvicorn personal_core.app:app --host 0.0.0.0 --port ${PORT:-8080}"]

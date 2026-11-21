@@ -1,0 +1,21 @@
+name: DragonZpyder AI Mesh tests
+on:
+  push:
+    branches: [codex/consolidate-dragonzpyder-web]
+    paths: [web/mesh-server.mjs, web/mesh.js, web/server.mjs, web/app.js, web/package.json, "web/tests/**", ".github/workflows/ai-mesh.yml"]
+  pull_request:
+    paths: [web/mesh-server.mjs, web/mesh.js, web/server.mjs, web/app.js, web/package.json, "web/tests/**"]
+jobs:
+  node-tests:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm test
