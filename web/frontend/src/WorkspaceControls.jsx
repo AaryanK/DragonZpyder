@@ -11,6 +11,7 @@ const focusSearch = () => {
   requestAnimationFrame(() => input.focus());
 };
 const openWorkspace = () => window.dispatchEvent(new Event("dragonzpyder:workspace-open"));
+const openCenter = page => window.dispatchEvent(new CustomEvent("dragonzpyder:center-open", { detail: { page } }));
 
 const COMMANDS = [
   { title: "Start a new conversation", hint: "Chat", words: "new create chat", run: () => act("new-chat") },
@@ -23,7 +24,10 @@ const COMMANDS = [
   { title: "Choose Agent / AI Mesh", hint: "Mode", words: "model select agent mesh", run: () => document.getElementById("mesh-switch")?.focus() },
   { title: "Review pending approvals", hint: "Safety", words: "approve permissions actions", run: () => act("approvals-top") },
   { title: "Open workspace navigation", hint: "Navigate", words: "agents jobs projects memory files automations", run: openWorkspace },
-  { title: "Account and connections", hint: "Settings", words: "account settings connected apps", run: () => { window.location.href = "/account"; } },
+  { title: "Connected apps", hint: "Connections", words: "google canva account tools providers", run: () => openCenter("connections") },
+  { title: "Discover personal tools", hint: "Capabilities", words: "functions tool catalog capabilities", run: () => openCenter("capabilities") },
+  { title: "Your workspaces", hint: "Scopes", words: "workspace memberships business", run: () => openCenter("workspaces") },
+  { title: "Account and sign-in", hint: "Settings", words: "account identity password settings", run: () => { window.location.href = "/account"; } },
 ];
 
 
@@ -321,10 +325,12 @@ export function QuickAddMenu({ camera }) {
 const HUB_SECTIONS = [
   { title: "Conversations", icon: "▣", status: "Available", detail: "Search your saved chats and start a new conversation.", action: focusSearch },
   { title: "Approvals", icon: "◉", status: "Available", detail: "Review actions before DragonZpyder is allowed to execute them.", action: () => act("approvals-top") },
-  { title: "Connections", icon: "⌘", status: "Available", detail: "Manage your account and supported integrations.", action: () => { window.location.href = "/account"; } },
+  { title: "Connections", icon: "⌘", status: "Available", detail: "Manage your linked accounts, test connections, and revoke access.", action: () => openCenter("connections") },
+  { title: "Personal tools", icon: "✦", status: "Available", detail: "Search the live capability registry for your authorized Personal scope.", action: () => openCenter("capabilities") },
+  { title: "Business workspaces", icon: "▦", status: "Available", detail: "View the workspaces attached to your account.", action: () => openCenter("workspaces") },
   { title: "Models", icon: "✦", status: "Available in Mesh", detail: "Switch to AI Mesh to select a supported model and see its pricing.", action: () => document.getElementById("mesh-switch")?.focus() },
   { title: "Agents", icon: "◇", status: "Integration planned", detail: "Agent-team configuration and orchestration are not wired into this chat yet." },
-  { title: "Jobs & automations", icon: "◷", status: "Integration planned", detail: "Background worker infrastructure is being tested separately; there is no live jobs UI here yet." },
+  { title: "Jobs & automations", icon: "◷", status: "Preview", detail: "See the status of Personal task UI integration without claiming unreleased execution.", action: () => openCenter("tasks") },
   { title: "Projects & files", icon: "▤", status: "Planned", detail: "Permanent projects and a cross-chat artifact library are not yet released." },
   { title: "Memory", icon: "◈", status: "Planned", detail: "A dedicated memory review and controls page is not yet available." },
 ];

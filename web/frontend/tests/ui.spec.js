@@ -66,7 +66,7 @@ test("workspace navigation discloses planned items rather than promising working
   await page.locator("#dz-workspace-trigger").click();
   const drawer = page.getByRole("dialog",{name:"Everything, in one place."});
   await expect(drawer).toBeVisible();
-  await expect(drawer.getByRole("button",{name:/Jobs & automations/})).toBeDisabled();
+  await expect(drawer.getByRole("button",{name:/Jobs & automations/})).toBeEnabled();
   await expect(drawer.getByRole("button",{name:/Conversations/})).toBeEnabled();
   await page.keyboard.press("Escape");
   await expect(drawer).toHaveCount(0);
@@ -138,4 +138,41 @@ test("dark-mode shortcuts remain readable", async ({page}) => {
   await page.keyboard.press("Control+k");
   await expect(page.getByRole("dialog",{name:"What would you like to do?"})).toBeVisible();
   await expect(page.locator(".dz-command-foot kbd").first()).toBeVisible();
+});
+
+
+test("identical legacy and Kernel approval IDs render once with Kernel authority", async ({page}) => {
+  const approval = {
+    id: "571daf1e-fb54-484a-875a-4701992165cf",
+    capability_id: "workspace.create",
+    status: "pending",
+    arguments: { name: "DragonZpyder MCP Experiment", timezone: "America/Chicago" },
+    conversation_id: "test-conversation",
+  };
+  // Both existing projections may return the SAME underlying Kernel row.
+  await page.route(url => {
+    const path = new URL(url).pathname;
+    return path === "/api/personal-tools/approvals" || path === "/api/kernel/personal/approvals";
+  }, async route => {
+    await route.fulfill({
+      status: 200, contentType: "application/json",
+      body: JSON.stringify({ approvals: [approval] }),
+    });
+  });
+  await page.locator("#approvals-top").click();
+  await expect(page.locator("#approvals-drawer")).toBeVisible();
+  await expect(page.locator("#approval-list .approval-card")).toHaveCount(1);
+  await expect(page.locator("#approval-count")).toHaveText("1");
+  // Mocked login does not set a real CSRF cookie. Exercise the POST path
+  // with a synthetic same-origin token; production still checks it server-side.
+  await page.evaluate(() => { document.cookie = "operly_csrf=ui-fixture; path=/"; });
+  // The preferred Kernel source must own the actionable button, not legacy.
+  let decisionPath = "";
+  await page.route("**/api/kernel/personal/approvals/*/decision", async route => {
+    decisionPath = new URL(route.request().url()).pathname;
+    await route.fulfill({ status: 200, contentType: "application/json",
+      body: JSON.stringify({ ...approval, status: "rejected" }) });
+  });
+  await page.locator("#approval-list .reject-btn").click();
+  await expect.poll(() => decisionPath).toBe("/api/kernel/personal/approvals/" + approval.id + "/decision");
 });

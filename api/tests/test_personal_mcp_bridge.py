@@ -97,3 +97,83 @@ def test_inference_failure_classification_only_trusts_sdk_exception_types():
     wrapper = RuntimeError("safe wrapper")
     wrapper.__cause__ = FakeProviderError(429)
     assert inference_failure_code(wrapper) == "INFERENCE_LIMIT_REACHED"
+
+
+def test_scheduled_direct_mcp_read_requires_real_successful_invocation():
+    import asyncio
+    from pydantic import BaseModel
+    from agent_platform.personal_bridge import (
+        invoke_scheduled_read, scheduled_read_tool_alias,
+    )
+
+    class EmptyArgs(BaseModel):
+        pass
+
+    class VerifiedRead:
+        name = "operly_workflow_list"
+        calls = 0
+
+        def get_input_schema(self):
+            return EmptyArgs
+
+        async def ainvoke(self, args):
+            assert args == {}
+            self.calls += 1
+            return {"workflows": [], "count": 0}
+
+    tool = VerifiedRead()
+    name, result = asyncio.run(invoke_scheduled_read([tool], "workflow.list"))
+    assert name == "operly_workflow_list"
+    assert tool.calls == 1
+    assert "workflows" in result
+    assert scheduled_read_tool_alias("workflow.list") == name
+
+
+def test_scheduled_direct_mcp_read_refuses_wrong_scope_and_required_args():
+    import asyncio
+    import pytest
+    from pydantic import BaseModel
+    from agent_platform.personal_bridge import invoke_scheduled_read
+
+    class NeededArgs(BaseModel):
+        workspace_id: str
+
+    class NeedsWorkspace:
+        name = "operly_workflow_list"
+
+        def get_input_schema(self):
+            return NeededArgs
+
+        async def ainvoke(self, args):
+            raise AssertionError("Must not invent missing required arguments")
+
+    tool = NeedsWorkspace()
+    with pytest.raises(ValueError, match="permitted read"):
+        asyncio.run(invoke_scheduled_read([tool], "workflow.delete"))
+    with pytest.raises(ValueError, match="requires unavailable"):
+        asyncio.run(invoke_scheduled_read([tool], "workflow.list"))
+    with pytest.raises(ValueError, match="not discovered"):
+        asyncio.run(invoke_scheduled_read([], "workflow.list"))
+
+
+def test_scheduled_direct_mcp_read_rejects_tool_error_receipt():
+    import asyncio
+    from types import SimpleNamespace
+    import pytest
+    from pydantic import BaseModel
+    from agent_platform.personal_bridge import invoke_scheduled_read
+
+    class EmptyArgs(BaseModel):
+        pass
+
+    class FailingRead:
+        name = "operly_tasks_list"
+
+        def get_input_schema(self):
+            return EmptyArgs
+
+        async def ainvoke(self, args):
+            return SimpleNamespace(status="error")
+
+    with pytest.raises(RuntimeError, match="returned an error"):
+        asyncio.run(invoke_scheduled_read([FailingRead()], "tasks.list"))

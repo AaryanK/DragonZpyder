@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS dz_personal_mcp_goals (
     objective_hash char(64) NOT NULL,
     next_sequence integer NOT NULL DEFAULT 0,
     state text NOT NULL DEFAULT 'active',
+    blocked_reason text,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now()
 );
@@ -51,6 +52,8 @@ CREATE TABLE IF NOT EXISTS dz_personal_mcp_receipts (
     created_at timestamptz NOT NULL DEFAULT now(),
     PRIMARY KEY (goal_id, sequence)
 );
+ALTER TABLE dz_personal_mcp_goals
+    ADD COLUMN IF NOT EXISTS blocked_reason text;
 """
 
 
@@ -67,6 +70,21 @@ def _approved_url(name: str, *, path: str, public_host: str) -> str:
     return url
 
 
+def select_readonly_wake_tool(objective: str, approved: list[str]) -> str | None:
+    """Choose a matching, audited read capability, never a mutation or fallback."""
+    query = objective.lower()
+    candidates = (
+        ("workflow", "workflow.list"),
+        ("task", "tasks.list"),
+        ("runtime", "system.runtime.status"),
+        ("status", "system.runtime.status"),
+    )
+    for keyword, tool in candidates:
+        if keyword in query and tool in approved:
+            return tool
+    return None
+
+
 def require_wake_gate() -> tuple[str, str, str, str, str]:
     required = (
         "DRAGONZPYDER_PERSONAL_MCP_SCHEDULED_ENABLED",
@@ -79,7 +97,12 @@ def require_wake_gate() -> tuple[str, str, str, str, str]:
         raise RuntimeError("Personal MCP scheduling is disabled")
     if os.getenv("DRAGONZPYDER_PERSONAL_MCP_MUTATIONS_ENABLED") == "1":
         raise RuntimeError("Personal writes cannot run on the read-only wake executor")
-    dsn = os.getenv("DRAGONZPYDER_AGENT_DATABASE_URL", "")
+    # The Personal Chat API owns goal creation and status storage. A worker
+    # can also serve unrelated agent jobs whose checkpoint database differs.
+    # Bind the Personal wake DB explicitly to the Chat API's goal database;
+    # never silently persist Personal wakes in the worker's own database.
+    dsn = (os.getenv("DRAGONZPYDER_PERSONAL_MCP_DATABASE_URL")
+           or os.getenv("DRAGONZPYDER_AGENT_DATABASE_URL", ""))
     if not dsn.startswith(("postgresql://", "postgres://")):
         raise RuntimeError("Durable Personal wake PostgreSQL is required")
     service_secret = os.getenv("DRAGONZPYDER_OPERLY_MCP_SERVICE_SECRET", "")
@@ -111,6 +134,11 @@ async def perform_personal_wake(wake: PersonalWakeInput, *, http=None) -> dict:
         raise RuntimeError("Canonical user, session, conversation and goal IDs are required") from None
     dsn, service_secret, agent_secret, operly, dragon = require_wake_gate()
     objective_hash = hashlib.sha256(wake.prompt.encode("utf-8")).hexdigest()
+    # Choose a specific *candidate* from a fixed audited read-only catalog.
+    # It is NOT authority until Operly grants that exact capability.
+    selected_read = select_readonly_wake_tool(
+        wake.prompt, ["workflow.list", "tasks.list", "system.runtime.status"],
+    )
     pool = await asyncpg.create_pool(
         dsn=dsn, min_size=1, max_size=2, timeout=10, command_timeout=150,
     )
@@ -195,15 +223,20 @@ async def perform_personal_wake(wake: PersonalWakeInput, *, http=None) -> dict:
                             "user_id": wake.user_id,
                             "session_id": wake.session_id,
                             "conversation_id": wake.conversation_id,
-                            "query": wake.prompt[:200],
+                            # A free-text objective is a poor search hint for
+                            # Operly's relevance-filtered capability search.
+                            # Exact IDs receive stronger matching, but NEVER
+                            # grant permissions absent from the renewal token.
+                            "query": selected_read or wake.prompt[:200],
                         },
                         timeout=12,
                     )
                     if renewed.status_code in (401, 403):
                         await con.execute(
-                            """UPDATE dz_personal_mcp_goals SET state='blocked',
-                               updated_at=now() WHERE goal_id=$1""",
-                            wake.goal_id,
+                            """UPDATE dz_personal_mcp_goals
+                               SET state='blocked', blocked_reason=$2,
+                                   updated_at=now() WHERE goal_id=$1""",
+                            wake.goal_id, "personal_authority_revoked",
                         )
                         return {"state": "blocked", "next_sequence": wake.sequence,
                                 "model_calls": 0, "reason": "personal_authority_revoked"}
@@ -213,6 +246,41 @@ async def perform_personal_wake(wake: PersonalWakeInput, *, http=None) -> dict:
                     if (not isinstance(data.get("access_token"), str)
                             or not isinstance(data.get("approved_tool_names"), list)):
                         raise RuntimeError("Invalid fresh Personal MCP delegation")
+                    # A service flag alone cannot enforce read-only authority.
+                    # Never pass a renewed mutation capability to the agent.
+                    read_only_names = {
+                        "workflow.list", "system.runtime.status", "tasks.list",
+                    }
+                    approved = sorted(
+                        set(data["approved_tool_names"]) & read_only_names
+                    )
+                    if not approved:
+                        await con.execute(
+                            """UPDATE dz_personal_mcp_goals
+                               SET state='blocked', blocked_reason=$2,
+                                   updated_at=now() WHERE goal_id=$1""",
+                            wake.goal_id, "read_only_tools_unavailable",
+                        )
+                        return {"state":"blocked","next_sequence":wake.sequence,
+                                "model_calls":0,"reason":"read_only_tools_unavailable"}
+                    scheduled_tool_name = (
+                        selected_read if selected_read in approved else None
+                    )
+                    if scheduled_tool_name is None:
+                        await con.execute(
+                            """UPDATE dz_personal_mcp_goals
+                               SET state='blocked', blocked_reason=$2,
+                                   updated_at=now() WHERE goal_id=$1""",
+                            wake.goal_id,
+                            ("unauthorized_requested_read"
+                             if selected_read is not None
+                             else "no_matching_read_only_tool"),
+                        )
+                        return {"state":"blocked","next_sequence":wake.sequence,
+                                "model_calls":0,
+                                "reason": ("unauthorized_requested_read"
+                                           if selected_read is not None
+                                           else "no_matching_read_only_tool")}
                     reply = await http.post(
                         dragon,
                         headers={
@@ -226,7 +294,9 @@ async def perform_personal_wake(wake: PersonalWakeInput, *, http=None) -> dict:
                             "conversation_id": wake.conversation_id,
                             "prompt": wake.prompt,
                             "mcp_access_token": data["access_token"],
-                            "approved_tool_names": data["approved_tool_names"],
+                            "approved_tool_names": approved,
+                            "scheduled_wake": True,
+                            "scheduled_tool_name": scheduled_tool_name,
                         },
                         timeout=100,
                     )
@@ -254,9 +324,20 @@ async def perform_personal_wake(wake: PersonalWakeInput, *, http=None) -> dict:
                     names = result.get("successful_tools", [])
                     if not isinstance(names, list):
                         names = []
-                    if not any(isinstance(item, str) and item.startswith("operly_")
-                               for item in names):
-                        raise RuntimeError("No verified Operly tool receipt in scheduled wake")
+                    expected_alias = "operly_" + scheduled_tool_name.replace(
+                        ".", "_").replace("-", "_").replace(":", "_")
+                    if expected_alias not in names:
+                        # A returned 200 without the required, observed
+                        # read tool is a terminal failure, not an uncertain
+                        # in-flight mutation. No later wake can pass.
+                        await con.execute(
+                            """UPDATE dz_personal_mcp_goals
+                               SET state='blocked', blocked_reason=$2,
+                                   updated_at=now() WHERE goal_id=$1""",
+                            wake.goal_id, "missing_expected_tool_receipt",
+                        )
+                        return {"state":"blocked","next_sequence":wake.sequence,
+                                "model_calls":None,"reason":"missing_expected_tool_receipt"}
                     state = ("completed" if wake.sequence + 1 == wake.total_wakes
                              else "active")
                     if result["status"] != "completed":

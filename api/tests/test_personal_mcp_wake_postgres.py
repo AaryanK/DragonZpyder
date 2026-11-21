@@ -94,6 +94,8 @@ def test_two_sequential_wakes_persist_receipts_and_skip_replays():
         assert outcome1["next_sequence"] == 1
         assert outcome1["tools"] == ["operly_tasks_list"]
         assert len(a.calls) == 2
+        assert a.calls[0][1]["query"] == "tasks.list"
+        assert a.calls[1][1]["scheduled_tool_name"] == "tasks.list"
         b = SimulatedRemote()
         repeated = await perform_personal_wake(first, http=b)
         assert repeated["reason"] == "already_processed"
@@ -124,6 +126,45 @@ def test_two_sequential_wakes_persist_receipts_and_skip_replays():
                 assert all(r["status"] == "completed" for r in receipts)
         finally:
             await pool.close()
+
+    with patch.dict(os.environ, _vars(dsn), clear=False):
+        asyncio.run(run())
+
+
+def test_requested_workflow_read_fails_closed_when_delegation_lacks_it():
+    """Exact tool lookup narrows relevance, but never expands authority."""
+    dsn = os.environ["DRAGONZPYDER_BUDGET_TEST_DSN"]
+    goal_id, user_id, session_id, conversation_id = (str(uuid4()) for _ in range(4))
+
+    async def run():
+        wake = _input(goal_id=goal_id, user_id=user_id,
+                      session_id=session_id, conversation_id=conversation_id,
+                      sequence=0).model_copy(update={
+                          "prompt": "For the next 10 minutes check my Operly workflows"
+                      })
+        remote = SimulatedRemote()  # renewal approves ONLY tasks.list
+        blocked = await perform_personal_wake(wake, http=remote)
+        assert blocked["state"] == "blocked"
+        assert blocked["reason"] == "unauthorized_requested_read"
+        assert blocked["model_calls"] == 0
+        assert len(remote.calls) == 1
+        assert remote.calls[0][1]["query"] == "workflow.list"
+        con = await asyncpg.connect(dsn)
+        try:
+            stored = await con.fetchrow(
+                """SELECT state, blocked_reason, next_sequence
+                   FROM dz_personal_mcp_goals WHERE goal_id=$1""",
+                goal_id,
+            )
+            assert stored["state"] == "blocked"
+            assert stored["blocked_reason"] == "unauthorized_requested_read"
+            assert stored["next_sequence"] == 0
+        finally:
+            await con.close()
+        later = SimulatedRemote()
+        ignored = await perform_personal_wake(wake, http=later)
+        assert ignored["state"] == "blocked"
+        assert later.calls == []
 
     with patch.dict(os.environ, _vars(dsn), clear=False):
         asyncio.run(run())

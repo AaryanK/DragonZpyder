@@ -187,6 +187,27 @@ def build_frontier_agent(model, checkpointer, *, specialist_models=None, synthet
                    "idempotency remain mandatory.")
     if delegated_tools:
         delegated_names = {getattr(item, "name", "") for item in delegated_tools}
+        if {"goal_schedule", "goal_status", "goal_cancel"}.issubset(delegated_names):
+            prompt += (
+                "\nYou have NATIVE DragonZpyder persistent-goal tools. "
+                "When the user explicitly asks you to continue a bounded "
+                "read-only task over time, call goal_schedule with a concise "
+                "objective and the requested interval/count. "
+                "Use goal_status to report evidence, goal_cancel to stop. "
+                "Do not tell users to name Hatchet or request scheduling "
+                "tools from Operly MCP. A scheduled receipt proves only "
+                "dispatch acceptance; final task success requires observed "
+                "wake receipts. Never invent a goal ID or a future outcome."
+            )
+        if {"native_canary_start", "native_canary_status", "native_canary_cancel"}.issubset(delegated_names):
+            prompt += (
+                "\nFor explicit internal scheduler diagnostics ONLY, use "
+                "native_canary_start to schedule exactly TWO wake-ups calling "
+                "the native check_quadratic_gradient_step tool without MCP or "
+                "Operly. Use native_canary_status to verify BOTH durable "
+                "execution receipts. Do not report completion from the "
+                "schedule acknowledgement. native_canary_cancel stops it."
+            )
         if {"operly_search", "operly_execute"}.issubset(delegated_names):
             prompt += ("\nOperly capabilities are read-only, explicitly delegated through "
                        "an expiring lease. Use operly_search before operly_execute. "
@@ -196,8 +217,14 @@ def build_frontier_agent(model, checkpointer, *, specialist_models=None, synthet
             prompt += ("\nThe listed external MCP tools have already been discovered and "
                        "explicitly scoped by the trusted runtime. Invoke relevant MCP tools "
                        "directly by their advertised name; do not assume operly_search or "
-                       "operly_execute exist. Never request wider authorization, execute a "
-                       "mutating capability, or claim outcomes without tool evidence.")
+                       "operly_execute exist. Mutating tools remain governed by "
+                       "Operly approvals and stable request identities. If a tool "
+                       "returns waiting_for_approval or approval_required, stop; "
+                       "tell the user to review the exact action in the approval "
+                       "drawer, and never retry or assert that the write completed. "
+                       "Only report a completed external change after a successful "
+                       "tool receipt or independent readback. Never request wider "
+                       "authorization or claim outcomes without evidence.")
     stress_mode = all(os.getenv(key) == "1" for key in (
         "DRAGONZPYDER_AGENT_STRESS_EVAL_ENABLED",
         "DRAGONZPYDER_AGENT_EVAL_ALLOW_PAID",

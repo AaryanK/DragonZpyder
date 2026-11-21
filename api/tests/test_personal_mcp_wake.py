@@ -31,6 +31,26 @@ def _base():
     }
 
 
+def test_scheduled_read_selects_exact_authorized_capability():
+    from agent_platform.personal_wake import select_readonly_wake_tool
+    capabilities = ["workflow.list", "tasks.list", "system.runtime.status"]
+    assert select_readonly_wake_tool(
+        "Check my Operly workflows every two minutes", capabilities
+    ) == "workflow.list"
+    assert select_readonly_wake_tool(
+        "List my personal tasks", capabilities
+    ) == "tasks.list"
+    assert select_readonly_wake_tool(
+        "Monitor system status", capabilities
+    ) == "system.runtime.status"
+    assert select_readonly_wake_tool(
+        "Delete the invoices", capabilities
+    ) is None
+    assert select_readonly_wake_tool(
+        "Check my workflows", ["tasks.list"]
+    ) is None
+
+
 def test_wake_requires_explicit_gate_and_backend_authority():
     with patch.dict(os.environ, _base(), clear=False):
         dsn, proof, token, source, target = require_wake_gate()
@@ -41,6 +61,21 @@ def test_wake_requires_explicit_gate_and_backend_authority():
         os.environ["DRAGONZPYDER_PERSONAL_MCP_SCHEDULED_ENABLED"] = "0"
         with pytest.raises(RuntimeError, match="disabled"):
             require_wake_gate()
+
+
+def test_wake_database_can_be_bound_to_personal_api_without_overwriting_worker_checkpoints():
+    with patch.dict(os.environ, _base(), clear=False):
+        # A worker may have a different checkpoint database for unrelated
+        # jobs, but Personal wake receipts MUST share the API goal database.
+        os.environ["DRAGONZPYDER_PERSONAL_MCP_DATABASE_URL"] = (
+            "postgresql://fixture.invalid/personal_goal_store"
+        )
+        assert require_wake_gate()[0] == (
+            "postgresql://fixture.invalid/personal_goal_store"
+        )
+        assert os.environ["DRAGONZPYDER_AGENT_DATABASE_URL"] == (
+            "postgresql://fixture.invalid/checkpoints"
+        )
 
 
 def test_wake_rejects_unapproved_host_and_writes():

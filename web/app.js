@@ -252,6 +252,8 @@ function showMessages() {
 }
 
 function showEmptyState() {
+  followingLatest = true;
+  if (jumpLatest) jumpLatest.hidden = true;
   emptyState.hidden = false;
   emptyState.style.removeProperty("display");
   messages.classList.remove("active");
@@ -273,7 +275,7 @@ function messageNode(role, content, { pending = false, error = false, meta = "",
   wrap.className = `message ${role === "user" ? "user" : "assistant"}`;
   const avatar = document.createElement("div");
   avatar.className = "message-avatar";
-  avatar.textContent = role === "user" ? "You" : "DZ";
+  avatar.textContent = role === "user" ? "You" : "✳";
   const body = document.createElement("div");
   body.className = "message-body";
   const label = document.createElement("div");
@@ -287,6 +289,31 @@ function messageNode(role, content, { pending = false, error = false, meta = "",
   // Markdown rendering requires an element attached to the live document.
   // The caller renders saved messages after appending their DOM nodes.
   body.append(label, value);
+  if (role !== "user" && !pending) {
+    // The message content, not an assistant's claims, is what gets copied.
+    // Keep this action independent of any agent execution or retry semantics.
+    const actions = document.createElement("div");
+    actions.className = "dz-message-actions";
+    const copy = document.createElement("button");
+    copy.type = "button";
+    copy.className = "dz-message-copy";
+    copy.setAttribute("aria-label", "Copy assistant response");
+    copy.title = "Copy response";
+    copy.textContent = "Copy";
+    copy.addEventListener("click", async () => {
+      const content = value.innerText || value.textContent || "";
+      try {
+        await navigator.clipboard.writeText(content);
+        copy.textContent = "Copied";
+        setTimeout(() => { if (copy.isConnected) copy.textContent = "Copy"; }, 1800);
+      } catch {
+        copy.textContent = "Copy unavailable";
+        setTimeout(() => { if (copy.isConnected) copy.textContent = "Copy"; }, 1800);
+      }
+    });
+    actions.appendChild(copy);
+    body.appendChild(actions);
+  }
   if (meta) {
     const m = document.createElement("div");
     m.className = "message-meta";
@@ -314,12 +341,36 @@ function appendMessage(role, content, options = {}) {
   const node = messageNode(role, content, options);
   messages.appendChild(node.wrap);
   if (!options.pending) renderMessageContent(node.value, content, role);
-  scrollToBottom();
+  if (role !== "user" && options.pending) node.wrap.classList.add("dz-running");
+  scrollToBottom(role === "user" && !options.restoring);
   return node;
 }
 
-function scrollToBottom() {
-  requestAnimationFrame(() => { chatMain.scrollTop = chatMain.scrollHeight; });
+// Stay attached to the latest turn only while the reader is near the bottom.
+// Reading earlier responses must not be interrupted by asynchronous updates.
+let followingLatest = true;
+let lastProgrammaticScroll = false;
+const jumpLatest = $("dz-jump-latest");
+const atLatest = () => chatMain.scrollHeight - chatMain.scrollTop - chatMain.clientHeight < 120;
+const updateLatestControl = () => {
+  if (!jumpLatest) return;
+  jumpLatest.hidden = followingLatest || !messages.classList.contains("active");
+};
+chatMain.addEventListener("scroll", () => {
+  if (lastProgrammaticScroll) return;
+  followingLatest = atLatest();
+  updateLatestControl();
+}, { passive: true });
+jumpLatest?.addEventListener("click", () => scrollToBottom(true));
+function scrollToBottom(force = false) {
+  if (!force && !followingLatest) { updateLatestControl(); return; }
+  requestAnimationFrame(() => {
+    lastProgrammaticScroll = true;
+    chatMain.scrollTop = chatMain.scrollHeight;
+    followingLatest = true;
+    updateLatestControl();
+    requestAnimationFrame(() => { lastProgrammaticScroll = false; });
+  });
 }
 
 function clearConversationSelection() {
@@ -351,7 +402,25 @@ function renderConversations() {
     conversationList.append(empty);
     return;
   }
+  const now = new Date();
+  const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  let previousGroup = "";
   for (const item of filtered) {
+    // Date grouping uses server timestamps when present. No inferred activity.
+    const stamp = item.updated_at || item.created_at || null;
+    const epoch = typeof stamp === "string" || typeof stamp === "number" ? new Date(stamp).getTime() : NaN;
+    const daysAgo = Number.isFinite(epoch) ? Math.floor((dayStart - epoch) / 86400000) : null;
+    const group = daysAgo === null ? "Conversations"
+      : daysAgo <= 0 ? "Today"
+      : daysAgo === 1 ? "Yesterday"
+      : daysAgo < 7 ? "Previous 7 days" : "Earlier";
+    if (group !== previousGroup) {
+      const heading = document.createElement("div");
+      heading.className = "dz-conversation-group";
+      heading.textContent = group;
+      conversationList.appendChild(heading);
+      previousGroup = group;
+    }
     const button = document.createElement("button");
     button.type = "button";
     button.className = `conversation-button${item.id === state.conversationId ? " active" : ""}`;
@@ -393,9 +462,10 @@ async function openConversation(id) {
     messages.replaceChildren();
     for (const row of Array.isArray(rows) ? rows : []) {
       if (row.role !== "user" && row.role !== "assistant") continue;
-      appendMessage(row.role === "user" ? "user" : "assistant", row.content || "");
+      appendMessage(row.role === "user" ? "user" : "assistant", row.content || "", { restoring: true });
     }
     renderConversations();
+    scrollToBottom(true);
   } catch (error) {
     pending.value.textContent = error.message;
     pending.value.classList.add("error");
@@ -436,6 +506,26 @@ async function sendMessage(message, { companion = false } = {}) {
     const blocker = result.error_code ? String(result.error_code) : "";
     const text = runtimeMessage(result);
     renderMessageContent(pending.value, text);
+    pending.wrap.classList.remove("dz-running");
+    // Add message actions only after the backend has actually returned.
+    if (!pending.body.querySelector(".dz-message-actions")) {
+      const actions = document.createElement("div");
+      actions.className = "dz-message-actions";
+      const copy = document.createElement("button");
+      copy.className = "dz-message-copy";
+      copy.type = "button";
+      copy.setAttribute("aria-label", "Copy assistant response");
+      copy.textContent = "Copy";
+      copy.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(pending.value.innerText || pending.value.textContent || "");
+          copy.textContent = "Copied";
+          setTimeout(() => { if(copy.isConnected) copy.textContent = "Copy"; }, 1800);
+        } catch { copy.textContent = "Copy unavailable"; }
+      });
+      actions.append(copy);
+      pending.body.append(actions);
+    }
     // The server chooses the trusted execution engine; the model cannot
     // declare itself a DragonZpyder harness run in the answer text.
     if (result.dispatch === "dragonzpyder_personal_mcp") {
@@ -458,12 +548,23 @@ async function sendMessage(message, { companion = false } = {}) {
         const failures = Number.isInteger(evidence.failed_tool_count)
           && evidence.failed_tool_count >= 0 && evidence.failed_tool_count <= 100
           ? evidence.failed_tool_count : 0;
-        const receipt = document.createElement("div");
-        receipt.className = "message-meta";
-        receipt.textContent = "Harness tool receipts: " + (names.length ? names.join(", ") : "none") +
-          (failures ? " · Failed tool calls: " + failures : "") +
-          " · Objective not independently verified";
-        pending.body.appendChild(receipt);
+        // Do not label a backend tool receipt as independently verified objective completion.
+        const trace = document.createElement("details");
+        trace.className = "dz-execution-evidence";
+        const summary = document.createElement("summary");
+        summary.textContent = failures ? "Tool execution · " + failures + " failed" : "Tool execution · View receipts";
+        trace.appendChild(summary);
+        const list = document.createElement("ul");
+        for (const name of names) {
+          const li = document.createElement("li");
+          li.textContent = name;
+          list.appendChild(li);
+        }
+        if (names.length) trace.appendChild(list);
+        const note = document.createElement("p");
+        note.textContent = "Backend-reported tool activity only. The overall objective has not been independently verified.";
+        trace.appendChild(note);
+        pending.body.appendChild(trace);
       }
     }
     if (blocker) {
@@ -486,8 +587,23 @@ async function sendMessage(message, { companion = false } = {}) {
       pending.body.appendChild(inline);
     }
     await Promise.all([loadConversations({ restoreLatest: true }), refreshApprovals()]);
+    // MCP tools may request Kernel approval inside the model run. The agent's
+    // visible prose is not a trustworthy approval ID; use only backend rows.
+    if (state.approvals.some(row => row.approval_source === "kernel"
+        && row.conversation_id === state.conversationId)) {
+      const inline = document.createElement("div");
+      inline.className = "approval-inline";
+      inline.textContent = "An Operly action needs your exact approval. ";
+      const review = document.createElement("button");
+      review.type = "button"; review.className = "approve-btn";
+      review.textContent = "Review";
+      review.addEventListener("click", openApprovals);
+      inline.appendChild(review);
+      pending.body.appendChild(inline);
+    }
     return { message: text, approval_required: Boolean(result.approval_id), blocked: Boolean(blocker) };
   } catch (error) {
+    pending.wrap.classList.remove("dz-running");
     pending.value.classList.add("error");
     if (error instanceof ApiError && error.code === "execution_outcome_uncertain") {
       const stable = error.details?.rfc822_message_id ? ` Stable message identity: ${error.details.rfc822_message_id}.` : "";
@@ -517,12 +633,34 @@ async function sendMessage(message, { companion = false } = {}) {
 window.dragonzpyderDelegatePersonalTask = (request) => sendMessage(request, { companion: true });
 
 async function refreshApprovals() {
-  try {
-    const payload = await api("/api/personal-tools/approvals?status=pending", { csrf: false });
-    state.approvals = payload && Array.isArray(payload.approvals) ? payload.approvals : [];
-  } catch (error) {
-    if (error instanceof ApiError && error.status === 401) state.approvals = [];
-    else console.warn("Could not load approvals", error);
+  // Workspace provisioning uses Operly Kernel approvals, not the legacy
+  // Personal-tools approvals table. Both are authenticated same-origin APIs.
+  // No approval can be created or executed merely by rendering a card.
+  const sources = [
+    ["/api/personal-tools/approvals?status=pending", "legacy"],
+    ["/api/kernel/personal/approvals?status=pending", "kernel"],
+  ];
+  const results = await Promise.allSettled(sources.map(async ([path, source]) => {
+    const payload = await api(path, { csrf: false });
+    return (Array.isArray(payload?.approvals) ? payload.approvals : []).map(row => ({
+      ...row, approval_source: source,
+    }));
+  }));
+  // Both legacy and Kernel endpoints may project the SAME KernelApproval.
+  // Deduplicate by immutable approval ID, preferring the Kernel source so
+  // the correct decision/continuation handlers are used for MCP actions.
+  const unique = new Map();
+  const rows = results.flatMap(result => result.status === "fulfilled" ? result.value : []);
+  for (const approval of rows) {
+    const id = typeof approval.id === "string" ? approval.id.trim() : "";
+    if (!id) continue;
+    if (!unique.has(id) || approval.approval_source === "kernel") unique.set(id, approval);
+  }
+  state.approvals = Array.from(unique.values());
+  for (const result of results) {
+    if (result.status === "rejected" && !(result.reason instanceof ApiError && result.reason.status === 401)) {
+      console.warn("Could not load one approval source", result.reason);
+    }
   }
   approvalCount.textContent = String(state.approvals.length);
   approvalCount.hidden = state.approvals.length === 0;
@@ -621,10 +759,10 @@ function closeApprovals() {
 async function rejectAction(approval, button) {
   button.disabled = true;
   try {
-    await api(`/api/personal-tools/approvals/${encodeURIComponent(approval.id)}/decision`, {
-      method: "POST",
-      body: { approved: false },
-    });
+    const decisionPath = approval.approval_source === "kernel"
+      ? `/api/kernel/personal/approvals/${encodeURIComponent(approval.id)}/decision`
+      : `/api/personal-tools/approvals/${encodeURIComponent(approval.id)}/decision`;
+    await api(decisionPath, { method: "POST", body: { approved: false } });
     showToast("Action rejected. Nothing was executed.");
     await refreshApprovals();
   } catch (error) {
@@ -637,6 +775,28 @@ async function rejectAction(approval, button) {
 async function approveAction(approval, button) {
   button.disabled = true;
   try {
+    if (approval.approval_source === "kernel") {
+      // The backend re-opens the frozen, exact approved MCP request from the
+      // Kernel approval row. Neither the model nor the UI may alter arguments.
+      await api(`/api/kernel/personal/approvals/${encodeURIComponent(approval.id)}/decision`, {
+        method: "POST", body: { approved: true },
+      });
+      const executed = await api(`/api/kernel/personal/approvals/${encodeURIComponent(approval.id)}/execute`, {
+        method: "POST", body: {},
+      });
+      if (executed?.status !== "completed" || executed?.workspace_ownership_verified !== true) {
+        throw new ApiError("Workspace creation could not be independently verified; do not repeat it.", {
+          code: "WORKSPACE_VERIFICATION_FAILED",
+        });
+      }
+      const created = executed.result || {};
+      closeApprovals();
+      appendMessage("assistant", `Operly confirmed workspace “${created.name}” was created under your account. Workspace ID: ${created.id}. Ownership verified. Adding workspace records requires separate workspace authorization.`, {
+        meta: "Operly Kernel approval · database readback verified",
+      });
+      await refreshApprovals();
+      return;
+    }
     const decided = await api(`/api/personal-tools/approvals/${encodeURIComponent(approval.id)}/decision`, {
       method: "POST",
       body: { approved: true },

@@ -1,6 +1,9 @@
 import React from "react";
 import { createPortal } from "react-dom";
 import { CommandPalette, QuickAddMenu, WorkspaceHub, SidebarToggle, ModeSwitchConfirm, useModalFocus } from "./WorkspaceControls.jsx";
+import { WorkspaceCenter } from "./WorkspaceCenter.jsx";
+import { VoiceOrb } from "./VoiceOrb.jsx";
+import "./workspace-center.css";
 
 
 /**
@@ -126,7 +129,8 @@ export function PersonalTemplate() {
       </div>
       <div className="sidebar-navigation" aria-label="Navigation">
         <a className="nav-link selected" href="/app" aria-current="page"><span className="nav-glyph" aria-hidden="true">▣</span> Conversations <span className="nav-current">Current</span></a>
-        <a className="nav-link" href="/account"><span className="nav-glyph" aria-hidden="true">◎</span> Account &amp; connections</a>
+        <button type="button" className="nav-link dz-center-nav-link" onClick={() => window.dispatchEvent(new CustomEvent("dragonzpyder:center-open", { detail: { page: "connections" } }))}><span className="nav-glyph" aria-hidden="true">⌘</span> Connections &amp; tools</button>
+        <a className="nav-link" href="/account"><span className="nav-glyph" aria-hidden="true">◎</span> Account &amp; security</a>
       </div>
       <button className="new-chat" id="new-chat"><span aria-hidden="true">＋</span> New chat</button>
       <div className="sidebar-search-wrap"><span aria-hidden="true">⌕</span><input type="search" id="conversation-search" placeholder="Find conversations" aria-label="Find conversations" autoComplete="off"/></div>
@@ -135,6 +139,7 @@ export function PersonalTemplate() {
       <div className="sidebar-spacer"></div>
       <div className="sidebar-footer-label">WORKSPACE</div>
       <WorkspaceHub />
+      <button className="side-action" type="button" onClick={() => window.dispatchEvent(new CustomEvent("dragonzpyder:center-open", { detail: { page: "connections" } }))}><span>Connections &amp; tools</span><span aria-hidden="true">⌘</span></button>
       <button className="side-action" id="approvals-button"><span>Approvals</span><span className="badge-count" id="approval-count" hidden>0</span></button>
       <a className="side-action" href="https://operly.dragonzpyder.xyz/" target="_blank" rel="noreferrer"><span>Open Operly</span><span aria-hidden="true">↗</span></a>
       <a className="side-action" href="/"><span>About DragonZpyder</span><span aria-hidden="true">↗</span></a>
@@ -161,6 +166,7 @@ export function PersonalTemplate() {
         </section>
         <section className="messages" id="messages" aria-live="polite"></section>
       </main>
+      <button type="button" id="dz-jump-latest" className="dz-jump-latest" aria-label="Jump to latest message" hidden><span aria-hidden="true">↓</span> Latest messages</button>
       <footer className="composer-wrap">
         <span id="dictation-feedback" className="dictation-feedback" role="status" aria-live="polite" hidden></span>
         <form className="composer unified-composer" id="composer" aria-label="Chat message composer">
@@ -196,15 +202,11 @@ export function PersonalTemplate() {
     </section>
   </div>
   <CommandPalette />
+  <WorkspaceCenter />
   <ModeSwitchConfirm />
-  <section className="companion-panel" id="companion-panel" role="dialog" aria-modal="true" aria-label="Live companion" hidden>
-    <div className="companion-card"><div className="eyebrow">DragonZpyder / Live companion</div><h2>Let's talk.</h2>
-    <div className="companion-bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
-    <p id="companion-status" role="status" aria-live="polite">Ready</p>
-    <div className="companion-transcript" id="companion-transcript" aria-label="Live transcript"></div>
-    <div className="companion-actions"><button type="button" id="companion-mute" disabled>Mute</button><button type="button" id="companion-end">End conversation</button></div>
-    <p className="companion-foot">Voice is streamed to the provider. Connected actions still require Operly permissions and approvals.</p>
-    </div><audio id="companion-audio" autoPlay playsInline></audio></section>
+  <section className="companion-panel dz-voice-orb-panel" id="companion-panel" role="dialog" aria-modal="true" aria-label="Live companion" hidden>
+    <VoiceOrb />
+  </section>
   <div className="modal-backdrop" id="auth-modal" hidden><section className="modal auth-card" role="dialog" aria-modal="true" aria-labelledby="auth-title"><a className="brand auth-brand" href="/"><img src="/brand-icon.png" alt=""/><span>DragonZpyder</span></a><div className="eyebrow">Private personal runtime</div><h2 id="auth-title">Sign in to your Personal AI</h2><p className="modal-copy">DragonZpyder uses your existing Operly account and converts the session to Personal-only authority before running tasks.</p><form id="login-form" className="login-form"><label>Email<input id="login-email" type="email" autoComplete="email" required/></label><label>Password<input id="login-password" type="password" autoComplete="current-password" required/></label><button className="primary-btn" id="login-button" type="submit">Sign in</button></form><div className="form-error" id="login-error" hidden></div><p className="small-copy">New to DragonZpyder? <a href="/account?mode=signup">Create an account</a> · <a href="/account">Continue with Google</a> · <a href="/account?mode=forgot">Forgot password?</a></p></section></div>
   <div className="drawer-backdrop" id="approvals-drawer" hidden><aside className="drawer" role="dialog" aria-modal="true" aria-labelledby="approvals-title"><div className="drawer-head"><div><div className="eyebrow">Human boundary</div><h2 id="approvals-title">Pending approvals</h2></div><button className="icon-btn" id="close-approvals" aria-label="Close approvals">×</button></div><p className="modal-copy">Review the exact action and content before allowing DragonZpyder to execute it.</p><div id="approval-list" className="approval-list"></div></aside></div>
   <div className="menu" id="profile-menu" hidden><div className="menu-title" id="session-label">Personal session</div><a className="menu-account-link" href="/account">My account & connections ↗</a><button id="logout-button">Sign out</button></div>
