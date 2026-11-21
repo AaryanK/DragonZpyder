@@ -252,6 +252,8 @@ function showMessages() {
 }
 
 function showEmptyState() {
+  followingLatest = true;
+  if (jumpLatest) jumpLatest.hidden = true;
   emptyState.hidden = false;
   emptyState.style.removeProperty("display");
   messages.classList.remove("active");
@@ -273,7 +275,7 @@ function messageNode(role, content, { pending = false, error = false, meta = "",
   wrap.className = `message ${role === "user" ? "user" : "assistant"}`;
   const avatar = document.createElement("div");
   avatar.className = "message-avatar";
-  avatar.textContent = role === "user" ? "You" : "DZ";
+  avatar.textContent = role === "user" ? "You" : "✳";
   const body = document.createElement("div");
   body.className = "message-body";
   const label = document.createElement("div");
@@ -287,6 +289,31 @@ function messageNode(role, content, { pending = false, error = false, meta = "",
   // Markdown rendering requires an element attached to the live document.
   // The caller renders saved messages after appending their DOM nodes.
   body.append(label, value);
+  if (role !== "user" && !pending) {
+    // The message content, not an assistant's claims, is what gets copied.
+    // Keep this action independent of any agent execution or retry semantics.
+    const actions = document.createElement("div");
+    actions.className = "dz-message-actions";
+    const copy = document.createElement("button");
+    copy.type = "button";
+    copy.className = "dz-message-copy";
+    copy.setAttribute("aria-label", "Copy assistant response");
+    copy.title = "Copy response";
+    copy.textContent = "Copy";
+    copy.addEventListener("click", async () => {
+      const content = value.innerText || value.textContent || "";
+      try {
+        await navigator.clipboard.writeText(content);
+        copy.textContent = "Copied";
+        setTimeout(() => { if (copy.isConnected) copy.textContent = "Copy"; }, 1800);
+      } catch {
+        copy.textContent = "Copy unavailable";
+        setTimeout(() => { if (copy.isConnected) copy.textContent = "Copy"; }, 1800);
+      }
+    });
+    actions.appendChild(copy);
+    body.appendChild(actions);
+  }
   if (meta) {
     const m = document.createElement("div");
     m.className = "message-meta";
@@ -314,12 +341,36 @@ function appendMessage(role, content, options = {}) {
   const node = messageNode(role, content, options);
   messages.appendChild(node.wrap);
   if (!options.pending) renderMessageContent(node.value, content, role);
-  scrollToBottom();
+  if (role !== "user" && options.pending) node.wrap.classList.add("dz-running");
+  scrollToBottom(role === "user" && !options.restoring);
   return node;
 }
 
-function scrollToBottom() {
-  requestAnimationFrame(() => { chatMain.scrollTop = chatMain.scrollHeight; });
+// Stay attached to the latest turn only while the reader is near the bottom.
+// Reading earlier responses must not be interrupted by asynchronous updates.
+let followingLatest = true;
+let lastProgrammaticScroll = false;
+const jumpLatest = $("dz-jump-latest");
+const atLatest = () => chatMain.scrollHeight - chatMain.scrollTop - chatMain.clientHeight < 120;
+const updateLatestControl = () => {
+  if (!jumpLatest) return;
+  jumpLatest.hidden = followingLatest || !messages.classList.contains("active");
+};
+chatMain.addEventListener("scroll", () => {
+  if (lastProgrammaticScroll) return;
+  followingLatest = atLatest();
+  updateLatestControl();
+}, { passive: true });
+jumpLatest?.addEventListener("click", () => scrollToBottom(true));
+function scrollToBottom(force = false) {
+  if (!force && !followingLatest) { updateLatestControl(); return; }
+  requestAnimationFrame(() => {
+    lastProgrammaticScroll = true;
+    chatMain.scrollTop = chatMain.scrollHeight;
+    followingLatest = true;
+    updateLatestControl();
+    requestAnimationFrame(() => { lastProgrammaticScroll = false; });
+  });
 }
 
 function clearConversationSelection() {
@@ -351,7 +402,25 @@ function renderConversations() {
     conversationList.append(empty);
     return;
   }
+  const now = new Date();
+  const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  let previousGroup = "";
   for (const item of filtered) {
+    // Date grouping uses server timestamps when present. No inferred activity.
+    const stamp = item.updated_at || item.created_at || null;
+    const epoch = typeof stamp === "string" || typeof stamp === "number" ? new Date(stamp).getTime() : NaN;
+    const daysAgo = Number.isFinite(epoch) ? Math.floor((dayStart - epoch) / 86400000) : null;
+    const group = daysAgo === null ? "Conversations"
+      : daysAgo <= 0 ? "Today"
+      : daysAgo === 1 ? "Yesterday"
+      : daysAgo < 7 ? "Previous 7 days" : "Earlier";
+    if (group !== previousGroup) {
+      const heading = document.createElement("div");
+      heading.className = "dz-conversation-group";
+      heading.textContent = group;
+      conversationList.appendChild(heading);
+      previousGroup = group;
+    }
     const button = document.createElement("button");
     button.type = "button";
     button.className = `conversation-button${item.id === state.conversationId ? " active" : ""}`;
@@ -393,9 +462,10 @@ async function openConversation(id) {
     messages.replaceChildren();
     for (const row of Array.isArray(rows) ? rows : []) {
       if (row.role !== "user" && row.role !== "assistant") continue;
-      appendMessage(row.role === "user" ? "user" : "assistant", row.content || "");
+      appendMessage(row.role === "user" ? "user" : "assistant", row.content || "", { restoring: true });
     }
     renderConversations();
+    scrollToBottom(true);
   } catch (error) {
     pending.value.textContent = error.message;
     pending.value.classList.add("error");
@@ -436,6 +506,26 @@ async function sendMessage(message, { companion = false } = {}) {
     const blocker = result.error_code ? String(result.error_code) : "";
     const text = runtimeMessage(result);
     renderMessageContent(pending.value, text);
+    pending.wrap.classList.remove("dz-running");
+    // Add message actions only after the backend has actually returned.
+    if (!pending.body.querySelector(".dz-message-actions")) {
+      const actions = document.createElement("div");
+      actions.className = "dz-message-actions";
+      const copy = document.createElement("button");
+      copy.className = "dz-message-copy";
+      copy.type = "button";
+      copy.setAttribute("aria-label", "Copy assistant response");
+      copy.textContent = "Copy";
+      copy.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(pending.value.innerText || pending.value.textContent || "");
+          copy.textContent = "Copied";
+          setTimeout(() => { if(copy.isConnected) copy.textContent = "Copy"; }, 1800);
+        } catch { copy.textContent = "Copy unavailable"; }
+      });
+      actions.append(copy);
+      pending.body.append(actions);
+    }
     // The server chooses the trusted execution engine; the model cannot
     // declare itself a DragonZpyder harness run in the answer text.
     if (result.dispatch === "dragonzpyder_personal_mcp") {
@@ -458,12 +548,23 @@ async function sendMessage(message, { companion = false } = {}) {
         const failures = Number.isInteger(evidence.failed_tool_count)
           && evidence.failed_tool_count >= 0 && evidence.failed_tool_count <= 100
           ? evidence.failed_tool_count : 0;
-        const receipt = document.createElement("div");
-        receipt.className = "message-meta";
-        receipt.textContent = "Harness tool receipts: " + (names.length ? names.join(", ") : "none") +
-          (failures ? " · Failed tool calls: " + failures : "") +
-          " · Objective not independently verified";
-        pending.body.appendChild(receipt);
+        // Do not label a backend tool receipt as independently verified objective completion.
+        const trace = document.createElement("details");
+        trace.className = "dz-execution-evidence";
+        const summary = document.createElement("summary");
+        summary.textContent = failures ? "Tool execution · " + failures + " failed" : "Tool execution · View receipts";
+        trace.appendChild(summary);
+        const list = document.createElement("ul");
+        for (const name of names) {
+          const li = document.createElement("li");
+          li.textContent = name;
+          list.appendChild(li);
+        }
+        if (names.length) trace.appendChild(list);
+        const note = document.createElement("p");
+        note.textContent = "Backend-reported tool activity only. The overall objective has not been independently verified.";
+        trace.appendChild(note);
+        pending.body.appendChild(trace);
       }
     }
     if (blocker) {
@@ -502,6 +603,7 @@ async function sendMessage(message, { companion = false } = {}) {
     }
     return { message: text, approval_required: Boolean(result.approval_id), blocked: Boolean(blocker) };
   } catch (error) {
+    pending.wrap.classList.remove("dz-running");
     pending.value.classList.add("error");
     if (error instanceof ApiError && error.code === "execution_outcome_uncertain") {
       const stable = error.details?.rfc822_message_id ? ` Stable message identity: ${error.details.rfc822_message_id}.` : "";

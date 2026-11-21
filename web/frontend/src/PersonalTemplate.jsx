@@ -165,6 +165,7 @@ export function PersonalTemplate() {
         </section>
         <section className="messages" id="messages" aria-live="polite"></section>
       </main>
+      <button type="button" id="dz-jump-latest" className="dz-jump-latest" aria-label="Jump to latest message" hidden><span aria-hidden="true">↓</span> Latest messages</button>
       <footer className="composer-wrap">
         <span id="dictation-feedback" className="dictation-feedback" role="status" aria-live="polite" hidden></span>
         <form className="composer unified-composer" id="composer" aria-label="Chat message composer">
