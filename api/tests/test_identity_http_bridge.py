@@ -115,3 +115,32 @@ def test_valid_code_token_exchange_never_trusts_request_subject(monkeypatch):
         assert result.status_code == 200
         assert result.json() == {"access_token": "signed-synthetic-token", "token_type": "Bearer", "expires_in": 300, "scope": "operly:access"}
         assert result.headers["cache-control"] == "no-store"
+
+
+def test_refresh_grant_routes_only_to_rotating_refresh_handler(monkeypatch):
+    monkeypatch.setenv("DRAGONZPYDER_IDENTITY_HTTP_ENABLED", "1")
+    @asynccontextmanager
+    async def db():
+        yield object()
+    class DummyIssuer:
+        @classmethod
+        def from_environment(cls):
+            return cls()
+    async def refresh(conn, signer, **kwargs):
+        assert kwargs["client_id"] == "operly-web"
+        assert kwargs["refresh_token"] == "r" * 64
+        return {"access_token": "new-synthetic-access", "token_type": "Bearer",
+                "expires_in": 300, "scope": "openid offline_access",
+                "refresh_token": "s" * 64}
+    monkeypatch.setattr(bridge, "_identity_db", db)
+    monkeypatch.setattr(bridge, "SigningIdentity", DummyIssuer)
+    monkeypatch.setattr(bridge, "exchange_refresh", refresh)
+    with TestClient(app) as c:
+        data = {"grant_type": "refresh_token", "refresh_token": "r" * 64,
+                "client_id": "operly-web", "redirect_uri": REDIRECT}
+        response = c.post("/identity/v1/token", data=data)
+        assert response.status_code == 200
+        assert response.json()["refresh_token"] == "s" * 64
+        assert "id_token" not in response.json()
+        invalid = c.post("/identity/v1/token", data={**data, "sub": "other-person"})
+        assert invalid.status_code == 400
