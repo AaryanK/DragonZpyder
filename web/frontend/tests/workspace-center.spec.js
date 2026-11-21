@@ -89,7 +89,7 @@ test("Tasks lists actual Personal workflow definitions and runs, then invokes au
   });
   const center = page.getByRole("dialog",{name:"Your DragonZpyder"});
   await center.getByRole("button",{name:"Tasks",exact:true}).click();
-  await expect(center.getByText("Weekly review")).toBeVisible();
+  await expect(center.getByText("Weekly review").first()).toBeVisible();
   await expect(center.getByText("Recent execution")).toBeVisible();
   page.once("dialog", confirmation => confirmation.accept());
   await center.getByRole("button",{name:"Run now"}).click();
