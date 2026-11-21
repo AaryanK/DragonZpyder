@@ -295,7 +295,6 @@ export function VoiceOrb() {
     session === "connecting" ? "CONNECTING" : "PERSONAL VOICE";
 
   return <div className="dz-voice-orb-shell" data-connected={connected} data-session={session}>
-    <VoiceOrbArtwork level={level} activity={session} />
     <div className="dz-voice-orb-vignette" aria-hidden="true"/>
     <div className="dz-voice-orb-ui">
       <header className="dz-voice-orb-head">
@@ -304,10 +303,19 @@ export function VoiceOrb() {
       </header>
       <main className="dz-voice-orb-main">
         <p className="dz-voice-orb-eyebrow">SEE. HEAR. SPEAK. CREATE.</p>
-        <div className="dz-voice-orb-space" aria-hidden="true"/>
-        <div className="dz-voice-orb-conversation">
-          <h2>{connected ? "Your intelligence, in conversation." : session === "error" ? "Voice connection unavailable." : "Your intelligence, in conversation."}</h2>
-          <p id="companion-status" role="status" aria-live="polite">{status}</p>
+        <div className="dz-voice-orb-space" aria-hidden="true">
+          <VoiceOrbArtwork level={level} activity={session} />
+        </div>
+        <div className={"dz-voice-orb-conversation" + (session === "error" ? " is-error" : "")}>
+          {session === "error"
+            ? <div className="dz-voice-error-message" role="alert">
+                <h2>Voice isn't available yet</h2>
+                <p id="companion-status" role="status" aria-live="polite">{status}</p>
+              </div>
+            : <>
+                <h2>Your intelligence, in conversation.</h2>
+                <p id="companion-status" role="status" aria-live="polite">{status}</p>
+              </>}
         </div>
       </main>
       <footer className="dz-voice-orb-footer">
@@ -323,7 +331,7 @@ export function VoiceOrb() {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 9h8M8 13h8M8 17h5"/></svg>
           </button>
         </div>
-        <button type="button" id="companion-end" className="dz-voice-orb-end" aria-label="End conversation">End conversation <span aria-hidden="true">↗</span></button>
+        <button type="button" id="companion-end" className="dz-voice-orb-end" aria-label={session === "error" ? "Back to chat" : "End conversation"}>{session === "error" ? "Back to chat" : "End conversation"} <span aria-hidden="true">↗</span></button>
       </footer>
       <section className={"dz-voice-orb-transcript-panel" + (transcriptOpen ? " is-open" : "")} aria-label="Live voice transcript" aria-hidden={!transcriptOpen}>
         <div className="dz-voice-orb-transcript-heading">Live transcript <button type="button" onClick={() => setTranscriptOpen(false)} aria-label="Close transcript">×</button></div>
