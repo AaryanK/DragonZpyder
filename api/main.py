@@ -26,6 +26,7 @@ from agent_platform.router import router as agent_router
 from identity.router import router as identity_public_keys_router
 from identity.http_bridge import router as identity_http_bridge_router
 from identity.login_http import router as identity_login_router
+from identity.provider_http import router as identity_provider_router
 from agent_platform.personal_bridge import router as operly_personal_bridge_router
 from agent_platform.openrouter_spend_guard import PaidTestBudgetError, require_paid_test_cap
 from agent_platform.provider_pacing import AgentProviderPacer
@@ -125,6 +126,7 @@ app = FastAPI(title="DragonZpyder API", docs_url=None, redoc_url=None, openapi_u
 app.include_router(identity_public_keys_router)
 app.include_router(identity_http_bridge_router)
 app.include_router(identity_login_router)
+app.include_router(identity_provider_router)
 app.include_router(agent_router)
 app.include_router(operly_personal_bridge_router)
 
