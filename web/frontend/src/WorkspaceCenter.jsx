@@ -89,6 +89,10 @@ export function WorkspaceCenter() {
     try {
       const result = await request(routes[key]);
       setData(state => ({ ...state, [key]: result }));
+      if (key === "identity") {
+        try { setSessions(asArray(await request("/api/auth/sessions"))); }
+        catch { setSessions([]); }
+      }
     } catch (error) {
       setErrors(state => ({ ...state, [key]: errorText(error) }));
     } finally {
@@ -332,7 +336,13 @@ export function WorkspaceCenter() {
         <strong>{identity.display_name || "Your account"}</strong><small>{identity.email || "Email unavailable"}</small>
         <p>{asArray(identity.auth_identities).map(i=>providerName(i.provider)).join(" · ") || "No linked sign-in providers listed"}</p>
       </div><a className="dz-center-small-button" href="/account">Manage account ↗</a></div></div>}
-    <div className="dz-center-info">Sign-in with Google is separate from authorizing Gmail or Calendar access. For session and password management, use the existing Account page.</div>
+    <div className="dz-center-section-header"><h3>Active sessions</h3><span className="dz-center-muted">Reported by the identity service</span></div>
+    {sessions.length ? <div className="dz-center-list">{sessions.map((session,index) =>
+      <div className="dz-center-row" key={session.id || index}><span className="dz-center-provider" aria-hidden="true">◇</span>
+      <div className="dz-center-row-body"><strong>{session.device || session.device_name || "Session"}</strong>
+      <small>{session.scope || "Scope unavailable"}{session.current ? " · Current session" : ""}</small></div><Tag>{session.current ? "Current" : "Active"}</Tag>
+      </div>)}</div> : <Empty title="Session details unavailable">No session details were returned by the identity service.</Empty>}
+    <div className="dz-center-info">Google sign-in is separate from authorizing Gmail or Calendar. For password changes and sign-out, use the existing Account page.</div>
   </div>;
 
   const renderTasks = () => {
