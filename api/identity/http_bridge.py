@@ -93,7 +93,16 @@ async def browser_authorize(payload: AuthorizeInput, request: Request):
     query = urlencode({"code": grant.code, "state": payload.state})
     location = urlunsplit((parsed.scheme, parsed.netloc, parsed.path,
                            (parsed.query + "&" if parsed.query else "") + query, ""))
-    return RedirectResponse(location, status_code=303, headers={"Cache-Control": "no-store"})
+    if "application/json" in request.headers.get("accept", ""):
+        # Same-origin consent UI needs an explicit redirect URL because fetch()
+        # cannot expose a cross-origin 303 Location to JavaScript.
+        return JSONResponse(
+            {"redirect_url": location},
+            headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
+        )
+    return RedirectResponse(location, status_code=303, headers={
+        "Cache-Control": "no-store", "Referrer-Policy": "no-referrer",
+    })
 
 
 @router.post("/token", include_in_schema=False)
