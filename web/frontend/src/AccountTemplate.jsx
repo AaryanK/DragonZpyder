@@ -1,10 +1,13 @@
 import React from "react";
+import { WorkspaceCenter } from "./WorkspaceCenter.jsx";
+import "./workspace-center.css";
 
 // Layout and copy are the existing DragonZpyder design, now authored as JSX.
 // Do not reintroduce the former static HTML templates.
 export function AccountTemplate() {
   return (
     <>
+      <WorkspaceCenter />
 
 <header className="top"><a href="/" className="brand"><img alt="" src="/brand-icon.png"/>DragonZpyder</a><a href="/app">Personal AI <span aria-hidden="true">↗</span></a></header>
 <main>
@@ -46,7 +49,7 @@ export function AccountTemplate() {
 <div id="linked-identities" className="identity-list"></div><p className="footnote">Google sign-in does not automatically grant Gmail or Calendar access. Connected services require separate authorization.</p></section>
 <section className="dz-account-group" id="dz-connections"><div className="dz-account-group-heading"><div><span className="eyebrow">03 / CAPABILITIES</span><h3>Connections &amp; tools</h3><p className="muted small">Personal integrations and agent capabilities are permissioned independently of your login.</p></div><span className="dz-account-symbol" aria-hidden="true">⌘</span></div>
 <div className="dz-account-resource-list">
-<div className="dz-account-resource"><span className="dz-account-resource-mark" aria-hidden="true">G</span><div><strong>Google services</strong><small>Gmail and Calendar require their own consent.</small></div><span className="dz-account-resource-status">Separate access</span></div>
+<div className="dz-account-resource"><span className="dz-account-resource-mark" aria-hidden="true">G</span><div><strong>Connected services</strong><small>Authorize, test and revoke Google, Canva and other supported tools independently of sign-in.</small></div><button className="dz-account-resource-action" type="button" onClick={() => window.dispatchEvent(new CustomEvent("dragonzpyder:center-open", { detail: { page: "connections" } }))}>Manage connections ↗</button></div>
 <div className="dz-account-resource"><span className="dz-account-resource-mark" aria-hidden="true">◈</span><div><strong>Agent capabilities</strong><small>View supported actions and approvals from the workspace.</small></div><a href="/app">Open workspace ↗</a></div>
 </div><p className="footnote">Connection status and revocation controls will appear here only after DragonZpyder's dedicated connector API is available. No provider is shown as connected without verification.</p></section>
 <section className="dz-account-group" id="dz-workspaces"><div className="dz-account-group-heading"><div><span className="eyebrow">04 / SCOPE</span><h3>Your workspaces</h3><p className="muted small">Business membership never follows automatically from your personal login.</p></div><span className="dz-account-symbol" aria-hidden="true">▦</span></div>
