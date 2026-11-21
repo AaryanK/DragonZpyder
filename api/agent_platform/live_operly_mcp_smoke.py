@@ -60,6 +60,20 @@ def _preflight() -> tuple[str, str, str]:
     return parsed.geturl(), key, dsn
 
 
+def _strict_json_object_pairs(pairs):
+    """Reject ambiguous keys at every nesting level of untrusted JSON."""
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate JSON key")
+        result[key] = value
+    return result
+
+
+def _parse_unambiguous_json(content):
+    return json.loads(content, object_pairs_hook=_strict_json_object_pairs)
+
+
 def _readback_verified(messages: list) -> tuple[bool, list[str]]:
     receipts = [m for m in messages if isinstance(m, ToolMessage)]
     tool_names = [str(m.name) for m in receipts]
@@ -74,7 +88,7 @@ def _readback_verified(messages: list) -> tuple[bool, list[str]]:
         if getattr(receipt, "status", "success") != "success":
             return False, tool_names
         try:
-            payload = json.loads(receipt.content)
+            payload = _parse_unambiguous_json(receipt.content)
         except (TypeError, ValueError):
             return False, tool_names
         if not isinstance(payload, dict) or payload.get("error"):
@@ -107,21 +121,13 @@ def _final_answer_matches_receipts(messages: list) -> bool:
         if receipt.name in by_name or receipt.name not in TOOL_ALIASES:
             return False
         try:
-            by_name[receipt.name] = json.loads(receipt.content)
+            by_name[receipt.name] = _parse_unambiguous_json(receipt.content)
         except (TypeError, ValueError):
             return False
     # Duplicate JSON keys are ambiguous across parsers and must not be
     # accepted as verified user-facing facts (last-key-wins is unsafe).
-    def reject_duplicate_keys(pairs):
-        result = {}
-        for key, value in pairs:
-            if key in result:
-                raise ValueError("duplicate JSON key")
-            result[key] = value
-        return result
-
     try:
-        answer = json.loads(messages[-1].content, object_pairs_hook=reject_duplicate_keys)
+        answer = _parse_unambiguous_json(messages[-1].content)
     except (TypeError, ValueError):
         return False
     if not isinstance(answer, dict) or set(answer) != {"workspace", "modules"}:
