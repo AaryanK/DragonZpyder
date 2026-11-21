@@ -79,7 +79,12 @@ def require_wake_gate() -> tuple[str, str, str, str, str]:
         raise RuntimeError("Personal MCP scheduling is disabled")
     if os.getenv("DRAGONZPYDER_PERSONAL_MCP_MUTATIONS_ENABLED") == "1":
         raise RuntimeError("Personal writes cannot run on the read-only wake executor")
-    dsn = os.getenv("DRAGONZPYDER_AGENT_DATABASE_URL", "")
+    # The Personal Chat API owns goal creation and status storage. A worker
+    # can also serve unrelated agent jobs whose checkpoint database differs.
+    # Bind the Personal wake DB explicitly to the Chat API's goal database;
+    # never silently persist Personal wakes in the worker's own database.
+    dsn = (os.getenv("DRAGONZPYDER_PERSONAL_MCP_DATABASE_URL")
+           or os.getenv("DRAGONZPYDER_AGENT_DATABASE_URL", ""))
     if not dsn.startswith(("postgresql://", "postgres://")):
         raise RuntimeError("Durable Personal wake PostgreSQL is required")
     service_secret = os.getenv("DRAGONZPYDER_OPERLY_MCP_SERVICE_SECRET", "")

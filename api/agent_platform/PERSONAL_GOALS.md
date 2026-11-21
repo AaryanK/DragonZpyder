@@ -23,6 +23,12 @@ identity and MCP permission authority; users do not name Hatchet.
 
 This is not deployed or production-accepted merely by merging source.
 
+0. Bind the worker's `DRAGONZPYDER_PERSONAL_MCP_DATABASE_URL` to the
+   SAME DATABASE as the Personal API's `DRAGONZPYDER_AGENT_DATABASE_URL`.
+   Use a Railway reference to the API variable rather than copying a DSN.
+   Do not replace the worker's general agent-checkpoint DSN because it may
+   serve independent tasks. A 2026-11-21 live canary demonstrated that a
+   mismatch makes Hatchet wake tasks fail on `dz_personal_mcp_goals`.
 1. Apply `migrations/20261121_personal_goal_receipts.sql` to the
    durable PostgreSQL database shared by API and worker.
 2. Configure the production API with `HATCHET_CLIENT_TOKEN` and its private
