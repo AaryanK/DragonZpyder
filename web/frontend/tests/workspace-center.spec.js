@@ -103,3 +103,25 @@ test("without available capability, Tasks doesn't pretend scheduled work is enab
   await expect(center.getByText("Personal workflows unavailable")).toBeVisible();
   await expect(center.getByRole("button",{name:"Run now"})).toHaveCount(0);
 });
+
+test("workspace creation is explicit and uses the existing authenticated endpoint", async ({page}) => {
+  let created = null;
+  await prepare(page, async (path, method, route) => {
+    if (path === "/api/auth/workspaces" && method === "GET") {
+      await route.fulfill(json([])); return true;
+    }
+    if (path === "/api/auth/workspaces" && method === "POST") {
+      created = route.request().postDataJSON();
+      await route.fulfill(json({ok:true,workspace:{id:"ws-1",name:created.name,role:"owner"}})); return true;
+    }
+    return false;
+  });
+  const center = page.getByRole("dialog",{name:"Your DragonZpyder"});
+  await center.getByRole("button",{name:"Workspaces",exact:true}).click();
+  await expect(center.getByText("No business workspaces")).toBeVisible();
+  await center.getByRole("textbox",{name:"Create a workspace"}).fill("Demo organization");
+  page.once("dialog", confirmation => confirmation.accept());
+  await center.getByRole("button",{name:"Create",exact:true}).click();
+  await expect.poll(() => created?.name).toBe("Demo organization");
+  await expect(center.getByText("Demo organization")).toBeVisible();
+});
