@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS identity_authorization_codes (
     client_id VARCHAR(100) NOT NULL REFERENCES identity_oauth_clients(client_id) ON DELETE RESTRICT,
     redirect_uri TEXT NOT NULL,
     pkce_s256 VARCHAR(43) NOT NULL,
+    nonce VARCHAR(128),
     scope TEXT NOT NULL,
     audience VARCHAR(150) NOT NULL,
     expires_at TIMESTAMPTZ NOT NULL,
