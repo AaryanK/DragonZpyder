@@ -199,6 +199,19 @@ def build_frontier_agent(model, checkpointer, *, specialist_models=None, synthet
                 "dispatch acceptance; final task success requires observed "
                 "wake receipts. Never invent a goal ID or a future outcome."
             )
+        if {"graph_schedule", "graph_status", "graph_cancel"}.issubset(delegated_names):
+            prompt += (
+                "\nFor explicit multi-step persistent read-only work, use "
+                "graph_schedule with 4-6 typed steps: independently authorized "
+                "MCP read calls, a compose step depending on every read, "
+                "then a verify step depending on compose. The native graph "
+                "executor runs these on independent Hatchet wake-ups and "
+                "stores typed snapshots and source digests in PostgreSQL. "
+                "Never claim external mutation, downloadable files, arbitrary "
+                "code, parallel execution or factual verification. Use "
+                "graph_status for receipt-backed completion; goal_schedule "
+                "still exists for single repeated read checks."
+            )
         if {"native_canary_start", "native_canary_status", "native_canary_cancel"}.issubset(delegated_names):
             prompt += (
                 "\nFor explicit internal scheduler diagnostics ONLY, use "
