@@ -163,6 +163,9 @@ test("identical legacy and Kernel approval IDs render once with Kernel authority
   await expect(page.locator("#approvals-drawer")).toBeVisible();
   await expect(page.locator("#approval-list .approval-card")).toHaveCount(1);
   await expect(page.locator("#approval-count")).toHaveText("1");
+  // Mocked login does not set a real CSRF cookie. Exercise the POST path
+  // with a synthetic same-origin token; production still checks it server-side.
+  await page.evaluate(() => { document.cookie = "operly_csrf=ui-fixture; path=/"; });
   // The preferred Kernel source must own the actionable button, not legacy.
   let decisionPath = "";
   await page.route("**/api/kernel/personal/approvals/*/decision", async route => {
