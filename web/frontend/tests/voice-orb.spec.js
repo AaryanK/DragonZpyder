@@ -23,6 +23,8 @@ test("live voice uses React SVG, not the old imperative canvas or a copied HTML 
   const panel = page.getByRole("dialog", { name:"Live companion" });
   await expect(panel).toBeVisible();
   await expect(panel.locator(".dz-voice-art-svg")).toBeVisible();
+  // Real product logo, not a generated placeholder or decorative CSS circle.
+  await expect(panel.locator("img.dz-voice-brandmark")).toHaveAttribute("src", "/brand-icon.png");
   await expect(panel.locator(".dz-voice-orb-shell canvas")).toHaveCount(0);
   await expect(panel.locator("iframe")).toHaveCount(0);
   await expect(panel.locator(".dz-voice-fluid-ribbons path")).toHaveCount(24);
@@ -94,5 +96,18 @@ test("native SVG voice view fits phone without horizontal overflow", async ({ pa
   }));
   expect(bounds.scroll).toBeLessThanOrEqual(bounds.screen + 1);
   expect(bounds.artwork).toBeLessThanOrEqual(bounds.screen + 1);
+  const controls = await panel.locator(".dz-voice-orb-controls").boundingBox();
+  const end = await panel.getByRole("button", { name:"End conversation" }).boundingBox();
+  expect(controls).not.toBeNull();
+  expect(end).not.toBeNull();
+  // The compact close action must sit beneath the main controls, never cover them.
+  expect(end.y).toBeGreaterThanOrEqual(controls.y + controls.height - 2);
+  const style = await panel.getByRole("button", { name:"End conversation" }).evaluate(button => {
+    const css = getComputedStyle(button);
+    return { background: css.backgroundColor, fontSize: parseFloat(css.fontSize), width: button.getBoundingClientRect().width };
+  });
+  expect(style.background).not.toBe("rgb(238, 234, 225)");
+  expect(style.fontSize).toBeLessThan(14);
+  expect(style.width).toBeLessThan(200);
   await panel.getByRole("button", { name:"End conversation" }).click();
 });
