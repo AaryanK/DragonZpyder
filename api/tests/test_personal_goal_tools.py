@@ -50,7 +50,7 @@ def test_rejects_too_frequent_scheduling():
     schedule = personal_goal_tools(**_ids())[0]
     with patch("agent_platform.personal_goal_tools._schedule_gate",
                return_value="postgresql://fake"):
-        reply = await schedule.ainvoke({
+        reply = asyncio.run(schedule.ainvoke({
             "objective": "Read workflow status",
             "interval_minutes": 1, "occurrences": 5,
         }))
