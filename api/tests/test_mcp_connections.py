@@ -378,3 +378,66 @@ def test_real_authlib_client_constructs_pkce_s256_and_resource():
     assert len(params["code_challenge"][0]) == 43
     assert params["resource"] == ["https://archive.example.com/mcp"]
     assert "code_verifier" not in params
+
+
+
+def test_real_http_browser_csrf_origin_and_token_non_disclosure(manager, monkeypatch):
+    """Actual FastAPI dispatch around existing identity-bound session verifier."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from contextlib import asynccontextmanager
+    from identity.sessions import SessionDenied
+    from agent_platform import mcp_connection_http as routes
+
+    service, _ = manager
+    monkeypatch.setenv("DRAGONZPYDER_IDENTITY_ISSUER", "https://identity.example.com")
+
+    @asynccontextmanager
+    async def fake_identity_db():
+        yield object()
+
+    async def session(db, *, secret, csrf=None, require_csrf=False):
+        if secret != "s" * 40 or (require_csrf and csrf != "real-csrf-value"):
+            raise SessionDenied("Bad session or csrf")
+        return "owner-one"
+
+    monkeypatch.setattr(routes, "_identity_db", fake_identity_db)
+    monkeypatch.setattr(routes, "resolve_browser_session", session)
+    app = FastAPI()
+    app.state.mcp_connections = service
+    app.include_router(routes.router)
+    client = TestClient(app, base_url="https://identity.example.com")
+    client.cookies.set("__Host-dz_identity", "s" * 40)
+    path = "/internal/mcp/connections/archive/start"
+    body = {"label": "Work"}
+    assert client.post(path, json=body).status_code == 403
+    assert client.post(path, json=body, headers={
+        "origin": "https://identity.example.com",
+        "x-dz-csrf": "wrong-value",
+    }).status_code == 401
+    response = client.post(path, json=body, headers={
+        "origin": "https://identity.example.com",
+        "x-dz-csrf": "real-csrf-value",
+    })
+    assert response.status_code == 200
+    url = response.json()["authorization_url"]
+    assert "secret-" not in url
+    state = parse_qs(urlsplit(url).query)["state"][0]
+    reply = client.get("/internal/mcp/oauth/callback", params={
+        "state": state, "code": "real-looking-authorization-code",
+        "iss": "https://login.example.com",
+    })
+    assert reply.status_code == 200
+    assert "secret-" not in reply.text
+    assert "real-looking-authorization-code" not in reply.text
+    assert client.get("/internal/mcp/connections").status_code == 200
+    saved = client.get("/internal/mcp/connections").json()["connections"]
+    assert len(saved) == 1 and saved[0]["label"] == "Work"
+    account = saved[0]["connection_id"]
+    assert client.delete("/internal/mcp/connections/" + account).status_code == 403
+    revoked = client.delete("/internal/mcp/connections/" + account, headers={
+        "origin": "https://identity.example.com",
+        "x-dz-csrf": "real-csrf-value",
+    })
+    assert revoked.status_code == 200
+    assert client.get("/internal/mcp/connections").json()["connections"][0]["status"] == "revoked"
