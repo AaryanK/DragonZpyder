@@ -221,3 +221,16 @@ test("small phones keep the chat composer visible and avoid horizontal scrolling
     expect(metrics.textarea.left, "composer left edge at "+width+"px").toBeGreaterThanOrEqual(0);
   }
 });
+
+test("public landing explains Safari install on a narrow iPhone viewport", async ({page}) => {
+  await page.setViewportSize({width:375,height:812});
+  await page.goto("/");
+  const section = page.locator("#install-ios");
+  await expect(section).toContainText("Add to Home Screen");
+  await expect(section.getByRole("link", {name:/Open DragonZpyder/})).toHaveAttribute("href","/app");
+  const bounds = await page.evaluate(() => ({
+    scrollWidth:document.documentElement.scrollWidth,
+    viewport:window.innerWidth,
+  }));
+  expect(bounds.scrollWidth).toBeLessThanOrEqual(bounds.viewport+1);
+});
