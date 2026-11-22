@@ -1,0 +1,75 @@
+name: Android Play Beta Bundle (manual, no publishing)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  signed-bundle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      DZ_ANDROID_KEYSTORE_B64: ${{ secrets.DZ_ANDROID_KEYSTORE_B64 }}
+      DZ_ANDROID_STORE_PASSWORD: ${{ secrets.DZ_ANDROID_STORE_PASSWORD }}
+      DZ_ANDROID_KEY_ALIAS: ${{ secrets.DZ_ANDROID_KEY_ALIAS }}
+      DZ_ANDROID_KEY_PASSWORD: ${{ secrets.DZ_ANDROID_KEY_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+      - uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools'
+      - name: Install Android 16 SDK
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+      - name: Prepare official beta brand
+        run: |
+          python3 -m pip install --disable-pip-version-check --break-system-packages Pillow==11.3.0
+          bash android/prepare-brand.sh
+      - name: Require dedicated Play upload key secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in DZ_ANDROID_KEYSTORE_B64 DZ_ANDROID_STORE_PASSWORD DZ_ANDROID_KEY_ALIAS DZ_ANDROID_KEY_PASSWORD; do
+            test -n "${!name}" || { echo "::error::Missing required Play signing secret: $name"; exit 1; }
+          done
+      - name: Create temporary upload keystore
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          printf '%s' "$DZ_ANDROID_KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/play-upload-key.jks"
+          test -s "$RUNNER_TEMP/play-upload-key.jks"
+          echo "DZ_ANDROID_KEYSTORE=$RUNNER_TEMP/play-upload-key.jks" >> "$GITHUB_ENV"
+      - name: Build signed AAB, verify release lint and unit tests
+        working-directory: android
+        run: gradle --no-daemon :app:bundleRelease :app:lintRelease :app:testReleaseUnitTest
+      - name: Verify signed bundle contents
+        shell: bash
+        run: |
+          set -euo pipefail
+          AAB=android/app/build/outputs/bundle/release/app-release.aab
+          test -s "$AAB"
+          jarsigner -verify "$AAB" | tee "$RUNNER_TEMP/aab-verification.log"
+          grep -q "jar verified" "$RUNNER_TEMP/aab-verification.log"
+          unzip -t "$AAB" >/dev/null
+          echo "Signed release AAB verified. No Google Play upload has occurred."
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DragonZpyder-Play-Beta-signed-AAB
+          path: |
+            android/app/build/outputs/bundle/release/app-release.aab
+            android/play-assets/play_icon_512.png
+            android/play-assets/feature_graphic_1024x500.png
+          retention-days: 7
+          if-no-files-found: error
+      - name: Remove upload key material
+        if: always()
+        run: rm -f "$RUNNER_TEMP/play-upload-key.jks"
