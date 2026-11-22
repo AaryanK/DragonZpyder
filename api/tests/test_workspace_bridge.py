@@ -1,10 +1,10 @@
-"""Security contract for independently signed Operly Workspace delegation.
+"""Signed Operly Workspace uses DragonZpyder's shared tool-enabled harness.
 
-No model inference or provider call is executed by these tests.
+No provider calls or paid model calls. Workspace authority and Personal
+authority have independent gates and differently scoped checkpoint IDs.
 """
 import sys
 from pathlib import Path
-from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -12,56 +12,52 @@ from pydantic import ValidationError
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from agent_platform import workspace_bridge as bridge
+from agent_platform.personal_bridge import _authorized
 from main import app
 
 
-def payload(*, workspace=None, user=None, conversation=None):
-    uid = user or uuid4()
+def valid_payload(*, user="user-00000001", workspace="ws-00000001", conversation="conv-00000001"):
     return bridge.WorkspaceRun(
-        scope_kind="workspace",
-        workspace_id=workspace or uuid4(),
-        user_id=uid,
-        principal_id=f"user:{uid}",
-        conversation_id=conversation or uuid4(),
-        prompt="Summarize work.",
+        scope_kind="workspace", user_id=user, workspace_id=workspace,
+        session_id="session-0000001", conversation_id=conversation,
+        prompt="Summarize the workspace.", mcp_access_token="x" * 48,
+        approved_tool_names=["tasks.list"],
     )
 
 
-def test_workspace_delegation_requires_two_separate_server_proofs(monkeypatch):
-    t = "a" * 48
-    s = "b" * 48
-    monkeypatch.setenv("DRAGONZPYDER_WORKSPACE_DELEGATION_ENABLED", "1")
-    monkeypatch.setenv("DRAGONZPYDER_AGENTS_ENABLED", "1")
-    monkeypatch.setenv("DRAGONZPYDER_AGENT_USE_GATEWAY", "1")
-    monkeypatch.setenv("DRAGONZPYDER_AGENT_PRODUCTION_MODE", "1")
-    monkeypatch.setenv("DRAGONZPYDER_OPERLY_WORKSPACE_AGENT_TOKEN", t)
-    monkeypatch.setenv("DRAGONZPYDER_OPERLY_WORKSPACE_SERVICE_SECRET", s)
-    assert bridge._authorized("Bearer " + t, s)
-    assert not bridge._authorized("Bearer " + t, "bad")
-    assert not bridge._authorized("Bearer wrong", s)
-    monkeypatch.setenv("DRAGONZPYDER_OPERLY_WORKSPACE_SERVICE_SECRET", t)
-    assert not bridge._authorized("Bearer " + t, t)
-    monkeypatch.setenv("DRAGONZPYDER_WORKSPACE_DELEGATION_ENABLED", "0")
-    assert not bridge._authorized("Bearer " + t, t)
-
-
-def test_workspace_owner_and_thread_isolation():
-    one = payload()
-    a = bridge.workspace_thread(one)
-    assert a == bridge.workspace_thread(one)
-    assert a != bridge.workspace_thread(payload(user=one.user_id,
-                                               conversation=one.conversation_id))
-    assert a != bridge.workspace_thread(payload(workspace=one.workspace_id,
-                                               conversation=one.conversation_id))
+def test_workspace_checkpoint_isolated_across_users_and_tenants():
+    one = bridge.workspace_thread("user-00000001", "ws-00000001", "conv-00000001")
+    assert one != bridge.workspace_thread("user-00000002", "ws-00000001", "conv-00000001")
+    assert one != bridge.workspace_thread("user-00000001", "ws-00000002", "conv-00000001")
+    assert one != bridge.workspace_thread("user-00000001", "ws-00000001", "conv-00000002")
     with pytest.raises(ValidationError):
-        bridge.WorkspaceRun(**{**one.model_dump(), "scope_kind": "personal"})
+        bridge.WorkspaceRun(**{**valid_payload().model_dump(), "scope_kind": "personal"})
     with pytest.raises(ValidationError):
-        bridge.WorkspaceRun(**{**one.model_dump(), "mcp_access_token": "unsafe"})
+        bridge.WorkspaceRun(**{**valid_payload().model_dump(), "product_surface": "dragonzpyder"})
 
 
-def test_workspace_endpoint_disabled_for_browsers(monkeypatch):
-    monkeypatch.delenv("DRAGONZPYDER_WORKSPACE_DELEGATION_ENABLED", raising=False)
+def test_workspace_and_personal_authorization_separately_gated(monkeypatch):
+    for k in [
+        "DRAGONZPYDER_AGENTS_ENABLED", "DRAGONZPYDER_AGENT_HARNESS_V2",
+        "DRAGONZPYDER_OPERLY_TOOLS_ENABLED", "DRAGONZPYDER_OPERLY_MCP_ENABLED",
+        "DRAGONZPYDER_AGENT_USE_GATEWAY", "DRAGONZPYDER_AGENT_PRODUCTION_MODE",
+    ]:
+        monkeypatch.setenv(k, "1")
+    monkeypatch.setenv("DRAGONZPYDER_OPERLY_PERSONAL_AGENT_TOKEN", "a" * 48)
+    monkeypatch.setenv("DRAGONZPYDER_OPERLY_MCP_SERVICE_SECRET", "b" * 48)
+    monkeypatch.delenv("DRAGONZPYDER_PERSONAL_MCP_HARNESS_ENABLED", raising=False)
+    monkeypatch.setenv("DRAGONZPYDER_OPERLY_WORKSPACE_HARNESS_ENABLED", "1")
+    assert _authorized("Bearer " + "a" * 48, "b" * 48, scope="workspace")
+    assert not _authorized("Bearer " + "a" * 48, "b" * 48, scope="personal")
+    assert not _authorized("Bearer " + "a" * 48, "wrong", scope="workspace")
+    monkeypatch.setenv("DRAGONZPYDER_OPERLY_WORKSPACE_HARNESS_ENABLED", "0")
+    assert not _authorized("Bearer " + "a" * 48, "b" * 48, scope="workspace")
+
+
+def test_workspace_bridge_disallows_browser_or_unsupported_credentials(monkeypatch):
+    monkeypatch.delenv("DRAGONZPYDER_OPERLY_WORKSPACE_HARNESS_ENABLED", raising=False)
     with TestClient(app) as client:
-        assert client.post(
-            "/internal/agents/operly/workspace/run", json=payload().model_dump(mode="json")
-        ).status_code == 401
+        response = client.post("/internal/agents/operly/workspace/run",
+                               json=valid_payload().model_dump())
+        assert response.status_code == 401
+        assert "Signed Workspace" in response.json()["detail"]
