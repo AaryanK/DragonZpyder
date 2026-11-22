@@ -333,6 +333,7 @@ class OAuthConnectionManager:
             from authlib.integrations.httpx_client import AsyncOAuth2Client
             async with AsyncOAuth2Client(
                 client_id=info["client_id"], client_secret=info["client_secret"] or None,
+                token_endpoint_auth_method=("client_secret_basic" if info["client_secret"] else "none"),
                 redirect_uri=callback_url(), scope=" ".join(provider.requested_scopes),
                 code_challenge_method="S256", follow_redirects=False, trust_env=False,
                 timeout=10,
@@ -388,6 +389,7 @@ class OAuthConnectionManager:
         info = details["client"]
         async with AsyncOAuth2Client(
             client_id=info["client_id"], client_secret=info["client_secret"] or None,
+            token_endpoint_auth_method=("client_secret_basic" if info["client_secret"] else "none"),
             redirect_uri=callback_url(), follow_redirects=False, trust_env=False,
             timeout=10,
         ) as oauth:
@@ -441,18 +443,57 @@ class OAuthConnectionManager:
                 for r in rows]
 
     async def disconnect(self, owner: str, alias: str) -> bool:
+        """Immediately revoke local authority; attempt RFC 7009 revocation."""
         require_gate()
+        if not isinstance(alias, str) or not re.fullmatch(r"c[a-f0-9]{30}", alias):
+            raise ConnectionDenied("Invalid account ID")
         async with self.pool.acquire() as db:
-            row = await db.fetchrow(
-                """UPDATE dz_mcp_connections SET status='revoked', encrypted_tokens=NULL,
-                   revision=revision+1, revoked_at=now(), updated_at=now()
-                   WHERE owner_id=$1 AND public_alias=$2 AND status<>'revoked'
-                   RETURNING provider_id, issuer, encrypted_tokens""",
-                owner, alias,
-            )
-        # Clear local authority immediately. Revocation is best effort; access
-        # might survive provider outages until its provider-side expiry.
-        return row is not None
+            async with db.transaction():
+                row = await db.fetchrow(
+                    """SELECT provider_id, encrypted_tokens
+                       FROM dz_mcp_connections
+                       WHERE owner_id=$1 AND public_alias=$2 AND status='active'
+                       FOR UPDATE""", owner, alias,
+                )
+                if not row:
+                    return False
+                tokens = self.cipher.open(owner, alias, row["encrypted_tokens"])
+                await db.execute(
+                    """UPDATE dz_mcp_connections SET status='revoked',
+                       encrypted_tokens=NULL, revision=revision+1, revoked_at=now(),
+                       updated_at=now() WHERE owner_id=$1 AND public_alias=$2""",
+                    owner, alias,
+                )
+        # External revocation is best effort AFTER local transaction commits.
+        # No future agent grant can use this connection even if AS is offline.
+        provider = reviewed_providers().get(row["provider_id"])
+        if provider:
+            http = self._http()
+            own = self.http is None
+            try:
+                meta = await discover_oauth(provider, http)
+                revocation = meta.get("revocation_endpoint")
+                if revocation:
+                    info = await self._client_credentials(provider, meta, http)
+                    from authlib.integrations.httpx_client import AsyncOAuth2Client
+                    async with AsyncOAuth2Client(
+                        client_id=info["client_id"],
+                        client_secret=info["client_secret"] or None,
+                        token_endpoint_auth_method=("client_secret_basic" if info["client_secret"] else "none"),
+                        follow_redirects=False, trust_env=False, timeout=10,
+                    ) as oauth:
+                        await oauth.revoke_token(
+                            revocation, token=tokens.get("refresh_token") or tokens["access_token"],
+                            token_type_hint=("refresh_token" if tokens.get("refresh_token") else "access_token"),
+                        )
+            except Exception:
+                # An opaque audit event may be emitted by the caller; never log
+                # revoked credentials or silently claim upstream revocation.
+                pass
+            finally:
+                if own:
+                    await http.aclose()
+        return True
 
     async def _refresh_locked(self, db, row, owner: str, alias: str,
                               tokens: dict, provider: ReviewedProvider) -> dict:
@@ -461,7 +502,7 @@ class OAuthConnectionManager:
             await db.execute(
                 """UPDATE dz_mcp_connections SET status='expired', encrypted_tokens=NULL,
                    revision=revision+1 WHERE owner_id=$1 AND public_alias=$2""", owner, alias)
-            raise ConnectionDenied("OAuth access expired; reconnect required")
+            return None
         http = self._http()
         own = self.http is None
         try:
@@ -470,6 +511,7 @@ class OAuthConnectionManager:
             from authlib.integrations.httpx_client import AsyncOAuth2Client
             async with AsyncOAuth2Client(
                 client_id=info["client_id"], client_secret=info["client_secret"] or None,
+                token_endpoint_auth_method=("client_secret_basic" if info["client_secret"] else "none"),
                 follow_redirects=False, trust_env=False, timeout=10,
             ) as oauth:
                 updated = await oauth.refresh_token(
@@ -526,6 +568,8 @@ class OAuthConnectionManager:
                 expires = row["access_expires_at"]
                 if not expires or expires <= _NOW() + timedelta(seconds=60):
                     tokens = await self._refresh_locked(db, row, owner, alias, tokens, provider)
+        if tokens is None:
+            raise ConnectionDenied("OAuth access expired; reconnect required")
         # Import only here: no OAuth secret is serialized to a LangGraph state.
         from .mcp_broker import McpGrant
         return McpGrant(
