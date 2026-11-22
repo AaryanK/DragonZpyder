@@ -24,6 +24,19 @@ const iphoneStyles = `
    must not enlarge the entire document's horizontal scroll area. */
 @media(max-width:900px){.dz-stage .dz-sweep{left:64%;width:clamp(52px,13vw,112px);transform:skew(-12deg)}}
 @media(max-width:790px){.dz-install-section{padding:65px 0}.dz-install-grid{grid-template-columns:1fr;gap:24px}.dz-install-steps{padding-left:16px;gap:13px}}
+@media(max-width:600px){
+  .dz-stage .dz-sweep{left:57%;width:clamp(38px,11vw,65px);transform:skew(-6deg)}
+  .credits-grid{grid-template-columns:minmax(0,1fr)}
+  .credits-grid>*{min-width:0}
+  .wallet{min-width:0}
+}
+@media(max-width:350px){
+  .dz-nav{gap:8px}
+  .dz-brand{font-size:15px;gap:5px}
+  .dz-brand-mark{width:24px;height:24px}
+  .dz-nav-cta .dz-btn{min-height:40px;padding:8px 9px;font-size:10px;gap:4px}
+  .dz-nav-cta .dz-btn span{display:none}
+}
 @media(max-width:500px){.dz-install-section h2{font-size:clamp(35px,10vw,45px)}.dz-install-section p{font-size:13px}.dz-install-steps strong{font-size:14px}}
 `;
 
