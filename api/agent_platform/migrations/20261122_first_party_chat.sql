@@ -13,3 +13,12 @@ CREATE INDEX IF NOT EXISTS dz_first_party_conversations_owner_updated_idx
 
 -- Application queries always bind owner_id derived from the live first-party
 -- identity session. Grant no public or anonymous access to this database.
+
+-- Atomic per-user inference attempt ceiling across devices and API replicas.
+-- Conservatively count unknown outcomes rather than retrying for free.
+CREATE TABLE IF NOT EXISTS dz_first_party_daily_quota (
+    owner_id text NOT NULL,
+    quota_day date NOT NULL,
+    reserved_calls integer NOT NULL DEFAULT 0 CHECK (reserved_calls >= 0),
+    PRIMARY KEY (owner_id, quota_day)
+);
