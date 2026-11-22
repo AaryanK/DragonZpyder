@@ -176,9 +176,7 @@ async def chat(payload: ChatInput, request: Request):
 
     conversation_id = payload.conversation_id or uuid4()
     async with _conversation_db() as db:
-        if payload.conversation_id is None:
-            pass  # The conversation row is committed only after quota reservation.
-        else:
+        if payload.conversation_id is not None:
             await _require_conversation(db, user=user, conversation_id=conversation_id)
         # Atomic per-user daily reservation BEFORE paid inference. Unknown
         # provider outcomes still consume a request slot; the metered gateway
