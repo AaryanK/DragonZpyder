@@ -222,22 +222,23 @@ test("small phones keep the chat composer visible and avoid horizontal scrolling
   }
 });
 
-test("public landing explains Safari install on a narrow iPhone viewport", async ({page}) => {
-  await page.setViewportSize({width:375,height:812});
+test("public landing explains Safari install and fits phone/tablet widths", async ({page}) => {
   await page.goto("/");
   const section = page.locator("#install-ios");
   await expect(section).toContainText("Add to Home Screen");
   await expect(section.getByRole("link", {name:/Open DragonZpyder/})).toHaveAttribute("href","/app");
-  const bounds = await page.evaluate(() => ({
-    scrollWidth:document.documentElement.scrollWidth,
-    viewport:window.innerWidth,
-    offenders:[...document.querySelectorAll("body *")].map(el => ({
-      tag:el.tagName.toLowerCase(), className:typeof el.className === "string" ? el.className.slice(0,90) : "",
-      text:(el.textContent || "").trim().slice(0,45),
-      right:Math.round(el.getBoundingClientRect().right),
-      left:Math.round(el.getBoundingClientRect().left)
-    })).filter(el => el.right > window.innerWidth+2 || el.left < -2)
-      .sort((a,b) => b.right-a.right).slice(0,16),
-  }));
-  expect(bounds.scrollWidth, JSON.stringify(bounds.offenders)).toBeLessThanOrEqual(bounds.viewport+1);
+  for (const width of [320,360,375,390,430,768]) {
+    await page.setViewportSize({width,height:812});
+    const bounds = await page.evaluate(() => ({
+      scrollWidth:document.documentElement.scrollWidth,
+      viewport:window.innerWidth,
+      offenders:[...document.querySelectorAll("body *")].map(el => ({
+        tag:el.tagName.toLowerCase(), className:typeof el.className === "string" ? el.className.slice(0,90) : "",
+        right:Math.round(el.getBoundingClientRect().right),
+        left:Math.round(el.getBoundingClientRect().left)
+      })).filter(el => el.right > window.innerWidth+2 || el.left < -2)
+        .sort((a,b) => b.right-a.right).slice(0,16),
+    }));
+    expect(bounds.scrollWidth, width+"px: "+JSON.stringify(bounds.offenders)).toBeLessThanOrEqual(bounds.viewport+1);
+  }
 });
