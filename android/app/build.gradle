@@ -12,6 +12,30 @@ android {
         versionName '0.7.0'
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
     }
+    def releaseKeystore = System.getenv("DZ_ANDROID_KEYSTORE")
+    def releaseStorePassword = System.getenv("DZ_ANDROID_STORE_PASSWORD")
+    def releaseKeyAlias = System.getenv("DZ_ANDROID_KEY_ALIAS")
+    def releaseKeyPassword = System.getenv("DZ_ANDROID_KEY_PASSWORD")
+    def hasReleaseSigning = [releaseKeystore, releaseStorePassword, releaseKeyAlias, releaseKeyPassword].every { it != null && !it.isEmpty() }
+    signingConfigs {
+        if (hasReleaseSigning) {
+            release {
+                storeFile file(releaseKeystore)
+                storePassword releaseStorePassword
+                keyAlias releaseKeyAlias
+                keyPassword releaseKeyPassword
+            }
+        }
+    }
+    buildTypes {
+        release {
+            if (hasReleaseSigning) signingConfig signingConfigs.release
+            debuggable false
+        }
+    }
+    if (gradle.startParameter.taskNames.any { it.toLowerCase().contains("release") && (it.toLowerCase().contains("assemble") || it.toLowerCase().contains("bundle")) } && !hasReleaseSigning) {
+        throw new GradleException("Release signing credentials must be supplied through the authorized secure environment.")
+    }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
