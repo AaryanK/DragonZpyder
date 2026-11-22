@@ -80,7 +80,7 @@ public final class MainActivity extends Activity {
     private ImageView logo(int size){ImageView image=new ImageView(this);image.setImageResource(R.drawable.brand_icon);image.setScaleType(ImageView.ScaleType.FIT_CENTER);image.setLayoutParams(new LinearLayout.LayoutParams(dp(size),dp(size)));image.setContentDescription("DragonZpyder");return image;}
     private Button button(String s,Runnable action){Button b=new Button(this);b.setAllCaps(false);b.setText(s);b.setTextColor(TEXT);b.setTextSize(14);b.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));b.setMinHeight(dp(48));b.setMinimumHeight(dp(48));b.setMinWidth(dp(48));b.setMinimumWidth(dp(48));b.setPadding(dp(12),0,dp(12),0);b.setBackground(new android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(0x22ffffff),surface(CHIP,10),null));b.setOnClickListener(v->{if(!busy)action.run();});return b;}
     private Button primary(String s,Runnable action){Button b=button(s,action);b.setTextColor(Color.WHITE);b.setBackground(new android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(0x22000000),surface(ACCENT,11),null));return b;}
-    private EditText field(String hint,boolean secret){EditText e=new EditText(this);e.setHint(hint);e.setHintTextColor(MUTED);e.setTextColor(TEXT);e.setTextSize(16);e.setPadding(dp(14),dp(12),dp(14),dp(12));GradientDrawable d=surface(PANEL,16);d.setStroke(dp(1),LINE);e.setBackground(d);e.setInputType(secret?129:1);return e;}
+    private EditText field(String hint,boolean secret){EditText e=new EditText(this);e.setHint(hint);e.setHintTextColor(MUTED);e.setTextColor(TEXT);e.setTextSize(16);e.setPadding(dp(14),dp(12),dp(14),dp(12));GradientDrawable d=surface(PANEL,16);d.setStroke(dp(1),LINE);e.setBackground(d);if(secret)SecurePasswordField.configure(e);else e.setInputType(android.text.InputType.TYPE_CLASS_TEXT);return e;}
     private void gap(LinearLayout l,int height){l.addView(new View(this),new LinearLayout.LayoutParams(1,dp(height)));}
     private void reset(){root=column();root.setBackgroundColor(BG);root.setPadding(dp(12),dp(8),dp(12),dp(8));setContentView(root);root.setOnApplyWindowInsetsListener((v,insets)->{int left,top,right,bottom;if(android.os.Build.VERSION.SDK_INT>=30){android.graphics.Insets bars=insets.getInsets(WindowInsets.Type.systemBars()|WindowInsets.Type.displayCutout()|WindowInsets.Type.ime());left=bars.left;top=bars.top;right=bars.right;bottom=bars.bottom;}else{left=insets.getSystemWindowInsetLeft();top=insets.getSystemWindowInsetTop();right=insets.getSystemWindowInsetRight();bottom=insets.getSystemWindowInsetBottom();}v.setPadding(dp(12)+left,dp(8)+top,dp(12)+right,dp(8)+bottom);return insets;});root.requestApplyInsets();}
     private String authMode="login", authEmail="", challengeId="", profileInitial="D";
@@ -93,7 +93,11 @@ public final class MainActivity extends Activity {
     }
     private void sectionLabel(LinearLayout parent,String label){TextView t=text(label,11,ACCENT);t.setLetterSpacing(.12f);parent.addView(t);gap(parent,8);}
     private EditText accountField(LinearLayout parent,String label,String value,int kind,String hint){
-        parent.addView(text(label,13,TEXT));gap(parent,6);EditText e=field("",kind==129);e.setInputType(kind);e.setSingleLine(true);e.setText(value);e.setMinHeight(dp(48));if(!hint.isEmpty())e.setAutofillHints(hint);parent.addView(e);gap(parent,16);return e;
+        TextView caption=text(label,13,TEXT);parent.addView(caption);gap(parent,6);
+        EditText e=field("",false);e.setId(View.generateViewId());caption.setLabelFor(e.getId());e.setSingleLine(true);e.setInputType(kind);e.setText(value);e.setMinHeight(dp(48));if(!hint.isEmpty())e.setAutofillHints(hint);
+        if(kind==SecurePasswordField.TYPE)SecurePasswordField.configure(e);
+        if(kind==android.text.InputType.TYPE_CLASS_NUMBER){e.setSaveEnabled(false);e.setFreezesText(false);e.setImeOptions(android.view.inputmethod.EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING);}
+        parent.addView(e);gap(parent,16);return e;
     }
     private LinearLayout accountCard(){
         LinearLayout card=column();card.setPadding(dp(18),dp(18),dp(18),dp(18));GradientDrawable bg=surface(PANEL,18);bg.setStroke(dp(1),LINE);card.setBackground(bg);accountPage.addView(card,new LinearLayout.LayoutParams(-1,-2));return card;
@@ -104,7 +108,7 @@ public final class MainActivity extends Activity {
     private boolean six(String code){if(!code.matches("[0-9]{6}")){status.setText("Enter the six-digit code.");return false;}return true;}
     private void authSuccess(){authEmail="";challengeId="";signedIn=true;accountOpen=false;chatScreen();loadHistory(true);}
     private void authScreen(String mode,String message){
-        signedIn=false;accountOpen=false;authMode=mode;accountLayout();
+        signedIn=false;accountOpen=false;authMode=mode;getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);accountLayout();
         sectionLabel(accountPage,"ONE IDENTITY · YOUR INTELLIGENCE");accountPage.addView(heading("Always yours.",38));gap(accountPage,8);accountPage.addView(text("Your conversations, personal AI, and authorised connections—all in one account.",14,MUTED));gap(accountPage,22);
         LinearLayout card=accountCard();
         if(mode.equals("login")||mode.equals("signup")){
@@ -118,8 +122,8 @@ public final class MainActivity extends Activity {
         EditText email=accountField(card,"Email address",authEmail,33,View.AUTOFILL_HINT_EMAIL_ADDRESS);
         EditText code=mode.equals("verify")||mode.equals("reset")?accountField(card,mode.equals("verify")?"Verification code":"Reset code","",2,"smsOTPCode"):null;
         if(code!=null)code.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(6)});
-        EditText password=mode.equals("login")||mode.equals("signup")||mode.equals("reset")?accountField(card,mode.equals("login")?"Password":mode.equals("reset")?"New password (at least 12 characters)":"Password (at least 12 characters)","",129,mode.equals("login")?View.AUTOFILL_HINT_PASSWORD:"newPassword"):null;
-        EditText confirm=mode.equals("signup")?accountField(card,"Confirm password","",129,"newPassword"):null;
+        EditText password=mode.equals("login")||mode.equals("signup")||mode.equals("reset")?accountField(card,mode.equals("login")?"Password":mode.equals("reset")?"New password (at least 12 characters)":"Password (at least 12 characters)","",SecurePasswordField.TYPE,mode.equals("login")?View.AUTOFILL_HINT_PASSWORD:"newPassword"):null;
+        EditText confirm=mode.equals("signup")?accountField(card,"Confirm password","",SecurePasswordField.TYPE,"newPassword"):null;
         String action=mode.equals("signup")?"Create account":mode.equals("verify")?"Verify and continue":mode.equals("forgot")?"Send reset instructions":mode.equals("reset")?"Update password":"Sign in";
         card.addView(primary(action,()->{
             String e=value(email),p=password==null?"":password.getText().toString(),c=code==null?"":value(code),n=name==null?"":value(name);
@@ -149,7 +153,7 @@ public final class MainActivity extends Activity {
         if(!mode.equals("login")&&!mode.equals("signup"))card.addView(button("Back to sign in",()->authScreen("login","")));
         gap(accountPage,24);accountPage.addView(text("One account, clear boundaries. Personal access does not grant business permissions.",12,MUTED));
     }
-    private void chatScreen(){accountOpen=false;
+    private void chatScreen(){accountOpen=false;getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SECURE);
         reset();LinearLayout toolbar=row();
         Button menu=button("☰",this::showMenu);menu.setContentDescription("Open sidebar");toolbar.addView(menu);
         LinearLayout title=column();title.addView(heading("Personal",15));status=text("Personal runtime connected",11,0xff56a47e);title.addView(status);
@@ -191,7 +195,7 @@ public final class MainActivity extends Activity {
         },r->renderAccount((JSONObject)r),true);
     }
     private void renderAccount(JSONObject p){
-        accountOpen=true;accountLayout();
+        accountOpen=true;getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);accountLayout();
         accountPage.addView(button("‹ Back to Personal AI",()->{accountOpen=false;chatScreen();}));gap(accountPage,20);
         sectionLabel(accountPage,"YOUR DRAGONZPYDER");accountPage.addView(heading("Account & connections.",30));gap(accountPage,8);accountPage.addView(text("One identity, with clear boundaries around every connected service and workspace.",14,MUTED));gap(accountPage,20);
         LinearLayout profile=accountCard();sectionLabel(profile,"01 / IDENTITY");profile.addView(heading("Your profile",21));gap(profile,8);profile.addView(text(p.optString("email"),14,MUTED));gap(profile,16);
@@ -263,7 +267,7 @@ public final class MainActivity extends Activity {
                 if(isDestroyed())return;busy=false;
                 try{
                     if(failure!=null)throw failure;
-                    if(status!=null)status.setText(signedIn?(meshMode?"AI Mesh · "+model:"Personal agent"):"");
+                    if(status!=null)status.setText(signedIn&&!accountOpen?(meshMode?"AI Mesh · "+model:"Personal agent"):"");
                     done.accept(value);
                 }catch(Exception e){
                     if(e instanceof DragonApi.ApiError && ((DragonApi.ApiError)e).status==401 && signedIn){api.clear();attachment=null;attachmentName="";transcript.clear();conversation="";meshMessages=new JSONArray();meshMode=false;loginScreen("Session expired. Sign in again.");}
