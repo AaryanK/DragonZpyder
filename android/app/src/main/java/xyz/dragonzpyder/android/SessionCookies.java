@@ -8,6 +8,8 @@ final class SessionCookies {
     private static final Set<String> NAMES = new HashSet<>(Arrays.asList(
         "__Host-operly_session", "__Host-operly_csrf", "operly_preauth_csrf"));
     private final Map<String,HttpCookie> jar=new LinkedHashMap<>();
+    private final Map<String,Long> expiry=new HashMap<>();
+    private static final String[] SESSION={"__Host-operly_session","__Host-operly_csrf"};
     void receive(Map<String,List<String>> headers) {
         for (Map.Entry<String,List<String>> header:headers.entrySet()) {
             if (!"Set-Cookie".equalsIgnoreCase(header.getKey())) continue;
@@ -16,9 +18,10 @@ final class SessionCookies {
                     for (HttpCookie c:HttpCookie.parse(raw)) {
                         String name=c.getName();
                         if(!NAMES.contains(name) || c.getDomain()!=null || !"/".equals(c.getPath())) continue;
-                        if(c.getMaxAge()==0 || c.getValue().isEmpty()) {jar.remove(name);continue;}
+                        if(c.getMaxAge()==0 || c.getValue().isEmpty()) {jar.remove(name);expiry.remove(name);continue;}
                         if(!c.getSecure() || c.getValue()==null || !c.getValue().matches("[A-Za-z0-9._~%+/=-]+")) continue;
                         jar.put(name,c);
+                        long age=c.getMaxAge();long now=System.currentTimeMillis();expiry.put(name,age<0?0L:now+Math.min(age,604800L)*1000L);
                     }
                 } catch(IllegalArgumentException ignored) {}
             }
@@ -27,7 +30,7 @@ final class SessionCookies {
     String value(String name) {
         HttpCookie c=jar.get(name);
         if(c==null)return "";
-        if(c.hasExpired()){jar.remove(name);return "";}
+        if(c.hasExpired()||(expiry.getOrDefault(name,0L)>0&&System.currentTimeMillis()>=expiry.get(name))){jar.remove(name);expiry.remove(name);return "";}
         return c.getValue();
     }
     String header() {
@@ -35,5 +38,18 @@ final class SessionCookies {
         for(String name:NAMES){String value=value(name);if(!value.isEmpty())join.add(name+"="+value);}
         return join.toString();
     }
-    void clear(){jar.clear();}
+    Properties snapshot(){
+        Properties p=new Properties();
+        for(String name:SESSION){String token=value(name);long until=expiry.getOrDefault(name,0L);if(token.isEmpty()||until<=System.currentTimeMillis())return new Properties();p.setProperty(name,token);p.setProperty(name+".expiry",Long.toString(until));}
+        return p;
+    }
+    void restore(Properties p){
+        clear();
+        try{
+            long now=System.currentTimeMillis();
+            for(String name:SESSION){String token=p.getProperty(name,"");long until=Long.parseLong(p.getProperty(name+".expiry","0"));if(!token.matches("[A-Za-z0-9._~%+/=-]+")||until<=now||until>now+604800000L){clear();return;}
+                HttpCookie c=new HttpCookie(name,token);c.setPath("/");c.setSecure(true);c.setMaxAge((until-now+999)/1000);jar.put(name,c);expiry.put(name,until);}
+        }catch(RuntimeException e){clear();}
+    }
+    void clear(){jar.clear();expiry.clear();}
 }
