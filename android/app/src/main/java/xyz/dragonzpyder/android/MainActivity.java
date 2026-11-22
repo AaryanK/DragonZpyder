@@ -60,15 +60,9 @@ public final class MainActivity extends Activity {
         getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         tts=new TextToSpeech(this, code -> speechReady=code==TextToSpeech.SUCCESS);
         loginScreen("");
-        submit("Checking session…", () -> api.call("/api/auth/sessions",null), result -> {
-            JSONArray rows=(JSONArray)result;
-            for(int i=0;i<rows.length();i++){
-                JSONObject row=rows.optJSONObject(i);
-                if(row!=null && row.optBoolean("current") && "personal".equals(row.optString("scope"))){
-                    signedIn=true; chatScreen(); loadHistory(true); break;
-                }
-            }
-        }, false);
+        submit("Checking secure session…",()->api.restore(getApplicationContext()),result->{
+            if(Boolean.TRUE.equals(result)){signedIn=true;chatScreen();loadHistory(true);}
+        },true);
     }
     private int dp(float n){return Math.round(n*getResources().getDisplayMetrics().density);}
     private LinearLayout column(){LinearLayout l=new LinearLayout(this);l.setOrientation(LinearLayout.VERTICAL);return l;}
@@ -276,9 +270,11 @@ public final class MainActivity extends Activity {
             });
         });
     }
-    private void newChat(){transcript.clear();attachment=null;attachmentName="";if(attachmentLabel!=null)attachmentLabel.setVisibility(View.GONE);if(modeButton!=null)modeButton.setText(meshMode?"✦ AI Mesh":"✦ Agent");conversation="";meshMessages=new JSONArray();lastAnswer="";welcome();status.setText(meshMode?"AI Mesh · "+model:"Personal agent");}
+    private void newChat(){if(busy)return;transcript.clear();attachment=null;attachmentName="";if(attachmentLabel!=null)attachmentLabel.setVisibility(View.GONE);if(modeButton!=null)modeButton.setText(meshMode?"✦ AI Mesh":"✦ Agent");conversation="";meshMessages=new JSONArray();lastAnswer="";welcome();status.setText(meshMode?"AI Mesh · "+model:"Personal agent");}
     private void send(){
+        if(busy||!signedIn||input==null)return;
         String prompt=input.getText().toString().trim();if(prompt.isEmpty())return;
+        if(prompt.length()>(meshMode?5000:12000)){status.setText("Message is too long for this mode.");return;}
         hideKeyboard(input);input.setText("");if(welcomeVisible){messages.removeAllViews();welcomeVisible=false;}messages.setGravity(Gravity.TOP);append("user",prompt);
         if(meshMode){
             final JSONArray next=new JSONArray();
@@ -311,7 +307,7 @@ public final class MainActivity extends Activity {
         },true);
     }
     private void open(String id){
-        if(id.isEmpty())return;
+        if(busy||id.isEmpty())return;
         submit("Loading chat…",()->api.call("/api/personal-agent/conversations/"+DragonApi.segment(id)+"/messages",null),r->{
             meshMode=false;if(modeButton!=null)modeButton.setText("✦ Agent");attachment=null;attachmentName="";if(attachmentLabel!=null)attachmentLabel.setVisibility(View.GONE);conversation=id;transcript.clear();welcomeVisible=false;messages.removeAllViews();messages.setGravity(Gravity.TOP);JSONArray rows=(JSONArray)r;
             for(int i=0;i<rows.length();i++){JSONObject item=rows.optJSONObject(i);if(item!=null&&Arrays.asList("user","assistant").contains(item.optString("role")))append(item.optString("role"),item.optString("content"));}
@@ -344,7 +340,7 @@ public final class MainActivity extends Activity {
         try{startActivityForResult(intent,42);}
         catch(android.content.ActivityNotFoundException e){status.setText("No speech recognition service available.");}
     }
-    @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(request==43&&result==RESULT_OK&&data!=null&&data.getData()!=null){readAttachment(data.getData());return;}if(request==42&&result==RESULT_OK&&data!=null&&input!=null){ArrayList<String> words=data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);if(words!=null&&!words.isEmpty())input.setText(words.get(0));}}
+    @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(request==43&&signedIn&&meshMode&&result==RESULT_OK&&data!=null&&data.getData()!=null){readAttachment(data.getData());return;}if(request==42&&result==RESULT_OK&&data!=null&&input!=null){ArrayList<String> words=data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);if(words!=null&&!words.isEmpty()){int pos=Math.max(0,input.getSelectionStart());input.getText().insert(pos,words.get(0));}}}
     @Override public void onBackPressed(){if(busy)return;if(accountOpen){accountOpen=false;chatScreen();}else if(!signedIn&&!"login".equals(authMode))authScreen("login","");else super.onBackPressed();}
     private void signOut(){submit("Signing out…",()->{api.logout();return null;},r->{conversation="";attachment=null;attachmentName="";transcript.clear();meshMode=false;lastAnswer="";meshMessages=new JSONArray();history=new JSONArray();profileInitial="D";authEmail="";challengeId="";if(tts!=null)tts.stop();input=null;loginScreen("");},true);}
     @Override protected void onDestroy(){worker.shutdown();if(tts!=null)tts.shutdown();super.onDestroy();}
