@@ -1,20 +1,21 @@
 package xyz.dragonzpyder.android;
 
-import android.app.Instrumentation;
-import android.test.ActivityInstrumentationTestCase2;
 import android.text.InputType;
 import android.text.method.PasswordTransformationMethod;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.widget.EditText;
-import android.widget.Button;
+import androidx.test.core.app.ActivityScenario;
+import androidx.test.ext.junit.runners.AndroidJUnit4;
+import org.junit.Test;
+import org.junit.runner.RunWith;
 import java.util.ArrayList;
+import static org.junit.Assert.*;
 
-/** Uses dummy data only; does not submit a real account or password. */
-@SuppressWarnings("deprecation")
-public final class SecurePasswordFieldTest extends ActivityInstrumentationTestCase2<MainActivity> {
-    public SecurePasswordFieldTest(){super(MainActivity.class);}
+/** Runtime tests use dummy text only; never submit real credentials. */
+@RunWith(AndroidJUnit4.class)
+public final class SecurePasswordFieldTest {
     private void collect(View root, ArrayList<EditText> fields){
         if(root instanceof EditText){
             EditText field=(EditText)root;
@@ -33,24 +34,41 @@ public final class SecurePasswordFieldTest extends ActivityInstrumentationTestCa
         assertFalse(field.isSaveEnabled());
         field.setText("");
     }
-    public void testLoginPasswordMasked() throws Throwable {
-        MainActivity app=getActivity();
-        runTestOnUiThread(()->{
-            ArrayList<EditText> fields=new ArrayList<>();
-            collect(app.getWindow().getDecorView(),fields);
-            assertEquals(1,fields.size());
-            verify(fields.get(0));
-            assertTrue((app.getWindow().getAttributes().flags & WindowManager.LayoutParams.FLAG_SECURE)!=0);
-        });
+    @Test public void loginPasswordMasked(){
+        try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)){
+            scenario.onActivity(app->verifyScreen(app,1));
+        }
     }
-    public void testGenericSingleLineCannotOverrideMask() throws Throwable {
-        MainActivity app=getActivity();
-        runTestOnUiThread(()->{
-            EditText field=new EditText(app);
-            field.setInputType(SecurePasswordField.TYPE);
-            field.setSingleLine(true);
-            SecurePasswordField.configure(field);
-            verify(field);
-        });
+    @Test public void signupAndResetPasswordMasked(){
+        try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)){
+            scenario.onActivity(app->{
+                try{
+                    java.lang.reflect.Method method=MainActivity.class.getDeclaredMethod("authScreen",String.class,String.class);
+                    method.setAccessible(true);
+                    method.invoke(app,"signup","");
+                    verifyScreen(app,2);
+                    method.invoke(app,"reset","");
+                    verifyScreen(app,1);
+                }catch(ReflectiveOperationException e){throw new AssertionError(e);}
+            });
+        }
+    }
+    private void verifyScreen(MainActivity app,int count){
+        ArrayList<EditText> fields=new ArrayList<>();
+        collect(app.getWindow().getDecorView(),fields);
+        assertEquals(count,fields.size());
+        for(EditText field:fields)verify(field);
+        assertTrue((app.getWindow().getAttributes().flags & WindowManager.LayoutParams.FLAG_SECURE)!=0);
+    }
+    @Test public void genericSingleLineCannotOverrideMask(){
+        try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)){
+            scenario.onActivity(app->{
+                EditText field=new EditText(app);
+                field.setInputType(SecurePasswordField.TYPE);
+                field.setSingleLine(true);
+                SecurePasswordField.configure(field);
+                verify(field);
+            });
+        }
     }
 }
