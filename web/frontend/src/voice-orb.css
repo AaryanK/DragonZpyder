@@ -227,7 +227,7 @@
     width:calc(6 * var(--voice-u));height:calc(6 * var(--voice-u));
     flex-basis:calc(6 * var(--voice-u));
   }
-  .dz-voice-orb-main{gap:0}
+  .dz-voice-orb-main{gap:calc(6 * var(--voice-u))}
   .dz-voice-orb-eyebrow{
     margin:0;font-size:calc(9 * var(--voice-u));letter-spacing:.22em;
   }
@@ -247,7 +247,7 @@
     font-size:calc(12 * var(--voice-u));line-height:1.45;
   }
   .dz-voice-browser-notice{font-size:calc(11 * var(--voice-u))}
-  .dz-voice-live-caption{font-size:calc(17 * var(--voice-u));max-height:3em}
+  .dz-voice-live-caption{font-size:calc(19 * var(--voice-u));max-height:3em}
   .dz-voice-orb-footnote{display:none}
   .dz-voice-orb-footer{
     display:flex;flex-direction:column;align-items:center;
