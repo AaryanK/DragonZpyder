@@ -533,3 +533,40 @@ def test_redaction_covers_untrusted_nested_object_keys():
     token = "secrettokenabcdefghijklmnopqrstuvwxyz"
     payload = {token: {"nested": [{"Bearer " + token: token}]}}
     assert token not in str(_redact(payload, token))
+
+
+def test_operly_is_optional_oauth_provider_and_never_global_authority(monkeypatch):
+    import json
+    reviewed = {
+        "provider_id": "operly",
+        "mcp_url": "https://operly.dragonzpyder.xyz/mcp",
+        "issuer": "https://operly.dragonzpyder.xyz",
+        "readonly_tools": ["tasks.list"],
+        "scheduled_tools": [],
+        "requested_scopes": ["tasks.list", "offline_access"],
+        "registration": "pre_registered",
+        "client_id": "dragonzpyder",
+        "description": "Operly Workspace MCP, optional and user-authorized",
+    }
+    monkeypatch.delenv("DRAGONZPYDER_OPERLY_USER_OAUTH_ENABLED", raising=False)
+    with pytest.raises(m.ConnectionDenied, match="not approved"):
+        m.ReviewedProvider.parse(reviewed)
+    monkeypatch.setenv("DRAGONZPYDER_OPERLY_USER_OAUTH_ENABLED", "1")
+    record = m.ReviewedProvider.parse(reviewed)
+    assert record.provider_id == "operly"
+    assert record.readonly_tools == frozenset({"tasks.list"})
+    for malicious in [
+        {**reviewed, "mcp_url": "https://attacker.example/mcp"},
+        {**reviewed, "issuer": "https://attacker.example"},
+        {**reviewed, "client_id": "chatgpt"},
+        {**reviewed, "registration": "dynamic"},
+    ]:
+        with pytest.raises(m.ConnectionDenied, match="pinned"):
+            m.ReviewedProvider.parse(malicious)
+    monkeypatch.setenv("DRAGONZPYDER_MCP_OAUTH_CALLBACK_URL",
+                       "https://www.dragonzpyder.xyz/dz/internal/mcp/oauth/callback")
+    assert m.callback_url().endswith("/dz/internal/mcp/oauth/callback")
+    monkeypatch.setenv("DRAGONZPYDER_MCP_OAUTH_CALLBACK_URL",
+                       "https://attacker.example/steal")
+    with pytest.raises(m.ConnectionDenied, match="redirect URI"):
+        m.callback_url()
