@@ -206,13 +206,26 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private void confirmSignOut(){new AlertDialog.Builder(this).setTitle("Sign out of DragonZpyder?").setMessage("You’ll need to sign in again to access your Personal workspace on this device.").setNegativeButton("Cancel",null).setPositiveButton("Sign out",(d,i)->signOut()).show();}
     private void showCommands(){new AlertDialog.Builder(this).setTitle("What would you like to do?").setItems(new String[]{"New chat","Find conversations","Switch mode","Approvals","Dictate a message","Toggle appearance","Connections & tools","Personal tasks","AI Mesh media"},(d,i)->{switch(i){case 0:newChat();break;case 1:showMenu();break;case 2:showModes();break;case 3:approvals();break;case 4:dictate();break;case 5:toggleTheme();break;case 6:showConnections();break;case 7:showTasks();break;case 8:showMedia();break;}}).setNegativeButton("Close",null).show();}
     private void showAdd(){
-        new AlertDialog.Builder(this).setTitle("Add to your message")
-          .setItems(new String[]{"Attach a file or photo","Camera and screen capture (not yet available)"},(d,i)->{
-            if(i!=0){setStatus("Camera and screen capture are not yet available.");return;}
-            if(!meshMode){setStatus("Choose an AI Mesh model first, then attach a file.");chooseModel();return;}
+        if(!meshMode){setStatus("Choose a compatible AI Mesh model before attaching media.");chooseModel();return;}
+        new AlertDialog.Builder(this).setTitle("Add to your message").setItems(new String[]{"Attach a file or photo","Take a photo"},(d,i)->{
+            if(i==1){
+                Intent camera=new Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE);
+                try{startActivityForResult(camera,45);}catch(android.content.ActivityNotFoundException e){setStatus("Camera app unavailable.");}
+                return;
+            }
             Intent picker=new Intent(Intent.ACTION_OPEN_DOCUMENT);picker.setType("*/*");picker.addCategory(Intent.CATEGORY_OPENABLE);picker.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
             try{startActivityForResult(picker,43);}catch(android.content.ActivityNotFoundException e){setStatus("No file picker available.");}
-          }).setNegativeButton("Close",null).show();
+        }).setNegativeButton("Close",null).show();
+    }
+    private void attachCameraPreview(Intent data){
+        Bundle extras=data.getExtras();if(extras==null){setStatus("Camera returned no image.");return;}
+        Object image=extras.get("data");if(!(image instanceof android.graphics.Bitmap)){setStatus("Camera returned no preview.");return;}
+        android.graphics.Bitmap bitmap=(android.graphics.Bitmap)image;
+        submit("Preparing photo…",()->{
+            java.io.ByteArrayOutputStream out=new java.io.ByteArrayOutputStream();
+            if(!bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG,90,out)||out.size()==0||out.size()>2500000)throw new Exception("Camera image could not be encoded");
+            return new JSONObject().put("type","image_url").put("image_url",new JSONObject().put("url","data:image/jpeg;base64,"+android.util.Base64.encodeToString(out.toByteArray(),android.util.Base64.NO_WRAP)));
+        },r->{attachment=(JSONObject)r;attachmentName="Camera photo";if(chatUi!=null)chatUi.setAttachmentLabel(attachmentName);},true);
     }
     private void readAttachment(android.net.Uri uri){
         submit("Preparing attachment…",()->{
@@ -503,7 +516,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         try{startActivityForResult(intent,42);}
         catch(android.content.ActivityNotFoundException e){setStatus("No speech recognition service available.");}
     }
-    @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(request==44){if(signedIn&&result==RESULT_OK&&data!=null&&data.getData()!=null)transcribeAudio(data.getData());else transcriptionModel="";return;}if(request==43&&signedIn&&meshMode&&result==RESULT_OK&&data!=null&&data.getData()!=null){readAttachment(data.getData());return;}if(request==42&&signedIn&&result==RESULT_OK&&data!=null&&chatUi!=null){ArrayList<String> words=data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);if(words!=null&&!words.isEmpty()){String draft=chatUi.getDraft();chatUi.setDraft(draft+(draft.isEmpty()?"":" ")+words.get(0));}}}
+    @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(request==45){if(signedIn&&meshMode&&result==RESULT_OK&&data!=null)attachCameraPreview(data);return;}if(request==44){if(signedIn&&result==RESULT_OK&&data!=null&&data.getData()!=null)transcribeAudio(data.getData());else transcriptionModel="";return;}if(request==43&&signedIn&&meshMode&&result==RESULT_OK&&data!=null&&data.getData()!=null){readAttachment(data.getData());return;}if(request==42&&signedIn&&result==RESULT_OK&&data!=null&&chatUi!=null){ArrayList<String> words=data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);if(words!=null&&!words.isEmpty()){String draft=chatUi.getDraft();chatUi.setDraft(draft+(draft.isEmpty()?"":" ")+words.get(0));}}}
     @Override public void onBackPressed(){if(busy)return;if(accountOpen){accountOpen=false;chatScreen();}else if(!signedIn&&!"login".equals(authMode))authScreen("login","");else super.onBackPressed();}
     private void signOut(){submit("Signing out…",()->{api.logout();return null;},r->{conversation="";pendingPrompt="";attachment=null;attachmentName="";transcript.clear();meshMode=false;lastAnswer="";meshMessages=new JSONArray();history=new JSONArray();profileInitial="D";authEmail="";challengeId="";stopMedia();transcriptionModel="";if(tts!=null)tts.stop();chatUi=null;loginScreen("");},true);}
     @Override protected void onDestroy(){stopMedia();api.cancelStream();worker.shutdownNow();if(tts!=null)tts.shutdown();super.onDestroy();}
