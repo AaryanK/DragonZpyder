@@ -136,12 +136,11 @@ private fun CodePanel(code: String, info: String, c: MarkdownColors, copy:(Strin
             }
             HorizontalDivider(color=c.line.copy(alpha=.7f))
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
-                SelectionContainer {
-                    Text(
-                        text=code.trimEnd('\n'), color=c.ink,
-                        fontFamily=FontFamily.Monospace,fontSize=13.sp,lineHeight=20.sp,
-                        softWrap=false,modifier=Modifier.padding(12.dp)
-                    )
+                Text(
+                    text=code.trimEnd('\n'), color=c.ink,
+                    fontFamily=FontFamily.Monospace,fontSize=13.sp,lineHeight=20.sp,
+                    softWrap=false,modifier=Modifier.padding(12.dp)
+                )
             }
         }
     }
