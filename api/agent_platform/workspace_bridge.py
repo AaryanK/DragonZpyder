@@ -44,8 +44,7 @@ async def run_workspace(
     authorization: str = Header(default=""),
     service_proof: str = Header(default="", alias="X-Operly-Agent-Service"),
 ):
-    if (os.getenv("DRAGONZPYDER_OPERLY_WORKSPACE_HARNESS_ENABLED") != "1"
-            or not _authorized(authorization, service_proof)):
+    if not _authorized(authorization, service_proof, scope="workspace"):
         raise HTTPException(401, "Signed Workspace harness unavailable")
     runtime = getattr(request.app.state, "agent_runtime", None)
     checkpointer = getattr(runtime, "_checkpointer", None)

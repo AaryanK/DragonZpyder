@@ -90,3 +90,23 @@ def test_harness_executes_only_signed_scoped_tools_and_persists_new_turn(monkeyp
     assert config["configurable"]["thread_id"] == workspace_thread(
         body["user_id"], body["workspace_id"], body["conversation_id"],
     )
+
+
+def test_workspace_and_personal_activation_are_independent():
+    from agent_platform.personal_bridge import _authorized
+    flags = {
+        "DRAGONZPYDER_AGENTS_ENABLED": "1",
+        "DRAGONZPYDER_AGENT_HARNESS_V2": "1",
+        "DRAGONZPYDER_OPERLY_TOOLS_ENABLED": "1",
+        "DRAGONZPYDER_OPERLY_MCP_ENABLED": "1",
+        "DRAGONZPYDER_AGENT_USE_GATEWAY": "1",
+        "DRAGONZPYDER_AGENT_PRODUCTION_MODE": "1",
+        "DRAGONZPYDER_OPERLY_PERSONAL_AGENT_TOKEN": "s" * 48,
+        "DRAGONZPYDER_OPERLY_MCP_SERVICE_SECRET": "p" * 48,
+        "DRAGONZPYDER_OPERLY_WORKSPACE_HARNESS_ENABLED": "1",
+    }
+    with patch.dict(os.environ, flags, clear=True):
+        assert _authorized("Bearer " + "s" * 48, "p" * 48, scope="workspace")
+        assert not _authorized("Bearer " + "s" * 48, "p" * 48, scope="personal")
+        assert not _authorized("Bearer " + "s" * 48, "wrong", scope="workspace")
+        assert not _authorized("Bearer " + "s" * 48, "p" * 48, scope="typo")
