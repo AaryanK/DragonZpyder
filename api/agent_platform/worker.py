@@ -46,6 +46,9 @@ def main() -> None:
         # required to start a Personal goal; no default cron or user trigger.
         from .personal_wake import make_personal_goal_controller_task
         workflows.append(make_personal_goal_controller_task(hatchet))
+    if os.getenv("DRAGONZPYDER_OPERLY_WORKFLOW_DISPATCH_ENABLED") == "1":
+        from .operly_workflow_dispatch import make_operly_workflow_pulse
+        workflows.append(make_operly_workflow_pulse(hatchet))
     worker = hatchet.worker("dragonzpyder-agent-worker", slots=2, workflows=workflows)
     worker.start()
 
