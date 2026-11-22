@@ -1,15 +1,15 @@
 plugins { id 'com.android.application'; id 'org.jetbrains.kotlin.android'; id 'org.jetbrains.kotlin.plugin.compose' }
 android {
     namespace 'xyz.dragonzpyder.android'
-    compileSdk 35
+    compileSdk 36
     buildFeatures { compose true }
     kotlinOptions { jvmTarget = '17' }
     defaultConfig {
         applicationId 'xyz.dragonzpyder.android'
         minSdk 26
-        targetSdk 35
-        versionCode 11
-        versionName '0.9.0'
+        targetSdk 36
+        versionCode 12
+        versionName '0.9.0-beta.1'
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
     }
     def releaseKeystore = System.getenv("DZ_ANDROID_KEYSTORE")
