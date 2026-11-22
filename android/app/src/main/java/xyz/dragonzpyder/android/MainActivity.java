@@ -113,7 +113,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private MobileOAuthStore mobileOAuth;
     private Intent queuedOAuthIntent;
     private LinearLayout providerButton(String symbol,String title,int identityColor,Runnable action){
-        LinearLayout row=row();row.setMinHeight(dp(56));row.setPadding(dp(14),dp(6),dp(12),dp(6));
+        LinearLayout row=row();row.setMinimumHeight(dp(56));row.setPadding(dp(14),dp(6),dp(12),dp(6));
         TextView mark=text(symbol,22,identityColor);mark.setTypeface(Typeface.create("sans-serif-black",Typeface.BOLD));
         mark.setGravity(Gravity.CENTER);row.addView(mark,new LinearLayout.LayoutParams(dp(32),dp(44)));
         TextView label=text(title,15,TEXT);label.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));
