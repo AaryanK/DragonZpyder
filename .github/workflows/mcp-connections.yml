@@ -1,0 +1,43 @@
+name: MCP connection security
+
+on:
+  pull_request:
+    paths:
+      - "api/agent_platform/mcp_*"
+      - "api/agent_platform/personal_bridge.py"
+      - "api/agent_platform/personal_wake.py"
+      - "api/agent_platform/migrations/20261122_mcp_connections.sql"
+      - "api/tests/test_mcp_connections.py"
+      - "api/requirements.txt"
+      - ".github/workflows/mcp-connections.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  offline-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install security and official MCP adapter dependencies
+        run: |
+          python -m pip install "pytest>=8,<10" "authlib>=1.6,<2" \
+            "cryptography>=44,<50" "httpx>=0.27,<1" "fastapi>=0.115,<1" \
+            "asyncpg>=0.30,<1" "langchain-mcp-adapters>=0.3,<0.4" \
+            "jsonschema>=4.22,<5"
+      - name: Compile connection and scheduling code
+        run: |
+          python -m compileall -q api/agent_platform/mcp_connections.py \
+            api/agent_platform/mcp_connection_http.py \
+            api/agent_platform/mcp_managed_catalog.py \
+            api/agent_platform/personal_bridge.py \
+            api/agent_platform/personal_wake.py
+      - name: Offline protocol, crypto and isolation tests
+        run: |
+          python -m pytest -q api/tests/test_mcp_connections.py \
+            api/tests/test_mcp_broker.py api/tests/test_universal_mcp_catalog.py
