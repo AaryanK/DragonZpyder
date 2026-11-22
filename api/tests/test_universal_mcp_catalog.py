@@ -178,3 +178,38 @@ def test_manifest_catalog_requires_explicit_egress_and_operator_review(monkeypat
     monkeypatch.setenv("DRAGONZPYDER_MCP_PUBLIC_CATALOG_JSON", json.dumps(rows))
     with pytest.raises(RuntimeError, match="Invalid reviewed"):
         reviewed_public_catalog_tools()
+
+
+def test_actual_langchain_tool_message_preserves_structured_mcp_content():
+    from langchain_core.tools import StructuredTool
+    from agent_platform.mcp_broker import invoke_granted_mcp_tool
+    async def lookup(query: str):
+        return ([{"type": "text", "text": "found record"}],
+                {"structured_content": {"records": [{"id": "record-1"}]}})
+    tool = StructuredTool.from_function(
+        coroutine=lookup, name="archive_lookup", description="Search records",
+        response_format="content_and_artifact",
+    )
+    outcome = asyncio.run(invoke_granted_mcp_tool(
+        tools=[tool], provider_id="archive", capability_id="lookup",
+        approved_ids=frozenset({"lookup"}), arguments={"query": "test"},
+    ))
+    assert outcome.result["structuredContent"]["records"][0]["id"] == "record-1"
+    assert outcome.receipt.started_at and outcome.receipt.finished_at
+    assert len(outcome.receipt.schema_sha256) == 64
+
+
+def test_actual_langchain_artifact_failure_is_not_success():
+    from langchain_core.tools import StructuredTool
+    from agent_platform.mcp_broker import invoke_granted_mcp_tool
+    async def lookup(query: str):
+        return ("pending", {"structured_content": {"status": "waiting_for_approval"}})
+    tool = StructuredTool.from_function(
+        coroutine=lookup, name="archive_lookup", description="Search records",
+        response_format="content_and_artifact",
+    )
+    with pytest.raises(RuntimeError, match="unsuccessful"):
+        asyncio.run(invoke_granted_mcp_tool(
+            tools=[tool], provider_id="archive", capability_id="lookup",
+            approved_ids=frozenset({"lookup"}), arguments={"query": "test"},
+        ))
