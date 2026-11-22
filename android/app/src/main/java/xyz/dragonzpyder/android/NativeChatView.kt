@@ -3,6 +3,14 @@ package xyz.dragonzpyder.android
 import android.content.Context
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -79,15 +87,15 @@ class NativeChatView(context: Context, private val dark: Boolean, private val ac
     @Composable private fun Workspace() {
         MaterialTheme(colorScheme = if (dark) darkColorScheme(primary=accent,background=bg,surface=panel,onSurface=ink,onBackground=ink) else lightColorScheme(primary=accent,background=bg,surface=panel,onSurface=ink,onBackground=ink)) {
             Column(Modifier.fillMaxSize().background(bg)) {
-                Row(Modifier.fillMaxWidth().heightIn(min=58.dp), verticalAlignment=Alignment.CenterVertically) {
-                    ToolButton("☰", "Conversations", actions::menu)
+                Row(Modifier.fillMaxWidth().heightIn(min=54.dp), verticalAlignment=Alignment.CenterVertically) {
+                    ToolButton("menu", "Conversations", actions::menu)
                     Column(Modifier.weight(1f).padding(horizontal=6.dp)) {
-                        Text("Personal",fontWeight=FontWeight.SemiBold,fontSize=15.sp)
+                        Text("Personal",color=ink,fontWeight=FontWeight.SemiBold,fontSize=15.sp)
                         Text(statusText, color=muted,fontSize=11.sp,maxLines=2)
                     }
-                    ToolButton("⌘","Commands",actions::commands)
-                    ToolButton(if(dark) "☀" else "☾","Switch appearance",actions::theme)
-                    ToolButton(profileInitial,"Account",actions::account)
+                    ToolButton("command","Commands",actions::commands)
+                    ToolButton(if(dark) "sun" else "moon","Switch appearance",actions::theme)
+                    IconButton(onClick=actions::account,enabled=!busy,modifier=Modifier.size(48.dp).semantics { contentDescription="Account" }) { Surface(shape=RoundedCornerShape(50),color=panel,border=BorderStroke(1.dp,line),modifier=Modifier.size(32.dp)) { Box(contentAlignment=Alignment.Center){Text(profileInitial,color=ink,fontWeight=FontWeight.Medium,fontSize=14.sp)} } }
                 }
                 HorizontalDivider(color=line.copy(alpha=.55f))
                 Box(Modifier.weight(1f).fillMaxWidth(),contentAlignment=Alignment.TopCenter) {
@@ -111,13 +119,24 @@ class NativeChatView(context: Context, private val dark: Boolean, private val ac
     }
     @Composable private fun ToolButton(symbol:String,label:String,click:()->Unit) {
         IconButton(onClick=click,enabled=!busy,modifier=Modifier.sizeIn(minWidth=48.dp,minHeight=48.dp).semantics { contentDescription=label }) {
-            Text(symbol,modifier=Modifier.padding(4.dp),fontSize=20.sp,color=ink)
+            Canvas(Modifier.size(21.dp)) {
+                val w=size.width;val h=size.height;val stroke=1.7.dp.toPx()
+                fun segment(x1:Float,y1:Float,x2:Float,y2:Float){drawLine(ink,Offset(x1*w,y1*h),Offset(x2*w,y2*h),stroke,StrokeCap.Round)}
+                when(symbol){
+                    "menu" -> {segment(.12f,.25f,.88f,.25f);segment(.12f,.5f,.72f,.5f);segment(.12f,.75f,.88f,.75f)}
+                    "plus" -> {segment(.5f,.15f,.5f,.85f);segment(.15f,.5f,.85f,.5f)}
+                    "mic" -> {drawRoundRect(ink,Offset(w*.36f,h*.08f),Size(w*.28f,h*.54f),androidx.compose.ui.geometry.CornerRadius(w*.14f),style=Stroke(stroke));drawArc(ink,0f,180f,false,Offset(w*.2f,h*.26f),Size(w*.6f,h*.5f),style=Stroke(stroke,cap=StrokeCap.Round));segment(.5f,.76f,.5f,.94f);segment(.34f,.94f,.66f,.94f)}
+                    "sun" -> {drawCircle(ink,w*.22f,style=Stroke(stroke));for(k in 0..7){val a=k*Math.PI/4;val x=kotlin.math.cos(a).toFloat();val y=kotlin.math.sin(a).toFloat();segment(.5f+x*.34f,.5f+y*.34f,.5f+x*.46f,.5f+y*.46f)}}
+                    "moon" -> {drawArc(ink,52f,258f,false,Offset(w*.15f,h*.09f),Size(w*.73f,h*.82f),style=Stroke(stroke,cap=StrokeCap.Round));drawArc(ink,80f,195f,false,Offset(w*.45f,h*.04f),Size(w*.48f,h*.70f),style=Stroke(stroke,cap=StrokeCap.Round))}
+                    "command" -> {segment(.32f,.32f,.68f,.32f);segment(.32f,.68f,.68f,.68f);segment(.32f,.32f,.32f,.68f);segment(.68f,.32f,.68f,.68f);for(x in listOf(.22f,.78f))for(y in listOf(.22f,.78f))drawCircle(ink,w*.12f,Offset(w*x,h*y),style=Stroke(stroke))}
+                }
+            }
         }
     }
     @Composable private fun Welcome() {
         Column(Modifier.fillMaxWidth().padding(horizontal=10.dp,vertical=22.dp),horizontalAlignment=Alignment.CenterHorizontally) {
             if(dark){Image(painterResource(R.drawable.brand_icon),"DragonZpyder",Modifier.size(56.dp));Spacer(Modifier.height(22.dp))}
-            Text("What shall we work on?",fontSize=34.sp,lineHeight=39.sp,fontWeight=FontWeight.Bold,letterSpacing=(-1.5).sp,textAlign=TextAlign.Center)
+            Text("What shall we work on?",color=ink,fontSize=34.sp,lineHeight=39.sp,fontWeight=FontWeight.Bold,letterSpacing=(-1.5).sp,textAlign=TextAlign.Center)
             Spacer(Modifier.height(12.dp))
             Text(if(modeLabel=="Agent") "From a quick question to a big idea. Start anywhere. We’ll find the way forward." else modelLabel,color=muted,fontSize=14.sp,lineHeight=22.sp,textAlign=TextAlign.Center,modifier=Modifier.widthIn(max=470.dp))
             Spacer(Modifier.height(24.dp))
@@ -130,10 +149,11 @@ class NativeChatView(context: Context, private val dark: Boolean, private val ac
     }
     @Composable private fun MessageRow(message:Message,ongoing:Boolean=false) {
         val user=message.role=="user"
+        if(message.role=="system"){Text(message.content,color=muted,fontSize=12.sp,lineHeight=18.sp,modifier=Modifier.fillMaxWidth().padding(vertical=4.dp));return}
         Column(Modifier.fillMaxWidth(),horizontalAlignment=if(user) Alignment.End else Alignment.Start) {
-            Text(if(user)"You" else "DragonZpyder",fontSize=11.sp,fontWeight=FontWeight.SemiBold,color=muted,modifier=Modifier.padding(bottom=6.dp))
+            if(!user) Row(verticalAlignment=Alignment.CenterVertically,modifier=Modifier.padding(bottom=8.dp)){Image(painterResource(R.drawable.brand_icon),"DragonZpyder",Modifier.size(20.dp));Spacer(Modifier.width(7.dp));Text("DragonZpyder",fontSize=12.sp,fontWeight=FontWeight.Medium,color=muted)}
             Surface(color=if(user)userBubble else bg,shape=RoundedCornerShape(18.dp),modifier=if(user) Modifier.widthIn(max=620.dp) else Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(if(user)14.dp else 2.dp)) {
+                Column(Modifier.padding(if(user)12.dp else 0.dp)) {
                     SelectionContainer { RichText(message.content) }
                 }
             }
@@ -185,17 +205,16 @@ class NativeChatView(context: Context, private val dark: Boolean, private val ac
         append(value.substring(offset))
     }
     @Composable private fun Composer() {
-        Surface(modifier=Modifier.widthIn(max=810.dp).fillMaxWidth(),shape=RoundedCornerShape(19.dp),color=panel,border=BorderStroke(1.dp,line),shadowElevation=2.dp) {
-            Column(Modifier.padding(9.dp)) {
-                TextField(value=draft,onValueChange={draft=it.take(12000)},placeholder={Text("Ask anything, or give DragonZpyder a task…",color=muted,fontSize=14.sp)},modifier=Modifier.fillMaxWidth(),minLines=2,maxLines=5,
-                    colors=TextFieldDefaults.colors(focusedContainerColor=Color.Transparent,unfocusedContainerColor=Color.Transparent,focusedIndicatorColor=Color.Transparent,unfocusedIndicatorColor=Color.Transparent))
+        Surface(modifier=Modifier.widthIn(max=810.dp).fillMaxWidth(),shape=RoundedCornerShape(22.dp),color=panel,border=BorderStroke(1.dp,line),shadowElevation=0.dp) {
+            Column(Modifier.padding(horizontal=9.dp,vertical=6.dp)) {
+                BasicTextField(value=draft,onValueChange={draft=it.take(12000)},modifier=Modifier.fillMaxWidth().padding(horizontal=8.dp,vertical=9.dp),minLines=1,maxLines=5,textStyle=TextStyle(color=ink,fontSize=16.sp,lineHeight=23.sp),cursorBrush=SolidColor(accent),decorationBox={inner->Box{if(draft.isEmpty())Text("Ask anything, or give DragonZpyder a task…",color=muted,fontSize=14.sp,lineHeight=23.sp);inner()}})
                 if(attachmentLabel.isNotBlank()) TextButton(onClick=actions::removeAttachment,enabled=!busy){Text("×  "+attachmentLabel)}
                 Row(verticalAlignment=Alignment.CenterVertically,modifier=Modifier.fillMaxWidth()) {
-                    ToolButton("＋","Attach",actions::add)
+                    ToolButton("plus","Attach",actions::add)
                     TextButton(onClick=actions::mode,enabled=!busy){Text("✦ "+modeLabel,color=ink)}
                     Spacer(Modifier.weight(1f))
-                    ToolButton("◉","Dictate",actions::dictate)
-                    Button(onClick={if(streaming)actions.stop() else actions.send()},enabled=streaming||(!busy&&draft.isNotBlank()),shape=RoundedCornerShape(12.dp),contentPadding=PaddingValues(0.dp),modifier=Modifier.size(48.dp),colors=ButtonDefaults.buttonColors(containerColor=accent,contentColor=Color.White)) { Text(if(streaming)"■" else "↑",fontSize=23.sp) }
+                    ToolButton("mic","Dictate",actions::dictate)
+                    Button(onClick={if(streaming)actions.stop() else actions.send()},enabled=streaming||(!busy&&draft.isNotBlank()),shape=RoundedCornerShape(50),contentPadding=PaddingValues(0.dp),modifier=Modifier.size(44.dp).semantics{contentDescription=if(streaming)"Stop response" else "Send message"},colors=ButtonDefaults.buttonColors(containerColor=Color(0xFFB94A21),contentColor=Color.White,disabledContainerColor=line.copy(alpha=.35f),disabledContentColor=muted)) { Text(if(streaming)"■" else "↑",fontSize=23.sp) }
                 }
             }
         }
