@@ -83,31 +83,80 @@ public final class MainActivity extends Activity {
     private EditText field(String hint,boolean secret){EditText e=new EditText(this);e.setHint(hint);e.setHintTextColor(MUTED);e.setTextColor(TEXT);e.setTextSize(16);e.setPadding(dp(14),dp(12),dp(14),dp(12));GradientDrawable d=surface(PANEL,16);d.setStroke(dp(1),LINE);e.setBackground(d);e.setInputType(secret?129:1);return e;}
     private void gap(LinearLayout l,int height){l.addView(new View(this),new LinearLayout.LayoutParams(1,dp(height)));}
     private void reset(){root=column();root.setBackgroundColor(BG);root.setPadding(dp(12),dp(8),dp(12),dp(8));setContentView(root);root.setOnApplyWindowInsetsListener((v,insets)->{int left,top,right,bottom;if(android.os.Build.VERSION.SDK_INT>=30){android.graphics.Insets bars=insets.getInsets(WindowInsets.Type.systemBars()|WindowInsets.Type.displayCutout()|WindowInsets.Type.ime());left=bars.left;top=bars.top;right=bars.right;bottom=bars.bottom;}else{left=insets.getSystemWindowInsetLeft();top=insets.getSystemWindowInsetTop();right=insets.getSystemWindowInsetRight();bottom=insets.getSystemWindowInsetBottom();}v.setPadding(dp(12)+left,dp(8)+top,dp(12)+right,dp(8)+bottom);return insets;});root.requestApplyInsets();}
-    private void loginScreen(String message){
-        signedIn=false;reset();root.setGravity(Gravity.CENTER_VERTICAL);
-        LinearLayout brandRow=row();brandRow.addView(logo(36));TextView brandName=heading("DragonZpyder",20);brandRow.addView(brandName);brandRow.addView(new View(this),new LinearLayout.LayoutParams(0,1,1));brandRow.addView(button(dark?"☀":"☾",this::toggleTheme));root.addView(brandRow);gap(root,24);
-        TextView eyebrow=text("PRIVATE PERSONAL RUNTIME",11,ACCENT);eyebrow.setLetterSpacing(.16f);root.addView(eyebrow);gap(root,12);
-        root.addView(heading("Sign in to your Personal AI",30));gap(root,8);
-        root.addView(text("Sign in with your existing Operly account to access your private Personal workspace.",16,MUTED));gap(root,30);
-        EditText email=field("Email",false);email.setInputType(33);email.setSingleLine(true);root.addView(text("EMAIL ADDRESS",11,MUTED));gap(root,6);root.addView(email);gap(root,16);
-        EditText password=field("Password",true);password.setSingleLine(true);root.addView(text("PASSWORD",11,MUTED));gap(root,6);root.addView(password);gap(root,22);
-        Button login=primary("Sign in",()->{
-            String e=email.getText().toString().trim(),p=password.getText().toString();
-            if(e.isEmpty()||p.isEmpty()){status.setText("Enter your email and password.");return;}
-            hideKeyboard(password);password.setText("");
-            submit("Signing in…",()->{api.login(e,p);return null;},result->{signedIn=true;chatScreen();loadHistory(true);},true);
-        });root.addView(login);
-        status=text(message,14,MUTED);status.setPadding(0,dp(12),0,0);root.addView(status);
-        gap(root,24);root.addView(text("Secure Personal session · DragonZpyder",12,MUTED));
+    private String authMode="login", authEmail="", challengeId="", profileInitial="D";
+    private boolean accountOpen;
+    private LinearLayout accountPage;
+    private void loginScreen(String message){authMode="login";authScreen("login",message);}
+    private void accountLayout(){
+        reset();ScrollView scroller=new ScrollView(this);scroller.setFillViewport(true);accountPage=column();accountPage.setPadding(dp(12),dp(14),dp(12),dp(30));scroller.addView(accountPage);root.addView(scroller,new LinearLayout.LayoutParams(-1,0,1));
+        LinearLayout bar=row();bar.addView(logo(32));bar.addView(heading("  DragonZpyder",19));bar.addView(new View(this),new LinearLayout.LayoutParams(0,1,1));bar.addView(button(dark?"☀":"☾",()->{dark=!dark;getPreferences(MODE_PRIVATE).edit().putBoolean("dark",dark).apply();palette();if(signedIn)showAccount();else authScreen(authMode,"");}));accountPage.addView(bar);gap(accountPage,24);
     }
-    private void chatScreen(){
+    private void sectionLabel(LinearLayout parent,String label){TextView t=text(label,11,ACCENT);t.setLetterSpacing(.12f);parent.addView(t);gap(parent,8);}
+    private EditText accountField(LinearLayout parent,String label,String value,int kind,String hint){
+        parent.addView(text(label,13,TEXT));gap(parent,6);EditText e=field("",kind==129);e.setInputType(kind);e.setSingleLine(true);e.setText(value);e.setMinHeight(dp(48));if(!hint.isEmpty())e.setAutofillHints(hint);parent.addView(e);gap(parent,16);return e;
+    }
+    private LinearLayout accountCard(){
+        LinearLayout card=column();card.setPadding(dp(18),dp(18),dp(18),dp(18));GradientDrawable bg=surface(PANEL,18);bg.setStroke(dp(1),LINE);card.setBackground(bg);accountPage.addView(card,new LinearLayout.LayoutParams(-1,-2));return card;
+    }
+    private String value(EditText field){return field.getText().toString().trim();}
+    private boolean emailValid(String email){if(!android.util.Patterns.EMAIL_ADDRESS.matcher(email).matches()){status.setText("Enter a valid email address.");return false;}return true;}
+    private boolean strong(String p){if(p.length()<12){status.setText("Use at least 12 characters for your password.");return false;}return true;}
+    private boolean six(String code){if(!code.matches("[0-9]{6}")){status.setText("Enter the six-digit code.");return false;}return true;}
+    private void authSuccess(){authEmail="";challengeId="";signedIn=true;accountOpen=false;chatScreen();loadHistory(true);}
+    private void authScreen(String mode,String message){
+        signedIn=false;accountOpen=false;authMode=mode;accountLayout();
+        sectionLabel(accountPage,"ONE IDENTITY · YOUR INTELLIGENCE");accountPage.addView(heading("Always yours.",38));gap(accountPage,8);accountPage.addView(text("Your conversations, personal AI, and authorised connections—all in one account.",14,MUTED));gap(accountPage,22);
+        LinearLayout card=accountCard();
+        if(mode.equals("login")||mode.equals("signup")){
+            LinearLayout tabs=row();Button sign=mode.equals("login")?primary("Sign in",()->authScreen("login","")):button("Sign in",()->authScreen("login",""));Button create=mode.equals("signup")?primary("Create account",()->authScreen("signup","")):button("Create account",()->authScreen("signup",""));
+            tabs.addView(sign,new LinearLayout.LayoutParams(0,-2,1));LinearLayout.LayoutParams tab=new LinearLayout.LayoutParams(0,-2,1);tab.setMargins(dp(6),0,0,0);tabs.addView(create,tab);card.addView(tabs);gap(card,22);
+        }
+        String title=mode.equals("signup")?"Create your account.":mode.equals("verify")?"Verify your email.":mode.equals("forgot")?"Reset your password.":mode.equals("reset")?"Set a new password.":"Welcome back.";
+        card.addView(heading(title,27));gap(card,6);card.addView(text(mode.equals("signup")?"Start personal. Connect workspaces when you choose.":mode.equals("verify")?"Enter the six-digit code emailed to you.":mode.equals("forgot")?"We’ll email reset instructions if an account exists.":mode.equals("reset")?"Use the six-digit code from your password-reset email.":"Continue to your personal DragonZpyder.",14,MUTED));gap(card,20);
+        status=text(message,13,message.isEmpty()?MUTED:TEXT);status.setLineSpacing(dp(2),1);card.addView(status);gap(card,8);
+        EditText name=mode.equals("signup")?accountField(card,"Your name","",1,View.AUTOFILL_HINT_NAME):null;
+        EditText email=accountField(card,"Email address",authEmail,33,View.AUTOFILL_HINT_EMAIL_ADDRESS);
+        EditText code=mode.equals("verify")||mode.equals("reset")?accountField(card,mode.equals("verify")?"Verification code":"Reset code","",2,"smsOTPCode"):null;
+        if(code!=null)code.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(6)});
+        EditText password=mode.equals("login")||mode.equals("signup")||mode.equals("reset")?accountField(card,mode.equals("login")?"Password":mode.equals("reset")?"New password (at least 12 characters)":"Password (at least 12 characters)","",129,mode.equals("login")?View.AUTOFILL_HINT_PASSWORD:View.AUTOFILL_HINT_NEW_PASSWORD):null;
+        EditText confirm=mode.equals("signup")?accountField(card,"Confirm password","",129,View.AUTOFILL_HINT_NEW_PASSWORD):null;
+        String action=mode.equals("signup")?"Create account":mode.equals("verify")?"Verify and continue":mode.equals("forgot")?"Send reset instructions":mode.equals("reset")?"Update password":"Sign in";
+        card.addView(primary(action,()->{
+            String e=value(email),p=password==null?"":password.getText().toString(),c=code==null?"":value(code),n=name==null?"":value(name);
+            if(!emailValid(e))return;authEmail=e;
+            if(mode.equals("signup")&&(n.isEmpty()||n.length()>200)){status.setText("Enter your name (up to 200 characters).");return;}
+            if((mode.equals("signup")||mode.equals("reset"))&&!strong(p))return;
+            if(confirm!=null&&!p.equals(confirm.getText().toString())){status.setText("Passwords do not match.");return;}
+            if(code!=null&&!six(c))return;
+            if(mode.equals("login")&&p.isEmpty()){status.setText("Enter your password.");return;}
+            hideKeyboard(email);
+            if(mode.equals("login")){
+                submit("Signing in…",()->{try{api.login(e,p);return Boolean.TRUE;}catch(DragonApi.ApiError failure){if("EMAIL_NOT_VERIFIED".equals(failure.code))return Boolean.FALSE;throw failure;}},r->{if(Boolean.TRUE.equals(r))authSuccess();else{challengeId="";authScreen("verify","Please verify your email to continue.");}},true);
+            }else if(mode.equals("signup")){
+                submit("Creating your account…",()->api.preauth("signup",new JSONObject().put("display_name",n).put("email",e).put("password",p)),r->{JSONObject result=(JSONObject)r;challengeId=result.optString("challenge_id","");authEmail=result.optString("email",e);authScreen("verify","Account created. Enter the code sent to your email.");},true);
+            }else if(mode.equals("verify")){
+                submit("Verifying email…",()->{api.verify(e,c,challengeId);return null;},r->authSuccess(),true);
+            }else if(mode.equals("forgot")){
+                submit("Requesting reset…",()->api.preauth("forgot-password",DragonApi.object("email",e)),r->authScreen("reset","If the account exists, reset instructions were sent."),true);
+            }else if(mode.equals("reset")){
+                submit("Updating password…",()->api.preauth("reset-password",new JSONObject().put("email",e).put("code",c).put("password",p)),r->authScreen("login","Password updated. Sign in with your new password."),true);
+            }
+            if(password!=null)password.setText("");if(confirm!=null)confirm.setText("");
+        }));
+        if(mode.equals("login")){card.addView(button("Forgot password?",()->{authEmail=value(email);authScreen("forgot","");}));card.addView(button("Already have a verification code?",()->{authEmail=value(email);challengeId="";authScreen("verify","");}));}
+        if(mode.equals("verify"))card.addView(button("Resend code",()->{String e=value(email);if(!emailValid(e))return;submit("Requesting code…",()->api.preauth("resend-verification",DragonApi.object("email",e)),r->status.setText("If verification is pending, another code is on its way."),true);}));
+        if(mode.equals("forgot"))card.addView(button("I have a reset code",()->{authEmail=value(email);authScreen("reset","");}));
+        if(!mode.equals("login")&&!mode.equals("signup"))card.addView(button("Back to sign in",()->authScreen("login","")));
+        gap(accountPage,24);accountPage.addView(text("One account, clear boundaries. Personal access does not grant business permissions.",12,MUTED));
+    }
+    private void chatScreen(){accountOpen=false;
         reset();LinearLayout toolbar=row();
         Button menu=button("☰",this::showMenu);menu.setContentDescription("Open sidebar");toolbar.addView(menu);
         LinearLayout title=column();title.addView(heading("Personal",15));status=text("Personal runtime connected",11,0xff56a47e);title.addView(status);
         LinearLayout.LayoutParams titleParams=new LinearLayout.LayoutParams(0,-2,1);titleParams.setMargins(dp(10),0,0,0);toolbar.addView(title,titleParams);
         Button command=button("⌘",this::showCommands);command.setContentDescription("Search commands");toolbar.addView(command);
         Button theme=button(dark?"☀":"☾",this::toggleTheme);theme.setContentDescription("Toggle appearance");toolbar.addView(theme);
-        Button profile=button("D",this::showAccount);profile.setContentDescription("Account menu");toolbar.addView(profile);root.addView(toolbar);
+        Button profile=button(profileInitial,this::showAccount);profile.setContentDescription("Account menu");toolbar.addView(profile);root.addView(toolbar);
         gap(root,8);View divider=new View(this);divider.setBackgroundColor(dark?0xff302c2c:0xffeae5de);root.addView(divider,new LinearLayout.LayoutParams(-1,dp(1)));
         scroll=new ScrollView(this);scroll.setFillViewport(true);messages=column();scroll.addView(messages);
         root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
@@ -134,7 +183,30 @@ public final class MainActivity extends Activity {
             drawer.setContentView(sidebar);drawer.show();Window w=drawer.getWindow();if(w!=null){w.setBackgroundDrawableResource(android.R.color.transparent);w.setGravity(Gravity.START|Gravity.TOP);w.setLayout(Math.min(dp(285),(int)(getResources().getDisplayMetrics().widthPixels*.88)), -1);}
         },true);
     }
-    private void showAccount(){new AlertDialog.Builder(this).setTitle("Personal session").setItems(new String[]{"Sign out"},(d,i)->signOut()).setNegativeButton("Close",null).show();}
+    private void showAccount(){
+        submit("Loading account…",()->{
+            JSONObject p=api.profile();p.put("native_sessions",api.call("/api/auth/sessions",null));
+            try{p.put("native_workspaces",api.call("/api/auth/workspaces",null));}catch(Exception ignored){p.put("workspaces_unavailable",true);}
+            return p;
+        },r->renderAccount((JSONObject)r),true);
+    }
+    private void renderAccount(JSONObject p){
+        accountOpen=true;accountLayout();
+        accountPage.addView(button("‹ Back to Personal AI",()->{accountOpen=false;chatScreen();}));gap(accountPage,20);
+        sectionLabel(accountPage,"YOUR DRAGONZPYDER");accountPage.addView(heading("Account & connections.",30));gap(accountPage,8);accountPage.addView(text("One identity, with clear boundaries around every connected service and workspace.",14,MUTED));gap(accountPage,20);
+        LinearLayout profile=accountCard();sectionLabel(profile,"01 / IDENTITY");profile.addView(heading("Your profile",21));gap(profile,8);profile.addView(text(p.optString("email"),14,MUTED));gap(profile,16);
+        String current=p.optString("display_name");if(!current.isEmpty())profileInitial=current.substring(0,1).toUpperCase(Locale.ROOT);EditText name=accountField(profile,"Display name",current,1,View.AUTOFILL_HINT_NAME);
+        status=text("",13,MUTED);profile.addView(status);profile.addView(primary("Save changes",()->{String n=value(name);if(n.isEmpty()||n.length()>200){status.setText("Enter a display name up to 200 characters.");return;}submit("Saving…",()->{api.updateName(n);return api.profile();},result->{JSONObject saved=(JSONObject)result;p.put("display_name",saved.optString("display_name",n));renderAccount(p);status.setText("Your account has been updated.");},true);}));
+        gap(accountPage,14);LinearLayout identity=accountCard();sectionLabel(identity,"02 / ACCESS");identity.addView(heading("Sign-in methods",21));gap(identity,8);
+        JSONArray ids=p.optJSONArray("auth_identities");if(ids!=null)for(int i=0;i<ids.length();i++){JSONObject item=ids.optJSONObject(i);if(item!=null){identity.addView(text(item.optString("provider")+(item.optString("account").isEmpty()?"":" · "+item.optString("account")),14,TEXT));gap(identity,8);}}
+        if(ids==null||ids.length()==0)identity.addView(text("No sign-in methods returned.",13,MUTED));gap(identity,10);identity.addView(text("Connected tools require their own authorization. Signing in does not grant Gmail or Calendar access.",12,MUTED));
+        gap(accountPage,14);LinearLayout sessions=accountCard();sectionLabel(sessions,"03 / SECURITY");sessions.addView(heading("Active sessions",21));gap(sessions,12);
+        JSONArray list=p.optJSONArray("native_sessions");if(list!=null)for(int i=0;i<list.length();i++){JSONObject item=list.optJSONObject(i);if(item==null)continue;sessions.addView(text(item.optString("device","Session")+(item.optBoolean("current")?" · This device":""),14,TEXT));sessions.addView(text(item.optString("scope",""),12,MUTED));gap(sessions,12);}
+        gap(accountPage,14);LinearLayout spaces=accountCard();sectionLabel(spaces,"04 / SCOPE");spaces.addView(heading("Your workspaces",21));gap(spaces,8);
+        JSONArray work=p.optJSONArray("native_workspaces");if(p.optBoolean("workspaces_unavailable"))spaces.addView(text("Workspace information is unavailable.",13,MUTED));else if(work==null||work.length()==0)spaces.addView(text("No business workspaces attached to this account.",13,MUTED));else for(int i=0;i<work.length();i++){JSONObject w=work.optJSONObject(i);if(w!=null){spaces.addView(text(w.optString("name")+" · "+w.optString("role"),14,TEXT));gap(spaces,8);}}
+        gap(accountPage,14);Button out=button("Sign out",this::confirmSignOut);out.setTextColor(dark?0xffffa59a:0xffb6382b);accountPage.addView(out);gap(accountPage,10);accountPage.addView(text("Signs out this device and clears its local conversation view. Your server conversations are retained.",12,MUTED));
+    }
+    private void confirmSignOut(){new AlertDialog.Builder(this).setTitle("Sign out of DragonZpyder?").setMessage("You’ll need to sign in again to access your Personal workspace on this device.").setNegativeButton("Cancel",null).setPositiveButton("Sign out",(d,i)->signOut()).show();}
     private void showCommands(){new AlertDialog.Builder(this).setTitle("What would you like to do?").setItems(new String[]{"New chat","Find conversations","Switch mode","Approvals","Dictate a message","Toggle appearance"},(d,i)->{switch(i){case 0:newChat();break;case 1:showMenu();break;case 2:showModes();break;case 3:approvals();break;case 4:dictate();break;case 5:toggleTheme();break;}}).setNegativeButton("Close",null).show();}
     private void showAdd(){
         new AlertDialog.Builder(this).setTitle("Add to your message")
@@ -269,6 +341,6 @@ public final class MainActivity extends Activity {
         catch(android.content.ActivityNotFoundException e){status.setText("No speech recognition service available.");}
     }
     @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(request==43&&result==RESULT_OK&&data!=null&&data.getData()!=null){readAttachment(data.getData());return;}if(request==42&&result==RESULT_OK&&data!=null&&input!=null){ArrayList<String> words=data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);if(words!=null&&!words.isEmpty())input.setText(words.get(0));}}
-    private void signOut(){submit("Signing out…",()->{api.logout();return null;},r->{conversation="";attachment=null;attachmentName="";transcript.clear();meshMode=false;lastAnswer="";meshMessages=new JSONArray();history=new JSONArray();loginScreen("");},true);}
+    private void signOut(){submit("Signing out…",()->{api.logout();return null;},r->{conversation="";attachment=null;attachmentName="";transcript.clear();meshMode=false;lastAnswer="";meshMessages=new JSONArray();history=new JSONArray();profileInitial="D";authEmail="";challengeId="";if(tts!=null)tts.stop();input=null;loginScreen("");},true);}
     @Override protected void onDestroy(){worker.shutdown();if(tts!=null)tts.shutdown();super.onDestroy();}
 }
