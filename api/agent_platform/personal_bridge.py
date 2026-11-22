@@ -36,11 +36,18 @@ class OperlyPersonalRun(BaseModel):
     mcp_connection_ids: list[str] = Field(default_factory=list, max_length=10)
 
 
-def _authorized(authorization: str, proof: str) -> bool:
+def _authorized(
+    authorization: str, proof: str, *, scope: Literal["personal", "workspace"] = "personal",
+) -> bool:
+    # One service identity boundary; independent Personal and Workspace
+    # activation gates. Workspace must not depend on Personal being enabled.
+    if scope not in ("personal", "workspace"):
+        return False
+    gate = ("DRAGONZPYDER_PERSONAL_MCP_HARNESS_ENABLED" if scope == "personal"
+            else "DRAGONZPYDER_OPERLY_WORKSPACE_HARNESS_ENABLED")
     agent_secret = os.getenv("DRAGONZPYDER_OPERLY_PERSONAL_AGENT_TOKEN", "")
     mcp_secret = os.getenv("DRAGONZPYDER_OPERLY_MCP_SERVICE_SECRET", "")
-    return (all(os.getenv(k) == "1" for k in (
-                "DRAGONZPYDER_PERSONAL_MCP_HARNESS_ENABLED",
+    return (os.getenv(gate) == "1" and all(os.getenv(k) == "1" for k in (
                 "DRAGONZPYDER_AGENTS_ENABLED",
                 "DRAGONZPYDER_AGENT_HARNESS_V2",
                 "DRAGONZPYDER_OPERLY_TOOLS_ENABLED",
