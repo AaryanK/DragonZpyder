@@ -36,9 +36,13 @@ def app(monkeypatch):
     monkeypatch.setenv("DRAGONZPYDER_IDENTITY_ISSUER", ISSUER)
     monkeypatch.setenv("RAILWAY_ENVIRONMENT_NAME", "staging")
     monkeypatch.setenv("DRAGONZPYDER_IDENTITY_HTTP_ENABLED", "1")
+    class FakeDB:
+        @asynccontextmanager
+        async def transaction(self):
+            yield self
     @asynccontextmanager
     async def db():
-        yield object()
+        yield FakeDB()
     async def client(conn, **kwargs):
         assert kwargs["client_id"] == "operly-web"
         assert kwargs["redirect_uri"] == REDIRECT
@@ -95,8 +99,13 @@ def test_consented_post_returns_json_url_for_same_origin_fetch(app, monkeypatch)
         return AuthorizationGrant("one-time-code", datetime.now(timezone.utc) + timedelta(seconds=90))
     monkeypatch.setattr(bridge, "resolve_browser_session", session)
     monkeypatch.setattr(bridge, "authorize_code", grant)
+    async def consume(conn, **kwargs):
+        assert kwargs["ticket"] == "t" * 48
+        assert kwargs["subject"] == "existing-user"
+        assert kwargs["request"]["nonce"] == "n" * 40
+    monkeypatch.setattr(bridge, "consume_interaction", consume)
     with TestClient(app, base_url=ISSUER) as c:
-        response = c.post("/identity/v1/authorize", json=query(),
+        response = c.post("/identity/v1/authorize", json={**query(), "consent_ticket": "t" * 48},
                           headers={"Origin": ISSUER, "x-dz-csrf": "synthetic-csrf",
                                    "Accept": "application/json"}, follow_redirects=False)
     assert response.status_code == 200

@@ -16,6 +16,7 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field
 
 from .grants import OAuthGrantDenied, authorize_code
+from .consent import consume_interaction
 from .exchange import exchange_code, exchange_refresh
 from .sessions import SessionDenied, resolve_browser_session
 from .tokens import SigningIdentity, IdentityIssuerUnavailable, _origin
@@ -32,6 +33,7 @@ class AuthorizeInput(BaseModel):
     code_challenge_method: str
     code_challenge: str = Field(min_length=43, max_length=43)
     nonce: str | None = Field(default=None, min_length=24, max_length=128)
+    consent_ticket: str | None = Field(default=None, min_length=32, max_length=160)
 
 
 def _enabled():
@@ -80,11 +82,17 @@ async def browser_authorize(payload: AuthorizeInput, request: Request):
             subject = await resolve_browser_session(
                 db, secret=session, csrf=csrf, require_csrf=True,
             )
-            grant = await authorize_code(
-                db, authenticated_subject=subject, client_id=payload.client_id,
-                redirect_uri=payload.redirect_uri, scope=payload.scope,
-                pkce_s256=payload.code_challenge, nonce=payload.nonce,
-            )
+            async with db.transaction():
+                await consume_interaction(
+                    db, ticket=payload.consent_ticket, subject=subject,
+                    session_secret=session,
+                    request=payload.model_dump(exclude={"consent_ticket"}),
+                )
+                grant = await authorize_code(
+                    db, authenticated_subject=subject, client_id=payload.client_id,
+                    redirect_uri=payload.redirect_uri, scope=payload.scope,
+                    pkce_s256=payload.code_challenge, nonce=payload.nonce,
+                )
     except (SessionDenied, OAuthGrantDenied) as exc:
         raise HTTPException(403, "Authorization denied") from exc
     # Registered redirect was validated by authorize_code; preserve any
