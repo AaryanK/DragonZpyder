@@ -145,6 +145,8 @@ async def messages(conversation_id: UUID, request: Request):
 @router.post("/chat")
 async def chat(payload: ChatInput, request: Request):
     user = await _owner(request, changing=True)
+    if not payload.message.strip():
+        raise HTTPException(422, "Message cannot be blank")
     runtime = getattr(request.app.state, "agent_runtime", None)
     if runtime is None or runtime._checkpointer is None:
         raise HTTPException(503, "Agent checkpoints unavailable")
@@ -181,6 +183,22 @@ async def chat(payload: ChatInput, request: Request):
             )
         else:
             await _require_conversation(db, user=user, conversation_id=conversation_id)
+        # Atomic per-user daily reservation BEFORE paid inference. Unknown
+        # provider outcomes still consume a request slot; the metered gateway
+        # independently enforces provider/organization spending constraints.
+        daily_limit = max(1, min(250, int(os.getenv(
+            "DRAGONZPYDER_FIRST_PARTY_DAILY_CALLS", "25"))))
+        reserved = await db.fetchval(
+            """INSERT INTO dz_first_party_daily_quota
+                 (owner_id, quota_day, reserved_calls)
+               VALUES ($1, (now() AT TIME ZONE 'UTC')::date, 1)
+               ON CONFLICT (owner_id, quota_day) DO UPDATE
+               SET reserved_calls = dz_first_party_daily_quota.reserved_calls + 1
+               WHERE dz_first_party_daily_quota.reserved_calls < $2
+               RETURNING reserved_calls""", user, daily_limit,
+        )
+        if reserved is None:
+            raise HTTPException(429, "Daily Agent request allowance reached")
         # A conversation can be resumed from multiple devices. Serialize the
         # checkpoint update across API replicas, not merely within a process.
         lock_key = "dragonzpyder-first-party:" + user + ":" + str(conversation_id)
