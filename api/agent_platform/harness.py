@@ -161,8 +161,11 @@ def build_frontier_agent(model, checkpointer, *, specialist_models=None, synthet
     if synthetic_tools is not None and os.getenv("DRAGONZPYDER_SYNTHETIC_TOOLS_ENABLED") != "1":
         raise ValueError("Synthetic tools are disabled outside explicit test mode")
     synthetic_tools = list(synthetic_tools or [])
-    if delegated_tools is not None and os.getenv("DRAGONZPYDER_OPERLY_TOOLS_ENABLED") != "1":
-        raise ValueError("Operly delegated tools are disabled")
+    if delegated_tools is not None and not any(os.getenv(flag) == "1" for flag in (
+        "DRAGONZPYDER_OPERLY_TOOLS_ENABLED",
+        "DRAGONZPYDER_MCP_USER_CONNECTIONS_ENABLED",
+    )):
+        raise ValueError("Delegated tools are disabled")
     delegated_tools = list(delegated_tools or [])
     allow_search = os.getenv("DRAGONZPYDER_AGENT_WEB_SEARCH_ENABLED") == "1"
     search_tools = []

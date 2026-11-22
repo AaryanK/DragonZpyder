@@ -29,6 +29,7 @@ from identity.browser_authorize import router as identity_browser_authorize_rout
 from identity.login_http import router as identity_login_router
 from identity.provider_http import router as identity_provider_router
 from agent_platform.personal_bridge import router as operly_personal_bridge_router
+from agent_platform.first_party_chat import router as first_party_chat_router
 from agent_platform.workspace_bridge import router as operly_workspace_bridge_router
 from agent_platform.mcp_connection_http import router as mcp_connection_router
 from agent_platform.openrouter_spend_guard import PaidTestBudgetError, require_paid_test_cap
@@ -147,6 +148,7 @@ app.include_router(identity_login_router)
 app.include_router(identity_provider_router)
 app.include_router(agent_router)
 app.include_router(operly_personal_bridge_router)
+app.include_router(first_party_chat_router)
 app.include_router(operly_workspace_bridge_router)
 app.include_router(mcp_connection_router)
 
