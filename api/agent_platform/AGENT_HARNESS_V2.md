@@ -4,7 +4,7 @@ Built on Deep Agents + LangGraph, **not a competing framework**.
 Source: `api/agent_platform/harness.py`, called through
 `api/agent_platform/runtime.py`.
 
-## Enabled by `DRAGONZPYDER_AGENT_HARNESS_V2=1` (staging worker only)
+## Canonical Deep Agents implementation
 
 - Deep Agents supervisor with explicit success criteria and no fabricated actions.
 - Opt-in `TodoListMiddleware` for planning complex objectives.
@@ -26,12 +26,15 @@ Source: `api/agent_platform/harness.py`, called through
 - OpenTelemetry/Langfuse callback wiring remains available when staging
   credentials are configured.
 - Hatchet manages worker jobs and scheduled tasks, not LangGraph itself.
-- `DRAGONZPYDER_AGENT_HARNESS_V2=0` immediately switches back to the
-  old read-only proof-of-concept agent.
+- The separate V1 proof-of-concept builder has been retired. Internal API, Hatchet
+  agent jobs and Personal chat use the same `build_frontier_agent` constructor.
+  The historical V2 flag remains a required opt-in on explicitly gated surfaces
+  and paid evaluation paths; it does not choose a different agent implementation.
+  Native and delegated tools continue to have their existing capability gates.
 
 ## What is and is not proven
 
-- CI compiles both real LangChain agent graphs without paid inference.
+- CI compiles the canonical LangChain agent graph without paid inference.
 - CI runs a deterministic fake-model tool loop through LangGraph
   `write_file` and verifies the virtual artifact operation.
 - CI checks specialist tool/model boundaries and a 12-case synthetic
