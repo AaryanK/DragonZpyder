@@ -7,6 +7,7 @@ the backend owns all credentials and never serializes them to agent state.
 from __future__ import annotations
 
 import base64
+from contextlib import asynccontextmanager
 import hashlib
 import ipaddress
 import json
@@ -156,6 +157,17 @@ def require_gate() -> None:
         raise ConnectionDenied("Third-party MCP production rollout is forbidden")
 
 
+
+@asynccontextmanager
+async def _reuse_db(pool, current):
+    """Use the caller's locked transaction to avoid exhausting the pool."""
+    if current is not None:
+        yield current
+    else:
+        async with pool.acquire() as conn:
+            yield conn
+
+
 class CredentialCipher:
     def __init__(self, keyring: str | None = None):
         raw = keyring if keyring is not None else os.getenv("DRAGONZPYDER_MCP_FERNET_KEYS", "")
@@ -270,7 +282,7 @@ class OAuthConnectionManager:
     def _http(self):
         return self.http or httpx.AsyncClient(timeout=10, trust_env=False, follow_redirects=False)
 
-    async def _client_credentials(self, provider: ReviewedProvider, meta: dict, http) -> dict:
+    async def _client_credentials(self, provider: ReviewedProvider, meta: dict, http, *, db=None) -> dict:
         if provider.registration == "pre_registered":
             secret = os.getenv(provider.client_secret_env, "") if provider.client_secret_env else ""
             if provider.client_secret_env and not secret:
@@ -282,10 +294,10 @@ class OAuthConnectionManager:
         if not endpoint:
             raise ConnectionDenied("Authorization server does not support dynamic registration")
         _same_origin(endpoint, provider.issuer)
-        async with self.pool.acquire() as db:
-            async with db.transaction():
-                await db.execute("SELECT pg_advisory_xact_lock(hashtext($1))", provider.provider_id)
-                row = await db.fetchrow(
+        async with _reuse_db(self.pool, db) as conn:
+            async with conn.transaction():
+                await conn.execute("SELECT pg_advisory_xact_lock(hashtext($1))", provider.provider_id)
+                row = await conn.fetchrow(
                     "SELECT issuer, encrypted_client FROM dz_mcp_oauth_clients WHERE provider_id=$1",
                     provider.provider_id,
                 )
@@ -310,7 +322,7 @@ class OAuthConnectionManager:
                     raise ConnectionDenied("Invalid registered OAuth client")
                 info = {"client_id": result["client_id"],
                         "client_secret": result.get("client_secret", "")}
-                await db.execute(
+                await conn.execute(
                     "INSERT INTO dz_mcp_oauth_clients(provider_id, issuer, encrypted_client) VALUES($1,$2,$3)",
                     provider.provider_id, provider.issuer,
                     self.cipher.seal("client", provider.provider_id, info),
@@ -507,7 +519,7 @@ class OAuthConnectionManager:
         own = self.http is None
         try:
             meta = await discover_oauth(provider, http)
-            info = await self._client_credentials(provider, meta, http)
+            info = await self._client_credentials(provider, meta, http, db=db)
             from authlib.integrations.httpx_client import AsyncOAuth2Client
             async with AsyncOAuth2Client(
                 client_id=info["client_id"], client_secret=info["client_secret"] or None,
