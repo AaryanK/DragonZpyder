@@ -19,9 +19,6 @@ from urllib.parse import urlsplit
 # Restrict checkpoint deserialization to built-in types before importing LangGraph.
 os.environ.setdefault("LANGGRAPH_STRICT_MSGPACK", "true")
 
-from deepagents import create_deep_agent
-from deepagents.backends import StateBackend
-from deepagents.middleware import FilesystemMiddleware
 from langchain_openrouter import ChatOpenRouter
 from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
@@ -88,31 +85,22 @@ class AgentPipelineError(RuntimeError):
 
 
 def build_agent(model, checkpointer, *, parent_job_id: str | None = None):
-    """Construct the enabled agent harness without executing a model call."""
-    if os.getenv("DRAGONZPYDER_AGENT_HARNESS_V2") == "1":
-        from .harness import build_frontier_agent
-        models = {}
-        for role in ("analyst", "verifier", "researcher", "builder"):
-            configured = os.getenv("DRAGONZPYDER_AGENT_" + role.upper() + "_MODEL_ID", "").strip()
-            if configured:
-                models[role] = (model_client(model_override=configured, parent_job_id=parent_job_id)
-                                if parent_job_id is not None else model_client(model_override=configured))
-        return build_frontier_agent(model, checkpointer, specialist_models=models)
-    backend = StateBackend()
-    # A replacement filesystem middleware must explicitly use the same backend.
-    return create_deep_agent(
-        model=model,
-        backend=backend,
-        middleware=[FilesystemMiddleware(
-            backend=backend,
-            tools=["read_file", "ls", "glob", "grep"],
-        )],
-        checkpointer=checkpointer,
-        system_prompt=(
-            "You are DragonZpyder's general-purpose assistant. "
-            "Do not claim to have executed actions without tool results."
-        ),
-    )
+    """Single Deep Agents harness for internal API and Hatchet execution.
+
+    The historical V1 flag no longer selects a second agent implementation.
+    Provider, search, compute and delegated capabilities keep their own gates.
+    Legacy paid-evaluation opt-ins remain unchanged.
+    """
+    from .harness import build_frontier_agent
+    models = {}
+    for role in ("analyst", "verifier", "researcher", "builder"):
+        configured = os.getenv("DRAGONZPYDER_AGENT_" + role.upper() + "_MODEL_ID", "").strip()
+        if configured:
+            models[role] = (
+                model_client(model_override=configured, parent_job_id=parent_job_id)
+                if parent_job_id is not None else model_client(model_override=configured)
+            )
+    return build_frontier_agent(model, checkpointer, specialist_models=models)
 
 
 def model_client(*, model_override: str | None = None,
@@ -363,13 +351,12 @@ class AgentRuntime:
                     "DRAGONZPYDER_AGENT_USE_GATEWAY",
                     "DRAGONZPYDER_AGENT_PRODUCTION_MODE",
                 )) else
-                32 if os.getenv("DRAGONZPYDER_AGENT_HARNESS_V2") == "1" else 16
+                32
             ),
             "callbacks": [delegation_trace, *langfuse_handlers],
             "metadata": {
                 "service_id": service_id,
-                "harness_version": "v2" if os.getenv(
-                    "DRAGONZPYDER_AGENT_HARNESS_V2") == "1" else "v1",
+                "harness_version": "v2",
                 "langfuse_tags": ["dragonzpyder", "staging", service_id],
                 "langfuse_session_id": key,
             },
