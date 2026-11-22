@@ -913,3 +913,46 @@ html[data-workspace-theme] .dz-jump-latest {
     overscroll-behavior: contain;
   }
 }
+
+/* iPhone/iPad Home Screen install guidance: small, dismissible, native-feeling. */
+.dz-ios-install{width:min(560px,100%);min-width:0;margin:22px auto 8px;text-align:left;padding:15px 16px;border:1px solid #604b3f;border-radius:16px;background:#242023;color:#f8f3ed;box-shadow:0 9px 25px #0002}
+.dz-ios-install-top{display:flex;align-items:flex-start;gap:12px;min-width:0}
+.dz-ios-install-glyph{display:grid;place-items:center;width:38px;height:38px;flex:0 0 38px;border-radius:11px;background:#4c3027;color:#ffa475;font-size:22px}
+.dz-ios-install-copy{flex:1;min-width:0;display:grid;gap:4px}
+.dz-ios-install-copy strong{font-size:14px;line-height:1.35;font-weight:720}
+.dz-ios-install-copy span{color:#d2c5bc;font-size:12px;line-height:1.55}
+.dz-ios-install-close{flex:0 0 40px;width:40px;height:40px;border:0;border-radius:9px;background:transparent;color:#cdbab0;font-size:24px;cursor:pointer}
+.dz-ios-install-close:hover,.dz-ios-install-close:focus-visible{background:#44332e;color:#fff}
+.dz-ios-install-toggle{margin-top:13px;display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:44px;width:100%;padding:8px 14px;border:1px solid #ad6949;border-radius:10px;background:#633a2e;color:#fff2e9;text-align:left;font-size:13px;font-weight:690;cursor:pointer}
+.dz-ios-install-toggle:hover,.dz-ios-install-toggle:focus-visible{background:#80422d}
+.dz-ios-install-steps{margin-top:12px;padding-top:12px;border-top:1px solid #59453e}
+.dz-ios-install-steps p{margin:0 0 10px;color:#eee5df;font-size:12px;line-height:1.7;overflow-wrap:anywhere}
+.dz-ios-install-steps p:last-child{margin-bottom:0}
+.dz-ios-install .dz-ios-install-disclaimer{color:#bdafa5;font-size:11px}
+html[data-workspace-theme="light"] .dz-ios-install{background:#fffaf5;color:#2b211d;border-color:#f0d6c4;box-shadow:0 8px 24px #6e503313}
+html[data-workspace-theme="light"] .dz-ios-install-glyph{background:#fff0e4;color:#cb5428}
+html[data-workspace-theme="light"] .dz-ios-install-copy span,html[data-workspace-theme="light"] .dz-ios-install-disclaimer{color:#776d67}
+html[data-workspace-theme="light"] .dz-ios-install-close{color:#746861}
+html[data-workspace-theme="light"] .dz-ios-install-close:hover{background:#f7e9dc}
+html[data-workspace-theme="light"] .dz-ios-install-toggle{background:#fff1e5;color:#9b421e;border-color:#e9c7b5}
+html[data-workspace-theme="light"] .dz-ios-install-toggle:hover{background:#ffe5d6}
+html[data-workspace-theme="light"] .dz-ios-install-steps{border-top-color:#ecd7c8}
+html[data-workspace-theme="light"] .dz-ios-install-steps p{color:#51423b}
+html[data-workspace-theme="light"] .dz-ios-install-steps .dz-ios-install-disclaimer{color:#786b63}
+.dz-ios-install :is(button):focus-visible{outline:2px solid #f28a53;outline-offset:2px}
+@media(max-width:820px){
+  /* Keep chat scroll and fixed composer in the available iOS dynamic viewport. */
+  .app-shell,.workspace,.chat-main{min-width:0;min-height:0}
+  .workspace{height:100%;max-width:100%;overflow:hidden}
+  .chat-main{overscroll-behavior-y:contain;-webkit-overflow-scrolling:touch}
+  .dz-hub{height:100dvh;overscroll-behavior-y:contain}
+  .unified-composer #message-input{font-size:16px!important;line-height:1.45}
+  .login-form input,.dz-command-panel>input,.mesh-picker-search{font-size:16px!important}
+  .dz-ios-install{margin-top:18px}
+}
+@media(max-width:370px){
+  .dz-ios-install{padding:12px}
+  .dz-ios-install-copy strong{font-size:13px}
+  .dz-ios-install-copy span{font-size:11px}
+}
+@media(prefers-reduced-motion:reduce){.dz-ios-install button{transition:none!important}}
