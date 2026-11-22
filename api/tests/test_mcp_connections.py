@@ -441,3 +441,81 @@ def test_real_http_browser_csrf_origin_and_token_non_disclosure(manager, monkeyp
     })
     assert revoked.status_code == 200
     assert client.get("/internal/mcp/connections").json()["connections"][0]["status"] == "revoked"
+
+
+def test_secret_post_is_preserved_through_all_oauth_phases(manager, monkeypatch):
+    """The registered AS method must survive begin, code exchange, refresh and revoke."""
+    import json
+
+    service, db = manager
+    manifest = json.loads(os.environ["DRAGONZPYDER_MCP_OAUTH_PROVIDERS_JSON"])
+    manifest[0].update({
+        "client_secret_env": "TEST_MCP_OAUTH_CLIENT_SECRET",
+        "token_endpoint_auth_method": "client_secret_post",
+    })
+    monkeypatch.setenv("TEST_MCP_OAUTH_CLIENT_SECRET", "registered-client-secret")
+    monkeypatch.setenv("DRAGONZPYDER_MCP_OAUTH_PROVIDERS_JSON", json.dumps(manifest))
+
+    class MethodSpy(FakeOAuth):
+        modes = []
+
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+            self.modes.append(kwargs["token_endpoint_auth_method"])
+
+    monkeypatch.setattr("authlib.integrations.httpx_client.AsyncOAuth2Client", MethodSpy)
+
+    async def run():
+        _, alias = await connect(service, provider="archive")
+        db.connections[alias]["access_expires_at"] = datetime.now(timezone.utc) - timedelta(seconds=1)
+        await service.grant(owner="owner-one", alias=alias,
+                            capability="lookup", authorized=True)
+        assert await service.disconnect("owner-one", alias)
+
+    asyncio.run(run())
+    assert MethodSpy.modes == ["client_secret_post"] * 4
+
+
+@pytest.mark.parametrize("method", ["client_secret_post", "client_secret_basic"])
+def test_actual_authlib_secret_authentication_conformance(method):
+    """Use real Authlib and a local HTTPX transport, without third-party calls."""
+    import httpx
+    from authlib.integrations.httpx_client import AsyncOAuth2Client
+
+    seen = []
+
+    def responder(request):
+        seen.append((request.headers.get("authorization", ""), request.content.decode()))
+        return httpx.Response(200, json={
+            "access_token": "test-token-access-123456789",
+            "token_type": "Bearer", "expires_in": 3600,
+        })
+
+    async def run():
+        async with AsyncOAuth2Client(
+            client_id="registered-client", client_secret="registered-secret",
+            token_endpoint_auth_method=method,
+            transport=httpx.MockTransport(responder),
+            follow_redirects=False, trust_env=False,
+        ) as oauth:
+            return await oauth.fetch_token(
+                "https://login.example.com/token",
+                code="one-time-code", code_verifier="abcdefghijklmnopqrstuvwxyz1234567890abcde",
+            )
+
+    token = asyncio.run(run())
+    assert token["access_token"] == "test-token-access-123456789"
+    assert len(seen) == 1
+    authorization, body = seen[0]
+    if method == "client_secret_post":
+        assert "client_secret=registered-secret" in body
+        assert not authorization.startswith("Basic ")
+    else:
+        assert authorization.startswith("Basic ")
+        assert "client_secret=registered-secret" not in body
+
+
+def test_redaction_covers_untrusted_nested_object_keys():
+    token = "secrettokenabcdefghijklmnopqrstuvwxyz"
+    payload = {token: {"nested": [{"Bearer " + token: token}]}}
+    assert token not in str(_redact(payload, token))
