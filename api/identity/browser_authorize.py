@@ -18,6 +18,7 @@ from pydantic import ValidationError
 from . import http_bridge as bridge
 from .grants import OAuthGrantDenied, _registered_client, _validate_pkce_challenge
 from .sessions import SessionDenied, resolve_browser_session
+from .consent import issue_interaction
 
 router = APIRouter(prefix="/identity/v1", tags=["identity-browser"])
 _ROOT = Path(__file__).resolve().parent
@@ -71,10 +72,17 @@ async def interactive_authorization(request: Request):
             )
         except SessionDenied:
             authenticated_subject = None
+        ticket = (await issue_interaction(
+            db, subject=authenticated_subject,
+            session_secret=request.cookies.get("__Host-dz_identity", ""),
+            request=payload.model_dump(exclude={"consent_ticket"}),
+        )) if authenticated_subject else None
 
     client = html.escape(payload.client_id, quote=True)
     scope = html.escape(payload.scope, quote=True)
     authenticated = authenticated_subject is not None
+    ticket_meta = ('<meta name="dz-consent-ticket" content="'
+                   + html.escape(ticket, quote=True) + '">') if ticket else ""
     # Render only validated registered metadata. Never render redirect_uri,
     # state or nonce in raw HTML; the external script uses URLSearchParams.
     content = f"""<!doctype html>
@@ -82,6 +90,7 @@ async def interactive_authorization(request: Request):
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+{ticket_meta}
 <title>Sign in · DragonZpyder</title>
 <link rel="stylesheet" href="/identity/v1/authorize/style.css">
 <script defer src="/identity/v1/authorize/interactive.js"></script>

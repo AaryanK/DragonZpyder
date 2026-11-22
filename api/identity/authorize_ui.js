@@ -10,6 +10,7 @@ const fields = [
 const payload = Object.fromEntries(
   fields.filter(k => query.has(k)).map(k => [k, query.get(k)])
 );
+const consentTicket = document.querySelector('meta[name="dz-consent-ticket"]')?.content || "";
 function csrfCookie() {
   const found = document.cookie.split("; ").find(c => c.startsWith("__Host-dz_csrf="));
   return found ? decodeURIComponent(found.slice("__Host-dz_csrf=".length)) : "";
@@ -40,7 +41,7 @@ document.getElementById("approve").addEventListener("click", async () => {
       method: "POST", credentials: "same-origin", cache: "no-store",
       headers: {"Content-Type":"application/json", "Accept":"application/json",
                 "x-dz-csrf":csrfCookie()},
-      body: JSON.stringify(payload), redirect: "error"
+      body: JSON.stringify({...payload, consent_ticket: consentTicket}), redirect: "error"
     });
     if (!response.ok) throw new Error("Authorization denied");
     const result = await response.json();
