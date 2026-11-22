@@ -353,3 +353,42 @@
   .dz-voice-orb-circle{width:45px;height:45px}
   .dz-voice-orb-mic{height:56px;width:56px}
 }
+
+
+/* Browser transcription is an explicitly separate mode, not an AI connection. */
+.dz-voice-orb-shell[data-voice-mode="browser"] .dz-voice-orb-connection i {
+  background:#e1b583;box-shadow:0 0 10px #e1b58355;
+}
+.dz-voice-orb-shell[data-voice-mode="browser"][data-session="transcribing"] .dz-voice-orb-connection i {
+  background:#95d5bc;box-shadow:0 0 10px #95d5bc55;
+}
+.dz-voice-browser-notice {
+  margin:0;font-size:11px;line-height:1.4;color:#afc1cf;
+}
+.dz-voice-live-caption {
+  width:min(100%,520px);max-height:4.5em;overflow-y:auto;
+  margin:6px 0 0;padding:0 8px;
+  font-size:clamp(15px,3.6vw,20px);line-height:1.5;
+  color:#f0e4d9;white-space:pre-wrap;overflow-wrap:anywhere;
+  pointer-events:auto;
+}
+.dz-voice-live-caption[data-interim="true"],.companion-transcript p[data-interim="true"] {opacity:.65}
+.dz-voice-orb-circle:disabled{opacity:.4;cursor:not-allowed}
+@media(max-width:680px){
+  .dz-voice-orb-shell[data-voice-mode="browser"] .dz-voice-orb-space{
+    height:min(30dvh,245px);min-height:130px;
+  }
+  .dz-voice-orb-shell[data-voice-mode="browser"] .dz-voice-art-svg{
+    width:min(106vw,58dvh,460px);
+  }
+  .dz-voice-live-caption{max-height:3em;font-size:15px;margin-top:3px}
+}
+@media(max-height:620px){
+  .dz-voice-orb-shell[data-voice-mode="browser"] .dz-voice-orb-space{
+    height:min(26dvh,180px);min-height:96px;
+  }
+  .dz-voice-orb-shell[data-voice-mode="browser"] .dz-voice-art-svg{
+    width:min(100vw,52dvh,420px);
+  }
+  .dz-voice-browser-notice{font-size:10px}
+}
