@@ -49,6 +49,9 @@ const rand=(a,b)=>a+Math.random()*(b-a);const stars=Array.from({length:145},()=>
 function line(points,color,width=1){ctx.strokeStyle=color;ctx.lineWidth=width;ctx.beginPath();for(let i=0;i<points.length;i++){const p=points[i];if(i===0)ctx.moveTo(p[0],p[1]);else ctx.lineTo(p[0],p[1])}ctx.stroke()}
 function draw(t){frame++;const time=reduce?2:t*.001;ctx.fillStyle='#08090d';ctx.fillRect(0,0,W,H);
 let raw=0;if(playing&&analyser){analyser.getByteFrequencyData(data);let sum=0,low=0,high=0;for(let i=2;i<Math.min(340,data.length);i++){sum+=data[i];if(i<45)low+=data[i];if(i>140)high+=data[i]}raw=Math.min(1,sum/(338*100));bass=low/(43*130);treble=high/(199*125)}else if(false){raw=0}else{bass*=.94;treble*=.94}if(outputAnalyser&&outputData){outputAnalyser.getByteFrequencyData(outputData);let out=0;for(let i=0;i<outputData.length;i++)out+=outputData[i];raw=Math.max(raw,Math.min(1,out/(outputData.length*95)))}raw=Math.max(raw,outputLevel||0);volume=raw;smooth+=(raw-smooth)*.09;const energy=Math.min(1.6,smooth);const p=1+energy*.12;
+// Expose numerical diagnostics for regression tests; they are not artificial inputs.
+canvas.dataset.audioEnergy=energy.toFixed(3);
+canvas.dataset.renderRadius=(radius*p).toFixed(2);
 // Ambient gradients and horizon
 let glow=ctx.createRadialGradient(cx,cy,0,cx,cy,Math.max(W,H)*.75);glow.addColorStop(0,'rgba(14,53,68,.62)');glow.addColorStop(.34,'rgba(9,27,44,.27)');glow.addColorStop(1,'rgba(5,8,17,0)');ctx.fillStyle=glow;ctx.fillRect(0,0,W,H);
 let bottom=ctx.createRadialGradient(cx,H*.9,0,cx,H*.9,W*.8);bottom.addColorStop(0,'rgba(15,48,66,.18)');bottom.addColorStop(1,'transparent');ctx.fillStyle=bottom;ctx.fillRect(0,0,W,H);
