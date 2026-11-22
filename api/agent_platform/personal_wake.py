@@ -28,6 +28,8 @@ class PersonalWakeInput(BaseModel):
     sequence: int = Field(ge=0, le=20)
     total_wakes: int = Field(ge=2, le=20)
     prompt: str = Field(min_length=1, max_length=12000)
+    # Only trusted service scheduling may supply these opaque account handles.
+    mcp_connection_ids: list[str] = Field(default_factory=list, max_length=10)
 
 
 SCHEMA = """
@@ -54,6 +56,13 @@ CREATE TABLE IF NOT EXISTS dz_personal_mcp_receipts (
 );
 ALTER TABLE dz_personal_mcp_goals
     ADD COLUMN IF NOT EXISTS blocked_reason text;
+-- Only non-secret hashes. OAuth credentials remain in a separate API-only DB.
+CREATE TABLE IF NOT EXISTS dz_mcp_goal_selections (
+    goal_id text PRIMARY KEY,
+    owner_id text NOT NULL,
+    selection_hash char(64) NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now()
+);
 """
 
 
@@ -134,6 +143,12 @@ async def perform_personal_wake(wake: PersonalWakeInput, *, http=None) -> dict:
         raise RuntimeError("Canonical user, session, conversation and goal IDs are required") from None
     dsn, service_secret, agent_secret, operly, dragon = require_wake_gate()
     objective_hash = hashlib.sha256(wake.prompt.encode("utf-8")).hexdigest()
+    if wake.mcp_connection_ids:
+        from .mcp_connections import require_gate
+        require_gate()
+    if (len(set(wake.mcp_connection_ids)) != len(wake.mcp_connection_ids)
+            or any(not __import__('re').fullmatch(r'c[a-f0-9]{30}', x) for x in wake.mcp_connection_ids)):
+        raise RuntimeError('Invalid or duplicate MCP account selections')
     # Choose a specific *candidate* from a fixed audited read-only catalog.
     # It is NOT authority until Operly grants that exact capability.
     selected_read = select_readonly_wake_tool(
@@ -143,6 +158,27 @@ async def perform_personal_wake(wake: PersonalWakeInput, *, http=None) -> dict:
         dsn=dsn, min_size=1, max_size=2, timeout=10, command_timeout=150,
     )
     try:
+        if os.getenv("DRAGONZPYDER_MCP_USER_CONNECTIONS_ENABLED") == "1":
+            # Persist the exact non-secret selection, including the empty set.
+            # An agent, later wake or replay cannot switch to another account.
+            selection_hash = hashlib.sha256(
+                json.dumps(sorted(wake.mcp_connection_ids)).encode()
+            ).hexdigest()
+            async with pool.acquire() as sel_con:
+                async with sel_con.transaction():
+                    await sel_con.execute(
+                        """INSERT INTO dz_mcp_goal_selections
+                           (goal_id, owner_id, selection_hash) VALUES($1,$2,$3)
+                           ON CONFLICT DO NOTHING""",
+                        wake.goal_id, wake.user_id, selection_hash,
+                    )
+                    selection = await sel_con.fetchrow(
+                        """SELECT owner_id, selection_hash FROM dz_mcp_goal_selections
+                           WHERE goal_id=$1 FOR UPDATE""", wake.goal_id,
+                    )
+                    if (not selection or selection["owner_id"] != wake.user_id
+                            or selection["selection_hash"] != selection_hash):
+                        raise RuntimeError("Scheduled MCP account selection changed")
         if (os.getenv("DRAGONZPYDER_STAGE") == "staging"
                 and os.getenv("DRAGONZPYDER_PERSONAL_MCP_SCHEMA_INSTALL_ALLOWED") == "1"):
             async with pool.acquire() as con:
@@ -297,6 +333,7 @@ async def perform_personal_wake(wake: PersonalWakeInput, *, http=None) -> dict:
                             "approved_tool_names": approved,
                             "scheduled_wake": True,
                             "scheduled_tool_name": scheduled_tool_name,
+                            "mcp_connection_ids": wake.mcp_connection_ids,
                         },
                         timeout=100,
                     )

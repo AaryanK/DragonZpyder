@@ -29,6 +29,7 @@ from identity.browser_authorize import router as identity_browser_authorize_rout
 from identity.login_http import router as identity_login_router
 from identity.provider_http import router as identity_provider_router
 from agent_platform.personal_bridge import router as operly_personal_bridge_router
+from agent_platform.mcp_connection_http import router as mcp_connection_router
 from agent_platform.openrouter_spend_guard import PaidTestBudgetError, require_paid_test_cap
 from agent_platform.provider_pacing import AgentProviderPacer
 from agent_platform.gateway_parent_budget import ParentBudgetGateway
@@ -91,7 +92,19 @@ async def lifespan(app: FastAPI):
     log.warning("Staging atomic parent-budget gateway status=%s",
                 "ready" if parent_budget.active else "disabled")
     agent_runtime = None
+    mcp_pool = None
     try:
+        if os.getenv('DRAGONZPYDER_MCP_USER_CONNECTIONS_ENABLED') == '1':
+            from agent_platform.mcp_connections import (require_gate, CredentialCipher,
+                OAuthConnectionManager)
+            import asyncpg
+            require_gate()
+            dsn = os.getenv('DRAGONZPYDER_MCP_DATABASE_URL', '')
+            if not dsn.startswith(('postgres://', 'postgresql://')):
+                raise RuntimeError('Dedicated MCP credential PostgreSQL is required')
+            mcp_pool = await asyncpg.create_pool(dsn, min_size=1, max_size=5,
+                                                  command_timeout=20)
+            app.state.mcp_connections = OAuthConnectionManager(mcp_pool, CredentialCipher())
         if os.getenv("DRAGONZPYDER_AGENTS_ENABLED") == "1":
             from agent_platform.runtime import AgentRuntime
             agent_runtime = AgentRuntime()
@@ -116,6 +129,8 @@ async def lifespan(app: FastAPI):
                     )
             yield
     finally:
+        if mcp_pool is not None:
+            await mcp_pool.close()
         if agent_runtime is not None:
             await agent_runtime.close()
         await parent_budget.close()
@@ -131,6 +146,7 @@ app.include_router(identity_login_router)
 app.include_router(identity_provider_router)
 app.include_router(agent_router)
 app.include_router(operly_personal_bridge_router)
+app.include_router(mcp_connection_router)
 
 
 @app.middleware("http")
