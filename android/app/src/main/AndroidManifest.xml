@@ -11,6 +11,13 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            <!-- External Discord OAuth uses a one-time ticket; never redirect session cookies. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="dragonzpyder" android:host="auth" android:path="/discord"/>
+            </intent-filter>
         </activity>
     </application>
 </manifest>
