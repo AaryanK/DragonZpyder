@@ -1,6 +1,7 @@
 import { renderMarkdown } from "./frontend/src/markdown.js";
 const state = {
   session: null,
+  firstParty: false,
   conversationId: null,
   conversations: [],
   approvals: [],
@@ -76,7 +77,9 @@ function getCookie(name) {
 }
 
 function sessionCsrf() {
-  return getCookie("__Host-operly_csrf") || getCookie("operly_csrf") || null;
+  return state.firstParty
+    ? getCookie("__Host-dz_csrf")
+    : (getCookie("__Host-operly_csrf") || getCookie("operly_csrf") || null);
 }
 
 function errorDetail(payload, status) {
@@ -180,6 +183,12 @@ function setSession(session) {
 }
 
 async function ensurePersonalSession() {
+  if (state.firstParty) {
+    await api("/dz/v2/personal/session", { csrf: false });
+    const session = { device: "DragonZpyder", scope: "personal" };
+    setSession(session);
+    return session;
+  }
   const rows = await api("/api/auth/sessions", { csrf: false });
   if (!Array.isArray(rows)) throw new ApiError("Operly returned an invalid session response.", { code: "INVALID_SESSION_RESPONSE" });
   let current = rows.find((row) => row && row.current);
@@ -211,6 +220,10 @@ async function discoverCentralIdentity() {
 async function bootstrapAuth() {
   setRuntimeStatus(null, "Checking personal runtime…");
   try {
+    // This flag comes from our own Web service. If native cutover is on,
+    // never fall back to Operly when the DragonZpyder API is unavailable.
+    const routing = await api("/dz/status", { csrf: false });
+    state.firstParty = routing.web_cutover_enabled === true;
     await ensurePersonalSession();
     hideAuth();
     setRuntimeStatus("online", "Personal runtime connected");
@@ -228,6 +241,16 @@ async function bootstrapAuth() {
 }
 
 async function login(email, password) {
+  if (state.firstParty) {
+    await api("/dz/identity/v1/password/login", {
+      method: "POST", body: { email, password }, csrf: false,
+    });
+    await ensurePersonalSession();
+    hideAuth();
+    setRuntimeStatus("online", "DragonZpyder agent connected");
+    await loadConversations({ restoreLatest: true });
+    return;
+  }
   const bootstrap = await api("/api/auth/bootstrap", { csrf: false });
   state.preauthCsrf = bootstrap && bootstrap.csrf_token ? String(bootstrap.csrf_token) : null;
   if (!state.preauthCsrf) throw new ApiError("Operly did not provide a login security token.", { code: "CSRF_BOOTSTRAP_FAILED" });
@@ -460,8 +483,11 @@ function renderConversations() {
 
 async function loadConversations({ restoreLatest = false } = {}) {
   try {
-    const rows = await api("/api/personal-agent/conversations", { csrf: false });
-    state.conversations = Array.isArray(rows) ? rows : [];
+    const rows = await api(state.firstParty
+      ? "/dz/v2/personal/conversations" : "/api/personal-agent/conversations", { csrf: false });
+    state.conversations = state.firstParty
+      ? (Array.isArray(rows.conversations) ? rows.conversations : [])
+      : (Array.isArray(rows) ? rows : []);
     renderConversations();
     // Initial authentication populates the sidebar but otherwise leaves a
     // blank message pane. Restore the newest authorized Personal conversation.
@@ -485,9 +511,12 @@ async function openConversation(id) {
   messages.replaceChildren();
   const pending = appendMessage("assistant", "", { pending: true });
   try {
-    const rows = await api(`/api/personal-agent/conversations/${encodeURIComponent(id)}/messages`, { csrf: false });
+    const rows = await api(state.firstParty
+      ? `/dz/v2/personal/conversations/${encodeURIComponent(id)}/messages`
+      : `/api/personal-agent/conversations/${encodeURIComponent(id)}/messages`, { csrf: false });
     messages.replaceChildren();
-    for (const row of Array.isArray(rows) ? rows : []) {
+    const history = state.firstParty ? rows.messages : rows;
+    for (const row of Array.isArray(history) ? history : []) {
       if (row.role !== "user" && row.role !== "assistant") continue;
       appendMessage(row.role === "user" ? "user" : "assistant", row.content || "", { restoring: true });
     }
@@ -509,7 +538,9 @@ async function submitViaClientAdapter(message, requestId) {
   // Use the supported personal-agent chat API directly.
   const body = { message };
   if (state.conversationId) body.conversation_id = state.conversationId;
-  const result = await api("/api/personal-agent/chat", { method: "POST", body });
+  const result = await api(state.firstParty
+    ? "/dz/v2/personal/chat" : "/api/personal-agent/chat",
+    { method: "POST", body });
   result.client_request_id = requestId;
   return result;
 }
@@ -563,7 +594,8 @@ async function sendMessage(message, { companion = false, fromComposer = false } 
     }
     // The server chooses the trusted execution engine; the model cannot
     // declare itself a DragonZpyder harness run in the answer text.
-    if (result.dispatch === "dragonzpyder_personal_mcp") {
+    if (result.dispatch === "dragonzpyder_personal_mcp"
+        || result.dispatch === "dragonzpyder_first_party") {
       const tools = Array.isArray(result.capability_calls)
         ? result.capability_calls.filter(name => typeof name === "string" && /^operly_[a-zA-Z0-9_-]{1,64}$/.test(name)).slice(0, 20)
         : [];
@@ -674,6 +706,12 @@ async function sendMessage(message, { companion = false, fromComposer = false } 
 window.dragonzpyderDelegatePersonalTask = (request) => sendMessage(request, { companion: true });
 
 async function refreshApprovals() {
+  if (state.firstParty) {
+    // Never query Operly approval APIs with a first-party identity session.
+    state.approvals = [];
+    approvalCount.textContent = "0";
+    return;
+  }
   // Workspace provisioning uses Operly Kernel approvals, not the legacy
   // Personal-tools approvals table. Both are authenticated same-origin APIs.
   // No approval can be created or executed merely by rendering a card.
@@ -880,7 +918,8 @@ async function approveAction(approval, button) {
 
 async function logout() {
   try {
-    await api("/api/auth/logout", { method: "POST", body: {} });
+    await api(state.firstParty ? "/dz/identity/v1/logout" : "/api/auth/logout",
+      { method: "POST", body: {} });
   } catch (error) {
     if (!(error instanceof ApiError && [401, 409].includes(error.status))) console.warn("Logout failed", error);
   }
