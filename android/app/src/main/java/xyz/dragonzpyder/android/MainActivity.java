@@ -32,7 +32,7 @@ public final class MainActivity extends Activity {
     private void toggleTheme(){
         String draft=input==null?"":input.getText().toString();dark=!dark;
         getPreferences(MODE_PRIVATE).edit().putBoolean("dark",dark).apply();palette();
-        if(signedIn){chatScreen();if(input!=null)input.setText(draft);}else loginScreen("");
+        if(signedIn){if(accountOpen)showAccount();else{chatScreen();if(input!=null)input.setText(draft);}}else authScreen(authMode,"");
     }
     private boolean welcomeVisible;
     private static final DragonApi api=new DragonApi();
@@ -118,8 +118,8 @@ public final class MainActivity extends Activity {
         EditText email=accountField(card,"Email address",authEmail,33,View.AUTOFILL_HINT_EMAIL_ADDRESS);
         EditText code=mode.equals("verify")||mode.equals("reset")?accountField(card,mode.equals("verify")?"Verification code":"Reset code","",2,"smsOTPCode"):null;
         if(code!=null)code.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(6)});
-        EditText password=mode.equals("login")||mode.equals("signup")||mode.equals("reset")?accountField(card,mode.equals("login")?"Password":mode.equals("reset")?"New password (at least 12 characters)":"Password (at least 12 characters)","",129,mode.equals("login")?View.AUTOFILL_HINT_PASSWORD:View.AUTOFILL_HINT_NEW_PASSWORD):null;
-        EditText confirm=mode.equals("signup")?accountField(card,"Confirm password","",129,View.AUTOFILL_HINT_NEW_PASSWORD):null;
+        EditText password=mode.equals("login")||mode.equals("signup")||mode.equals("reset")?accountField(card,mode.equals("login")?"Password":mode.equals("reset")?"New password (at least 12 characters)":"Password (at least 12 characters)","",129,mode.equals("login")?View.AUTOFILL_HINT_PASSWORD:"newPassword"):null;
+        EditText confirm=mode.equals("signup")?accountField(card,"Confirm password","",129,"newPassword"):null;
         String action=mode.equals("signup")?"Create account":mode.equals("verify")?"Verify and continue":mode.equals("forgot")?"Send reset instructions":mode.equals("reset")?"Update password":"Sign in";
         card.addView(primary(action,()->{
             String e=value(email),p=password==null?"":password.getText().toString(),c=code==null?"":value(code),n=name==null?"":value(name);
@@ -341,6 +341,7 @@ public final class MainActivity extends Activity {
         catch(android.content.ActivityNotFoundException e){status.setText("No speech recognition service available.");}
     }
     @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(request==43&&result==RESULT_OK&&data!=null&&data.getData()!=null){readAttachment(data.getData());return;}if(request==42&&result==RESULT_OK&&data!=null&&input!=null){ArrayList<String> words=data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);if(words!=null&&!words.isEmpty())input.setText(words.get(0));}}
+    @Override public void onBackPressed(){if(busy)return;if(accountOpen){accountOpen=false;chatScreen();}else if(!signedIn&&!"login".equals(authMode))authScreen("login","");else super.onBackPressed();}
     private void signOut(){submit("Signing out…",()->{api.logout();return null;},r->{conversation="";attachment=null;attachmentName="";transcript.clear();meshMode=false;lastAnswer="";meshMessages=new JSONArray();history=new JSONArray();profileInitial="D";authEmail="";challengeId="";if(tts!=null)tts.stop();input=null;loginScreen("");},true);}
     @Override protected void onDestroy(){worker.shutdown();if(tts!=null)tts.shutdown();super.onDestroy();}
 }
