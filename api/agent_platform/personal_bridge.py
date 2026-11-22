@@ -32,6 +32,8 @@ class OperlyPersonalRun(BaseModel):
     approved_tool_names: list[str] = Field(min_length=1, max_length=20)
     scheduled_wake: bool = False
     scheduled_tool_name: str | None = None
+    # Opaque account selection by a trusted Operly service, never bearer secrets.
+    mcp_connection_ids: list[str] = Field(default_factory=list, max_length=10)
 
 
 def _authorized(authorization: str, proof: str) -> bool:
@@ -306,6 +308,20 @@ async def operly_personal_run(
                 user_id=payload.user_id,
                 session_id=payload.session_id,
                 conversation_id=payload.conversation_id,
+            )]
+        if payload.mcp_connection_ids:
+            if os.getenv('DRAGONZPYDER_MCP_PERSONAL_PUBLIC_CATALOG_ENABLED') == '1':
+                raise ValueError('Two MCP progressive catalogs would collide')
+            from .mcp_managed_catalog import managed_catalog_tools
+            manager = getattr(request.app.state, 'mcp_connections', None)
+            if manager is None:
+                raise ValueError('OAuth connection store unavailable')
+            # Signed Operly delegation fixes the user. Database records and
+            # reviewed unattended read policy are checked again on every call.
+            tools = [*tools, *await managed_catalog_tools(
+                manager=manager, owner=payload.user_id,
+                selected_account_ids=payload.mcp_connection_ids,
+                scheduled=payload.scheduled_wake,
             )]
         if not payload.scheduled_wake:
             from .mcp_adapter import reviewed_public_catalog_tools
