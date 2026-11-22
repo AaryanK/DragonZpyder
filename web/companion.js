@@ -16,7 +16,9 @@ function browserPaused(message="Tap the microphone to resume transcription."){
 function listenInBrowser(){
   if(!browserMode||recognition||!SpeechApi)return;
   clearTimeout(restartTimer);restartTimer=null;
-  const instance=new SpeechApi(),v=version,run=++recognitionRun;
+  let instance;
+  try{instance=new SpeechApi()}catch{browserPaused("Browser transcription could not start. Tap the microphone to retry.");return}
+  const v=version,run=++recognitionRun;
   recognition=instance;
   let failed=false,hadSpeech=false;
   silent=false;browserEvent("voice-mute",{muted:false});
