@@ -475,6 +475,7 @@ export function WorkspaceHub() {
           </button>;
         })}</div>
         <DesktopInstallAction pendingPrompt={pendingPrompt} consumePrompt={() => setPendingPrompt(null)} />
+        <IosInstallHint />
         <button type="button" className="dz-hub-command" onClick={() => { setOpen(false); window.dispatchEvent(new Event("dragonzpyder:command-open")); }}>⌘ Search all available commands</button>
       </aside>
     </div>, document.body)}
