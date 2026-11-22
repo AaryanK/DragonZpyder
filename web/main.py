@@ -225,6 +225,10 @@ async def dispatch(path: str, request: Request):
     # First-party identity, native chat and browser-only MCP routes terminate
     # at DragonZpyder API. No wildcard /internal proxy: browsers must never
     # reach the model gateway's service-token-bearing private routes.
+    if route == "/dz/status" and request.method == "GET":
+        return JSONResponse({"web_cutover_enabled":
+            os.getenv("DRAGONZPYDER_FIRST_PARTY_WEB_CUTOVER_ENABLED") == "1"},
+            headers={"Cache-Control": "no-store"})
     if route.startswith("/dz/"):
         native = route[3:]
         permitted = (
