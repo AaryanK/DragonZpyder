@@ -1,6 +1,10 @@
 import { test, expect } from "@playwright/test";
 
 async function mockPersonalApi(page) {
+  // The native cutover probe must be explicit, not an HTML SPA fallback.
+  await page.route("**/dz/status", async route =>
+    route.fulfill({ status: 200, contentType: "application/json",
+      body: JSON.stringify({ web_cutover_enabled: false }) }));
   await page.route("**/api/**", async route => {
     const path = new URL(route.request().url()).pathname;
     let response = {};

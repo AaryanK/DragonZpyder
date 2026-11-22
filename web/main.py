@@ -76,7 +76,7 @@ async def secure_headers(request: Request, call_next):
     return response
 
 
-async def proxy(request: Request, destination: str, rewrite_origin=False):
+async def proxy(request: Request, destination: str, rewrite_origin=False, upstream_path=None):
     # Fixed trusted service origins; never proxy to a host provided by the browser.
     headers = {k: v for k, v in request.headers.items() if k.lower() not in HOP_HEADERS}
     if rewrite_origin:
@@ -85,7 +85,7 @@ async def proxy(request: Request, destination: str, rewrite_origin=False):
     body = await request.body()
     try:
         upstream = await request.app.state.http.request(
-            request.method, destination + request.url.path +
+            request.method, destination + (upstream_path or request.url.path) +
             ("?" + request.url.query if request.url.query else ""),
             headers=headers, content=body)
     except httpx.HTTPError:
@@ -222,13 +222,53 @@ async def dispatch(path: str, request: Request):
     route = "/" + path
     if route == "/admin" or route == "/admin/api/usage":
         return await admin_route(request)
+    # First-party identity, native chat and browser-only MCP routes terminate
+    # at DragonZpyder API. No wildcard /internal proxy: browsers must never
+    # reach the model gateway's service-token-bearing private routes.
+    if route == "/dz/status" and request.method == "GET":
+        return JSONResponse({"web_cutover_enabled":
+            os.getenv("DRAGONZPYDER_FIRST_PARTY_WEB_CUTOVER_ENABLED") == "1"},
+            headers={"Cache-Control": "no-store"})
+    if route.startswith("/dz/"):
+        native = route[3:]
+        permitted = (
+            native.startswith("/v2/personal/")
+            or native in (
+                "/identity/v1/password/login",
+                "/identity/v1/logout",
+                "/identity/v1/me",
+                "/identity/v1/provider/google/start",
+                "/identity/v1/provider/google/complete",
+                "/identity/v1/provider/google/signup",
+            )
+            or native.startswith("/internal/mcp/")
+        )
+        if not permitted:
+            return JSONResponse({"detail": "Not found"}, status_code=404)
+        if request.method not in ("GET", "HEAD", "OPTIONS"):
+            # Reject cross-site browser mutation *before* re-authoring the
+            # Origin header for the private first-party API.
+            expected = "https://" + (request.url.hostname or "").lower()
+            if request.headers.get("origin") != expected:
+                return JSONResponse({"detail": "Origin rejected"}, status_code=403)
+        return await proxy(request, API, rewrite_origin=True, upstream_path=native)
     if route.startswith("/api/"):
+        # Native cutover must never silently re-enter the old Operly runtime.
+        if os.getenv("DRAGONZPYDER_FIRST_PARTY_WEB_CUTOVER_ENABLED") == "1":
+            return JSONResponse({"detail": {"code": "LEGACY_OPERLY_ROUTE_RETIRED",
+                "message": "Use DragonZpyder's first-party API and optional MCP connections."}},
+                status_code=410)
+        # Compatibility only until explicitly approved native cutover.
         return await proxy(request, OPERLY, rewrite_origin=True)
     if route.startswith("/internal/v1/"):
         return await proxy(request, API)
     if route == "/companion/realtime":
+        if os.getenv("DRAGONZPYDER_FIRST_PARTY_WEB_CUTOVER_ENABLED") == "1":
+            return JSONResponse({"detail": "First-party voice authorization not ready"}, status_code=503)
         return await realtime(request)
     if route.startswith("/mesh/"):
+        if os.getenv("DRAGONZPYDER_FIRST_PARTY_WEB_CUTOVER_ENABLED") == "1":
+            return JSONResponse({"detail": "First-party Mesh authorization not ready"}, status_code=503)
         return await mesh(request)
     if request.method in ("GET", "HEAD") and route in LEGACY_PAGE_ROUTES:
         query = ("?" + request.url.query) if request.url.query else ""
