@@ -44,6 +44,7 @@ class NativeChatView(context: Context, private val dark: Boolean, private val ac
         fun mode()
         fun dictate()
         fun send()
+        fun stop()
         fun removeAttachment()
         fun copy(value: String)
         fun speak(value: String)
@@ -54,6 +55,8 @@ class NativeChatView(context: Context, private val dark: Boolean, private val ac
     var draft by mutableStateOf("")
     var statusText by mutableStateOf("Personal agent")
     var busy by mutableStateOf(false)
+    var streaming by mutableStateOf(false)
+    var partialReply by mutableStateOf("")
     var modeLabel by mutableStateOf("Agent")
     var modelLabel by mutableStateOf("")
     var attachmentLabel by mutableStateOf("")
@@ -94,11 +97,11 @@ class NativeChatView(context: Context, private val dark: Boolean, private val ac
                     LaunchedEffect(state.isScrollInProgress) {
                         if(!state.isScrollInProgress)followLatest=!state.canScrollForward
                     }
-                    LaunchedEffect(rows.size,busy) { if(rows.isNotEmpty()&&followLatest) state.scrollToItem(rows.lastIndex+(if(busy)1 else 0)) }
+                    LaunchedEffect(rows.size,busy,partialReply.length) { if(rows.isNotEmpty()&&followLatest) state.scrollToItem(rows.lastIndex+(if(busy)1 else 0)) }
                     LazyColumn(state=state,modifier=Modifier.widthIn(max=810.dp).fillMaxWidth(),contentPadding=PaddingValues(horizontal=12.dp,vertical=24.dp),verticalArrangement=Arrangement.spacedBy(20.dp)) {
                         if(rows.isEmpty()) item { Welcome() }
                         items(rows) { message -> MessageRow(message) }
-                        if(busy && rows.isNotEmpty()) item { Row(verticalAlignment=Alignment.CenterVertically){CircularProgressIndicator(Modifier.size(16.dp),strokeWidth=2.dp);Spacer(Modifier.width(10.dp));Text(statusText,color=muted,fontSize=13.sp)} }
+                        if(busy && rows.isNotEmpty()) item { Column(verticalArrangement=Arrangement.spacedBy(8.dp)) { if(partialReply.isNotEmpty()) MessageRow(Message("assistant",partialReply), ongoing=true); Row(verticalAlignment=Alignment.CenterVertically){CircularProgressIndicator(Modifier.size(16.dp),strokeWidth=2.dp);Spacer(Modifier.width(10.dp));Text(statusText,color=muted,fontSize=13.sp)} } }
                     }
                     if(rows.isNotEmpty()&&state.canScrollForward) OutlinedButton(onClick={followLatest=true;scope.launch{state.animateScrollToItem(rows.lastIndex+(if(busy)1 else 0))}},modifier=Modifier.align(Alignment.BottomCenter).padding(bottom=6.dp),colors=ButtonDefaults.outlinedButtonColors(containerColor=panel,contentColor=ink)) { Text("↓ Latest messages") }
                 }
@@ -125,7 +128,7 @@ class NativeChatView(context: Context, private val dark: Boolean, private val ac
             }
         }
     }
-    @Composable private fun MessageRow(message:Message) {
+    @Composable private fun MessageRow(message:Message,ongoing:Boolean=false) {
         val user=message.role=="user"
         Column(Modifier.fillMaxWidth(),horizontalAlignment=if(user) Alignment.End else Alignment.Start) {
             Text(if(user)"You" else "DragonZpyder",fontSize=11.sp,fontWeight=FontWeight.SemiBold,color=muted,modifier=Modifier.padding(bottom=6.dp))
@@ -134,7 +137,7 @@ class NativeChatView(context: Context, private val dark: Boolean, private val ac
                     SelectionContainer { RichText(message.content) }
                 }
             }
-            if(!user) Row {
+            if(!user&&!ongoing) Row {
                 TextButton(onClick={actions.copy(message.content)}){Text("Copy",color=muted,fontSize=12.sp)}
                 TextButton(onClick={actions.speak(message.content)}){Text("Read aloud",color=muted,fontSize=12.sp)}
             }
@@ -192,7 +195,7 @@ class NativeChatView(context: Context, private val dark: Boolean, private val ac
                     TextButton(onClick=actions::mode,enabled=!busy){Text("✦ "+modeLabel,color=ink)}
                     Spacer(Modifier.weight(1f))
                     ToolButton("◉","Dictate",actions::dictate)
-                    Button(onClick=actions::send,enabled=!busy&&draft.isNotBlank(),shape=RoundedCornerShape(12.dp),contentPadding=PaddingValues(0.dp),modifier=Modifier.size(48.dp),colors=ButtonDefaults.buttonColors(containerColor=accent,contentColor=Color.White)) { Text("↑",fontSize=23.sp) }
+                    Button(onClick={if(streaming)actions.stop() else actions.send()},enabled=streaming||(!busy&&draft.isNotBlank()),shape=RoundedCornerShape(12.dp),contentPadding=PaddingValues(0.dp),modifier=Modifier.size(48.dp),colors=ButtonDefaults.buttonColors(containerColor=accent,contentColor=Color.White)) { Text(if(streaming)"■" else "↑",fontSize=23.sp) }
                 }
             }
         }
