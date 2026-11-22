@@ -11,6 +11,15 @@ final class DragonApi {
     private static final URI ORIGIN = URI.create("https://dragonzpyder.xyz");
     private final SessionCookies cookies = new SessionCookies();
     private String bootstrapCsrf = "";
+    private SecureSessionStore store;
+    private boolean authenticated;
+    synchronized boolean restore(android.content.Context context) throws Exception {
+        if(store==null){store=new SecureSessionStore(context);cookies.restore(store.read());}
+        if(cookies.snapshot().isEmpty()){clear();return false;}
+        try{JSONArray sessions=(JSONArray)call("/api/auth/sessions",null);if(!personal(sessions)){clear();return false;}authenticated=true;persist();return true;}
+        catch(ApiError failure){if(failure.status==401||failure.status==403){clear();return false;}throw failure;}
+    }
+    private void persist(){if(authenticated&&store!=null)store.save(cookies.snapshot());}
     static final class ApiError extends IOException {
         final int status; final String code;
         ApiError(int status, String message) { this(status,"HTTP_"+status,message); }
@@ -53,6 +62,8 @@ final class DragonApi {
             }
             int status = connection.getResponseCode();
             cookies.receive(connection.getHeaderFields());
+            if(authenticated&&status==401){clear();}
+            else if(authenticated&&status>=200&&status<300){persist();}
             if (status >= 300 && status < 400) throw new ApiError(status, "Unexpected API redirect");
             InputStream input = status >= 400 ? connection.getErrorStream() : connection.getInputStream();
             ByteArrayOutputStream out = new ByteArrayOutputStream();
@@ -98,6 +109,7 @@ final class DragonApi {
             sessions=(JSONArray)call("/api/auth/sessions",null);
         }
         if(!personal(sessions))throw new ApiError(403,"Personal session unavailable");
+        authenticated=true;persist();
     }
     private boolean personal(JSONArray sessions){
         for(int i=0;i<sessions.length();i++){
@@ -122,5 +134,5 @@ final class DragonApi {
         call("/api/auth/logout", new JSONObject());
         clear();
     }
-    synchronized void clear() { cookies.clear(); bootstrapCsrf=""; }
+    synchronized void clear() { authenticated=false;cookies.clear();bootstrapCsrf="";if(store!=null)store.clear(); }
 }
