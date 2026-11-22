@@ -155,6 +155,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             public void mode(){showModes();}
             public void dictate(){MainActivity.this.dictate();}
             public void send(){MainActivity.this.send();}
+            public void stop(){api.cancelStream();setStatus("Stopping reply…");}
             public void removeAttachment(){if(!busy){attachment=null;attachmentName="";chatUi.setAttachmentLabel("");}}
             public void copy(String value){android.content.ClipboardManager cb=(android.content.ClipboardManager)getSystemService(Context.CLIPBOARD_SERVICE);cb.setPrimaryClip(android.content.ClipData.newPlainText("DragonZpyder",value));}
             public void speak(String value){if(speechReady)tts.speak(value,TextToSpeech.QUEUE_FLUSH,null,"response");else setStatus("Speech engine unavailable");}
@@ -241,14 +242,14 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             try{result=work.run();}catch(Exception e){error=e;}
             final Object value=result;final Exception failure=error;
             runOnUiThread(()->{
-                if(isDestroyed())return;busy=false;if(chatUi!=null)chatUi.setBusy(false);
+                if(isDestroyed())return;busy=false;if(chatUi!=null){chatUi.setBusy(false);chatUi.setStreaming(false);}
                 try{
                     if(failure!=null)throw failure;
                     setStatus(signedIn&&!accountOpen?(meshMode?"AI Mesh · "+model:"Personal agent"):"");
                     done.accept(value);
                 }catch(Exception e){
                     if(e instanceof DragonApi.ApiError && ((DragonApi.ApiError)e).status==401 && signedIn){api.clear();attachment=null;attachmentName="";transcript.clear();conversation="";meshMessages=new JSONArray();meshMode=false;loginScreen("Session expired. Sign in again.");}
-                    else if(report)setStatus(e.getMessage()==null?"Request failed":e.getMessage());
+                    else if(report){if(chatUi!=null&&!chatUi.getPartialReply().isEmpty()){append("assistant",chatUi.getPartialReply()+"\n\n[Reply incomplete]");chatUi.setPartialReply("");}setStatus(e.getMessage()==null?"Request failed":e.getMessage());}
                 }
             });
         });
@@ -267,10 +268,11 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             final JSONArray next=new JSONArray();
             try{for(int i=Math.max(0,meshMessages.length()-10);i<meshMessages.length();i++)next.put(meshMessages.get(i));Object content=attachment==null?prompt:new JSONArray().put(new JSONObject().put("type","text").put("text",prompt)).put(attachment);next.put(new JSONObject().put("role","user").put("content",content));}
             catch(JSONException e){setStatus("Message error");return;}
-            submit("Generating…",()->api.call("/mesh/chat",new JSONObject().put("model",model).put("messages",next)),r->{
-                JSONObject answer=(JSONObject)r;String value=answer.optString("message",answer.optString("text",answer.optString("content","")));
-                if(value.isEmpty())throw new Exception("Model did not return text.");
-                attachment=null;attachmentName="";if(chatUi!=null)chatUi.setAttachmentLabel("");meshMessages=next;meshMessages.put(new JSONObject().put("role","assistant").put("content",value));lastAnswer=value;append("assistant",value);
+            final NativeChatView target=chatUi;
+            target.setPartialReply("");target.setStreaming(true);api.prepareStream();
+            submit("Generating…",()->api.streamChat(new JSONObject().put("model",model).put("messages",next),delta->runOnUiThread(()->{if(!isDestroyed()&&chatUi==target)target.setPartialReply(target.getPartialReply()+delta);})),r->{
+                String value=(String)r;if(value.isEmpty())throw new Exception("Model did not return text.");
+                target.setPartialReply("");attachment=null;attachmentName="";if(chatUi!=null)chatUi.setAttachmentLabel("");meshMessages=next;meshMessages.put(new JSONObject().put("role","assistant").put("content",value));lastAnswer=value;append("assistant",value);
             },true);return;
         }
         final String id=conversation;
@@ -418,5 +420,5 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(request==43&&signedIn&&meshMode&&result==RESULT_OK&&data!=null&&data.getData()!=null){readAttachment(data.getData());return;}if(request==42&&signedIn&&result==RESULT_OK&&data!=null&&chatUi!=null){ArrayList<String> words=data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);if(words!=null&&!words.isEmpty()){String draft=chatUi.getDraft();chatUi.setDraft(draft+(draft.isEmpty()?"":" ")+words.get(0));}}}
     @Override public void onBackPressed(){if(busy)return;if(accountOpen){accountOpen=false;chatScreen();}else if(!signedIn&&!"login".equals(authMode))authScreen("login","");else super.onBackPressed();}
     private void signOut(){submit("Signing out…",()->{api.logout();return null;},r->{conversation="";attachment=null;attachmentName="";transcript.clear();meshMode=false;lastAnswer="";meshMessages=new JSONArray();history=new JSONArray();profileInitial="D";authEmail="";challengeId="";if(tts!=null)tts.stop();chatUi=null;loginScreen("");},true);}
-    @Override protected void onDestroy(){worker.shutdown();if(tts!=null)tts.shutdown();super.onDestroy();}
+    @Override protected void onDestroy(){api.cancelStream();worker.shutdownNow();if(tts!=null)tts.shutdown();super.onDestroy();}
 }
