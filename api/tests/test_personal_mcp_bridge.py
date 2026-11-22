@@ -177,3 +177,87 @@ def test_scheduled_direct_mcp_read_rejects_tool_error_receipt():
 
     with pytest.raises(RuntimeError, match="returned an error"):
         asyncio.run(invoke_scheduled_read([FailingRead()], "tasks.list"))
+
+
+def test_exact_graph_status_is_explicit_and_read_only():
+    from agent_platform.personal_bridge import exact_graph_status_id
+    goal = "f061c8cf-94e9-4068-a7ba-29fed23be49f"
+    assert exact_graph_status_id("graph_status " + goal) == goal
+    assert exact_graph_status_id("  graph_status " + goal + "  ") == goal
+    for value in ("Call graph_status " + goal, "graph_status " + goal + "\nthen cancel",
+                  "graph_status invalid", "graph_cancel " + goal):
+        assert exact_graph_status_id(value) is None
+
+
+def test_authenticated_graph_status_bypasses_model_and_mcp(monkeypatch):
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from agent_platform.personal_bridge import router
+    goal = "f061c8cf-94e9-4068-a7ba-29fed23be49f"
+    owner = "11111111-1111-4111-8111-111111111111"
+    session = "22222222-2222-4222-8222-222222222222"
+    conversation = "33333333-3333-4333-8333-333333333333"
+    for key, value in _env().items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.setenv("DRAGONZPYDER_EXECUTION_GRAPH_ENABLED", "1")
+    lookup = AsyncMock(return_value={"goal_id": goal, "state": "completed",
+        "verified": True, "receipts": [{"sequence": 0, "output_sha256": "x" * 64}],
+        "report_markdown": "Actual stored report"})
+    # No agent runtime or model client installed: direct lookup must still work.
+    with patch("agent_platform.persistent_graph.graph_tools",
+               return_value=[SimpleNamespace(name="graph_status", ainvoke=lookup)]) as bound:
+        app = FastAPI()
+        app.include_router(router)
+        client = TestClient(app)
+        body = {"scope_kind": "personal", "user_id": owner, "session_id": session,
+                "conversation_id": conversation, "prompt": "graph_status " + goal,
+                "mcp_access_token": "x" * 48, "approved_tool_names": ["workflow.list"]}
+        assert client.post("/internal/agents/operly/personal/run", json=body).status_code == 401
+        lookup.assert_not_called()
+        response = client.post("/internal/agents/operly/personal/run", json=body,
+            headers={"Authorization": "Bearer " + "a" * 48,
+                     "X-Operly-Agent-Service": "b" * 48})
+        assert response.status_code == 200
+        data = response.json()
+        assert '"verified": true' in data["answer"]
+        assert "Actual stored report" in data["answer"]
+        assert data["thread_checkpointed"] is False
+        assert data["objective_verified"] is False
+        assert data["successful_tools"] == []
+        assert data["execution_receipts"]["tool_names"] == ["graph_status"]
+        bound.assert_called_once_with(user_id=owner, session_id=session,
+                                     conversation_id=conversation)
+        lookup.assert_awaited_once_with({"goal_id": goal})
+        # A normal prompt and a scheduled wake cannot enter the command shortcut.
+        body["prompt"] = "Please call graph_status " + goal
+        response = client.post("/internal/agents/operly/personal/run", json=body,
+            headers={"Authorization": "Bearer " + "a" * 48,
+                     "X-Operly-Agent-Service": "b" * 48})
+        assert response.status_code == 503  # No agent runtime installed.
+        assert lookup.await_count == 1
+
+
+def test_direct_graph_status_does_not_invent_receipts_for_missing_graph(monkeypatch):
+    import asyncio
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+    from agent_platform.personal_bridge import OperlyPersonalRun, direct_graph_status
+    monkeypatch.setenv("DRAGONZPYDER_EXECUTION_GRAPH_ENABLED", "1")
+    goal = "f061c8cf-94e9-4068-a7ba-29fed23be49f"
+    payload = OperlyPersonalRun(scope_kind="personal",
+        user_id="11111111-1111-4111-8111-111111111111",
+        session_id="22222222-2222-4222-8222-222222222222",
+        conversation_id="33333333-3333-4333-8333-333333333333",
+        prompt="graph_status " + goal, mcp_access_token="x" * 48,
+        approved_tool_names=["workflow.list"])
+    lookup = AsyncMock(return_value={"status": "not_found"})
+    with patch("agent_platform.persistent_graph.graph_tools",
+               return_value=[SimpleNamespace(name="graph_status", ainvoke=lookup)]):
+        result = asyncio.run(direct_graph_status(payload))
+        assert '"status": "not_found"' in result["answer"]
+        assert result["objective_verified"] is False
+        payload.scheduled_wake = True
+        assert asyncio.run(direct_graph_status(payload)) is None
+        assert lookup.await_count == 1
