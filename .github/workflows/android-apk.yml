@@ -39,6 +39,9 @@ jobs:
       - name: Build and lint
         working-directory: android
         run: gradle --no-daemon :app:assembleDebug :app:lintDebug
+      - name: Run Markdown parser unit tests
+        working-directory: android
+        run: gradle --no-daemon :app:testDebugUnitTest
       - name: Compile Android instrumentation tests
         working-directory: android
         run: gradle --no-daemon :app:assembleDebugAndroidTest
