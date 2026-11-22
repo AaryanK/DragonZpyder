@@ -72,8 +72,8 @@ def test_broker_refuses_unapproved_hosts_tool_names_and_bad_alias(monkeypatch):
         asyncio.run(discover_granted_mcp_tools([bad]))
     with pytest.raises(ValueError, match="identifier"):
         tool_alias("bad provider", "documents.list")
-    with pytest.raises(ValueError, match="too long"):
-        tool_alias("operly", "x" * 120)
+    assert len(tool_alias("operly", "x" * 120)) <= 64
+    assert tool_alias("operly", "x" * 120) != tool_alias("operly", "X" * 120)
 
 
 class NoArgs(BaseModel):
