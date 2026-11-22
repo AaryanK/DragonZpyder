@@ -17,7 +17,8 @@ import java.util.concurrent.*;
 import org.json.*;
 
 public final class MainActivity extends Activity {
-    private static final int BG=0xff101219, PANEL=0xff1b202a, TEXT=0xffeef1f8, MUTED=0xffa8b2c2, ACCENT=0xffb5d6ff;
+    private static final int BG=0xff101310, PANEL=0xff1d221d, TEXT=0xfff4f2ed, MUTED=0xffa5aca1, ACCENT=0xffd6a573, LINE=0xff39433a;
+    private boolean welcomeVisible;
     private static final DragonApi api=new DragonApi();
     private final ExecutorService worker=Executors.newSingleThreadExecutor();
     private LinearLayout root, messages;
@@ -55,51 +56,59 @@ public final class MainActivity extends Activity {
     private LinearLayout row(){LinearLayout l=new LinearLayout(this);l.setGravity(Gravity.CENTER_VERTICAL);return l;}
     private GradientDrawable surface(int color,int radius){GradientDrawable d=new GradientDrawable();d.setColor(color);d.setCornerRadius(dp(radius));return d;}
     private TextView text(String s,int size,int color){TextView v=new TextView(this);v.setText(s);v.setTextSize(size);v.setTextColor(color);return v;}
-    private TextView heading(String s,int size){TextView t=text(s,size,TEXT);t.setTypeface(null,Typeface.BOLD);return t;}
-    private Button button(String s,Runnable action){Button b=new Button(this);b.setAllCaps(false);b.setText(s);b.setTextColor(ACCENT);b.setTextSize(14);b.setBackgroundTintList(android.content.res.ColorStateList.valueOf(PANEL));b.setOnClickListener(v->{if(!busy)action.run();});return b;}
-    private EditText field(String hint,boolean secret){EditText e=new EditText(this);e.setHint(hint);e.setHintTextColor(MUTED);e.setTextColor(TEXT);e.setTextSize(16);e.setPadding(dp(14),dp(12),dp(14),dp(12));e.setBackground(surface(PANEL,16));e.setInputType(secret?129:1);return e;}
+    private TextView heading(String s,int size){TextView t=text(s,size,TEXT);t.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));t.setLetterSpacing(-.035f);return t;}
+    private TextView serif(String s,int size){TextView t=text(s,size,TEXT);t.setTypeface(Typeface.create("serif",Typeface.NORMAL));t.setLetterSpacing(-.035f);return t;}
+    private ImageView logo(int size){ImageView image=new ImageView(this);image.setImageResource(R.drawable.brand_icon);image.setScaleType(ImageView.ScaleType.FIT_CENTER);image.setLayoutParams(new LinearLayout.LayoutParams(dp(size),dp(size)));image.setContentDescription("DragonZpyder");return image;}
+    private Button button(String s,Runnable action){Button b=new Button(this);b.setAllCaps(false);b.setText(s);b.setTextColor(TEXT);b.setTextSize(14);b.setTypeface(Typeface.create("sans-serif-medium",0));b.setMinHeight(dp(48));b.setMinimumHeight(dp(48));b.setMinWidth(dp(48));b.setMinimumWidth(dp(48));b.setPadding(dp(12),0,dp(12),0);b.setBackground(new android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(0x22ffffff),surface(PANEL,14),null));b.setOnClickListener(v->{if(!busy)action.run();});return b;}
+    private Button primary(String s,Runnable action){Button b=button(s,action);b.setTextColor(BG);b.setBackground(new android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(0x22000000),surface(ACCENT,20),null));return b;}
+    private EditText field(String hint,boolean secret){EditText e=new EditText(this);e.setHint(hint);e.setHintTextColor(MUTED);e.setTextColor(TEXT);e.setTextSize(16);e.setPadding(dp(14),dp(12),dp(14),dp(12));GradientDrawable d=surface(PANEL,16);d.setStroke(dp(1),LINE);e.setBackground(d);e.setInputType(secret?129:1);return e;}
     private void gap(LinearLayout l,int height){l.addView(new View(this),new LinearLayout.LayoutParams(1,dp(height)));}
-    private void reset(){root=column();root.setBackgroundColor(BG);root.setPadding(dp(16),dp(16),dp(16),dp(10));setContentView(root);}
+    private void reset(){root=column();root.setBackgroundColor(BG);root.setPadding(dp(20),dp(16),dp(20),dp(12));setContentView(root);root.setOnApplyWindowInsetsListener((v,insets)->{int left,top,right,bottom;if(android.os.Build.VERSION.SDK_INT>=30){android.graphics.Insets bars=insets.getInsets(WindowInsets.Type.systemBars()|WindowInsets.Type.displayCutout()|WindowInsets.Type.ime());left=bars.left;top=bars.top;right=bars.right;bottom=bars.bottom;}else{left=insets.getSystemWindowInsetLeft();top=insets.getSystemWindowInsetTop();right=insets.getSystemWindowInsetRight();bottom=insets.getSystemWindowInsetBottom();}v.setPadding(dp(20)+left,dp(12)+top,dp(20)+right,dp(12)+bottom);return insets;});root.requestApplyInsets();}
     private void loginScreen(String message){
         signedIn=false;reset();root.setGravity(Gravity.CENTER_VERTICAL);
-        TextView title=heading("DragonZpyder",32);root.addView(title);gap(root,6);
-        root.addView(text("Your intelligence, connected.",16,MUTED));gap(root,30);
-        EditText email=field("Email",false);email.setInputType(33);email.setSingleLine(true);root.addView(email);gap(root,10);
-        EditText password=field("Password",true);password.setSingleLine(true);root.addView(password);gap(root,14);
-        Button login=button("Sign in",()->{
+        root.addView(logo(64));gap(root,24);
+        TextView eyebrow=text("DRAGONZPYDER  /  PERSONAL",11,ACCENT);eyebrow.setLetterSpacing(.16f);root.addView(eyebrow);gap(root,12);
+        root.addView(serif("Welcome back.",38));gap(root,8);
+        root.addView(text("One intelligence. Many possibilities.",16,MUTED));gap(root,30);
+        EditText email=field("Email",false);email.setInputType(33);email.setSingleLine(true);root.addView(text("EMAIL ADDRESS",11,MUTED));gap(root,6);root.addView(email);gap(root,16);
+        EditText password=field("Password",true);password.setSingleLine(true);root.addView(text("PASSWORD",11,MUTED));gap(root,6);root.addView(password);gap(root,22);
+        Button login=primary("Sign in",()->{
             String e=email.getText().toString().trim(),p=password.getText().toString();
             if(e.isEmpty()||p.isEmpty()){status.setText("Enter your email and password.");return;}
             hideKeyboard(password);password.setText("");
             submit("Signing in…",()->{api.login(e,p);return null;},result->{signedIn=true;chatScreen();loadHistory(true);},true);
         });root.addView(login);
         status=text(message,14,MUTED);status.setPadding(0,dp(12),0,0);root.addView(status);
-        gap(root,16);root.addView(text("Native preview · Existing Personal account",12,MUTED));
+        gap(root,24);root.addView(text("Secure Personal session · DragonZpyder",12,MUTED));
     }
     private void chatScreen(){
         reset();LinearLayout toolbar=row();
-        TextView brand=heading("DragonZpyder",21);
-        toolbar.addView(brand,new LinearLayout.LayoutParams(0,-2,1));
-        toolbar.addView(button("History",this::showHistory));toolbar.addView(button("New",this::newChat));
-        root.addView(toolbar);
-        LinearLayout controls=row();
-        controls.addView(button("Agent",()->{meshMode=false;newChat();}));
-        controls.addView(button("Models",this::chooseModel));
-        controls.addView(button("Approvals",this::approvals));
-        controls.addView(button("Sign out",this::signOut));
-        HorizontalScrollView strip=new HorizontalScrollView(this);strip.setHorizontalScrollBarEnabled(false);strip.addView(controls);root.addView(strip);
-        status=text("Personal agent",12,MUTED);root.addView(status);gap(root,8);
+        toolbar.addView(button("☰",this::showMenu));gap(root,4);
+        LinearLayout title=column();TextView brand=heading("DragonZpyder",20);title.addView(brand);title.addView(text("Personal workspace",11,MUTED));
+        LinearLayout.LayoutParams titleParams=new LinearLayout.LayoutParams(0,-2,1);titleParams.setMargins(dp(12),0,0,0);toolbar.addView(title,titleParams);
+        Button newButton=button("+",this::newChat);newButton.setContentDescription("New conversation");toolbar.addView(newButton);root.addView(toolbar);
+        gap(root,12);View divider=new View(this);divider.setBackgroundColor(LINE);root.addView(divider,new LinearLayout.LayoutParams(-1,dp(1)));gap(root,12);
+        status=text("Personal agent",12,MUTED);status.setPadding(dp(4),0,0,0);root.addView(status);
         scroll=new ScrollView(this);scroll.setFillViewport(true);messages=column();scroll.addView(messages);
         root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
-        LinearLayout composer=row();input=field("Message DragonZpyder",false);input.setInputType(1|131072);input.setMaxLines(5);
-        composer.addView(input,new LinearLayout.LayoutParams(0,-2,1));
-        composer.addView(button("Mic",this::dictate));composer.addView(button("Send",this::send));root.addView(composer);
+        LinearLayout composer=column();GradientDrawable skin=surface(PANEL,24);skin.setStroke(dp(1),LINE);composer.setBackground(skin);composer.setPadding(dp(10),dp(8),dp(10),dp(8));
+        input=field("Message DragonZpyder",false);input.setBackgroundColor(Color.TRANSPARENT);input.setInputType(1|131072);input.setMaxLines(5);composer.addView(input,new LinearLayout.LayoutParams(-1,-2));
+        LinearLayout actions=row();actions.addView(button("Mode",this::showModes));actions.addView(new View(this),new LinearLayout.LayoutParams(0,1,1));
+        Button microphone=button("Mic",this::dictate);microphone.setContentDescription("Voice dictation");actions.addView(microphone);Button send=primary("↑",this::send);send.setContentDescription("Send message");actions.addView(send);composer.addView(actions);root.addView(composer);
         if(conversation.isEmpty()) welcome();
     }
-    private void welcome(){messages.removeAllViews();gap(messages,45);messages.addView(heading("What can I help you with?",25));gap(messages,8);messages.addView(text(meshMode?"AI Mesh · "+model:"Ask a question or delegate a task.",15,MUTED));}
+    private void showMenu(){new AlertDialog.Builder(this).setTitle("Personal workspace").setItems(new String[]{"New conversation","Chat history","Switch mode","Pending approvals","Sign out"},(d,i)->{switch(i){case 0:newChat();break;case 1:showHistory();break;case 2:showModes();break;case 3:approvals();break;case 4:signOut();break;}}).show();}
+    private void showModes(){new AlertDialog.Builder(this).setTitle("Choose your intelligence").setItems(new String[]{"DragonZpyder Agent — tasks and tools","AI Mesh — choose a model"},(d,i)->{if(i==0){meshMode=false;newChat();}else chooseModel();}).show();}
+    private void welcome(){messages.removeAllViews();welcomeVisible=true;messages.setGravity(Gravity.CENTER);LinearLayout panel=column();panel.setGravity(Gravity.CENTER_HORIZONTAL);panel.addView(logo(68));gap(panel,24);
+        TextView label=text(meshMode?"AI MESH":"YOUR PERSONAL INTELLIGENCE",10,ACCENT);label.setLetterSpacing(.16f);panel.addView(label);gap(panel,12);
+        TextView title=serif("What can we\\nwork on today?",34);title.setGravity(Gravity.CENTER);panel.addView(title);gap(panel,14);
+        TextView desc=text(meshMode?model:"Ask, create, explore, or delegate a task.",15,MUTED);desc.setGravity(Gravity.CENTER);panel.addView(desc);gap(panel,25);
+        for(String prompt:new String[]{"Help me plan something","Research an idea","Help me write something"}){Button suggestion=button(prompt,()->{input.setText(prompt);input.setSelection(input.length());});LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,dp(52));lp.setMargins(0,0,0,dp(8));panel.addView(suggestion,lp);}
+        messages.addView(panel,new LinearLayout.LayoutParams(-1,-2));}
     private void append(String role,String content){
-        if(messages.getChildCount()>0 && messages.getChildAt(0) instanceof View && conversation.isEmpty() && !meshMode && lastAnswer.isEmpty() && messages.getChildCount()==4) messages.removeAllViews();
-        boolean user="user".equals(role);LinearLayout bubble=column();bubble.setPadding(dp(14),dp(12),dp(14),dp(12));bubble.setBackground(surface(user?0xff27364b:PANEL,18));
-        bubble.addView(text(user?"You":"DragonZpyder",12,ACCENT));gap(bubble,5);TextView body=text(content,16,TEXT);body.setTextIsSelectable(true);bubble.addView(body);
+        if(welcomeVisible){messages.removeAllViews();welcomeVisible=false;}messages.setGravity(Gravity.TOP);
+        boolean user="user".equals(role);LinearLayout bubble=column();bubble.setPadding(dp(14),dp(12),dp(14),dp(12));bubble.setBackground(surface(user?0xff293329:BG,20));
+        bubble.addView(text(user?"You":"DragonZpyder",12,ACCENT));gap(bubble,5);TextView body=text(content,16,TEXT);body.setLineSpacing(dp(4),1.08f);body.setTextIsSelectable(true);bubble.addView(body);
         if(!user){Button speak=button("Read aloud",()->{if(speechReady)tts.speak(content,TextToSpeech.QUEUE_FLUSH,null,"response");else status.setText("Speech engine unavailable");});bubble.addView(speak);}
         LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.setMargins(user?dp(25):0,dp(8),user?0:dp(10),dp(4));messages.addView(bubble,lp);
         scroll.post(()->scroll.fullScroll(View.FOCUS_DOWN));
@@ -127,7 +136,7 @@ public final class MainActivity extends Activity {
     private void newChat(){conversation="";meshMessages=new JSONArray();lastAnswer="";welcome();status.setText(meshMode?"AI Mesh · "+model:"Personal agent");}
     private void send(){
         String prompt=input.getText().toString().trim();if(prompt.isEmpty())return;
-        hideKeyboard(input);input.setText("");if(conversation.isEmpty() && meshMessages.length()==0)messages.removeAllViews();append("user",prompt);
+        hideKeyboard(input);input.setText("");if(welcomeVisible){messages.removeAllViews();welcomeVisible=false;}messages.setGravity(Gravity.TOP);append("user",prompt);
         if(meshMode){
             final JSONArray next=new JSONArray();
             try{for(int i=Math.max(0,meshMessages.length()-10);i<meshMessages.length();i++)next.put(meshMessages.get(i));next.put(new JSONObject().put("role","user").put("content",prompt));}
@@ -161,7 +170,7 @@ public final class MainActivity extends Activity {
     private void open(String id){
         if(id.isEmpty())return;
         submit("Loading chat…",()->api.call("/api/personal-agent/conversations/"+DragonApi.segment(id)+"/messages",null),r->{
-            meshMode=false;conversation=id;messages.removeAllViews();JSONArray rows=(JSONArray)r;
+            meshMode=false;conversation=id;welcomeVisible=false;messages.removeAllViews();messages.setGravity(Gravity.TOP);JSONArray rows=(JSONArray)r;
             for(int i=0;i<rows.length();i++){JSONObject item=rows.optJSONObject(i);if(item!=null&&Arrays.asList("user","assistant").contains(item.optString("role")))append(item.optString("role"),item.optString("content"));}
         },true);
     }
