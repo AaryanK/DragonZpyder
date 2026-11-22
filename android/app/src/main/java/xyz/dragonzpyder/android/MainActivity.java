@@ -42,6 +42,9 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private JSONObject attachment;
     private String attachmentName="";
     private String conversation="", lastAnswer="", pendingPrompt="";
+    // Non-sensitive Activity recreation state; never persist auth tokens or replay a request.
+    private String restoredConversation="", restoredDraft="";
+    private boolean restorePending=false;
     private JSONArray history=new JSONArray();
     private boolean busy, signedIn, meshMode;
     private String model="";
@@ -53,6 +56,11 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
 
     @Override public void onCreate(Bundle b) {
         super.onCreate(b);
+        if(b!=null){
+            restoredConversation=b.getString("dz.conversation","");
+            restoredDraft=b.getString("dz.draft","");
+            restorePending=true;
+        }
         dark=getPreferences(MODE_PRIVATE).getBoolean("dark",false);palette();
         getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         tts=new TextToSpeech(this, code -> speechReady=code==TextToSpeech.SUCCESS);
@@ -97,7 +105,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private boolean emailValid(String email){if(!android.util.Patterns.EMAIL_ADDRESS.matcher(email).matches()){setStatus("Enter a valid email address.");return false;}return true;}
     private boolean strong(String p){if(p.length()<12){setStatus("Use at least 12 characters for your password.");return false;}return true;}
     private boolean six(String code){if(!code.matches("[0-9]{6}")){setStatus("Enter the six-digit code.");return false;}return true;}
-    private void authSuccess(){authEmail="";challengeId="";signedIn=true;accountOpen=false;chatScreen();loadHistory(true);}
+    private void authSuccess(){restorePending=false;restoredDraft="";restoredConversation="";authEmail="";challengeId="";signedIn=true;accountOpen=false;chatScreen();loadHistory(true);}
     private void authScreen(String mode,String message){
         signedIn=false;accountOpen=false;chatUi=null;authMode=mode;getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);accountLayout();
         sectionLabel(accountPage,"ONE IDENTITY · YOUR INTELLIGENCE");accountPage.addView(heading("Always yours.",38));gap(accountPage,8);accountPage.addView(text("Your conversations, personal AI, and authorised connections—all in one account.",14,MUTED));gap(accountPage,22);
@@ -389,7 +397,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         });
     }
     private void newChat(){
-        if(busy)return;transcript.clear();pendingPrompt="";attachment=null;attachmentName="";conversation="";meshMessages=new JSONArray();lastAnswer="";
+        if(busy)return;restorePending=false;restoredDraft="";restoredConversation="";transcript.clear();pendingPrompt="";attachment=null;attachmentName="";conversation="";meshMessages=new JSONArray();lastAnswer="";
         if(chatUi!=null){chatUi.clearMessages();chatUi.setDraft("");chatUi.setAttachmentLabel("");chatUi.setModeLabel(meshMode?"AI Mesh":"Agent");chatUi.setModelLabel(model);}
         setStatus(meshMode?"AI Mesh · "+model:"Personal agent");
     }
@@ -420,7 +428,33 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         },true);
     }
     private void loadHistory(boolean restore){
-        submit("Loading conversations…",()->api.call("/api/personal-agent/conversations",null),r->{history=(JSONArray)r;if(restore&&history.length()>0){JSONObject first=history.optJSONObject(0);if(first!=null)open(first.optString("id"));}},true);
+        submit("Loading conversations…",()->api.call("/api/personal-agent/conversations",null),r->{
+            history=(JSONArray)r;
+            if(!restore)return;
+            String selected="";
+            if(restorePending&&!restoredConversation.isEmpty()){
+                for(int i=0;i<history.length();i++){
+                    JSONObject item=history.optJSONObject(i);
+                    if(item!=null&&restoredConversation.equals(item.optString("id"))){selected=restoredConversation;break;}
+                }
+            }
+            if(selected.isEmpty()&&history.length()>0){
+                JSONObject first=history.optJSONObject(0);
+                if(first!=null)selected=first.optString("id");
+            }
+            if(!selected.isEmpty())open(selected);
+            else applyRestoredDraft();
+        },true);
+    }
+    private void applyRestoredDraft(){
+        if(restorePending&&chatUi!=null)chatUi.setDraft(restoredDraft);
+        restorePending=false;restoredDraft="";restoredConversation="";
+    }
+    @Override protected void onSaveInstanceState(Bundle out){
+        // The draft is user-authored; never store passwords, credentials, or request payloads.
+        out.putString("dz.conversation",conversation);
+        out.putString("dz.draft",chatUi!=null?chatUi.getDraft():restoredDraft);
+        super.onSaveInstanceState(out);
     }
     private void showHistory(){
         submit("Loading conversations…",()->api.call("/api/personal-agent/conversations",null),r->{
@@ -434,6 +468,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         submit("Loading chat…",()->api.call("/api/personal-agent/conversations/"+DragonApi.segment(id)+"/messages",null),r->{
             meshMode=false;attachment=null;attachmentName="";conversation=id;transcript.clear();if(chatUi!=null){chatUi.clearMessages();chatUi.setModeLabel("Agent");chatUi.setAttachmentLabel("");chatUi.setDraft("");}JSONArray rows=(JSONArray)r;
             for(int i=0;i<rows.length();i++){JSONObject item=rows.optJSONObject(i);if(item!=null&&Arrays.asList("user","assistant").contains(item.optString("role")))append(item.optString("role"),item.optString("content"));}
+            applyRestoredDraft();
         },true);
     }
     private void chooseModel(){
