@@ -121,6 +121,49 @@ final class DragonApi {
             return answer.toString();
         }finally{activeStream=null;c.disconnect();}
     }
+    /** Fresh server-bound Google nonce. Credential Manager receives this unchanged. */
+    synchronized JSONObject googleBootstrap() throws Exception {
+        clear();
+        JSONObject result=(JSONObject)call("/api/auth/bootstrap",null);
+        bootstrapCsrf=result.optString("csrf_token","");
+        String nonce=result.optString("google_nonce","");
+        String client=result.optString("google_client_id","");
+        if(bootstrapCsrf.isEmpty()||nonce.isEmpty()||client.isEmpty()||
+                !nonce.equals(cookies.value("operly_google_nonce")))
+            throw new ApiError(503,"GOOGLE_NOT_CONFIGURED","Google login is not configured for this mobile client.");
+        if(!client.matches("[0-9]+-[A-Za-z0-9._-]+\\.apps\\.googleusercontent\\.com"))
+            throw new IOException("Unexpected Google client configuration");
+        return new JSONObject().put("client_id",client).put("nonce",nonce);
+    }
+    synchronized void loginWithGoogle(String idToken) throws Exception {
+        if(idToken==null||idToken.isEmpty()||idToken.length()>16000)
+            throw new IOException("Invalid Google credential");
+        try {
+            call("/api/auth/google",object("credential",idToken));
+            bootstrapCsrf="";
+            ensurePersonal();
+        } catch(Exception e) { clear(); throw e; }
+    }
+    synchronized boolean discordMobileAvailable() throws Exception {
+        JSONObject response=(JSONObject)call("/api/auth/bootstrap",null);
+        bootstrapCsrf=response.optString("csrf_token","");
+        return response.optBoolean("discord_mobile_enabled",false);
+    }
+    synchronized void redeemDiscordMobile(String ticket,String verifier) throws Exception {
+        if(ticket==null||!ticket.matches("[A-Za-z0-9_-]{40,120}")||
+            verifier==null||!verifier.matches("[A-Za-z0-9_-]{43,128}"))
+            throw new IOException("Discord device proof is invalid");
+        try{
+            JSONObject init=(JSONObject)call("/api/auth/bootstrap",null);
+            bootstrapCsrf=init.optString("csrf_token","");
+            if(!init.optBoolean("discord_mobile_enabled",false))
+                throw new ApiError(503,"DISCORD_MOBILE_NOT_CONFIGURED","Discord mobile sign-in is not enabled.");
+            call("/api/identities/discord/mobile/redeem",new JSONObject()
+                .put("ticket",ticket).put("verifier",verifier));
+            bootstrapCsrf="";
+            ensurePersonal();
+        }catch(Exception e){clear();throw e;}
+    }
     private void bootstrap() throws Exception {
         clear();
         JSONObject result=(JSONObject)call("/api/auth/bootstrap",null);
