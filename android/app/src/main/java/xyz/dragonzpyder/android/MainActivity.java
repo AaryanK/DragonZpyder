@@ -45,6 +45,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     // Non-sensitive Activity recreation state; never persist auth tokens or replay a request.
     private String restoredConversation="", restoredDraft="";
     private boolean restorePending=false;
+    private boolean interruptedRequest=false;
     private JSONArray history=new JSONArray();
     private boolean busy, signedIn, meshMode;
     private String model="";
@@ -60,13 +61,14 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             restoredConversation=b.getString("dz.conversation","");
             restoredDraft=b.getString("dz.draft","");
             restorePending=true;
+            interruptedRequest=b.getBoolean("dz.request_in_flight",false);
         }
         dark=getPreferences(MODE_PRIVATE).getBoolean("dark",false);palette();
         getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         tts=new TextToSpeech(this, code -> speechReady=code==TextToSpeech.SUCCESS);
         loginScreen("");
         submit("Checking secure session…",()->api.restore(getApplicationContext()),result->{
-            if(Boolean.TRUE.equals(result)){signedIn=true;chatScreen();loadHistory(true);}
+            if(Boolean.TRUE.equals(result)){signedIn=true;chatScreen();if(restorePending&&chatUi!=null)chatUi.setDraft(restoredDraft);if(interruptedRequest){append("system","A request was interrupted when Android recreated this screen. Its server-side outcome is unknown. Review conversation history and tasks before sending another action.");interruptedRequest=false;}loadHistory(true);}
         },true);
     }
     private int dp(float n){return Math.round(n*getResources().getDisplayMetrics().density);}
@@ -391,7 +393,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                     done.accept(value);
                 }catch(Exception e){
                     if(e instanceof DragonApi.ApiError && ((DragonApi.ApiError)e).status==401 && signedIn){api.clear();pendingPrompt="";attachment=null;attachmentName="";transcript.clear();conversation="";meshMessages=new JSONArray();meshMode=false;loginScreen("Session expired. Sign in again.");}
-                    else if(report){boolean hadPartial=chatUi!=null&&!chatUi.getPartialReply().isEmpty();if(hadPartial){append("assistant",chatUi.getPartialReply()+"\n\n[Reply incomplete]");chatUi.setPartialReply("");}if(!pendingPrompt.isEmpty()&&chatUi!=null){if(chatUi.getDraft().isEmpty()&&!hadPartial)chatUi.setDraft(pendingPrompt);append("system","Request did not return a confirmed completion. Check server history or tasks before resending an agent action.");pendingPrompt="";}setStatus(e.getMessage()==null?"Request failed":e.getMessage());}
+                    else if(report){boolean hadPartial=chatUi!=null&&!chatUi.getPartialReply().isEmpty();if(hadPartial){append("assistant",chatUi.getPartialReply()+"\n\n[Reply incomplete]");chatUi.setPartialReply("");}if(!pendingPrompt.isEmpty()&&chatUi!=null){if(chatUi.getDraft().isEmpty()&&!hadPartial)chatUi.setDraft(pendingPrompt);append("system","Request did not return a confirmed completion. Check server history or tasks before resending an agent action.");pendingPrompt="";}if(restorePending)applyRestoredDraft();setStatus(e.getMessage()==null?"Request failed":e.getMessage());}
                 }
             });
         });
@@ -454,6 +456,8 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         // The draft is user-authored; never store passwords, credentials, or request payloads.
         out.putString("dz.conversation",conversation);
         out.putString("dz.draft",chatUi!=null?chatUi.getDraft():restoredDraft);
+        // Marker only, never the prompt or credentials. Prevent implied completion or automatic replay.
+        out.putBoolean("dz.request_in_flight",busy&&!pendingPrompt.isEmpty());
         super.onSaveInstanceState(out);
     }
     private void showHistory(){
