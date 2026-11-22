@@ -177,3 +177,72 @@ def test_scheduled_direct_mcp_read_rejects_tool_error_receipt():
 
     with pytest.raises(RuntimeError, match="returned an error"):
         asyncio.run(invoke_scheduled_read([FailingRead()], "tasks.list"))
+
+
+def test_explicit_graph_status_command_is_narrow():
+    from agent_platform.personal_bridge import explicit_graph_status_id
+    goal = "f061c8cf-94e9-4068-a7ba-29fed23be49f"
+    assert explicit_graph_status_id("/graph-status " + goal) == goal
+    prompt = (
+        "Call graph_status for graph " + goal
+        + ". Return the actual state, all five execution receipts, SHA-256 hashes, "
+        "execution timestamps, integrity checks, blocked reason, and final "
+        "report_markdown. Do not schedule anything new."
+    )
+    assert explicit_graph_status_id(prompt) == goal
+    assert explicit_graph_status_id(prompt + " Delete the graph.") is None
+    assert explicit_graph_status_id("Explain /graph-status " + goal) is None
+    assert explicit_graph_status_id("/graph-status invalid") is None
+
+
+def test_graph_status_bypasses_model_and_checkpoint_but_not_auth(monkeypatch):
+    import asyncio
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+    from uuid import uuid4
+    from fastapi import HTTPException
+    import pytest
+    from agent_platform import personal_bridge, persistent_graph
+
+    goal = str(uuid4())
+    payload = personal_bridge.OperlyPersonalRun(
+        scope_kind="personal", user_id=str(uuid4()), session_id=str(uuid4()),
+        conversation_id=str(uuid4()), prompt="/graph-status " + goal,
+        mcp_access_token="x" * 40, approved_tool_names=["workflow.list"],
+    )
+    status = SimpleNamespace(
+        name="graph_status",
+        ainvoke=AsyncMock(return_value={
+            "goal_id": goal, "state": "active", "verified": False,
+            "receipts": [{"output_sha256": "a" * 64}],
+            "report_markdown": "Untrusted text with \u0060\u0060\u0060 fences.",
+        }),
+    )
+    bound = []
+
+    def fake_tools(**kwargs):
+        bound.append(kwargs)
+        return [status]
+
+    monkeypatch.setenv("DRAGONZPYDER_EXECUTION_GRAPH_ENABLED", "1")
+    monkeypatch.setattr(persistent_graph, "graph_tools", fake_tools)
+    monkeypatch.setattr(personal_bridge, "_authorized", lambda a, b: False)
+    with pytest.raises(HTTPException) as err:
+        asyncio.run(personal_bridge.operly_personal_run(payload, None, "", ""))
+    assert err.value.status_code == 401
+    assert not bound
+
+    monkeypatch.setattr(personal_bridge, "_authorized", lambda a, b: True)
+    response = asyncio.run(personal_bridge.operly_personal_run(payload, None, "", ""))
+    assert response["status"] == "completed"
+    assert response["thread_checkpointed"] is False
+    assert response["objective_verified"] is False
+    assert response["execution_receipts"]["tool_names"] == ["graph_status"]
+    assert '"verified": false' in response["answer"]
+    assert "a" * 64 in response["answer"]
+    assert response["answer"].count("\u0060\u0060\u0060") == 2
+    assert bound == [{
+        "user_id": payload.user_id, "session_id": payload.session_id,
+        "conversation_id": payload.conversation_id,
+    }]
+    status.ainvoke.assert_awaited_once_with({"goal_id": goal})
