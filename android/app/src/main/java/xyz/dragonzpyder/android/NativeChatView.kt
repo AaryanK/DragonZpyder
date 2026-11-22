@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -18,7 +20,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontFamily
+import kotlinx.coroutines.launch
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.semantics.contentDescription
@@ -82,12 +89,18 @@ class NativeChatView(context: Context, private val dark: Boolean, private val ac
                 HorizontalDivider(color=line.copy(alpha=.55f))
                 Box(Modifier.weight(1f).fillMaxWidth(),contentAlignment=Alignment.TopCenter) {
                     val state=rememberLazyListState()
-                    LaunchedEffect(rows.size) { if(rows.isNotEmpty()) state.scrollToItem(rows.lastIndex) }
+                    val scope=rememberCoroutineScope()
+                    var followLatest by remember { mutableStateOf(true) }
+                    LaunchedEffect(state.isScrollInProgress) {
+                        if(!state.isScrollInProgress)followLatest=!state.canScrollForward
+                    }
+                    LaunchedEffect(rows.size,busy) { if(rows.isNotEmpty()&&followLatest) state.scrollToItem(rows.lastIndex+(if(busy)1 else 0)) }
                     LazyColumn(state=state,modifier=Modifier.widthIn(max=810.dp).fillMaxWidth(),contentPadding=PaddingValues(horizontal=12.dp,vertical=24.dp),verticalArrangement=Arrangement.spacedBy(20.dp)) {
                         if(rows.isEmpty()) item { Welcome() }
                         items(rows) { message -> MessageRow(message) }
                         if(busy && rows.isNotEmpty()) item { Row(verticalAlignment=Alignment.CenterVertically){CircularProgressIndicator(Modifier.size(16.dp),strokeWidth=2.dp);Spacer(Modifier.width(10.dp));Text(statusText,color=muted,fontSize=13.sp)} }
                     }
+                    if(rows.isNotEmpty()&&state.canScrollForward) OutlinedButton(onClick={followLatest=true;scope.launch{state.animateScrollToItem(rows.lastIndex+(if(busy)1 else 0))}},modifier=Modifier.align(Alignment.BottomCenter).padding(bottom=6.dp),colors=ButtonDefaults.outlinedButtonColors(containerColor=panel,contentColor=ink)) { Text("↓ Latest messages") }
                 }
                 Box(Modifier.fillMaxWidth().padding(horizontal=8.dp,vertical=6.dp),contentAlignment=Alignment.Center) { Composer() }
             }
@@ -100,8 +113,7 @@ class NativeChatView(context: Context, private val dark: Boolean, private val ac
     }
     @Composable private fun Welcome() {
         Column(Modifier.fillMaxWidth().padding(horizontal=10.dp,vertical=22.dp),horizontalAlignment=Alignment.CenterHorizontally) {
-            Image(painterResource(R.drawable.brand_icon),"DragonZpyder",Modifier.size(56.dp))
-            Spacer(Modifier.height(22.dp))
+            if(dark){Image(painterResource(R.drawable.brand_icon),"DragonZpyder",Modifier.size(56.dp));Spacer(Modifier.height(22.dp))}
             Text("What shall we work on?",fontSize=34.sp,lineHeight=39.sp,fontWeight=FontWeight.Bold,letterSpacing=(-1.5).sp,textAlign=TextAlign.Center)
             Spacer(Modifier.height(12.dp))
             Text(if(modeLabel=="Agent") "From a quick question to a big idea. Start anywhere. We’ll find the way forward." else modelLabel,color=muted,fontSize=14.sp,lineHeight=22.sp,textAlign=TextAlign.Center,modifier=Modifier.widthIn(max=470.dp))
@@ -135,17 +147,39 @@ class NativeChatView(context: Context, private val dark: Boolean, private val ac
             blocks.forEachIndexed { index, block ->
                 if(block.isNotEmpty()) {
                     if(index%2==1) Surface(shape=RoundedCornerShape(12.dp),color=panel,border=BorderStroke(1.dp,line)) {
-                        Text(block.trim(),fontFamily=FontFamily.Monospace,fontSize=13.sp,lineHeight=20.sp,color=ink,modifier=Modifier.fillMaxWidth().padding(12.dp))
+                        Column(Modifier.fillMaxWidth()) {
+                            Row(Modifier.fillMaxWidth().padding(horizontal=12.dp),verticalAlignment=Alignment.CenterVertically) {
+                                Text("Code",color=muted,fontSize=12.sp,modifier=Modifier.weight(1f))
+                                TextButton(onClick={actions.copy(block.trim())}) { Text("Copy code",fontSize=12.sp) }
+                            }
+                            Text(block.trim(),fontFamily=FontFamily.Monospace,fontSize=13.sp,lineHeight=20.sp,color=ink,softWrap=false,modifier=Modifier.horizontalScroll(rememberScrollState()).padding(12.dp))
+                        }
                     } else {
                         block.lines().forEach { paragraph ->
                             val level=paragraph.takeWhile{it=='#'}.length
                             if(level in 1..6 && paragraph.drop(level).startsWith(" ")) Text(paragraph.drop(level).trim(),fontWeight=FontWeight.SemiBold,fontSize=if(level<=2)21.sp else 17.sp,color=ink)
-                            else Text(paragraph.replace(Regex("^[-*] "), "• "),fontSize=16.sp,lineHeight=25.sp,color=ink)
+                            else Text(inlineText(paragraph.replace(Regex("^[-*] "), "• ")),fontSize=16.sp,lineHeight=25.sp,color=ink)
                         }
                     }
                 }
             }
         }
+    }
+    private fun inlineText(value:String)=buildAnnotatedString {
+        // Render only simple inline Markdown; retain unsupported syntax literally.
+        val matches=Regex("""(\*\*[^*]+\*\*|`[^`]+`|\*[^*]+\*)""").findAll(value)
+        var offset=0
+        for(match in matches){
+            append(value.substring(offset,match.range.first))
+            val token=match.value
+            when {
+                token.startsWith("**")->withStyle(SpanStyle(fontWeight=FontWeight.Bold)){append(token.substring(2,token.length-2))}
+                token.startsWith("`")->withStyle(SpanStyle(fontFamily=FontFamily.Monospace,background=panel)){append(token.substring(1,token.length-1))}
+                else->withStyle(SpanStyle(fontStyle=FontStyle.Italic)){append(token.substring(1,token.length-1))}
+            }
+            offset=match.range.last+1
+        }
+        append(value.substring(offset))
     }
     @Composable private fun Composer() {
         Surface(modifier=Modifier.widthIn(max=810.dp).fillMaxWidth(),shape=RoundedCornerShape(19.dp),color=panel,border=BorderStroke(1.dp,line),shadowElevation=2.dp) {
