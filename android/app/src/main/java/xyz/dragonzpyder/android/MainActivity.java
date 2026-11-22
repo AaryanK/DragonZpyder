@@ -16,7 +16,7 @@ import java.util.*;
 import java.util.concurrent.*;
 import org.json.*;
 
-public final class MainActivity extends Activity {
+public final class MainActivity extends androidx.activity.ComponentActivity {
     private int BG, PANEL, TEXT, MUTED, ACCENT, LINE, SIDEBAR, CHIP, USER, COMPOSER;
     private boolean dark;
     private final ArrayList<String[]> transcript=new ArrayList<>();
@@ -30,18 +30,15 @@ public final class MainActivity extends Activity {
         getWindow().getDecorView().setSystemUiVisibility(dark?0:View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR|View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
     }
     private void toggleTheme(){
-        String draft=input==null?"":input.getText().toString();dark=!dark;
+        dark=!dark;
         getPreferences(MODE_PRIVATE).edit().putBoolean("dark",dark).apply();palette();
-        if(signedIn){if(accountOpen)showAccount();else{chatScreen();if(input!=null)input.setText(draft);}}else authScreen(authMode,"");
+        if(signedIn){if(accountOpen)showAccount();else chatScreen();}else authScreen(authMode,"");
     }
-    private boolean welcomeVisible;
+    private NativeChatView chatUi;
     private static final DragonApi api=new DragonApi();
     private final ExecutorService worker=Executors.newSingleThreadExecutor();
-    private LinearLayout root, messages;
-    private ScrollView scroll;
-    private EditText input;
-    private TextView status, attachmentLabel;
-    private Button modeButton;
+    private LinearLayout root;
+    private TextView status;
     private JSONObject attachment;
     private String attachmentName="";
     private String conversation="", lastAnswer="";
@@ -97,12 +94,12 @@ public final class MainActivity extends Activity {
         LinearLayout card=column();card.setPadding(dp(18),dp(18),dp(18),dp(18));GradientDrawable bg=surface(PANEL,18);bg.setStroke(dp(1),LINE);card.setBackground(bg);accountPage.addView(card,new LinearLayout.LayoutParams(-1,-2));return card;
     }
     private String value(EditText field){return field.getText().toString().trim();}
-    private boolean emailValid(String email){if(!android.util.Patterns.EMAIL_ADDRESS.matcher(email).matches()){status.setText("Enter a valid email address.");return false;}return true;}
-    private boolean strong(String p){if(p.length()<12){status.setText("Use at least 12 characters for your password.");return false;}return true;}
-    private boolean six(String code){if(!code.matches("[0-9]{6}")){status.setText("Enter the six-digit code.");return false;}return true;}
+    private boolean emailValid(String email){if(!android.util.Patterns.EMAIL_ADDRESS.matcher(email).matches()){setStatus("Enter a valid email address.");return false;}return true;}
+    private boolean strong(String p){if(p.length()<12){setStatus("Use at least 12 characters for your password.");return false;}return true;}
+    private boolean six(String code){if(!code.matches("[0-9]{6}")){setStatus("Enter the six-digit code.");return false;}return true;}
     private void authSuccess(){authEmail="";challengeId="";signedIn=true;accountOpen=false;chatScreen();loadHistory(true);}
     private void authScreen(String mode,String message){
-        signedIn=false;accountOpen=false;authMode=mode;getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);accountLayout();
+        signedIn=false;accountOpen=false;chatUi=null;authMode=mode;getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);accountLayout();
         sectionLabel(accountPage,"ONE IDENTITY · YOUR INTELLIGENCE");accountPage.addView(heading("Always yours.",38));gap(accountPage,8);accountPage.addView(text("Your conversations, personal AI, and authorised connections—all in one account.",14,MUTED));gap(accountPage,22);
         LinearLayout card=accountCard();
         if(mode.equals("login")||mode.equals("signup")){
@@ -122,11 +119,11 @@ public final class MainActivity extends Activity {
         card.addView(primary(action,()->{
             String e=value(email),p=password==null?"":password.getText().toString(),c=code==null?"":value(code),n=name==null?"":value(name);
             if(!emailValid(e))return;authEmail=e;
-            if(mode.equals("signup")&&(n.isEmpty()||n.length()>200)){status.setText("Enter your name (up to 200 characters).");return;}
+            if(mode.equals("signup")&&(n.isEmpty()||n.length()>200)){setStatus("Enter your name (up to 200 characters).");return;}
             if((mode.equals("signup")||mode.equals("reset"))&&!strong(p))return;
-            if(confirm!=null&&!p.equals(confirm.getText().toString())){status.setText("Passwords do not match.");return;}
+            if(confirm!=null&&!p.equals(confirm.getText().toString())){setStatus("Passwords do not match.");return;}
             if(code!=null&&!six(c))return;
-            if(mode.equals("login")&&p.isEmpty()){status.setText("Enter your password.");return;}
+            if(mode.equals("login")&&p.isEmpty()){setStatus("Enter your password.");return;}
             hideKeyboard(email);
             if(mode.equals("login")){
                 submit("Signing in…",()->{try{api.login(e,p);return Boolean.TRUE;}catch(DragonApi.ApiError failure){if("EMAIL_NOT_VERIFIED".equals(failure.code))return Boolean.FALSE;throw failure;}},r->{if(Boolean.TRUE.equals(r))authSuccess();else{challengeId="";authScreen("verify","Please verify your email to continue.");}},true);
@@ -142,30 +139,31 @@ public final class MainActivity extends Activity {
             if(password!=null)password.setText("");if(confirm!=null)confirm.setText("");
         }));
         if(mode.equals("login")){card.addView(button("Forgot password?",()->{authEmail=value(email);authScreen("forgot","");}));card.addView(button("Already have a verification code?",()->{authEmail=value(email);challengeId="";authScreen("verify","");}));}
-        if(mode.equals("verify"))card.addView(button("Resend code",()->{String e=value(email);if(!emailValid(e))return;submit("Requesting code…",()->api.preauth("resend-verification",DragonApi.object("email",e)),r->status.setText("If verification is pending, another code is on its way."),true);}));
+        if(mode.equals("verify"))card.addView(button("Resend code",()->{String e=value(email);if(!emailValid(e))return;submit("Requesting code…",()->api.preauth("resend-verification",DragonApi.object("email",e)),r->setStatus("If verification is pending, another code is on its way."),true);}));
         if(mode.equals("forgot"))card.addView(button("I have a reset code",()->{authEmail=value(email);authScreen("reset","");}));
         if(!mode.equals("login")&&!mode.equals("signup"))card.addView(button("Back to sign in",()->authScreen("login","")));
         gap(accountPage,24);accountPage.addView(text("One account, clear boundaries. Personal access does not grant business permissions.",12,MUTED));
     }
-    private void chatScreen(){accountOpen=false;getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SECURE);
-        reset();LinearLayout toolbar=row();
-        Button menu=button("☰",this::showMenu);menu.setContentDescription("Open sidebar");toolbar.addView(menu);
-        LinearLayout title=column();title.addView(heading("Personal",15));status=text("Personal runtime connected",11,0xff56a47e);title.addView(status);
-        LinearLayout.LayoutParams titleParams=new LinearLayout.LayoutParams(0,-2,1);titleParams.setMargins(dp(10),0,0,0);toolbar.addView(title,titleParams);
-        Button command=button("⌘",this::showCommands);command.setContentDescription("Search commands");toolbar.addView(command);
-        Button theme=button(dark?"☀":"☾",this::toggleTheme);theme.setContentDescription("Toggle appearance");toolbar.addView(theme);
-        Button profile=button(profileInitial,this::showAccount);profile.setContentDescription("Account menu");toolbar.addView(profile);root.addView(toolbar);
-        gap(root,8);View divider=new View(this);divider.setBackgroundColor(dark?0xff302c2c:0xffeae5de);root.addView(divider,new LinearLayout.LayoutParams(-1,dp(1)));
-        scroll=new ScrollView(this);scroll.setFillViewport(true);messages=column();scroll.addView(messages);
-        root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
-        LinearLayout composer=column();GradientDrawable skin=surface(COMPOSER,18);skin.setStroke(dp(1),LINE);composer.setBackground(skin);composer.setElevation(dp(3));composer.setPadding(dp(10),dp(8),dp(10),dp(8));
-        input=field("Ask anything, or give DragonZpyder a task…",false);input.setBackgroundColor(Color.TRANSPARENT);input.setInputType(1|131072);input.setMinLines(2);input.setMaxLines(5);composer.addView(input,new LinearLayout.LayoutParams(-1,-2));attachmentLabel=text(attachmentName,12,ACCENT);attachmentLabel.setVisibility(attachment==null?View.GONE:View.VISIBLE);attachmentLabel.setOnClickListener(v->{if(!busy){attachment=null;attachmentName="";attachmentLabel.setVisibility(View.GONE);}});composer.addView(attachmentLabel);
-        LinearLayout actions=row();Button add=button("＋",this::showAdd);add.setContentDescription("Open attachment menu");actions.addView(add);
-        modeButton=button(meshMode?"✦ AI Mesh":"✦ Agent",this::showModes);actions.addView(modeButton);actions.addView(new View(this),new LinearLayout.LayoutParams(0,1,1));
-        Button microphone=button("Mic",this::dictate);microphone.setContentDescription("Voice dictation");actions.addView(microphone);Button send=primary("↑",this::send);send.setContentDescription("Send message");actions.addView(send);composer.addView(actions);root.addView(composer);
-        if(transcript.isEmpty())welcome();else{welcomeVisible=false;messages.setGravity(Gravity.TOP);for(String[] item:transcript)renderMessage(item[0],item[1]);}
-    
+    private void chatScreen(){
+        String draft=chatUi==null?"":chatUi.getDraft();accountOpen=false;getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SECURE);reset();status=null;
+        chatUi=new NativeChatView(this,dark,new NativeChatView.Actions(){
+            public void menu(){showMenu();}
+            public void commands(){showCommands();}
+            public void theme(){toggleTheme();}
+            public void account(){showAccount();}
+            public void add(){showAdd();}
+            public void mode(){showModes();}
+            public void dictate(){MainActivity.this.dictate();}
+            public void send(){MainActivity.this.send();}
+            public void removeAttachment(){if(!busy){attachment=null;attachmentName="";chatUi.setAttachmentLabel("");}}
+            public void copy(String value){android.content.ClipboardManager cb=(android.content.ClipboardManager)getSystemService(Context.CLIPBOARD_SERVICE);cb.setPrimaryClip(android.content.ClipData.newPlainText("DragonZpyder",value));}
+            public void speak(String value){if(speechReady)tts.speak(value,TextToSpeech.QUEUE_FLUSH,null,"response");else setStatus("Speech engine unavailable");}
+        });
+        chatUi.setDraft(draft);chatUi.setModeLabel(meshMode?"AI Mesh":"Agent");chatUi.setModelLabel(model);chatUi.setAttachmentLabel(attachmentName);chatUi.setProfileInitial(profileInitial);chatUi.setBusy(busy);
+        for(String[] item:transcript)chatUi.append(item[0],item[1]);
+        root.addView(chatUi.getView(),new LinearLayout.LayoutParams(-1,0,1));
     }
+    private void setStatus(String value){if(status!=null)status.setText(value);if(chatUi!=null&&signedIn&&!accountOpen)chatUi.setStatusText(value);}
     private void showMenu(){
         submit("Loading conversations…",()->api.call("/api/personal-agent/conversations",null),result->{
             history=(JSONArray)result;
@@ -194,7 +192,7 @@ public final class MainActivity extends Activity {
         sectionLabel(accountPage,"YOUR DRAGONZPYDER");accountPage.addView(heading("Account & connections.",30));gap(accountPage,8);accountPage.addView(text("One identity, with clear boundaries around every connected service and workspace.",14,MUTED));gap(accountPage,20);
         LinearLayout profile=accountCard();sectionLabel(profile,"01 / IDENTITY");profile.addView(heading("Your profile",21));gap(profile,8);profile.addView(text(p.optString("email"),14,MUTED));gap(profile,16);
         String current=p.optString("display_name");if(!current.isEmpty())profileInitial=current.substring(0,1).toUpperCase(Locale.ROOT);EditText name=accountField(profile,"Display name",current,1,View.AUTOFILL_HINT_NAME);
-        status=text("",13,MUTED);profile.addView(status);profile.addView(primary("Save changes",()->{String n=value(name);if(n.isEmpty()||n.length()>200){status.setText("Enter a display name up to 200 characters.");return;}submit("Saving…",()->{api.updateName(n);return api.profile();},result->{JSONObject saved=(JSONObject)result;p.put("display_name",saved.optString("display_name",n));renderAccount(p);status.setText("Your account has been updated.");},true);}));
+        status=text("",13,MUTED);profile.addView(status);profile.addView(primary("Save changes",()->{String n=value(name);if(n.isEmpty()||n.length()>200){setStatus("Enter a display name up to 200 characters.");return;}submit("Saving…",()->{api.updateName(n);return api.profile();},result->{JSONObject saved=(JSONObject)result;p.put("display_name",saved.optString("display_name",n));renderAccount(p);setStatus("Your account has been updated.");},true);}));
         gap(accountPage,14);LinearLayout identity=accountCard();sectionLabel(identity,"02 / ACCESS");identity.addView(heading("Sign-in methods",21));gap(identity,8);
         JSONArray ids=p.optJSONArray("auth_identities");if(ids!=null)for(int i=0;i<ids.length();i++){JSONObject item=ids.optJSONObject(i);if(item!=null){identity.addView(text(item.optString("provider")+(item.optString("account").isEmpty()?"":" · "+item.optString("account")),14,TEXT));gap(identity,8);}}
         if(ids==null||ids.length()==0)identity.addView(text("No sign-in methods returned.",13,MUTED));gap(identity,10);identity.addView(text("Connected tools require their own authorization. Signing in does not grant Gmail or Calendar access.",12,MUTED));
@@ -209,10 +207,10 @@ public final class MainActivity extends Activity {
     private void showAdd(){
         new AlertDialog.Builder(this).setTitle("Add to your message")
           .setItems(new String[]{"Attach a file or photo","Camera and screen capture (not yet available)"},(d,i)->{
-            if(i!=0){status.setText("Camera and screen capture are not yet available.");return;}
-            if(!meshMode){status.setText("Choose an AI Mesh model first, then attach a file.");chooseModel();return;}
+            if(i!=0){setStatus("Camera and screen capture are not yet available.");return;}
+            if(!meshMode){setStatus("Choose an AI Mesh model first, then attach a file.");chooseModel();return;}
             Intent picker=new Intent(Intent.ACTION_OPEN_DOCUMENT);picker.setType("*/*");picker.addCategory(Intent.CATEGORY_OPENABLE);picker.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-            try{startActivityForResult(picker,43);}catch(android.content.ActivityNotFoundException e){status.setText("No file picker available.");}
+            try{startActivityForResult(picker,43);}catch(android.content.ActivityNotFoundException e){setStatus("No file picker available.");}
           }).setNegativeButton("Close",null).show();
     }
     private void readAttachment(android.net.Uri uri){
@@ -231,59 +229,48 @@ public final class MainActivity extends Activity {
             String encoded="data:"+mime+";base64,"+android.util.Base64.encodeToString(out.toByteArray(),android.util.Base64.NO_WRAP);
             JSONObject part=image?new JSONObject().put("type","image_url").put("image_url",new JSONObject().put("url",encoded)):new JSONObject().put("type","file").put("file",new JSONObject().put("filename",name).put("file_data",encoded));
             return new JSONObject().put("name",name).put("part",part);
-        },r->{JSONObject file=(JSONObject)r;attachment=file.getJSONObject("part");attachmentName=file.getString("name");attachmentLabel.setText("×  "+attachmentName);attachmentLabel.setVisibility(View.VISIBLE);},true);
+        },r->{JSONObject file=(JSONObject)r;attachment=file.getJSONObject("part");attachmentName=file.getString("name");if(chatUi!=null)chatUi.setAttachmentLabel(attachmentName);},true);
     }
     private void showModes(){new AlertDialog.Builder(this).setTitle("Choose your intelligence").setItems(new String[]{"DragonZpyder Agent — tasks and tools","AI Mesh — choose a model"},(d,i)->{if(i==0){meshMode=false;newChat();}else chooseModel();}).show();}
-    private void welcome(){messages.removeAllViews();welcomeVisible=true;messages.setGravity(Gravity.TOP|Gravity.CENTER_HORIZONTAL);LinearLayout panel=column();panel.setGravity(Gravity.CENTER_HORIZONTAL);panel.setPadding(dp(8),dp(38),dp(8),dp(24));
-        if(dark){LinearLayout emblem=column();emblem.setGravity(Gravity.CENTER);GradientDrawable shape=surface(0xff261c1a,19);shape.setStroke(dp(1),0xff683c2b);emblem.setBackground(shape);emblem.addView(logo(40));panel.addView(emblem,new LinearLayout.LayoutParams(dp(65),dp(65)));gap(panel,20);}
-        TextView title=heading("What shall we work on?",dark?38:34);title.setTypeface(Typeface.create("sans-serif",Typeface.BOLD));title.setGravity(Gravity.CENTER);panel.addView(title);gap(panel,12);
-        TextView desc=text(meshMode?model:"From a quick question to a big idea. Start anywhere. We’ll find the way forward.",14,MUTED);desc.setGravity(Gravity.CENTER);desc.setLineSpacing(dp(3),1.1f);panel.addView(desc);gap(panel,26);
-        String[] labels={"Explore an idea","Plan a project","Write something"};String[] prompts={"Help me think through a new idea.","Help me plan a project from scratch.","Help me turn my notes into a clear draft."};
-        for(int i=0;i<labels.length;i++){final String prompt=prompts[i];Button suggestion=button(labels[i],()->{input.setText(prompt);input.setSelection(input.length());});GradientDrawable chip=surface(dark?CHIP:Color.WHITE,dark?14:25);chip.setStroke(dp(1),dark?0xff393338:0xffe6e0da);suggestion.setBackground(chip);suggestion.setTextSize(12);suggestion.setTextColor(MUTED);LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(dark?-1:-2,dp(48));lp.setMargins(0,0,0,dp(8));panel.addView(suggestion,lp);}
-        messages.addView(panel,new LinearLayout.LayoutParams(-1,-2));}
-    private void append(String role,String content){transcript.add(new String[]{role,content});renderMessage(role,content);}
-    private void renderMessage(String role,String content){
-        if(welcomeVisible){messages.removeAllViews();welcomeVisible=false;}messages.setGravity(Gravity.TOP);
-        boolean user="user".equals(role);LinearLayout bubble=column();bubble.setPadding(dp(14),dp(12),dp(14),dp(12));bubble.setBackground(surface(user?USER:BG,18));
-        bubble.addView(text(user?"You":"DragonZpyder",11,MUTED));gap(bubble,5);TextView body=text(content,16,TEXT);body.setLineSpacing(dp(4),1.08f);body.setTextIsSelectable(true);bubble.addView(body);
-        if(!user){Button speak=button("Read aloud",()->{if(speechReady)tts.speak(content,TextToSpeech.QUEUE_FLUSH,null,"response");else status.setText("Speech engine unavailable");});LinearLayout tools=row();tools.addView(button("Copy",()->{android.content.ClipboardManager cb=(android.content.ClipboardManager)getSystemService(Context.CLIPBOARD_SERVICE);cb.setPrimaryClip(android.content.ClipData.newPlainText("DragonZpyder",content));}));tools.addView(speak);bubble.addView(tools);}
-        LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.setMargins(user?dp(25):0,dp(8),user?0:dp(10),dp(4));messages.addView(bubble,lp);
-        scroll.post(()->scroll.fullScroll(View.FOCUS_DOWN));
-    }
+    private void append(String role,String content){transcript.add(new String[]{role,content});if(chatUi!=null)chatUi.append(role,content);}
     private void hideKeyboard(View v){((InputMethodManager)getSystemService(Context.INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(v.getWindowToken(),0);}
     private void submit(String label,Work work,Done done,boolean report){
-        if(busy)return;busy=true;if(status!=null)status.setText(label);
+        if(busy)return;busy=true;if(chatUi!=null)chatUi.setBusy(true);setStatus(label);
         worker.execute(()->{
             Object result=null;Exception error=null;
             try{result=work.run();}catch(Exception e){error=e;}
             final Object value=result;final Exception failure=error;
             runOnUiThread(()->{
-                if(isDestroyed())return;busy=false;
+                if(isDestroyed())return;busy=false;if(chatUi!=null)chatUi.setBusy(false);
                 try{
                     if(failure!=null)throw failure;
-                    if(status!=null)status.setText(signedIn&&!accountOpen?(meshMode?"AI Mesh · "+model:"Personal agent"):"");
+                    setStatus(signedIn&&!accountOpen?(meshMode?"AI Mesh · "+model:"Personal agent"):"");
                     done.accept(value);
                 }catch(Exception e){
                     if(e instanceof DragonApi.ApiError && ((DragonApi.ApiError)e).status==401 && signedIn){api.clear();attachment=null;attachmentName="";transcript.clear();conversation="";meshMessages=new JSONArray();meshMode=false;loginScreen("Session expired. Sign in again.");}
-                    else if(report && status!=null)status.setText(e.getMessage()==null?"Request failed":e.getMessage());
+                    else if(report)setStatus(e.getMessage()==null?"Request failed":e.getMessage());
                 }
             });
         });
     }
-    private void newChat(){if(busy)return;transcript.clear();attachment=null;attachmentName="";if(attachmentLabel!=null)attachmentLabel.setVisibility(View.GONE);if(modeButton!=null)modeButton.setText(meshMode?"✦ AI Mesh":"✦ Agent");conversation="";meshMessages=new JSONArray();lastAnswer="";welcome();status.setText(meshMode?"AI Mesh · "+model:"Personal agent");}
+    private void newChat(){
+        if(busy)return;transcript.clear();attachment=null;attachmentName="";conversation="";meshMessages=new JSONArray();lastAnswer="";
+        if(chatUi!=null){chatUi.clearMessages();chatUi.setDraft("");chatUi.setAttachmentLabel("");chatUi.setModeLabel(meshMode?"AI Mesh":"Agent");chatUi.setModelLabel(model);}
+        setStatus(meshMode?"AI Mesh · "+model:"Personal agent");
+    }
     private void send(){
-        if(busy||!signedIn||input==null)return;
-        String prompt=input.getText().toString().trim();if(prompt.isEmpty())return;
-        if(prompt.length()>(meshMode?5000:12000)){status.setText("Message is too long for this mode.");return;}
-        hideKeyboard(input);input.setText("");if(welcomeVisible){messages.removeAllViews();welcomeVisible=false;}messages.setGravity(Gravity.TOP);append("user",prompt);
+        if(busy||!signedIn||chatUi==null)return;
+        String prompt=chatUi.getDraft().trim();if(prompt.isEmpty())return;
+        if(prompt.length()>(meshMode?5000:12000)){setStatus("Message is too long for this mode.");return;}
+        View focused=getCurrentFocus();if(focused!=null)hideKeyboard(focused);chatUi.setDraft("");append("user",prompt);
         if(meshMode){
             final JSONArray next=new JSONArray();
             try{for(int i=Math.max(0,meshMessages.length()-10);i<meshMessages.length();i++)next.put(meshMessages.get(i));Object content=attachment==null?prompt:new JSONArray().put(new JSONObject().put("type","text").put("text",prompt)).put(attachment);next.put(new JSONObject().put("role","user").put("content",content));}
-            catch(JSONException e){status.setText("Message error");return;}
+            catch(JSONException e){setStatus("Message error");return;}
             submit("Generating…",()->api.call("/mesh/chat",new JSONObject().put("model",model).put("messages",next)),r->{
                 JSONObject answer=(JSONObject)r;String value=answer.optString("message",answer.optString("text",answer.optString("content","")));
                 if(value.isEmpty())throw new Exception("Model did not return text.");
-                attachment=null;attachmentName="";attachmentLabel.setVisibility(View.GONE);meshMessages=next;meshMessages.put(new JSONObject().put("role","assistant").put("content",value));lastAnswer=value;append("assistant",value);
+                attachment=null;attachmentName="";if(chatUi!=null)chatUi.setAttachmentLabel("");meshMessages=next;meshMessages.put(new JSONObject().put("role","assistant").put("content",value));lastAnswer=value;append("assistant",value);
             },true);return;
         }
         final String id=conversation;
@@ -293,7 +280,7 @@ public final class MainActivity extends Activity {
             JSONObject nested=answer.optJSONObject("result");if(value.isEmpty()&&nested!=null)value=nested.optString("message");
             if(value.isEmpty())throw new Exception("Agent did not return a message.");
             lastAnswer=value;append("assistant",value);
-            if(answer.has("error_code")&&!answer.optString("error_code").isEmpty())status.setText(answer.optString("error_code"));
+            if(answer.has("error_code")&&!answer.optString("error_code").isEmpty())setStatus(answer.optString("error_code"));
         },true);
     }
     private void loadHistory(boolean restore){
@@ -309,7 +296,7 @@ public final class MainActivity extends Activity {
     private void open(String id){
         if(busy||id.isEmpty())return;
         submit("Loading chat…",()->api.call("/api/personal-agent/conversations/"+DragonApi.segment(id)+"/messages",null),r->{
-            meshMode=false;if(modeButton!=null)modeButton.setText("✦ Agent");attachment=null;attachmentName="";if(attachmentLabel!=null)attachmentLabel.setVisibility(View.GONE);conversation=id;transcript.clear();welcomeVisible=false;messages.removeAllViews();messages.setGravity(Gravity.TOP);JSONArray rows=(JSONArray)r;
+            meshMode=false;attachment=null;attachmentName="";conversation=id;transcript.clear();if(chatUi!=null){chatUi.clearMessages();chatUi.setModeLabel("Agent");chatUi.setAttachmentLabel("");chatUi.setDraft("");}JSONArray rows=(JSONArray)r;
             for(int i=0;i<rows.length();i++){JSONObject item=rows.optJSONObject(i);if(item!=null&&Arrays.asList("user","assistant").contains(item.optString("role")))append(item.optString("role"),item.optString("content"));}
         },true);
     }
@@ -402,10 +389,10 @@ public final class MainActivity extends Activity {
         intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
         intent.putExtra(RecognizerIntent.EXTRA_PROMPT,"Speak to DragonZpyder");
         try{startActivityForResult(intent,42);}
-        catch(android.content.ActivityNotFoundException e){status.setText("No speech recognition service available.");}
+        catch(android.content.ActivityNotFoundException e){setStatus("No speech recognition service available.");}
     }
-    @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(request==43&&signedIn&&meshMode&&result==RESULT_OK&&data!=null&&data.getData()!=null){readAttachment(data.getData());return;}if(request==42&&result==RESULT_OK&&data!=null&&input!=null){ArrayList<String> words=data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);if(words!=null&&!words.isEmpty()){int pos=Math.max(0,input.getSelectionStart());input.getText().insert(pos,words.get(0));}}}
+    @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(request==43&&signedIn&&meshMode&&result==RESULT_OK&&data!=null&&data.getData()!=null){readAttachment(data.getData());return;}if(request==42&&signedIn&&result==RESULT_OK&&data!=null&&chatUi!=null){ArrayList<String> words=data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);if(words!=null&&!words.isEmpty()){String draft=chatUi.getDraft();chatUi.setDraft(draft+(draft.isEmpty()?"":" ")+words.get(0));}}}
     @Override public void onBackPressed(){if(busy)return;if(accountOpen){accountOpen=false;chatScreen();}else if(!signedIn&&!"login".equals(authMode))authScreen("login","");else super.onBackPressed();}
-    private void signOut(){submit("Signing out…",()->{api.logout();return null;},r->{conversation="";attachment=null;attachmentName="";transcript.clear();meshMode=false;lastAnswer="";meshMessages=new JSONArray();history=new JSONArray();profileInitial="D";authEmail="";challengeId="";if(tts!=null)tts.stop();input=null;loginScreen("");},true);}
+    private void signOut(){submit("Signing out…",()->{api.logout();return null;},r->{conversation="";attachment=null;attachmentName="";transcript.clear();meshMode=false;lastAnswer="";meshMessages=new JSONArray();history=new JSONArray();profileInitial="D";authEmail="";challengeId="";if(tts!=null)tts.stop();chatUi=null;loginScreen("");},true);}
     @Override protected void onDestroy(){worker.shutdown();if(tts!=null)tts.shutdown();super.onDestroy();}
 }
