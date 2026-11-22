@@ -36,17 +36,25 @@ def test_specialists_cannot_inherit_external_tools():
     assert "delete" not in VIRTUAL_TOOLS
 
 
-def test_legacy_remains_default_and_feature_flag_selects_v2(monkeypatch):
-    from langchain_openrouter import ChatOpenRouter
+def test_internal_runtime_always_uses_canonical_deep_agents_constructor(monkeypatch):
+    from unittest.mock import Mock
     from langgraph.checkpoint.memory import MemorySaver
+    from agent_platform import harness
     from agent_platform.runtime import build_agent
-    model = ChatOpenRouter(model="openai/gpt-oss-120b", api_key="test")
-    monkeypatch.delenv("DRAGONZPYDER_AGENT_HARNESS_V2", raising=False)
-    legacy = build_agent(model, MemorySaver())
-    assert hasattr(legacy, "ainvoke")
-    monkeypatch.setenv("DRAGONZPYDER_AGENT_HARNESS_V2", "1")
-    frontier = build_agent(model, MemorySaver())
-    assert hasattr(frontier, "ainvoke")
+    for role in ("ANALYST", "VERIFIER", "RESEARCHER", "BUILDER"):
+        monkeypatch.delenv("DRAGONZPYDER_AGENT_" + role + "_MODEL_ID", raising=False)
+    model, checkpoint = object(), MemorySaver()
+    expected = object()
+    canonical = Mock(return_value=expected)
+    monkeypatch.setattr(harness, "build_frontier_agent", canonical)
+    for flag in (None, "0", "1"):
+        if flag is None:
+            monkeypatch.delenv("DRAGONZPYDER_AGENT_HARNESS_V2", raising=False)
+        else:
+            monkeypatch.setenv("DRAGONZPYDER_AGENT_HARNESS_V2", flag)
+        assert build_agent(model, checkpoint) is expected
+    assert canonical.call_count == 3
+    canonical.assert_called_with(model, checkpoint, specialist_models={})
 
 
 
