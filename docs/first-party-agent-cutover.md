@@ -84,3 +84,43 @@ production migration is accepted. This PR is additive; legacy
 `/api/*` remains for transitional auth, attachments, business flows and
 explicit rollback. The old Operly-based route should only be retired after
 migration receipts and account deletion/permission revocation parity.
+
+## Identity object versus Workspace object
+
+DragonZpyder is the **canonical creator/owner of people**. Every Operly user
+foreign key is a local relying-party mapping of an issuer-verified DragonZpyder
+subject, not a second local signup, password, OAuth provider or account
+identity. Existing Operly user IDs must be migrated with a signed one-to-one
+subject map; never merge records based on email.
+
+Operly is the **canonical creator/owner of Workspace** objects, TenantMember
+permissions, business data, approvals, and MCP OAuth client grants. All
+business effect authorization stays in Operly. The presence of a DragonZpyder
+user identity alone gives zero workspace rights.
+
+### Intelligence is shared; product presentation is scoped
+
+- DragonZpyder Web/Android: native `/v2/personal/chat`, normal DragonZpyder
+  assistant identity, and no Operly dependence.
+- Operly Personal legacy compatibility: a signed delegate calls the same
+  DragonZpyder harness but uses server-controlled
+  `product_surface="operly"`. This changes wording/branding only;
+  it grants no tools or business authority.
+- Operly Workspace: independently signed session/workspace-scoped
+  MCP delegation into the SAME Deep Agents harness, with
+  `product_surface="operly"` pinned by the DragonZpyder server.
+  Tool grants and authorization are verified by Operly's MCP gateway.
+- No browser/model may specify an arbitrary product surface or identity.
+- Both branded presentations can truthfully explain that Operly is the
+  Workspace interface while DragonZpyder provides its intelligence.
+
+### Retirement accountability
+
+Legacy Operly inference/planner source is **not** deleted in these changes,
+because live legacy conversations, scheduled jobs, active approvals and
+files have not yet been reconciled. The retire flags now block new local
+model work and are staged OFF. Deleting the remaining sources requires
+a reachable, fully tested single-harness replacement for each caller,
+including Discord, event/wake handlers and AI-initiated workflows.
+Never remove the Operly business Kernel, MCP gateway, Workspace database,
+or business authorization checks.
