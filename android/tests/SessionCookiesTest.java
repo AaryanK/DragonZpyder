@@ -26,7 +26,11 @@ public final class SessionCookiesTest {
         jar.receive(Collections.singletonMap("Set-Cookie",Arrays.asList(
             "__Host-operly_csrf=rotated; Max-Age=604800; Path=/; Secure; SameSite=Strict")));
         require(jar.value("__Host-operly_csrf").equals("rotated"));
-        jar.clear(); require(jar.header().isEmpty());
+        Properties snapshot=jar.snapshot();require(snapshot.size()==4);
+        SessionCookies restored=new SessionCookies();restored.restore(snapshot);require(restored.value("__Host-operly_session").equals("abc-123"));require(restored.value("__Host-operly_csrf").equals("rotated"));
+        require(restored.value("operly_preauth_csrf").isEmpty());
+        snapshot.setProperty("__Host-operly_session.expiry","1");restored.restore(snapshot);require(restored.header().isEmpty());
+        jar.clear(); require(jar.header().isEmpty());require(jar.snapshot().isEmpty());
         System.out.println("Session cookie contract passed");
     }
 }
