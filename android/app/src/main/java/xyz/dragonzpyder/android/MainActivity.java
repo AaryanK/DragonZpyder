@@ -68,7 +68,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         tts=new TextToSpeech(this, code -> speechReady=code==TextToSpeech.SUCCESS);
         loginScreen("");
         submit("Checking secure session…",()->api.restore(getApplicationContext()),result->{
-            if(Boolean.TRUE.equals(result)){signedIn=true;chatScreen();if(restorePending&&chatUi!=null)chatUi.setDraft(restoredDraft);if(interruptedRequest){append("system","A request was interrupted when Android recreated this screen. Its server-side outcome is unknown. Review conversation history and tasks before sending another action.");interruptedRequest=false;}loadHistory(true);}
+            if(Boolean.TRUE.equals(result)){signedIn=true;chatScreen();if(restorePending&&chatUi!=null)chatUi.setDraft(restoredDraft);loadHistory(true);}
         },true);
     }
     private int dp(float n){return Math.round(n*getResources().getDisplayMetrics().density);}
@@ -450,6 +450,12 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     }
     private void applyRestoredDraft(){
         if(restorePending&&chatUi!=null)chatUi.setDraft(restoredDraft);
+        // History loading clears the transcript. Surface the warning only after restoration,
+        // including when history loading fails, so it cannot silently disappear.
+        if(interruptedRequest&&chatUi!=null){
+            append("system","A request was interrupted when Android recreated this screen. Its server-side outcome is unknown. Review conversation history and tasks before sending another action.");
+            interruptedRequest=false;
+        }
         restorePending=false;restoredDraft="";restoredConversation="";
     }
     @Override protected void onSaveInstanceState(Bundle out){
