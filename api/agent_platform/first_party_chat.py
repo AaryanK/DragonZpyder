@@ -79,6 +79,17 @@ async def _require_conversation(db, *, user: str, conversation_id: UUID):
         raise HTTPException(404, "Conversation not found")
 
 
+@router.get("/status")
+async def status():
+    """Non-authority-bearing rollout signal for the web/Android shells."""
+    enabled = (os.getenv("DRAGONZPYDER_FIRST_PARTY_CHAT_ENABLED") == "1"
+               and os.getenv("DRAGONZPYDER_IDENTITY_HTTP_ENABLED") == "1"
+               and os.getenv("DRAGONZPYDER_AGENTS_ENABLED") == "1")
+    return {"native_chat_enabled": enabled,
+            "web_cutover_enabled": (enabled and
+                os.getenv("DRAGONZPYDER_FIRST_PARTY_WEB_CUTOVER_ENABLED") == "1")}
+
+
 @router.get("/session")
 async def session(request: Request):
     await _owner(request, changing=False)
