@@ -176,7 +176,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             ScrollView listScroll=new ScrollView(this);LinearLayout list=column();listScroll.addView(list);sidebar.addView(listScroll,new LinearLayout.LayoutParams(-1,0,1));
             Runnable filter=()->{list.removeAllViews();String query=search.getText().toString().toLowerCase(Locale.ROOT);for(int i=0;i<history.length();i++){JSONObject c=history.optJSONObject(i);if(c==null)continue;String name=c.optString("title","Conversation");if(!name.toLowerCase(Locale.ROOT).contains(query))continue;Button b=button(name,()->{drawer.dismiss();open(c.optString("id"));});b.setGravity(Gravity.START|Gravity.CENTER_VERTICAL);list.addView(b);gap(list,3);}};
             search.addTextChangedListener(new android.text.TextWatcher(){public void beforeTextChanged(CharSequence s,int start,int count,int after){}public void onTextChanged(CharSequence s,int start,int before,int count){filter.run();}public void afterTextChanged(android.text.Editable e){}});filter.run();
-            sidebar.addView(button("Connections & tools",()->{drawer.dismiss();showConnections();}));sidebar.addView(button("Your tools",()->{drawer.dismiss();showTools();}));sidebar.addView(button("Personal tasks",()->{drawer.dismiss();showTasks();}));sidebar.addView(button("Approvals",()->{drawer.dismiss();approvals();}));sidebar.addView(button("Account & security",()->{drawer.dismiss();showAccount();}));
+            sidebar.addView(button("Connections & tools",()->{drawer.dismiss();showConnections();}));sidebar.addView(button("Your tools",()->{drawer.dismiss();showTools();}));sidebar.addView(button("AI Mesh media",()->{drawer.dismiss();showMedia();}));sidebar.addView(button("Personal tasks",()->{drawer.dismiss();showTasks();}));sidebar.addView(button("Approvals",()->{drawer.dismiss();approvals();}));sidebar.addView(button("Account & security",()->{drawer.dismiss();showAccount();}));
             drawer.setContentView(sidebar);drawer.show();Window w=drawer.getWindow();if(w!=null){w.setBackgroundDrawableResource(android.R.color.transparent);w.setGravity(Gravity.START|Gravity.TOP);w.setLayout(Math.min(dp(285),(int)(getResources().getDisplayMetrics().widthPixels*.88)), -1);}
         },true);
     }
@@ -204,7 +204,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         gap(accountPage,14);accountPage.addView(button("Manage connections & tools",this::showConnections));gap(accountPage,14);Button out=button("Sign out",this::confirmSignOut);out.setTextColor(dark?0xffffa59a:0xffb6382b);accountPage.addView(out);gap(accountPage,10);accountPage.addView(text("Signs out this device and clears its local conversation view. Your server conversations are retained.",12,MUTED));
     }
     private void confirmSignOut(){new AlertDialog.Builder(this).setTitle("Sign out of DragonZpyder?").setMessage("You’ll need to sign in again to access your Personal workspace on this device.").setNegativeButton("Cancel",null).setPositiveButton("Sign out",(d,i)->signOut()).show();}
-    private void showCommands(){new AlertDialog.Builder(this).setTitle("What would you like to do?").setItems(new String[]{"New chat","Find conversations","Switch mode","Approvals","Dictate a message","Toggle appearance","Connections & tools","Personal tasks"},(d,i)->{switch(i){case 0:newChat();break;case 1:showMenu();break;case 2:showModes();break;case 3:approvals();break;case 4:dictate();break;case 5:toggleTheme();break;case 6:showConnections();break;case 7:showTasks();break;}}).setNegativeButton("Close",null).show();}
+    private void showCommands(){new AlertDialog.Builder(this).setTitle("What would you like to do?").setItems(new String[]{"New chat","Find conversations","Switch mode","Approvals","Dictate a message","Toggle appearance","Connections & tools","Personal tasks","AI Mesh media"},(d,i)->{switch(i){case 0:newChat();break;case 1:showMenu();break;case 2:showModes();break;case 3:approvals();break;case 4:dictate();break;case 5:toggleTheme();break;case 6:showConnections();break;case 7:showTasks();break;case 8:showMedia();break;}}).setNegativeButton("Close",null).show();}
     private void showAdd(){
         new AlertDialog.Builder(this).setTitle("Add to your message")
           .setItems(new String[]{"Attach a file or photo","Camera and screen capture (not yet available)"},(d,i)->{
@@ -231,6 +231,92 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             JSONObject part=image?new JSONObject().put("type","image_url").put("image_url",new JSONObject().put("url",encoded)):new JSONObject().put("type","file").put("file",new JSONObject().put("filename",name).put("file_data",encoded));
             return new JSONObject().put("name",name).put("part",part);
         },r->{JSONObject file=(JSONObject)r;attachment=file.getJSONObject("part");attachmentName=file.getString("name");if(chatUi!=null)chatUi.setAttachmentLabel(attachmentName);},true);
+    }
+    private String transcriptionModel="";
+    private android.media.MediaPlayer mediaPlayer;
+    private java.io.File mediaFile;
+    private void stopMedia(){
+        if(mediaPlayer!=null){mediaPlayer.release();mediaPlayer=null;}
+        if(mediaFile!=null){mediaFile.delete();mediaFile=null;}
+    }
+    private void showMedia(){
+        submit("Loading media models…",()->api.call("/mesh/models",null),result->{
+            JSONObject catalog=(JSONObject)result;
+            ArrayList<String> labels=new ArrayList<>(),kinds=new ArrayList<>();
+            labels.add("Generate speech");kinds.add("tts");labels.add("Transcribe an audio file");kinds.add("stt");
+            if(catalog.optBoolean("imageEnabled")){labels.add("Generate an image");kinds.add("image");}
+            new AlertDialog.Builder(this).setTitle("AI Mesh media").setItems(labels.toArray(new String[0]),(d,i)->pickMediaModel(catalog,kinds.get(i))).setNegativeButton("Close",null).show();
+        },true);
+    }
+    private void pickMediaModel(JSONObject catalog,String kind){
+        JSONArray items=catalog.optJSONArray(kind);
+        if(items==null||items.length()==0){setStatus("No compatible models returned.");return;}
+        String[] labels=new String[items.length()];
+        for(int i=0;i<labels.length;i++){JSONObject item=items.optJSONObject(i);labels[i]=item==null?"Unavailable":item.optString("name",item.optString("id"));}
+        new AlertDialog.Builder(this).setTitle("Choose a "+kind+" model").setItems(labels,(d,i)->{
+            JSONObject item=items.optJSONObject(i);if(item==null)return;String id=item.optString("id");if(id.isEmpty())return;
+            if(kind.equals("stt")){
+                transcriptionModel=id;
+                Intent picker=new Intent(Intent.ACTION_OPEN_DOCUMENT);picker.setType("audio/*");picker.addCategory(Intent.CATEGORY_OPENABLE);
+                try{startActivityForResult(picker,44);}catch(android.content.ActivityNotFoundException e){setStatus("Audio picker unavailable.");}
+            }else{
+                EditText prompt=field(kind.equals("image")?"Describe your image":"Enter text to speak",false);
+                prompt.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE);
+                prompt.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(kind.equals("image")?1600:1200)});
+                prompt.setMinLines(3);
+                LinearLayout container=column();container.setPadding(dp(18),dp(8),dp(18),dp(8));container.addView(text("Provider charges may apply. Uses your authorized DragonZpyder account.",13,MUTED));gap(container,8);container.addView(prompt);
+                AlertDialog box=new AlertDialog.Builder(this).setTitle(kind.equals("image")?"Generate image":"Generate speech").setView(container).setNegativeButton("Cancel",null).setPositiveButton("Generate",null).create();
+                box.setOnShowListener(v->box.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(w->{String content=value(prompt);if(content.isEmpty()){prompt.setError("Enter a prompt");return;}box.dismiss();
+                    new AlertDialog.Builder(this).setTitle("Confirm generation").setMessage("Send this request to "+labels[i]+"? Provider usage may be billed.").setNegativeButton("Cancel",null).setPositiveButton("Generate",(confirm,j)->generateMedia(kind,id,content)).show();
+                }));box.show();
+            }
+        }).setNegativeButton("Close",null).show();
+    }
+    private void generateMedia(String kind,String id,String content){
+        final boolean image=kind.equals("image");
+        submit(image?"Generating image…":"Generating speech…",()->{
+            JSONObject body=new JSONObject().put("model",id).put(image?"prompt":"text",content);
+            if(image)body.put("confirmed",true);
+            JSONObject result=(JSONObject)api.call(image?"/mesh/image":"/mesh/speech",body);
+            byte[] bytes=MediaPayload.decode(result.optString(image?"image":"audio"),image?"image":"audio",image?6*1024*1024:4*1024*1024);
+            if(image){
+                android.graphics.BitmapFactory.Options options=new android.graphics.BitmapFactory.Options();options.inJustDecodeBounds=true;android.graphics.BitmapFactory.decodeByteArray(bytes,0,bytes.length,options);
+                if(options.outWidth<1||options.outHeight<1||options.outWidth>8192||options.outHeight>8192)throw new Exception("Unsupported image dimensions");
+                options.inJustDecodeBounds=false;options.inSampleSize=1;while(options.outWidth/options.inSampleSize>2048||options.outHeight/options.inSampleSize>2048)options.inSampleSize*=2;
+                android.graphics.Bitmap bitmap=android.graphics.BitmapFactory.decodeByteArray(bytes,0,bytes.length,options);if(bitmap==null)throw new Exception("Image could not be decoded");return bitmap;
+            }
+            return bytes;
+        },result->{
+            if(image){
+                ImageView preview=new ImageView(this);preview.setImageBitmap((android.graphics.Bitmap)result);preview.setAdjustViewBounds(true);preview.setScaleType(ImageView.ScaleType.FIT_CENTER);preview.setContentDescription("Generated image");
+                new AlertDialog.Builder(this).setTitle("Generated image").setView(preview).setPositiveButton("Close",null).show();
+            }else{
+                stopMedia();mediaFile=java.io.File.createTempFile("dz-speech-",".mp3",getCacheDir());
+                try(java.io.FileOutputStream out=new java.io.FileOutputStream(mediaFile)){out.write((byte[])result);}
+                mediaPlayer=new android.media.MediaPlayer();mediaPlayer.setDataSource(mediaFile.getAbsolutePath());
+                AlertDialog player=new AlertDialog.Builder(this).setTitle("Generated speech").setMessage("Preparing audio…").setPositiveButton("Close",null).create();
+                player.setOnDismissListener(d->stopMedia());mediaPlayer.setOnPreparedListener(p->{if(mediaPlayer==p){player.setMessage("Playing generated speech");p.start();}});
+                mediaPlayer.setOnCompletionListener(p->{if(mediaPlayer==p)player.setMessage("Playback completed.");});
+                mediaPlayer.setOnErrorListener((p,w,e)->{player.setMessage("Audio playback failed.");stopMedia();return true;});
+                player.show();mediaPlayer.prepareAsync();
+            }
+        },true);
+    }
+    private void transcribeAudio(android.net.Uri uri){
+        final String id=transcriptionModel;transcriptionModel="";if(id.isEmpty())return;
+        submit("Reading audio…",()->{
+            String mime=getContentResolver().getType(uri);
+            if("audio/x-wav".equals(mime))mime="audio/wav";
+            if("audio/m4a".equals(mime)||"audio/x-m4a".equals(mime))mime="audio/mp4";
+            if(!Arrays.asList("audio/webm","audio/mpeg","audio/mp4","audio/ogg","audio/wav","audio/flac").contains(mime))throw new Exception("Unsupported audio format");
+            java.io.ByteArrayOutputStream output=new java.io.ByteArrayOutputStream();
+            try(java.io.InputStream in=getContentResolver().openInputStream(uri)){if(in==null)throw new Exception("Cannot open audio");byte[] buffer=new byte[8192];int count;while((count=in.read(buffer))!=-1){if(output.size()+count>2500000)throw new Exception("Audio exceeds native 2.5 MB upload limit");output.write(buffer,0,count);}}
+            if(output.size()==0)throw new Exception("Empty audio file");
+            return "data:"+mime+";base64,"+android.util.Base64.encodeToString(output.toByteArray(),android.util.Base64.NO_WRAP);
+        },data->new AlertDialog.Builder(this).setTitle("Transcribe selected audio?").setMessage("The selected audio will be sent to the chosen model. Provider usage may be billed.").setNegativeButton("Cancel",null).setPositiveButton("Transcribe",(d,i)->submit("Transcribing…",()->api.call("/mesh/transcribe",new JSONObject().put("model",id).put("audio",data)),r->{
+            String text=((JSONObject)r).optString("text");if(text.isEmpty())throw new Exception("No transcription returned.");
+            new AlertDialog.Builder(this).setTitle("Transcription").setMessage(text).setPositiveButton("Add to draft",(dialog,j)->{if(chatUi!=null){String draft=chatUi.getDraft();chatUi.setDraft(draft+(draft.isEmpty()?"":" ")+text);}}).setNegativeButton("Close",null).show();
+        },true)).show(),true);
     }
     private void showModes(){new AlertDialog.Builder(this).setTitle("Choose your intelligence").setItems(new String[]{"DragonZpyder Agent — tasks and tools","AI Mesh — choose a model"},(d,i)->{if(i==0){meshMode=false;newChat();}else chooseModel();}).show();}
     private void append(String role,String content){transcript.add(new String[]{role,content});if(chatUi!=null)chatUi.append(role,content);}
@@ -417,8 +503,8 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         try{startActivityForResult(intent,42);}
         catch(android.content.ActivityNotFoundException e){setStatus("No speech recognition service available.");}
     }
-    @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(request==43&&signedIn&&meshMode&&result==RESULT_OK&&data!=null&&data.getData()!=null){readAttachment(data.getData());return;}if(request==42&&signedIn&&result==RESULT_OK&&data!=null&&chatUi!=null){ArrayList<String> words=data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);if(words!=null&&!words.isEmpty()){String draft=chatUi.getDraft();chatUi.setDraft(draft+(draft.isEmpty()?"":" ")+words.get(0));}}}
+    @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(request==44){if(signedIn&&result==RESULT_OK&&data!=null&&data.getData()!=null)transcribeAudio(data.getData());else transcriptionModel="";return;}if(request==43&&signedIn&&meshMode&&result==RESULT_OK&&data!=null&&data.getData()!=null){readAttachment(data.getData());return;}if(request==42&&signedIn&&result==RESULT_OK&&data!=null&&chatUi!=null){ArrayList<String> words=data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);if(words!=null&&!words.isEmpty()){String draft=chatUi.getDraft();chatUi.setDraft(draft+(draft.isEmpty()?"":" ")+words.get(0));}}}
     @Override public void onBackPressed(){if(busy)return;if(accountOpen){accountOpen=false;chatScreen();}else if(!signedIn&&!"login".equals(authMode))authScreen("login","");else super.onBackPressed();}
-    private void signOut(){submit("Signing out…",()->{api.logout();return null;},r->{conversation="";pendingPrompt="";attachment=null;attachmentName="";transcript.clear();meshMode=false;lastAnswer="";meshMessages=new JSONArray();history=new JSONArray();profileInitial="D";authEmail="";challengeId="";if(tts!=null)tts.stop();chatUi=null;loginScreen("");},true);}
-    @Override protected void onDestroy(){api.cancelStream();worker.shutdownNow();if(tts!=null)tts.shutdown();super.onDestroy();}
+    private void signOut(){submit("Signing out…",()->{api.logout();return null;},r->{conversation="";pendingPrompt="";attachment=null;attachmentName="";transcript.clear();meshMode=false;lastAnswer="";meshMessages=new JSONArray();history=new JSONArray();profileInitial="D";authEmail="";challengeId="";stopMedia();transcriptionModel="";if(tts!=null)tts.stop();chatUi=null;loginScreen("");},true);}
+    @Override protected void onDestroy(){stopMedia();api.cancelStream();worker.shutdownNow();if(tts!=null)tts.shutdown();super.onDestroy();}
 }
