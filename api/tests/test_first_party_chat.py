@@ -36,6 +36,7 @@ def test_body_cannot_supply_user_or_service_credentials():
 
 def test_changing_origin_rejected_before_identity_db(monkeypatch):
     monkeypatch.setenv("DRAGONZPYDER_FIRST_PARTY_CHAT_ENABLED", "1")
+    monkeypatch.setenv("DRAGONZPYDER_IDENTITY_HTTP_ENABLED", "1")
     monkeypatch.setenv("DRAGONZPYDER_AGENTS_ENABLED", "1")
     monkeypatch.setenv("DRAGONZPYDER_IDENTITY_ISSUER", "https://api.dragonzpyder.xyz")
     request = SimpleNamespace(headers={"origin": "https://evil.example", "x-dz-csrf": "x"},
@@ -47,6 +48,7 @@ def test_changing_origin_rejected_before_identity_db(monkeypatch):
 
 def test_user_is_resolved_from_first_party_session_not_prompt(monkeypatch):
     monkeypatch.setenv("DRAGONZPYDER_FIRST_PARTY_CHAT_ENABLED", "1")
+    monkeypatch.setenv("DRAGONZPYDER_IDENTITY_HTTP_ENABLED", "1")
     monkeypatch.setenv("DRAGONZPYDER_AGENTS_ENABLED", "1")
     monkeypatch.setenv("DRAGONZPYDER_IDENTITY_ISSUER", "https://api.dragonzpyder.xyz")
     @asynccontextmanager
