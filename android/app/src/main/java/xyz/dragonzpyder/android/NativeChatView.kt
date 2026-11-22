@@ -21,6 +21,8 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -92,8 +94,8 @@ class NativeChatView(context: Context, private val dark: Boolean, private val ac
         }
     }
     @Composable private fun ToolButton(symbol:String,label:String,click:()->Unit) {
-        IconButton(onClick=click,enabled=!busy,modifier=Modifier.sizeIn(minWidth=48.dp,minHeight=48.dp)) {
-            Text(symbol,modifier=Modifier.padding(4.dp).then(androidx.compose.ui.Modifier),fontSize=20.sp,color=ink)
+        IconButton(onClick=click,enabled=!busy,modifier=Modifier.sizeIn(minWidth=48.dp,minHeight=48.dp).semantics { contentDescription=label }) {
+            Text(symbol,modifier=Modifier.padding(4.dp),fontSize=20.sp,color=ink)
         }
     }
     @Composable private fun Welcome() {
