@@ -99,8 +99,18 @@ class ReviewedProvider:
         }:
             raise ConnectionDenied("Invalid reviewed provider manifest")
         provider_id = row["provider_id"]
-        if not isinstance(provider_id, str) or not _ID.fullmatch(provider_id) or provider_id == "operly":
-            raise ConnectionDenied("Invalid or reserved MCP provider ID")
+        if not isinstance(provider_id, str) or not _ID.fullmatch(provider_id):
+            raise ConnectionDenied("Invalid MCP provider ID")
+        if provider_id == "operly":
+            # Treat Operly as a user-connected external OAuth MCP provider,
+            # NEVER as an implicit global business tool or trusted user.
+            if os.getenv("DRAGONZPYDER_OPERLY_USER_OAUTH_ENABLED") != "1":
+                raise ConnectionDenied("Operly user connection is not approved")
+            if (row.get("mcp_url") != "https://operly.dragonzpyder.xyz/mcp"
+                    or row.get("issuer") != "https://operly.dragonzpyder.xyz"
+                    or row.get("registration", "pre_registered") != "pre_registered"
+                    or row.get("client_id") != "dragonzpyder"):
+                raise ConnectionDenied("Operly MCP issuer or OAuth client is not pinned")
         url = _safe_https(row["mcp_url"])
         issuer = _safe_https(row["issuer"])
         tools = row["readonly_tools"]
@@ -622,6 +632,7 @@ def _token_expiry(token: dict) -> datetime:
 def callback_url() -> str:
     url = os.getenv("DRAGONZPYDER_MCP_OAUTH_CALLBACK_URL", "")
     _safe_https(url)
-    if urlsplit(url).path != "/internal/mcp/oauth/callback":
+    if urlsplit(url).path not in ("/internal/mcp/oauth/callback",
+                                  "/dz/internal/mcp/oauth/callback"):
         raise ConnectionDenied("OAuth redirect URI must match reviewed server callback")
     return url
