@@ -6,7 +6,12 @@ function report(message,isError=false){messageBox.textContent=String(message||""
 function show(next){if(!panels.includes(next))next="login";mode=next;report("");panels.forEach(name=>{$(name+"-panel").hidden=name!==next});$("mode-tabs").hidden=!["login","signup"].includes(next);document.querySelectorAll("[data-mode]").forEach(el=>el.classList.toggle("selected",el.dataset.mode===next));if(next==="login")loadGoogle().catch(()=>{});}
 function cookie(name){const part=document.cookie.split(";").map(v=>v.trim()).find(v=>v.startsWith(name+"="));return part?decodeURIComponent(part.slice(name.length+1)):"";}
 function csrf(){return cookie("__Host-operly_csrf")||cookie("operly_csrf")||bootstrap?.csrf_token||"";}
-async function loadBootstrap(){bootstrap=await request("/api/auth/bootstrap",{method:"GET",unauth:true});return bootstrap;}
+async function loadBootstrap(){
+ bootstrap=await request("/api/auth/bootstrap",{method:"GET",unauth:true});
+ const central=$("dragonzpyder-central-signin");
+ if(central)central.hidden=bootstrap?.dragonzpyder_web_sso_available!==true;
+ return bootstrap;
+}
 async function request(path,{method="GET",body,unauth=false}={}){
  const headers={accept:"application/json"};
  if(body!==undefined)headers["content-type"]="application/json";
@@ -103,6 +108,9 @@ async function profile(){
   }
  }catch{}
  show(params.get("mode")||"login");
+ // Prefer central identity when it is activated, preserving the existing
+ // password/Google flow as a safe fallback until verified account cutover.
+ await loadBootstrap().catch(()=>{});
  if(adminReturnRequested())report("Sign in to access your DragonZpyder admin dashboard.");
  if(params.get("email")){$("verify-email").value=params.get("email");$("reset-email").value=params.get("email")}
 })().catch(e=>{show("login");report(e.message,true)});

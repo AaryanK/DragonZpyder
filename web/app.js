@@ -197,6 +197,17 @@ async function ensurePersonalSession() {
   return current;
 }
 
+async function discoverCentralIdentity() {
+  const link = $("dragonzpyder-central-signin-modal");
+  if (!link) return;
+  try {
+    const config = await api("/api/auth/bootstrap", { csrf: false });
+    link.hidden = config?.dragonzpyder_web_sso_available !== true;
+  } catch {
+    link.hidden = true;
+  }
+}
+
 async function bootstrapAuth() {
   setRuntimeStatus(null, "Checking personal runtime…");
   try {
@@ -966,6 +977,7 @@ window.addEventListener("online", () => setRuntimeStatus(state.session ? "online
 window.addEventListener("offline", () => setRuntimeStatus("error", "Offline"));
 
 autoSizeInput();
+discoverCentralIdentity().catch(() => {});
 bootstrapAuth();
 
 window.addEventListener("dragonzpyder:mesh-disabled",()=>{ if(state.conversationId)openConversation(state.conversationId);else showEmptyState(); });
