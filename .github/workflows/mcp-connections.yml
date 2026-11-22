@@ -5,10 +5,13 @@ on:
     paths:
       - "api/agent_platform/mcp_*"
       - "api/agent_platform/personal_bridge.py"
+      - "api/agent_platform/personal_goal_tools.py"
       - "api/agent_platform/personal_wake.py"
       - "api/agent_platform/migrations/20261122_mcp_connections.sql"
+      - "api/agent_platform/migrations/20261122_personal_mcp_goal_selections.sql"
       - "api/tests/test_mcp_connections.py"
       - "api/tests/test_mcp_connections_postgres.py"
+      - "api/tests/test_mcp_schedule_selection.py"
       - "api/requirements.txt"
       - ".github/workflows/mcp-connections.yml"
   workflow_dispatch:
@@ -37,10 +40,12 @@ jobs:
             api/agent_platform/mcp_connection_http.py \
             api/agent_platform/mcp_managed_catalog.py \
             api/agent_platform/personal_bridge.py \
-            api/agent_platform/personal_wake.py
+            api/agent_platform/personal_wake.py \
+            api/agent_platform/personal_goal_tools.py
       - name: Offline protocol, crypto and isolation tests
         run: |
           python -m pytest -q api/tests/test_mcp_connections.py \
+            api/tests/test_mcp_schedule_selection.py \
             api/tests/test_mcp_broker.py api/tests/test_universal_mcp_catalog.py
 
   postgres-lifecycle:
