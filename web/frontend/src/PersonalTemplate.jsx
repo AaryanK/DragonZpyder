@@ -1,6 +1,6 @@
 import React from "react";
 import { createPortal } from "react-dom";
-import { CommandPalette, QuickAddMenu, WorkspaceHub, SidebarToggle, ModeSwitchConfirm, useModalFocus } from "./WorkspaceControls.jsx";
+import { CommandPalette, QuickAddMenu, WorkspaceHub, SidebarToggle, ModeSwitchConfirm, IosInstallHint, useModalFocus } from "./WorkspaceControls.jsx";
 import { WorkspaceCenter } from "./WorkspaceCenter.jsx";
 import { VoiceOrb } from "./VoiceOrb.jsx";
 import "./workspace-center.css";
