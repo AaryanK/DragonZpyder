@@ -75,12 +75,12 @@ async def dispatch_pulse(*, client=None) -> dict:
                 or body.get("state") not in {"busy", "dispatched"}
                 or type(body.get("claimed_runs")) is not int
                 or not 0 <= body["claimed_runs"] <= 25
-                or type(body.get("events_processed")) is not int
-                or not 0 <= body["events_processed"] <= 500):
+                or type(body.get("event_runs_queued")) is not int
+                or body["event_runs_queued"] < 0):
             raise RuntimeError("Invalid Operly dispatcher result")
-        if body["state"] == "busy" and (body["claimed_runs"] or body["events_processed"]):
+        if body["state"] == "busy" and (body["claimed_runs"] or body["event_runs_queued"]):
             raise RuntimeError("Invalid busy dispatcher result")
-        return {k: body[k] for k in ("state", "claimed_runs", "events_processed")}
+        return {k: body[k] for k in ("state", "claimed_runs", "event_runs_queued")}
     if client is not None:
         return await perform(client)
     async with httpx.AsyncClient(trust_env=False) as transport:
