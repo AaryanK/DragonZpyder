@@ -411,7 +411,7 @@ class OAuthConnectionManager:
         info = details["client"]
         async with AsyncOAuth2Client(
             client_id=info["client_id"], client_secret=info["client_secret"] or None,
-            token_endpoint_auth_method=("client_secret_basic" if info["client_secret"] else "none"),
+            token_endpoint_auth_method=info["token_endpoint_auth_method"],
             redirect_uri=callback_url(), follow_redirects=False, trust_env=False,
             timeout=10,
         ) as oauth:
@@ -501,7 +501,7 @@ class OAuthConnectionManager:
                     async with AsyncOAuth2Client(
                         client_id=info["client_id"],
                         client_secret=info["client_secret"] or None,
-                        token_endpoint_auth_method=("client_secret_basic" if info["client_secret"] else "none"),
+                        token_endpoint_auth_method=info["token_endpoint_auth_method"],
                         follow_redirects=False, trust_env=False, timeout=10,
                     ) as oauth:
                         await oauth.revoke_token(
@@ -533,7 +533,7 @@ class OAuthConnectionManager:
             from authlib.integrations.httpx_client import AsyncOAuth2Client
             async with AsyncOAuth2Client(
                 client_id=info["client_id"], client_secret=info["client_secret"] or None,
-                token_endpoint_auth_method=("client_secret_basic" if info["client_secret"] else "none"),
+                token_endpoint_auth_method=info["token_endpoint_auth_method"],
                 follow_redirects=False, trust_env=False, timeout=10,
             ) as oauth:
                 updated = await oauth.refresh_token(
