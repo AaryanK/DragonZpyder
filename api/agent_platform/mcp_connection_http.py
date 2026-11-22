@@ -11,7 +11,7 @@ from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel, ConfigDict, Field
 
-from .mcp_connections import ConnectionDenied, require_gate, reviewed_providers
+from .mcp_connections import ConnectionDenied, require_gate, reviewed_providers, callback_url
 from identity.http_bridge import _identity_db
 from identity.sessions import SessionDenied, resolve_browser_session
 
@@ -99,7 +99,10 @@ async def callback(request: Request, state: str = "", code: str = "",
     # Immediately replace the code/state-bearing URL before showing a page.
     # No access token, refresh token, authorization code or account ID is
     # returned to browser JavaScript or placed in the clean success URL.
-    return RedirectResponse("/internal/mcp/connected", status_code=303,
+    redirect = ("/dz/internal/mcp/connected"
+                if callback_url().endswith("/dz/internal/mcp/oauth/callback")
+                else "/internal/mcp/connected")
+    return RedirectResponse(redirect, status_code=303,
                             headers={"Cache-Control": "no-store",
                                      "Referrer-Policy": "no-referrer"})
 
