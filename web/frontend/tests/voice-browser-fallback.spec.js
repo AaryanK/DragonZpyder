@@ -79,3 +79,34 @@ test("authorization errors do not start browser recognition automatically",async
   await expect(panel.getByRole("button",{name:"Mute microphone"})).toBeDisabled();
   await panel.getByRole("button",{name:"Back to chat"}).click();
 });
+
+for (const viewport of [{width:390,height:750},{width:980,height:1830},{width:360,height:600}]) {
+  test(`transcription is readable and usable in portrait ${viewport.width}x${viewport.height}`, async ({page})=>{
+    await page.setViewportSize(viewport);
+    await prepare(page);
+    await page.locator("#companion-open").click();
+    const panel=page.getByRole("dialog",{name:"Live companion"});
+    await expect(panel.getByText("TRANSCRIPTION",{exact:true})).toBeVisible();
+    await expect(panel.locator(".dz-voice-orb-footnote")).toBeHidden();
+    await expect(panel.locator(".dz-voice-audio-wave")).toBeHidden();
+    await page.evaluate(() => window.__recognition.onresult({resultIndex:0,results:[Object.assign([{transcript:"This is a live transcription test."}],{isFinal:true})]}));
+    await expect(panel.getByLabel("Latest transcription")).toHaveText("This is a live transcription test.");
+    const metrics=await page.evaluate(()=>{
+      const rect=selector=>document.querySelector(selector).getBoundingClientRect();
+      const scale=innerWidth/390;
+      const mic=rect("#companion-mute"),speaker=rect(".dz-voice-orb-controls button"),orb=rect(".dz-voice-sphere > circle"),area=rect(".dz-voice-orb-space"),caption=rect(".dz-voice-live-caption"),text=rect(".dz-voice-orb-conversation"),controls=rect(".dz-voice-orb-controls"),end=rect("#companion-end"),header=rect(".dz-voice-orb-head");
+      return {scale, mic:mic.width,speaker:speaker.width,orb:orb.width,orbBottom:orb.bottom,areaBottom:area.bottom,textTop:text.top,captionBottom:caption.bottom,controlsTop:controls.top,controlsBottom:controls.bottom,endTop:end.top,endBottom:end.bottom,headerRight:header.right,width:innerWidth,height:innerHeight,captionFont:parseFloat(getComputedStyle(document.querySelector(".dz-voice-live-caption")).fontSize)};
+    });
+    expect(metrics.mic/metrics.scale).toBeGreaterThanOrEqual(64);
+    expect(metrics.speaker/metrics.scale).toBeGreaterThanOrEqual(48);
+    expect(metrics.captionFont/metrics.scale).toBeGreaterThanOrEqual(18);
+    expect(metrics.orb/metrics.width).toBeGreaterThanOrEqual(.5);
+    expect(metrics.orbBottom).toBeLessThanOrEqual(metrics.areaBottom+2);
+    expect(metrics.areaBottom).toBeLessThan(metrics.textTop);
+    expect(metrics.captionBottom).toBeLessThan(metrics.controlsTop);
+    expect(metrics.controlsBottom).toBeLessThan(metrics.endTop);
+    expect(metrics.endBottom).toBeLessThanOrEqual(metrics.height+1);
+    expect(metrics.headerRight).toBeLessThanOrEqual(metrics.width+1);
+    await panel.getByRole("button",{name:"End conversation"}).click();
+  });
+}
