@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 
-async function prepare(page, status = 503) {
-  await page.addInitScript(() => {
+async function prepare(page, status = 503, {meter = false} = {}) {
+  await page.addInitScript(({meter}) => {
     window.__voiceFixture = { starts:0, aborts:0, closed:0 };
     class Recognition {
       start() {
@@ -15,9 +15,32 @@ async function prepare(page, status = 503) {
       }
     }
     Object.defineProperty(window, "SpeechRecognition", { configurable:true, value:Recognition });
+    const track = { enabled:true, readyState:"live", stop(){this.readyState="ended";this.enabled=false;} };
+    window.__voiceFixture.track=track;
     Object.defineProperty(navigator, "mediaDevices", {
-      configurable:true, value:{ getUserMedia:async () => new MediaStream() }
+      configurable:true, value:{ getUserMedia:async () => meter
+        ? {getAudioTracks:()=>[track],getTracks:()=>[track]}
+        : new MediaStream()
+      }
     });
+    if(meter){
+      class AudioMeter {
+        constructor(){this.state="running";this.destination={};}
+        createMediaStreamSource(){return {connect(){},disconnect(){}};}
+        createAnalyser(){
+          return {
+            fftSize:2048,smoothingTimeConstant:0,
+            get frequencyBinCount(){return this.fftSize/2},
+            connect(){},disconnect(){},
+            getByteFrequencyData(target){target.fill(track.enabled?190:0)}
+          };
+        }
+        createGain(){return {gain:{value:0},connect(){},disconnect(){}}}
+        async resume(){}
+        async close(){}
+      }
+      Object.defineProperty(window,"AudioContext",{configurable:true,value:AudioMeter});
+    }
     class Peer {
       addTrack(){}
       createDataChannel(){return { close(){}, readyState:"closed" }}
@@ -27,7 +50,7 @@ async function prepare(page, status = 503) {
       close(){window.__voiceFixture.closed++}
     }
     Object.defineProperty(window,"RTCPeerConnection",{configurable:true,value:Peer});
-  });
+  }, {meter});
   await page.route("**/api/**", async route => {
     const path = new URL(route.request().url()).pathname;
     let body = {};
@@ -116,3 +139,26 @@ for (const viewport of [{width:390,height:750},{width:980,height:1830},{width:36
     await panel.getByRole("button",{name:"End conversation"}).click();
   });
 }
+
+test("browser fallback keeps real authorized microphone audio for animated canvas and mutes it on pause",async({page})=>{
+  await page.setViewportSize({width:390,height:750});
+  await prepare(page,503,{meter:true});
+  await page.locator("#companion-open").click();
+  const panel=page.getByRole("dialog",{name:"Live companion"});
+  await expect(panel.getByText("TRANSCRIPTION",{exact:true})).toBeVisible();
+  const canvas=panel.locator(".dz-voice-original-canvas");
+  await expect(canvas).toBeVisible();
+  await expect.poll(()=>canvas.evaluate(el=>Number(el.dataset.audioEnergy))).toBeGreaterThan(.18);
+  const {radius,scaledRadius}=await canvas.evaluate(el=>({radius:Number(el.dataset.orbRadius),scaledRadius:Number(el.dataset.renderRadius)}));
+  expect(scaledRadius).toBeGreaterThan(radius*1.02);
+  expect(await page.evaluate(()=>window.__voiceFixture.track.readyState)).toBe("live");
+  await panel.getByRole("button",{name:"Mute microphone"}).click();
+  await expect.poll(()=>page.evaluate(()=>window.__voiceFixture.track.enabled)).toBe(false);
+  await expect.poll(()=>canvas.evaluate(el=>Number(el.dataset.audioEnergy)),{timeout:6000}).toBeLessThan(.05);
+  await panel.getByRole("button",{name:"Unmute microphone"}).click();
+  await expect.poll(()=>page.evaluate(()=>window.__voiceFixture.track.enabled)).toBe(true);
+  await expect.poll(()=>canvas.evaluate(el=>Number(el.dataset.audioEnergy))).toBeGreaterThan(.18);
+  await panel.getByRole("button",{name:"End conversation"}).click();
+  await expect(panel).toBeHidden();
+  expect(await page.evaluate(()=>window.__voiceFixture.track.readyState)).toBe("ended");
+});
