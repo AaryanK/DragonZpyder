@@ -12,16 +12,16 @@ public final class NativeChatStateTest {
             scenario.onActivity(activity->{
                 NativeChatView ui=new NativeChatView(activity,false,new NativeChatView.Actions(){
                     public void menu(){} public void commands(){} public void theme(){} public void account(){}
-                    public void add(){} public void mode(){} public void dictate(){} public void send(){}
+                    public void add(){} public void mode(){} public void dictate(){} public void send(){} public void stop(){}
                     public void removeAttachment(){} public void copy(String value){} public void speak(String value){}
                 });
                 activity.setContentView(ui.getView());
                 ui.setDraft("Example draft");
-                ui.setBusy(true);
+                ui.setBusy(true);ui.setStreaming(true);ui.setPartialReply("Partial");assertTrue(ui.getStreaming());assertEquals("Partial",ui.getPartialReply());
                 ui.append("user","Example message");
                 ui.append("assistant","# Example response");
                 assertEquals("Example draft",ui.getDraft());assertTrue(ui.getBusy());
-                ui.clearMessages();ui.setBusy(false);assertFalse(ui.getBusy());
+                ui.clearMessages();ui.setPartialReply("");ui.setStreaming(false);ui.setBusy(false);assertFalse(ui.getBusy());
             });
             androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().waitForIdleSync();
         }
