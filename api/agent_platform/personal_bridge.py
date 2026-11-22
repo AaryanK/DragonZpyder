@@ -59,13 +59,17 @@ def execution_receipt_report(report: dict) -> dict:
         if isinstance(name, str) and 1 <= len(name) <= 80
         and name.replace("_", "").replace("-", "").isalnum()
     ][:40]
-    failures = report.get("failed_tool_count", 0)
-    if type(failures) is not int or failures < 0:
-        failures = 0
+    # A missing or malformed count is unknown, never an observed zero.
+    # Retain the legacy numeric field for existing clients; expose validity
+    # separately so new consumers can fail closed on unreliable telemetry.
+    raw_failures = report.get("failed_tool_count")
+    failure_count_verified = type(raw_failures) is int and raw_failures >= 0
+    failures = raw_failures if failure_count_verified else 0
     readbacks = report.get("artifact_readback_paths", [])
     return {
         "tool_names": names,
         "failed_tool_count": min(100, failures),
+        "failure_count_verified": failure_count_verified,
         "artifact_readback_count": (
             min(30, len(readbacks))
             if isinstance(readbacks, list)
