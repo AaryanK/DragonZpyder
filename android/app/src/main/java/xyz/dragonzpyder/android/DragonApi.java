@@ -9,7 +9,7 @@ import org.json.*;
 /** Native, first-party session client. No WebView, browser or service credentials. */
 final class DragonApi {
     private static final URI ORIGIN = URI.create("https://dragonzpyder.xyz");
-    private final CookieManager cookies = new CookieManager(null, CookiePolicy.ACCEPT_ORIGINAL_SERVER);
+    private final SessionCookies cookies = new SessionCookies();
     private String bootstrapCsrf = "";
     static final class ApiError extends IOException {
         final int status;
@@ -19,15 +19,9 @@ final class DragonApi {
         return new JSONObject().put(key, value);
     }
     static String segment(String value) { return android.net.Uri.encode(value); }
-    private String csrf(URI uri) throws IOException {
-        Map<String,List<String>> map = cookies.get(uri, Collections.emptyMap());
-        for (List<String> values : map.values()) for (String value : values)
-            for (String part : value.split(";")) {
-                String p = part.trim();
-                for (String name : new String[]{"__Host-operly_csrf=", "operly_csrf="})
-                    if (p.startsWith(name)) return URLDecoder.decode(p.substring(name.length()), "UTF-8");
-            }
-        return bootstrapCsrf;
+    private String csrf(URI uri) {
+        String active = cookies.value("__Host-operly_csrf");
+        return active.isEmpty() ? bootstrapCsrf : active;
     }
     synchronized Object call(String path, JSONObject body) throws Exception {
         if (!path.startsWith("/api/") && !path.startsWith("/mesh/"))
@@ -42,8 +36,8 @@ final class DragonApi {
         connection.setRequestProperty("Accept", "application/json");
         connection.setRequestProperty("Cache-Control", "no-store");
         try {
-            for (Map.Entry<String,List<String>> entry : cookies.get(uri, Collections.emptyMap()).entrySet())
-                for (String value : entry.getValue()) connection.addRequestProperty(entry.getKey(), value);
+            String cookieHeader = cookies.header();
+            if (!cookieHeader.isEmpty()) connection.setRequestProperty("Cookie", cookieHeader);
             if (body != null) {
                 String token = csrf(uri);
                 if (token.isEmpty()) throw new ApiError(401, "Secure session missing. Sign in again.");
@@ -56,7 +50,7 @@ final class DragonApi {
                 }
             }
             int status = connection.getResponseCode();
-            cookies.put(uri, connection.getHeaderFields());
+            cookies.receive(connection.getHeaderFields());
             if (status >= 300 && status < 400) throw new ApiError(status, "Unexpected API redirect");
             InputStream input = status >= 400 ? connection.getErrorStream() : connection.getInputStream();
             ByteArrayOutputStream out = new ByteArrayOutputStream();
@@ -84,9 +78,20 @@ final class DragonApi {
         JSONObject bootstrap = (JSONObject) call("/api/auth/bootstrap", null);
         bootstrapCsrf = bootstrap.optString("csrf_token");
         try {
-            JSONObject result = (JSONObject) call("/api/auth/login", new JSONObject().put("email",email).put("password",password));
-            if (!"personal".equals(result.optString("scope"))) call("/api/auth/personal-scope", new JSONObject());
+            call("/api/auth/login", new JSONObject().put("email",email).put("password",password));
+            bootstrapCsrf = "";
+            if (cookies.value("__Host-operly_session").isEmpty() || cookies.value("__Host-operly_csrf").isEmpty())
+                throw new ApiError(401, "Server did not establish a secure session.");
             JSONArray sessions = (JSONArray) call("/api/auth/sessions", null);
+            boolean personal = false;
+            for (int i=0;i<sessions.length();i++) {
+                JSONObject row=sessions.optJSONObject(i);
+                if (row!=null && row.optBoolean("current") && "personal".equals(row.optString("scope"))) personal=true;
+            }
+            if (!personal) {
+                call("/api/auth/personal-scope", new JSONObject());
+                sessions = (JSONArray) call("/api/auth/sessions", null);
+            }
             boolean ok = false;
             for (int i=0;i<sessions.length();i++) {
                 JSONObject s=sessions.optJSONObject(i);
@@ -100,5 +105,5 @@ final class DragonApi {
         call("/api/auth/logout", new JSONObject());
         clear();
     }
-    synchronized void clear() { cookies.getCookieStore().removeAll(); bootstrapCsrf=""; }
+    synchronized void clear() { cookies.clear(); bootstrapCsrf=""; }
 }
