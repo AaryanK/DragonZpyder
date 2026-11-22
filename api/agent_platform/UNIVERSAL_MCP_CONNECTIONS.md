@@ -29,7 +29,12 @@ exchanges use Authlib. There is no second MCP protocol stack or agent runtime.
 ## Configuration and rollout
 
 Apply the migration api/agent_platform/migrations/20261122_mcp_connections.sql
-MANUALLY using a database migration role. Do not grant this role identity-DB
+MANUALLY to the dedicated OAuth credential database. Separately apply
+api/agent_platform/migrations/20261122_personal_mcp_goal_selections.sql
+to the Personal goals database used by DRAGONZPYDER_PERSONAL_MCP_DATABASE_URL.
+The worker must not have access to the OAuth credential database. Applying
+only the OAuth migration will NOT create the worker's goal selection table.
+Use a database migration role. Do not grant this role identity-DB
 permissions or access to LangGraph checkpoints. Use a separate, backed-up
 PostgreSQL database and least-privilege runtime role. Configure:
 
@@ -125,22 +130,29 @@ approval are independently enforced. The generic catalog exposes only
 reviewed reads; no mutations requiring approval are included.
 
 On a Hatchet wake, the existing Operly re-delegation is required. A third-party
-account selection is stored as a nonsecret sha256 in dz_mcp_goal_selections and
-must be identical on all subsequent wakes. The API rechecks ownership,
+account selection is stored as a nonsecret sha256 in the Personal goals
+database's dz_mcp_goal_selections table when the trusted goal is created,
+and must be identical on all subsequent wakes. The API rechecks ownership,
 revocation, manifest policy, and token freshness before each discovery and
 invocation. Scheduled selected capabilities require scheduled_tools. An unknown
 effect is never automatically retried. Hatchet contains only IDs, not tokens,
 refresh credentials, client secrets or auth codes.
 
-The current goal_schedule tool creates Operly-only goals. To authorize
-third-party scheduled connections, a trusted scheduler must explicitly
-associate the already user-approved opaque connection selection at goal
-creation; do not let an LLM choose or rewrite a selection. Migrate goal
-selections before enabling feature flag for scheduled workers.
+The goal_schedule tool now carries trusted, signed, user-approved account IDs
+from the current Personal service request into immutable Hatchet wake inputs.
+The model cannot choose or rewrite them, and their selection hash is recorded
+in the Personal goals database before dispatch. This does NOT prove an
+external-provider read happened: the worker still requires a mandatory
+Operly read receipt. Third-party reads remain optional to the model and need
+a separate deterministic receipt/check before claiming a third-party scheduled
+goal succeeded. Operly's actual signed account-selection API/client flow and
+the first-party subject identity mapping also remain unverified.
 
 ## Acceptance evidence and limitations
 
-The accompanying offline test suite covers encrypted principal binding,
+The accompanying offline test suite covers account selections carried through
+the scheduler into every synthetic Hatchet wake, independently migrated
+Personal selection state, encrypted principal binding,
 PKCE S256, one-time state and session CSRF, issuer mix-up rejection, malicious
 endpoint rejection, explicit multi-account selection, cross-user denial,
 single-flight refresh, revocation, scheduled policy and two-provider SDK tool
