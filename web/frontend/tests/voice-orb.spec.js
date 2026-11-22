@@ -3,6 +3,10 @@ import { test, expect } from "@playwright/test";
 // Voice uses the existing companion transport. These browser tests inspect
 // native React presentation only; they do not simulate provider success.
 test.beforeEach(async ({ page }) => {
+  // These presentation tests inject session events; do not acquire a real microphone.
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "mediaDevices", { configurable:true, value:{getUserMedia:() => new Promise(() => {})} });
+  });
   await page.route("**/api/**", async route => {
     const path = new URL(route.request().url()).pathname;
     let body = {};
