@@ -44,14 +44,14 @@ def test_operator_pulse_uses_no_model_no_user_context():
         def handler(request):
             observed.append(request)
             return httpx.Response(200, json={
-                "state":"dispatched", "claimed_runs":2, "events_processed":3,
+                "state":"dispatched", "claimed_runs":2, "event_runs_queued":3,
                 "private_details":"do not propagate",
             })
         async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
             return await dispatch_pulse(client=client)
     with patch.dict(os.environ, ENV, clear=True):
         assert asyncio.run(run()) == {
-            "state":"dispatched", "claimed_runs":2, "events_processed":3,
+            "state":"dispatched", "claimed_runs":2, "event_runs_queued":3,
         }
     assert len(observed) == 1
     request = observed[0]
@@ -61,11 +61,11 @@ def test_operator_pulse_uses_no_model_no_user_context():
 
 
 @pytest.mark.parametrize("status,body", [
-    (409, {"state":"dispatched","claimed_runs":0,"events_processed":0}),
-    (200, {"state":"completed","claimed_runs":1,"events_processed":0}),
-    (200, {"state":"busy","claimed_runs":1,"events_processed":0}),
-    (200, {"state":"dispatched","claimed_runs":True,"events_processed":0}),
-    (200, {"state":"dispatched","claimed_runs":26,"events_processed":0}),
+    (409, {"state":"dispatched","claimed_runs":0,"event_runs_queued":0}),
+    (200, {"state":"completed","claimed_runs":1,"event_runs_queued":0}),
+    (200, {"state":"busy","claimed_runs":1,"event_runs_queued":0}),
+    (200, {"state":"dispatched","claimed_runs":True,"event_runs_queued":0}),
+    (200, {"state":"dispatched","claimed_runs":26,"event_runs_queued":0}),
 ])
 def test_rejected_or_malformed_wakes_fail_closed(status,body):
     async def run():
