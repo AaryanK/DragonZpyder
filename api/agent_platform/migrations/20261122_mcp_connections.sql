@@ -41,10 +41,5 @@ CREATE TABLE IF NOT EXISTS dz_mcp_connections (
 CREATE INDEX IF NOT EXISTS dz_mcp_connections_owner_idx
  ON dz_mcp_connections(owner_id, provider_id, status);
 
--- Allows Hatchet to bind a goal to exactly one vetted selection; contains no secrets.
-CREATE TABLE IF NOT EXISTS dz_mcp_goal_selections (
-  goal_id text PRIMARY KEY,
-  owner_id text NOT NULL,
-  selection_hash char(64) NOT NULL,
-  created_at timestamptz NOT NULL DEFAULT now()
-);
+-- Scheduled account selections belong in the separate Personal goal database.
+-- Apply 20261122_personal_mcp_goal_selections.sql to that database, not here.
