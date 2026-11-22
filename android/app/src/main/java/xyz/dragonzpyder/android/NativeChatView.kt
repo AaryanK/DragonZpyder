@@ -107,7 +107,7 @@ class NativeChatView(context: Context, private val dark: Boolean, private val ac
                     LazyColumn(
                         state=state,
                         modifier=Modifier.widthIn(max=810.dp).fillMaxWidth().weight(1f),
-                        contentPadding=PaddingValues(start=14.dp,end=14.dp,top=20.dp,bottom=32.dp),
+                        contentPadding=PaddingValues(start=14.dp,end=14.dp,top=20.dp,bottom=40.dp),
                         verticalArrangement=Arrangement.spacedBy(18.dp)
                     ) {
                         if(rows.isEmpty())item { Welcome() }
@@ -170,8 +170,19 @@ class NativeChatView(context: Context, private val dark: Boolean, private val ac
         if(message.role=="system"){Text(message.content,color=muted,fontSize=12.sp,lineHeight=18.sp,modifier=Modifier.fillMaxWidth().padding(vertical=4.dp));return}
         Column(Modifier.fillMaxWidth(),horizontalAlignment=if(user) Alignment.End else Alignment.Start) {
             if(!user) Row(verticalAlignment=Alignment.CenterVertically,modifier=Modifier.padding(bottom=8.dp)){Image(painterResource(R.drawable.brand_icon),"DragonZpyder",Modifier.size(20.dp));Spacer(Modifier.width(7.dp));Text("DragonZpyder",fontSize=12.sp,fontWeight=FontWeight.Medium,color=muted)}
-            Surface(color=if(user)userBubble else bg,shape=RoundedCornerShape(18.dp),modifier=if(user) Modifier.widthIn(max=620.dp) else Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(if(user)12.dp else 0.dp)) {
+            if(user) {
+                Surface(
+                    color=userBubble,shape=RoundedCornerShape(18.dp),
+                    modifier=Modifier.widthIn(max=620.dp)
+                ) {
+                    Box(Modifier.padding(horizontal=16.dp,vertical=13.dp)) {
+                        SelectionContainer { MarkdownBody(message.content,dark,actions::copy) }
+                    }
+                }
+            } else {
+                // Never clip assistant text against a rounded Surface edge.
+                // Horizontal safe insets also preserve glyph overhang with scaled fonts.
+                Box(Modifier.fillMaxWidth().padding(horizontal=12.dp,vertical=3.dp)) {
                     SelectionContainer { MarkdownBody(message.content,dark,actions::copy) }
                 }
             }
