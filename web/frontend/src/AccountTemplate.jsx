@@ -19,7 +19,7 @@ export function AccountTemplate() {
 <label htmlFor="login-email">Email address</label><input id="login-email" type="email" required autoComplete="username"/>
 <label htmlFor="login-password">Password</label><input id="login-password" type="password" required autoComplete="current-password"/>
 <button className="submit" type="submit">Sign in</button></form><p className="links"><button type="button" data-mode="forgot">Forgot password?</button></p></section>
-<section id="signup-panel" className="account-panel" hidden><h2>Create your account.</h2><p className="muted">Start personal. Connect workspaces when you choose.</p><form id="signup-form">
+<section id="signup-panel" className="account-panel" hidden><h2>Create your account.</h2><p className="muted">Start personal. Connect workspaces when you choose.</p><div id="google-provider-signup" className="google-provider" aria-label="Google signup" hidden></div><form id="signup-form">
 <label htmlFor="signup-name">Your name</label><input id="signup-name" required maxLength="200" autoComplete="name"/>
 <label htmlFor="signup-email">Email address</label><input id="signup-email" type="email" required autoComplete="email"/>
 <label htmlFor="signup-password">Password (at least 12 characters)</label><input id="signup-password" type="password" minLength="12" required autoComplete="new-password"/>
