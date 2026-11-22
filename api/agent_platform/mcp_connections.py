@@ -80,6 +80,7 @@ class ReviewedProvider:
     mcp_url: str
     issuer: str
     readonly_tools: frozenset[str]
+    scheduled_tools: frozenset[str]
     requested_scopes: tuple[str, ...]
     registration: str
     client_id: str = ""
@@ -90,7 +91,7 @@ class ReviewedProvider:
     @classmethod
     def parse(cls, row: dict) -> "ReviewedProvider":
         if not isinstance(row, dict) or set(row) - {
-            "provider_id", "mcp_url", "issuer", "readonly_tools", "requested_scopes",
+            "provider_id", "mcp_url", "issuer", "readonly_tools", "scheduled_tools", "requested_scopes",
             "registration", "client_id", "client_secret_env", "client_id_metadata_url",
             "description",
         }:
@@ -105,6 +106,10 @@ class ReviewedProvider:
                 or any(not isinstance(t, str) or not _TOOL.fullmatch(t) for t in tools)
                 or len(tools) != len(set(tools))):
             raise ConnectionDenied("Provider tools require independent read-only review")
+        scheduled = row.get("scheduled_tools", [])
+        if (not isinstance(scheduled, list) or len(set(scheduled)) != len(scheduled)
+                or not set(scheduled) <= set(tools)):
+            raise ConnectionDenied("Scheduled tool policy must be independently reviewed")
         mode = row.get("registration", "pre_registered")
         if mode not in ("pre_registered", "client_id_metadata", "dynamic"):
             raise ConnectionDenied("Unsupported client registration mechanism")
@@ -123,7 +128,7 @@ class ReviewedProvider:
         description = row.get("description", "")
         if not isinstance(description, str) or len(description) > 500:
             raise ConnectionDenied("Invalid provider description")
-        return cls(provider_id, url, issuer, frozenset(tools),
+        return cls(provider_id, url, issuer, frozenset(tools), frozenset(scheduled),
                    _scopes(row.get("requested_scopes", [])), mode,
                    client_id, secret_env, metadata_url, description)
 
