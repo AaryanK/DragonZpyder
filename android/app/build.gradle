@@ -8,8 +8,8 @@ android {
         applicationId 'xyz.dragonzpyder.android'
         minSdk 26
         targetSdk 35
-        versionCode 10
-        versionName '0.8.2'
+        versionCode 11
+        versionName '0.9.0'
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
     }
     def releaseKeystore = System.getenv("DZ_ANDROID_KEYSTORE")
@@ -49,6 +49,10 @@ dependencies {
     implementation 'androidx.compose.material3:material3'
     implementation 'androidx.compose.ui:ui'
     implementation 'androidx.compose.foundation:foundation'
+    implementation 'androidx.credentials:credentials:1.6.0'
+    implementation 'androidx.credentials:credentials-play-services-auth:1.6.0'
+    implementation 'com.google.android.libraries.identity.googleid:googleid:1.2.1'
+    implementation 'androidx.browser:browser:1.8.0'
     implementation 'org.commonmark:commonmark:0.32.0'
     implementation 'org.commonmark:commonmark-ext-gfm-tables:0.32.0'
     implementation 'org.commonmark:commonmark-ext-gfm-strikethrough:0.32.0'
