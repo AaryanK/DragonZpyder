@@ -86,6 +86,7 @@ class ReviewedProvider:
     registration: str
     client_id: str = ""
     client_secret_env: str = ""
+    token_endpoint_auth_method: str = "none"
     client_id_metadata_url: str = ""
     description: str = ""
 
@@ -93,7 +94,7 @@ class ReviewedProvider:
     def parse(cls, row: dict) -> "ReviewedProvider":
         if not isinstance(row, dict) or set(row) - {
             "provider_id", "mcp_url", "issuer", "readonly_tools", "scheduled_tools", "requested_scopes",
-            "registration", "client_id", "client_secret_env", "client_id_metadata_url",
+            "registration", "client_id", "client_secret_env", "token_endpoint_auth_method", "client_id_metadata_url",
             "description",
         }:
             raise ConnectionDenied("Invalid reviewed provider manifest")
@@ -126,12 +127,18 @@ class ReviewedProvider:
         if secret_env and (not isinstance(secret_env, str) or
                            not re.fullmatch(r"[A-Z][A-Z0-9_]{4,100}", secret_env)):
             raise ConnectionDenied("Invalid secret environment reference")
+        auth_method = row.get("token_endpoint_auth_method",
+                              "client_secret_basic" if secret_env else "none")
+        if auth_method not in ("none", "client_secret_post", "client_secret_basic"):
+            raise ConnectionDenied("Unsupported client authentication method")
+        if mode == "client_id_metadata" and auth_method != "none":
+            raise ConnectionDenied("Client metadata method cannot use a shared secret")
         description = row.get("description", "")
         if not isinstance(description, str) or len(description) > 500:
             raise ConnectionDenied("Invalid provider description")
         return cls(provider_id, url, issuer, frozenset(tools), frozenset(scheduled),
                    _scopes(row.get("requested_scopes", [])), mode,
-                   client_id, secret_env, metadata_url, description)
+                   client_id, secret_env, auth_method, metadata_url, description)
 
 
 def reviewed_providers() -> dict[str, ReviewedProvider]:
@@ -287,9 +294,11 @@ class OAuthConnectionManager:
             secret = os.getenv(provider.client_secret_env, "") if provider.client_secret_env else ""
             if provider.client_secret_env and not secret:
                 raise ConnectionDenied("Registered client secret is missing")
-            return {"client_id": provider.client_id, "client_secret": secret}
+            return {"client_id": provider.client_id, "client_secret": secret,
+                    "token_endpoint_auth_method": provider.token_endpoint_auth_method}
         if provider.registration == "client_id_metadata":
-            return {"client_id": provider.client_id_metadata_url, "client_secret": ""}
+            return {"client_id": provider.client_id_metadata_url, "client_secret": "",
+                    "token_endpoint_auth_method": "none"}
         endpoint = meta.get("registration_endpoint")
         if not endpoint:
             raise ConnectionDenied("Authorization server does not support dynamic registration")
@@ -321,7 +330,8 @@ class OAuthConnectionManager:
                         or result.get("token_endpoint_auth_method", "none") not in ("none", "client_secret_post", "client_secret_basic")):
                     raise ConnectionDenied("Invalid registered OAuth client")
                 info = {"client_id": result["client_id"],
-                        "client_secret": result.get("client_secret", "")}
+                        "client_secret": result.get("client_secret", ""),
+                        "token_endpoint_auth_method": result.get("token_endpoint_auth_method", "none")}
                 await conn.execute(
                     "INSERT INTO dz_mcp_oauth_clients(provider_id, issuer, encrypted_client) VALUES($1,$2,$3)",
                     provider.provider_id, provider.issuer,
@@ -345,7 +355,7 @@ class OAuthConnectionManager:
             from authlib.integrations.httpx_client import AsyncOAuth2Client
             async with AsyncOAuth2Client(
                 client_id=info["client_id"], client_secret=info["client_secret"] or None,
-                token_endpoint_auth_method=("client_secret_basic" if info["client_secret"] else "none"),
+                token_endpoint_auth_method=info.get("token_endpoint_auth_method", "none"),
                 redirect_uri=callback_url(), scope=" ".join(provider.requested_scopes),
                 code_challenge_method="S256", follow_redirects=False, trust_env=False,
                 timeout=10,
