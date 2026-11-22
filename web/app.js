@@ -224,6 +224,14 @@ async function bootstrapAuth() {
     // never fall back to Operly when the DragonZpyder API is unavailable.
     const routing = await api("/dz/status", { csrf: false });
     state.firstParty = routing.web_cutover_enabled === true;
+    if (state.firstParty) {
+      // Voice/Mesh still use the legacy Operly session verifier. Until those
+      // routes receive first-party identity, never expose that old path.
+      const mesh = $("mesh-switch");
+      if (mesh) mesh.hidden = true;
+      const voice = $("companion-open");
+      if (voice) voice.hidden = true;
+    }
     await ensurePersonalSession();
     hideAuth();
     setRuntimeStatus("online", "Personal runtime connected");
@@ -924,6 +932,11 @@ async function logout() {
     await api(state.firstParty ? "/dz/identity/v1/logout" : "/api/auth/logout",
       { method: "POST", body: {} });
   } catch (error) {
+    if (state.firstParty) {
+      // Do not present a successful native sign-out if server revocation failed.
+      showToast("Sign-out could not be confirmed. Try again.", 7000);
+      return;
+    }
     if (!(error instanceof ApiError && [401, 409].includes(error.status))) console.warn("Logout failed", error);
   }
   window.dispatchEvent(new Event("dragonzpyder:logout"));
@@ -945,7 +958,7 @@ function syncComposerAction() {
   const pending = Boolean(messageInput.value.trim()) ||
     Boolean(window.dragonzpyderMesh?.hasAttachments?.());
   const voice = $("companion-open");
-  voice.hidden = pending;
+  voice.hidden = state.firstParty || pending;
   voice.disabled = state.sending || Boolean(window.dragonzpyderMesh?.isBusy?.());
   sendButton.hidden = !pending;
 }
