@@ -307,6 +307,9 @@ async def operly_personal_run(
                 session_id=payload.session_id,
                 conversation_id=payload.conversation_id,
             )]
+        if not payload.scheduled_wake:
+            from .mcp_adapter import reviewed_public_catalog_tools
+            tools = [*tools, *reviewed_public_catalog_tools()]
         direct_receipt = None
         instruction = payload.prompt
         if payload.scheduled_wake:
