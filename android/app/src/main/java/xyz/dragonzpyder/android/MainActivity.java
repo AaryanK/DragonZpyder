@@ -40,7 +40,10 @@ public final class MainActivity extends Activity {
     private LinearLayout root, messages;
     private ScrollView scroll;
     private EditText input;
-    private TextView status;
+    private TextView status, attachmentLabel;
+    private Button modeButton;
+    private JSONObject attachment;
+    private String attachmentName="";
     private String conversation="", lastAnswer="";
     private JSONArray history=new JSONArray();
     private boolean busy, signedIn, meshMode;
@@ -109,9 +112,9 @@ public final class MainActivity extends Activity {
         scroll=new ScrollView(this);scroll.setFillViewport(true);messages=column();scroll.addView(messages);
         root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
         LinearLayout composer=column();GradientDrawable skin=surface(COMPOSER,18);skin.setStroke(dp(1),LINE);composer.setBackground(skin);composer.setElevation(dp(3));composer.setPadding(dp(10),dp(8),dp(10),dp(8));
-        input=field("Ask anything, or give DragonZpyder a task…",false);input.setBackgroundColor(Color.TRANSPARENT);input.setInputType(1|131072);input.setMinLines(2);input.setMaxLines(5);composer.addView(input,new LinearLayout.LayoutParams(-1,-2));
+        input=field("Ask anything, or give DragonZpyder a task…",false);input.setBackgroundColor(Color.TRANSPARENT);input.setInputType(1|131072);input.setMinLines(2);input.setMaxLines(5);composer.addView(input,new LinearLayout.LayoutParams(-1,-2));attachmentLabel=text(attachmentName,12,ACCENT);attachmentLabel.setVisibility(attachment==null?View.GONE:View.VISIBLE);attachmentLabel.setOnClickListener(v->{if(!busy){attachment=null;attachmentName="";attachmentLabel.setVisibility(View.GONE);}});composer.addView(attachmentLabel);
         LinearLayout actions=row();Button add=button("＋",this::showAdd);add.setContentDescription("Open attachment menu");actions.addView(add);
-        actions.addView(button(meshMode?"✦ AI Mesh":"✦ Agent",this::showModes));actions.addView(new View(this),new LinearLayout.LayoutParams(0,1,1));
+        modeButton=button(meshMode?"✦ AI Mesh":"✦ Agent",this::showModes);actions.addView(modeButton);actions.addView(new View(this),new LinearLayout.LayoutParams(0,1,1));
         Button microphone=button("Mic",this::dictate);microphone.setContentDescription("Voice dictation");actions.addView(microphone);Button send=primary("↑",this::send);send.setContentDescription("Send message");actions.addView(send);composer.addView(actions);root.addView(composer);
         if(transcript.isEmpty())welcome();else{welcomeVisible=false;messages.setGravity(Gravity.TOP);for(String[] item:transcript)renderMessage(item[0],item[1]);}
     
@@ -133,7 +136,33 @@ public final class MainActivity extends Activity {
     }
     private void showAccount(){new AlertDialog.Builder(this).setTitle("Personal session").setItems(new String[]{"Sign out"},(d,i)->signOut()).setNegativeButton("Close",null).show();}
     private void showCommands(){new AlertDialog.Builder(this).setTitle("What would you like to do?").setItems(new String[]{"New chat","Find conversations","Switch mode","Approvals","Dictate a message","Toggle appearance"},(d,i)->{switch(i){case 0:newChat();break;case 1:showMenu();break;case 2:showModes();break;case 3:approvals();break;case 4:dictate();break;case 5:toggleTheme();break;}}).setNegativeButton("Close",null).show();}
-    private void showAdd(){new AlertDialog.Builder(this).setTitle("Add to your message").setMessage("File, camera and screen attachments are not available in this native preview.").setPositiveButton("Close",null).show();}
+    private void showAdd(){
+        new AlertDialog.Builder(this).setTitle("Add to your message")
+          .setItems(new String[]{"Attach a file or photo","Camera and screen capture (not yet available)"},(d,i)->{
+            if(i!=0){status.setText("Camera and screen capture are not yet available.");return;}
+            if(!meshMode){status.setText("Choose an AI Mesh model first, then attach a file.");chooseModel();return;}
+            Intent picker=new Intent(Intent.ACTION_OPEN_DOCUMENT);picker.setType("*/*");picker.addCategory(Intent.CATEGORY_OPENABLE);picker.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            try{startActivityForResult(picker,43);}catch(android.content.ActivityNotFoundException e){status.setText("No file picker available.");}
+          }).setNegativeButton("Close",null).show();
+    }
+    private void readAttachment(android.net.Uri uri){
+        submit("Preparing attachment…",()->{
+            String mime=getContentResolver().getType(uri),name="attachment";
+            try(android.database.Cursor c=getContentResolver().query(uri,new String[]{android.provider.OpenableColumns.DISPLAY_NAME},null,null,null)){if(c!=null&&c.moveToFirst())name=c.getString(0);}
+            if(name==null||name.isEmpty()||name.length()>120)throw new Exception("Unsupported filename");
+            if(mime==null)mime="application/octet-stream";
+            boolean image=Arrays.asList("image/jpeg","image/png","image/webp").contains(mime);
+            String extension=name.toLowerCase(Locale.ROOT);
+            if(!image&&!extension.matches(".*\\.(pdf|docx|txt|md|csv|json|py|log)$"))throw new Exception("Unsupported file format");
+            int limit=extension.endsWith(".docx")?1000000:extension.matches(".*\\.(txt|md|csv|json|py|log)$")?250000:3*1024*1024;
+            java.io.ByteArrayOutputStream out=new java.io.ByteArrayOutputStream();
+            try(java.io.InputStream in=getContentResolver().openInputStream(uri)){if(in==null)throw new Exception("Cannot read attachment");byte[] buffer=new byte[8192];int n;while((n=in.read(buffer))!=-1){if(out.size()+n>limit)throw new Exception("Attachment exceeds size limit");out.write(buffer,0,n);}}
+            if(out.size()==0)throw new Exception("Empty file");
+            String encoded="data:"+mime+";base64,"+android.util.Base64.encodeToString(out.toByteArray(),android.util.Base64.NO_WRAP);
+            JSONObject part=image?new JSONObject().put("type","image_url").put("image_url",new JSONObject().put("url",encoded)):new JSONObject().put("type","file").put("file",new JSONObject().put("filename",name).put("file_data",encoded));
+            return new JSONObject().put("name",name).put("part",part);
+        },r->{JSONObject file=(JSONObject)r;attachment=file.getJSONObject("part");attachmentName=file.getString("name");attachmentLabel.setText("×  "+attachmentName);attachmentLabel.setVisibility(View.VISIBLE);},true);
+    }
     private void showModes(){new AlertDialog.Builder(this).setTitle("Choose your intelligence").setItems(new String[]{"DragonZpyder Agent — tasks and tools","AI Mesh — choose a model"},(d,i)->{if(i==0){meshMode=false;newChat();}else chooseModel();}).show();}
     private void welcome(){messages.removeAllViews();welcomeVisible=true;messages.setGravity(Gravity.TOP|Gravity.CENTER_HORIZONTAL);LinearLayout panel=column();panel.setGravity(Gravity.CENTER_HORIZONTAL);panel.setPadding(dp(8),dp(38),dp(8),dp(24));
         if(dark){LinearLayout emblem=column();emblem.setGravity(Gravity.CENTER);GradientDrawable shape=surface(0xff261c1a,19);shape.setStroke(dp(1),0xff683c2b);emblem.setBackground(shape);emblem.addView(logo(40));panel.addView(emblem,new LinearLayout.LayoutParams(dp(65),dp(65)));gap(panel,20);}
@@ -165,24 +194,24 @@ public final class MainActivity extends Activity {
                     if(status!=null)status.setText(signedIn?(meshMode?"AI Mesh · "+model:"Personal agent"):"");
                     done.accept(value);
                 }catch(Exception e){
-                    if(e instanceof DragonApi.ApiError && ((DragonApi.ApiError)e).status==401 && signedIn){api.clear();transcript.clear();conversation="";meshMessages=new JSONArray();meshMode=false;loginScreen("Session expired. Sign in again.");}
+                    if(e instanceof DragonApi.ApiError && ((DragonApi.ApiError)e).status==401 && signedIn){api.clear();attachment=null;attachmentName="";transcript.clear();conversation="";meshMessages=new JSONArray();meshMode=false;loginScreen("Session expired. Sign in again.");}
                     else if(report && status!=null)status.setText(e.getMessage()==null?"Request failed":e.getMessage());
                 }
             });
         });
     }
-    private void newChat(){transcript.clear();conversation="";meshMessages=new JSONArray();lastAnswer="";welcome();status.setText(meshMode?"AI Mesh · "+model:"Personal agent");}
+    private void newChat(){transcript.clear();attachment=null;attachmentName="";if(attachmentLabel!=null)attachmentLabel.setVisibility(View.GONE);if(modeButton!=null)modeButton.setText(meshMode?"✦ AI Mesh":"✦ Agent");conversation="";meshMessages=new JSONArray();lastAnswer="";welcome();status.setText(meshMode?"AI Mesh · "+model:"Personal agent");}
     private void send(){
         String prompt=input.getText().toString().trim();if(prompt.isEmpty())return;
         hideKeyboard(input);input.setText("");if(welcomeVisible){messages.removeAllViews();welcomeVisible=false;}messages.setGravity(Gravity.TOP);append("user",prompt);
         if(meshMode){
             final JSONArray next=new JSONArray();
-            try{for(int i=Math.max(0,meshMessages.length()-10);i<meshMessages.length();i++)next.put(meshMessages.get(i));next.put(new JSONObject().put("role","user").put("content",prompt));}
+            try{for(int i=Math.max(0,meshMessages.length()-10);i<meshMessages.length();i++)next.put(meshMessages.get(i));Object content=attachment==null?prompt:new JSONArray().put(new JSONObject().put("type","text").put("text",prompt)).put(attachment);next.put(new JSONObject().put("role","user").put("content",content));}
             catch(JSONException e){status.setText("Message error");return;}
             submit("Generating…",()->api.call("/mesh/chat",new JSONObject().put("model",model).put("messages",next)),r->{
                 JSONObject answer=(JSONObject)r;String value=answer.optString("message",answer.optString("text",answer.optString("content","")));
                 if(value.isEmpty())throw new Exception("Model did not return text.");
-                meshMessages=next;meshMessages.put(new JSONObject().put("role","assistant").put("content",value));lastAnswer=value;append("assistant",value);
+                attachment=null;attachmentName="";attachmentLabel.setVisibility(View.GONE);meshMessages=next;meshMessages.put(new JSONObject().put("role","assistant").put("content",value));lastAnswer=value;append("assistant",value);
             },true);return;
         }
         final String id=conversation;
@@ -208,7 +237,7 @@ public final class MainActivity extends Activity {
     private void open(String id){
         if(id.isEmpty())return;
         submit("Loading chat…",()->api.call("/api/personal-agent/conversations/"+DragonApi.segment(id)+"/messages",null),r->{
-            meshMode=false;conversation=id;transcript.clear();welcomeVisible=false;messages.removeAllViews();messages.setGravity(Gravity.TOP);JSONArray rows=(JSONArray)r;
+            meshMode=false;if(modeButton!=null)modeButton.setText("✦ Agent");attachment=null;attachmentName="";if(attachmentLabel!=null)attachmentLabel.setVisibility(View.GONE);conversation=id;transcript.clear();welcomeVisible=false;messages.removeAllViews();messages.setGravity(Gravity.TOP);JSONArray rows=(JSONArray)r;
             for(int i=0;i<rows.length();i++){JSONObject item=rows.optJSONObject(i);if(item!=null&&Arrays.asList("user","assistant").contains(item.optString("role")))append(item.optString("role"),item.optString("content"));}
         },true);
     }
@@ -239,7 +268,7 @@ public final class MainActivity extends Activity {
         try{startActivityForResult(intent,42);}
         catch(android.content.ActivityNotFoundException e){status.setText("No speech recognition service available.");}
     }
-    @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(request==42&&result==RESULT_OK&&data!=null&&input!=null){ArrayList<String> words=data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);if(words!=null&&!words.isEmpty())input.setText(words.get(0));}}
-    private void signOut(){submit("Signing out…",()->{api.logout();return null;},r->{conversation="";transcript.clear();meshMode=false;lastAnswer="";meshMessages=new JSONArray();history=new JSONArray();loginScreen("");},true);}
+    @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(request==43&&result==RESULT_OK&&data!=null&&data.getData()!=null){readAttachment(data.getData());return;}if(request==42&&result==RESULT_OK&&data!=null&&input!=null){ArrayList<String> words=data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);if(words!=null&&!words.isEmpty())input.setText(words.get(0));}}
+    private void signOut(){submit("Signing out…",()->{api.logout();return null;},r->{conversation="";attachment=null;attachmentName="";transcript.clear();meshMode=false;lastAnswer="";meshMessages=new JSONArray();history=new JSONArray();loginScreen("");},true);}
     @Override protected void onDestroy(){worker.shutdown();if(tts!=null)tts.shutdown();super.onDestroy();}
 }
