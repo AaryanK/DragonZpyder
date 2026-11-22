@@ -177,7 +177,7 @@ public final class MainActivity extends Activity {
             ScrollView listScroll=new ScrollView(this);LinearLayout list=column();listScroll.addView(list);sidebar.addView(listScroll,new LinearLayout.LayoutParams(-1,0,1));
             Runnable filter=()->{list.removeAllViews();String query=search.getText().toString().toLowerCase(Locale.ROOT);for(int i=0;i<history.length();i++){JSONObject c=history.optJSONObject(i);if(c==null)continue;String name=c.optString("title","Conversation");if(!name.toLowerCase(Locale.ROOT).contains(query))continue;Button b=button(name,()->{drawer.dismiss();open(c.optString("id"));});b.setGravity(Gravity.START|Gravity.CENTER_VERTICAL);list.addView(b);gap(list,3);}};
             search.addTextChangedListener(new android.text.TextWatcher(){public void beforeTextChanged(CharSequence s,int start,int count,int after){}public void onTextChanged(CharSequence s,int start,int before,int count){filter.run();}public void afterTextChanged(android.text.Editable e){}});filter.run();
-            sidebar.addView(button("Approvals",()->{drawer.dismiss();approvals();}));sidebar.addView(button("Account & security",()->{drawer.dismiss();showAccount();}));
+            sidebar.addView(button("Your tools",()->{drawer.dismiss();showTools();}));sidebar.addView(button("Personal tasks",()->{drawer.dismiss();showTasks();}));sidebar.addView(button("Approvals",()->{drawer.dismiss();approvals();}));sidebar.addView(button("Account & security",()->{drawer.dismiss();showAccount();}));
             drawer.setContentView(sidebar);drawer.show();Window w=drawer.getWindow();if(w!=null){w.setBackgroundDrawableResource(android.R.color.transparent);w.setGravity(Gravity.START|Gravity.TOP);w.setLayout(Math.min(dp(285),(int)(getResources().getDisplayMetrics().widthPixels*.88)), -1);}
         },true);
     }
@@ -321,16 +321,80 @@ public final class MainActivity extends Activity {
         },true);
     }
     private void approvals(){
-        submit("Loading approval requests…",()->{
+        submit("Loading approvals…",()->{
             LinkedHashMap<String,JSONObject> all=new LinkedHashMap<>();
-            for(String prefix:new String[]{"/api/personal-tools/approvals","/api/kernel/personal/approvals"}){
+            for(String source:new String[]{"legacy","kernel"}){
+                String prefix=source.equals("kernel")?"/api/kernel/personal/approvals":"/api/personal-tools/approvals";
                 JSONObject payload=(JSONObject)api.call(prefix+"?status=pending",null);
                 JSONArray rows=payload.optJSONArray("approvals");
-                if(rows!=null)for(int i=0;i<rows.length();i++){JSONObject item=rows.optJSONObject(i);if(item!=null&&!item.optString("id").isEmpty())all.put(item.optString("id"),item);}
+                if(rows!=null)for(int i=0;i<rows.length();i++){JSONObject item=rows.optJSONObject(i);if(item!=null&&!item.optString("id").isEmpty()){item.put("native_source",source);all.put(item.optString("id"),item);}}
             }return new JSONArray(all.values());
-        },r->{JSONArray rows=(JSONArray)r;StringBuilder s=new StringBuilder();
-            for(int i=0;i<rows.length();i++){JSONObject item=rows.getJSONObject(i);s.append(item.optString("title",item.optString("capability_id","Pending action"))).append("\n").append(item.optString("arguments")).append("\n\n");}
-            new AlertDialog.Builder(this).setTitle("Pending approvals").setMessage(rows.length()==0?"No pending approvals.":s+"Approval execution is not enabled in this native preview.").setPositiveButton("Close",null).show();
+        },r->renderApprovals((JSONArray)r),true);
+    }
+    private void renderApprovals(JSONArray rows){
+        Dialog dialog=new Dialog(this);LinearLayout page=column();page.setPadding(dp(18),dp(20),dp(18),dp(12));page.setBackgroundColor(BG);
+        page.addView(heading("Pending approvals",26));gap(page,10);page.addView(text("Review the exact action and arguments before allowing execution.",14,MUTED));gap(page,16);
+        ScrollView area=new ScrollView(this);LinearLayout list=column();area.addView(list);page.addView(area,new LinearLayout.LayoutParams(-1,0,1));
+        if(rows.length()==0)list.addView(text("No Personal actions are waiting for approval.",14,MUTED));
+        for(int i=0;i<rows.length();i++){JSONObject item=rows.optJSONObject(i);if(item==null)continue;
+            LinearLayout card=column();GradientDrawable bg=surface(PANEL,16);bg.setStroke(dp(1),LINE);card.setBackground(bg);card.setPadding(dp(14),dp(14),dp(14),dp(14));
+            card.addView(heading(item.optString("capability_id","Personal action"),18));gap(card,8);card.addView(text("Approval: "+item.optString("id"),12,MUTED));
+            if(item.has("arguments_hash"))card.addView(text("Review hash: "+item.optString("arguments_hash"),12,MUTED));
+            if(item.has("expires_at"))card.addView(text("Expires: "+item.optString("expires_at"),12,MUTED));
+            gap(card,10);TextView arguments=text(item.optString("arguments","{}"),14,TEXT);arguments.setTextIsSelectable(true);card.addView(arguments);gap(card,15);
+            LinearLayout actions=row();Button reject=button("Reject",()->confirmApproval(dialog,item,false));Button approve=primary("Approve exact action",()->confirmApproval(dialog,item,true));
+            actions.addView(reject,new LinearLayout.LayoutParams(0,-2,1));actions.addView(approve,new LinearLayout.LayoutParams(0,-2,2));card.addView(actions);list.addView(card);gap(list,12);
+        }
+        page.addView(button("Close",dialog::dismiss));dialog.setContentView(page);dialog.show();Window w=dialog.getWindow();if(w!=null){w.setBackgroundDrawableResource(android.R.color.transparent);w.setLayout(-1,-1);}
+    }
+    private void confirmApproval(Dialog dialog,JSONObject item,boolean approved){
+        new AlertDialog.Builder(this).setTitle(approved?"Approve exact action?":"Reject this action?").setMessage(item.optString("capability_id","Personal action")+"\n\n"+item.optString("arguments","{}")).setNegativeButton("Cancel",null).setPositiveButton(approved?"Approve and execute":"Reject",(d,i)->{
+            dialog.dismiss();submit(approved?"Executing approved action…":"Rejecting action…",()->{
+                String id=DragonApi.segment(item.getString("id"));boolean kernel="kernel".equals(item.optString("native_source"));
+                String root=kernel?"/api/kernel/personal/approvals/":"/api/personal-tools/approvals/";
+                Object decision=api.call(root+id+"/decision",DragonApi.object("approved",approved));
+                if(!approved)return DragonApi.object("decision","rejected");
+                if(kernel)return api.call(root+id+"/execute",new JSONObject());
+                JSONObject contract=decision instanceof JSONObject?(JSONObject)decision:item;
+                String capability=contract.optString("capability_id",item.optString("capability_id"));if(capability.isEmpty())throw new Exception("Approved action missing capability contract; check execution status.");
+                JSONObject arguments=contract.optJSONObject("arguments");if(arguments==null)arguments=item.optJSONObject("arguments");if(arguments==null)arguments=new JSONObject();
+                JSONObject body=new JSONObject().put("goal","").put("arguments",arguments).put("request_id",contract.optString("request_id",item.optString("request_id",UUID.randomUUID().toString()))).put("approval_id",contract.optString("id",item.getString("id")));
+                String conversation=contract.optString("conversation_id",item.optString("conversation_id"));if(!conversation.isEmpty())body.put("conversation_id",conversation);
+                return api.call("/api/personal-tools/"+DragonApi.segment(capability)+"/execute",body);
+            },result->{
+                JSONObject value=result instanceof JSONObject?(JSONObject)result:new JSONObject();
+                String reported=value.optString("status",value.optString("decision","unspecified"));
+                new AlertDialog.Builder(this).setTitle(approved?"Execution result":"Decision recorded").setMessage("Server status: "+reported+"\n\n"+value.toString()).setPositiveButton("Close",null).show();
+            },true);
+        }).show();
+    }
+    private void showTools(){
+        submit("Discovering tools…",()->api.call("/api/personal-tools",null),r->{
+            JSONArray tools=((JSONObject)r).optJSONArray("tools");if(tools==null)throw new Exception("Capability catalog unavailable.");
+            String[] labels=new String[tools.length()];for(int i=0;i<labels.length;i++){JSONObject item=tools.getJSONObject(i);labels[i]=item.optString("name",item.optString("id","Capability"));}
+            new AlertDialog.Builder(this).setTitle("Your tools").setItems(labels,(d,i)->{
+                JSONObject t=tools.optJSONObject(i);if(t==null)return;
+                new AlertDialog.Builder(this).setTitle(labels[i]).setMessage(t.optString("description")+"\n\nRisk: "+t.optString("risk","Policy-controlled")+"\nApproval: "+(t.optBoolean("approval_required")?"Required":"Determined by policy")).setPositiveButton("Close",null).show();
+            }).setNegativeButton("Close",null).show();
+        },true);
+    }
+    private JSONObject workflowRead(String id) throws Exception {
+        JSONObject result=(JSONObject)api.call("/api/personal-tools/"+DragonApi.segment(id)+"/execute",new JSONObject().put("arguments",DragonApi.object("limit",100)).put("goal","View my Personal workflow activity"));
+        if(!result.optBoolean("done",true)||"failed".equals(result.optString("status")))throw new Exception("Unable to read workflow record.");
+        JSONObject payload=result.optJSONObject("result");if(payload==null)return new JSONObject();JSONObject value=payload.optJSONObject("value");return value==null?payload:value;
+    }
+    private void showTasks(){
+        submit("Loading Personal workflows…",()->{
+            JSONObject catalog=(JSONObject)api.call("/api/personal-tools?query=workflow&limit=100",null);
+            JSONArray rows=catalog.optJSONArray("tools");HashSet<String> ids=new HashSet<>();if(rows!=null)for(int i=0;i<rows.length();i++){JSONObject t=rows.optJSONObject(i);if(t!=null)ids.add(t.optString("id"));}
+            if(!ids.contains("workflow.list"))throw new Exception("Workflow discovery is unavailable for this Personal session.");
+            JSONObject definitions=workflowRead("workflow.list");JSONObject activity=ids.contains("workflow.run.list")?workflowRead("workflow.run.list"):new JSONObject();
+            return new JSONObject().put("definitions",definitions).put("activity",activity);
+        },r->{JSONObject data=(JSONObject)r;JSONArray workflows=data.getJSONObject("definitions").optJSONArray("workflows");JSONArray runs=data.getJSONObject("activity").optJSONArray("runs");
+            StringBuilder content=new StringBuilder("WORKFLOWS\n");if(workflows==null||workflows.length()==0)content.append("No workflows returned.\n");
+            else for(int i=0;i<workflows.length();i++){JSONObject w=workflows.optJSONObject(i);if(w!=null)content.append(w.optString("name",w.optString("id"))).append(" · ").append(w.optString("status",w.optBoolean("enabled")?"Enabled":"Unknown")).append("\n");}
+            content.append("\nRECENT RUNS\n");if(runs==null||runs.length()==0)content.append("No runs returned.");else for(int i=0;i<runs.length();i++){JSONObject run=runs.optJSONObject(i);if(run!=null)content.append(run.optString("workflow_name",run.optString("workflow_id","Run"))).append(" · ").append(run.optString("status","Unknown")).append("\n");}
+            new AlertDialog.Builder(this).setTitle("Personal tasks").setMessage(content.toString()).setPositiveButton("Close",null).show();
         },true);
     }
     private void dictate(){
