@@ -163,6 +163,7 @@ export function PersonalTemplate() {
             <button className="prompt-chip" data-prompt="Help me plan a project from scratch.">Plan a project</button>
             <button className="prompt-chip" data-prompt="Help me turn my notes into a clear draft.">Write something</button>
           </div>
+          <IosInstallHint />
         </section>
         <section className="messages" id="messages" aria-live="polite"></section>
       </main>
