@@ -51,7 +51,7 @@ dependencies {
     implementation 'androidx.compose.foundation:foundation'
     implementation 'androidx.credentials:credentials:1.6.0'
     implementation 'androidx.credentials:credentials-play-services-auth:1.6.0'
-    implementation 'com.google.android.libraries.identity.googleid:googleid:1.2.1'
+    implementation 'com.google.android.libraries.identity.googleid:googleid:1.1.1'
     implementation 'androidx.browser:browser:1.8.0'
     implementation 'org.commonmark:commonmark:0.32.0'
     implementation 'org.commonmark:commonmark-ext-gfm-tables:0.32.0'

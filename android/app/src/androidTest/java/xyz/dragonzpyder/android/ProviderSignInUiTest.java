@@ -2,7 +2,7 @@ package xyz.dragonzpyder.android;
 
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.Button;
+import android.widget.TextView;
 import androidx.test.core.app.ActivityScenario;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import java.util.HashSet;
@@ -14,7 +14,8 @@ import static org.junit.Assert.*;
 @RunWith(AndroidJUnit4.class)
 public final class ProviderSignInUiTest {
     private void collect(View view,Set<String> labels){
-        if(view instanceof Button)labels.add(((Button)view).getText().toString());
+        if(view instanceof TextView)labels.add(((TextView)view).getText().toString());
+        if(view.getContentDescription()!=null)labels.add(view.getContentDescription().toString());
         if(view instanceof ViewGroup){
             ViewGroup parent=(ViewGroup)view;
             for(int i=0;i<parent.getChildCount();i++)collect(parent.getChildAt(i),labels);
