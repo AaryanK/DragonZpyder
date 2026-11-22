@@ -253,14 +253,22 @@ async def dispatch(path: str, request: Request):
                 return JSONResponse({"detail": "Origin rejected"}, status_code=403)
         return await proxy(request, API, rewrite_origin=True, upstream_path=native)
     if route.startswith("/api/"):
-        # Compatibility only: legacy Operly auth/business endpoints remain
-        # isolated while clients migrate to /dz/. Do not add new agent routes.
+        # Native cutover must never silently re-enter the old Operly runtime.
+        if os.getenv("DRAGONZPYDER_FIRST_PARTY_WEB_CUTOVER_ENABLED") == "1":
+            return JSONResponse({"detail": {"code": "LEGACY_OPERLY_ROUTE_RETIRED",
+                "message": "Use DragonZpyder's first-party API and optional MCP connections."}},
+                status_code=410)
+        # Compatibility only until explicitly approved native cutover.
         return await proxy(request, OPERLY, rewrite_origin=True)
     if route.startswith("/internal/v1/"):
         return await proxy(request, API)
     if route == "/companion/realtime":
+        if os.getenv("DRAGONZPYDER_FIRST_PARTY_WEB_CUTOVER_ENABLED") == "1":
+            return JSONResponse({"detail": "First-party voice authorization not ready"}, status_code=503)
         return await realtime(request)
     if route.startswith("/mesh/"):
+        if os.getenv("DRAGONZPYDER_FIRST_PARTY_WEB_CUTOVER_ENABLED") == "1":
+            return JSONResponse({"detail": "First-party Mesh authorization not ready"}, status_code=503)
         return await mesh(request)
     if request.method in ("GET", "HEAD") and route in LEGACY_PAGE_ROUTES:
         query = ("?" + request.url.query) if request.url.query else ""
