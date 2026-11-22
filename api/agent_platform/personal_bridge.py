@@ -354,6 +354,7 @@ async def operly_personal_run(
             )[:12000]
         agent = build_frontier_agent(
             model_client(), checkpointer, delegated_tools=tools,
+            product_surface="operly",
         )
     except (ValueError, RuntimeError, asyncio.TimeoutError) as error:
         # No model query or credentials are included in HTTP error payload.
