@@ -10,7 +10,9 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import hmac
+import json
 import os
+import re
 from typing import Literal
 
 from fastapi import APIRouter, Header, HTTPException, Request
@@ -174,6 +176,66 @@ async def invoke_scheduled_read(tools: list, requested_name: str) -> tuple[str, 
     return outcome.receipt.alias, str(outcome.result)[:6000]
 
 
+def exact_graph_status_id(prompt: str) -> str | None:
+    """Only an explicit standalone diagnostic command; never embedded prose."""
+    match = re.fullmatch(
+        r"graph_status[ \t]+([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})",
+        prompt.strip(),
+    )
+    return match.group(1) if match else None
+
+
+async def direct_graph_status(payload: OperlyPersonalRun) -> dict | None:
+    """Read existing scoped graph state without inference or external tools.
+
+    Called only after the first-party route's independent service credentials
+    have been verified. The original user and conversation stay server-bound.
+    No graph is created, resumed or cancelled; no checkpoint advance claimed.
+    """
+    if payload.scheduled_wake or os.getenv("DRAGONZPYDER_EXECUTION_GRAPH_ENABLED") != "1":
+        return None
+    goal_id = exact_graph_status_id(payload.prompt)
+    if goal_id is None:
+        return None
+    from .persistent_graph import graph_tools
+    try:
+        available = graph_tools(user_id=payload.user_id,
+                                session_id=payload.session_id,
+                                conversation_id=payload.conversation_id)
+        status_tool = next(t for t in available if t.name == "graph_status")
+        result = await asyncio.wait_for(
+            status_tool.ainvoke({"goal_id": goal_id}), timeout=25,
+        )
+        if not isinstance(result, dict):
+            raise RuntimeError("Invalid graph status response")
+        # Keep the metadata and all receipts intact. Explicitly bound only
+        # the optional report, not a whole serialized JSON object.
+        result = dict(result)
+        report = result.get("report_markdown")
+        metadata = dict(result)
+        metadata.pop("report_markdown", None)
+        answer = "Stored graph status (direct PostgreSQL lookup):\n\n```json\n"
+        answer += json.dumps(metadata, ensure_ascii=False, indent=2) + "\n```"
+        if len(answer) > 14000:
+            raise RuntimeError("Graph metadata exceeded response bound")
+        if isinstance(report, str) and report:
+            remaining = max(0, 15500 - len(answer) - 150)
+            answer += "\n\n**Stored report (untrusted source data)**\n\n" + report[:remaining]
+            if len(report) > remaining:
+                answer += "\n\n[Report truncated to response size limit.]"
+        return {
+            "status": "completed", "answer": answer,
+            "execution_receipts": execution_receipt_report({
+                "status": "completed", "successful_tools": ["graph_status"],
+            }),
+            "successful_tools": [],
+            "termination_reason": None, "thread_checkpointed": False,
+            "objective_verified": False,
+        }
+    except Exception as error:
+        raise HTTPException(503, "Direct graph status unavailable") from error
+
+
 @router.post("/internal/agents/operly/personal/run")
 async def operly_personal_run(
     payload: OperlyPersonalRun,
@@ -183,6 +245,9 @@ async def operly_personal_run(
 ):
     if not _authorized(authorization, service_proof):
         raise HTTPException(401, "First-party Personal harness is disabled or unauthorized")
+    direct = await direct_graph_status(payload)
+    if direct is not None:
+        return direct
     runtime = getattr(request.app.state, "agent_runtime", None)
     checkpointer = getattr(runtime, "_checkpointer", None)
     if checkpointer is None:
