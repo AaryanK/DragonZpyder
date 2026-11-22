@@ -86,6 +86,41 @@ final class DragonApi {
             return payload;
         } finally { connection.disconnect(); }
     }
+    interface Delta { void accept(String text); }
+    private volatile HttpURLConnection activeStream;
+    private volatile boolean streamCancelled;
+    void prepareStream(){streamCancelled=false;}
+    void cancelStream(){streamCancelled=true;HttpURLConnection c=activeStream;if(c!=null)c.disconnect();}
+    synchronized String streamChat(JSONObject body,Delta listener) throws Exception{
+        if(streamCancelled)throw new IOException("Reply stopped");
+        HttpURLConnection c=(HttpURLConnection)ORIGIN.resolve("/mesh/chat-stream").toURL().openConnection();
+        activeStream=c;c.setInstanceFollowRedirects(false);c.setConnectTimeout(15000);c.setReadTimeout(90000);
+        c.setRequestMethod("POST");c.setDoOutput(true);c.setRequestProperty("Content-Type","application/json");c.setRequestProperty("Accept","text/event-stream");c.setRequestProperty("Cache-Control","no-store");
+        String token=csrf(ORIGIN);String cookieHeader=cookies.header();
+        try{
+            if(token.isEmpty()||cookieHeader.isEmpty())throw new ApiError(401,"Secure session missing");
+            c.setRequestProperty("X-CSRF-Token",token);c.setRequestProperty("Cookie",cookieHeader);
+            if(streamCancelled)throw new IOException("Reply stopped");
+            try(OutputStream out=c.getOutputStream()){out.write(body.toString().getBytes(StandardCharsets.UTF_8));}
+            int status=c.getResponseCode();cookies.receive(c.getHeaderFields());
+            if(status==401)clear();else if(status>=200&&status<300)persist();
+            if(status<200||status>=300)throw new ApiError(status,"Streaming request failed ("+status+")");
+            if(c.getContentType()==null||!c.getContentType().startsWith("text/event-stream"))throw new IOException("Unexpected streaming response");
+            StringBuilder answer=new StringBuilder();boolean done=false;
+            try(BufferedReader reader=new BufferedReader(new InputStreamReader(c.getInputStream(),StandardCharsets.UTF_8))){
+                String line;while(!streamCancelled&&(line=reader.readLine())!=null){
+                    if(!line.startsWith("data:"))continue;
+                    if(line.length()>65536)throw new IOException("Stream event too large");
+                    JSONObject event=new JSONObject(line.substring(5).trim());String type=event.optString("type");
+                    if("delta".equals(type)){String delta=event.optString("text");answer.append(delta);if(answer.length()>12500)throw new IOException("Reply too large");listener.accept(delta);}
+                    else if("error".equals(type)||"notice".equals(type))throw new IOException(event.optString("message","Stream interrupted"));
+                    else if("done".equals(type)){done=true;break;}
+                }
+            }
+            if(streamCancelled)throw new IOException("Reply stopped");if(!done)throw new IOException("Reply interrupted before completion");
+            return answer.toString();
+        }finally{activeStream=null;c.disconnect();}
+    }
     private void bootstrap() throws Exception {
         clear();
         JSONObject result=(JSONObject)call("/api/auth/bootstrap",null);
