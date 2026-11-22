@@ -14,7 +14,7 @@ from typing import Literal
 from fastapi import APIRouter, Header, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 
-from .personal_bridge import _authorized, execution_receipt_report
+from .personal_bridge import _authorized, execution_receipt_report, checkpoint_advanced_for_prompt
 
 router = APIRouter()
 
@@ -78,6 +78,10 @@ async def run_workspace(
         ),
     }, "recursion_limit": 48}
     try:
+        previous = await agent.aget_state(config)
+    except Exception:
+        previous = None
+    try:
         result = await asyncio.wait_for(agent.ainvoke({
             "messages": [{"role": "user", "content": payload.prompt}],
         }, config=config), timeout=90)
@@ -89,7 +93,10 @@ async def run_workspace(
     try:
         checkpoint = await agent.aget_state(config)
         values = getattr(checkpoint, "values", None)
-        checkpointed = isinstance(values, dict) and bool(values.get("messages"))
+        checkpointed = (
+            isinstance(values, dict)
+            and checkpoint_advanced_for_prompt(previous, checkpoint, payload.prompt)
+        )
     except Exception:
         checkpointed = False
     if not checkpointed:
