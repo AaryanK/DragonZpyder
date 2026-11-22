@@ -112,16 +112,20 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private void authSuccess(){restorePending=false;restoredDraft="";restoredConversation="";authEmail="";challengeId="";signedIn=true;accountOpen=false;chatScreen();loadHistory(true);}
     private MobileOAuthStore mobileOAuth;
     private Intent queuedOAuthIntent;
-    private Button providerButton(String symbol,String title,int identityColor,Runnable action){
-        Button button=button(symbol+"   "+title,action);
-        button.setContentDescription(title);
-        button.setTextSize(15);
-        button.setGravity(Gravity.CENTER);
-        GradientDrawable shape=surface(dark?0xff282529:0xffffffff,14);
-        shape.setStroke(dp(1),dark?0xff65514a:0xffded5cf);
-        button.setBackground(new android.graphics.drawable.RippleDrawable(
-            android.content.res.ColorStateList.valueOf(dark?0x33ffffff:0x18000000),shape,null));
-        return button;
+    private LinearLayout providerButton(String symbol,String title,int identityColor,Runnable action){
+        LinearLayout row=row();row.setMinHeight(dp(56));row.setPadding(dp(14),dp(6),dp(12),dp(6));
+        TextView mark=text(symbol,22,identityColor);mark.setTypeface(Typeface.create("sans-serif-black",Typeface.BOLD));
+        mark.setGravity(Gravity.CENTER);row.addView(mark,new LinearLayout.LayoutParams(dp(32),dp(44)));
+        TextView label=text(title,15,TEXT);label.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));
+        LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,-2,1);lp.setMargins(dp(9),0,0,0);
+        row.addView(label,lp);TextView arrow=text("›",23,MUTED);
+        row.addView(arrow,new LinearLayout.LayoutParams(dp(18),-2));
+        GradientDrawable bg=surface(dark?0xff292427:0xffffffff,16);bg.setStroke(dp(1),LINE);
+        row.setBackground(new android.graphics.drawable.RippleDrawable(
+            android.content.res.ColorStateList.valueOf(dark?0x33ffffff:0x18000000),bg,null));
+        row.setContentDescription(title);row.setClickable(true);row.setFocusable(true);
+        row.setOnClickListener(v->{if(!busy)action.run();});
+        return row;
     }
     private void startGoogleSignIn(){
         if(busy)return;
@@ -288,7 +292,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         sidebar.addView(navRow("◎","Account & security",false,()->{drawer.dismiss();showAccount();}));
         gap(sidebar,10);EditText search=field("Find conversations",false);search.setSingleLine(true);search.setContentDescription("Find conversations");sidebar.addView(search);gap(sidebar,14);
         TextView label=text("YOUR CONVERSATIONS",10,MUTED);label.setLetterSpacing(.10f);label.setPadding(dp(10),0,0,dp(6));sidebar.addView(label);
-        ScrollView listScroll=new ScrollView(this);LinearLayout list=column();listScroll.addView(list);sidebar.addView(listScroll,new LinearLayout.LayoutParams(-1,0,1));
+        ScrollView listScroll=new ScrollView(this);listScroll.setFillViewport(false);listScroll.setClipToPadding(false);listScroll.setPadding(0,0,0,dp(22));listScroll.setVerticalScrollBarEnabled(true);LinearLayout list=column();listScroll.addView(list);sidebar.addView(listScroll,new LinearLayout.LayoutParams(-1,0,1));
         Runnable filter=()->{
             list.removeAllViews();String query=search.getText().toString().toLowerCase(Locale.ROOT);int count=0;
             for(int i=0;i<history.length();i++){JSONObject c=history.optJSONObject(i);if(c==null)continue;
@@ -299,7 +303,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         };
         search.addTextChangedListener(new android.text.TextWatcher(){public void beforeTextChanged(CharSequence s,int start,int count,int after){}public void onTextChanged(CharSequence s,int start,int before,int count){filter.run();}public void afterTextChanged(android.text.Editable e){}});
         filter.run();
-        View rule=new View(this);rule.setBackgroundColor(LINE);sidebar.addView(rule,new LinearLayout.LayoutParams(-1,dp(1)));
+        View rule=new View(this);rule.setBackgroundColor(LINE);LinearLayout.LayoutParams footerRule=new LinearLayout.LayoutParams(-1,dp(1));footerRule.topMargin=dp(5);footerRule.bottomMargin=dp(5);sidebar.addView(rule,footerRule);
         LinearLayout footer=row();footer.addView(navRow("◷","Tasks",false,()->{drawer.dismiss();showTasks();}),new LinearLayout.LayoutParams(0,dp(48),1));
         footer.addView(navRow("◇","Approvals",false,()->{drawer.dismiss();approvals();}),new LinearLayout.LayoutParams(0,dp(48),1));sidebar.addView(footer);
         sidebar.addView(navRow("▦","More commands",false,()->{drawer.dismiss();showCommands();}));
