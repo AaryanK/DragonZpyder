@@ -20,7 +20,7 @@ from typing import Any, Mapping, Sequence
 from urllib.parse import urlsplit
 
 _PROVIDER = re.compile(r"^[a-z][a-z0-9_-]{0,30}$")
-_CAPABILITY = re.compile(r"^[a-z][a-z0-9_.:-]{1,159}$")
+_CAPABILITY = re.compile(r"^[A-Za-z0-9_.:-]{1,160}$")
 _ALIAS = re.compile(r"^[a-z][a-z0-9_]{1,63}$")
 
 
@@ -55,13 +55,19 @@ class ToolOutcome:
 
 
 def tool_alias(provider_id: str, capability_id: str) -> str:
-    """Stable, model-safe alias. No provider-specific switch statements."""
+    """Preserve established aliases; hash names that do not fit legacy aliases.
+
+    The durable identity remains the exact (provider_id, capability_id) pair.
+    A collision among legacy aliases fails closed at direct binding; the lazy
+    catalog resolves exact identities separately instead of guessing aliases.
+    """
     if not _PROVIDER.fullmatch(provider_id) or not _CAPABILITY.fullmatch(capability_id):
         raise ValueError("Invalid MCP provider/capability identifier")
     alias = provider_id + "_" + re.sub(r"[.:-]", "_", capability_id)
-    if not _ALIAS.fullmatch(alias):
-        raise ValueError("MCP tool alias is invalid or too long")
-    return alias
+    if _ALIAS.fullmatch(alias):
+        return alias
+    digest = hashlib.sha256((provider_id + "\0" + capability_id).encode()).hexdigest()[:24]
+    return provider_id + "_mcp_" + digest
 
 
 def _connection(grant: McpGrant) -> dict:
@@ -143,7 +149,16 @@ def _json_bytes(value: Any) -> bytes:
     return json.dumps(value, sort_keys=True, default=str, ensure_ascii=False).encode("utf-8")
 
 
-def _tool_failed(value: Any) -> bool:
+def _tool_failed(value: Any, *, _depth: int = 0) -> bool:
+    """Recognize protocol failure and structured business failure envelopes.
+
+    MCP content may arrive as a list of text blocks via the SDK. Only parse
+    bounded JSON objects/arrays, never natural language or arbitrary code.
+    A business payload may have its own status vocabulary; unknown status
+    does not prove objective completion, even when transport succeeded.
+    """
+    if _depth > 8:
+        return False
     if getattr(value, "status", None) == "error":
         return True
     if getattr(value, "isError", False) is True:
@@ -151,12 +166,63 @@ def _tool_failed(value: Any) -> bool:
     if isinstance(value, dict):
         if value.get("isError") is True or value.get("ok") is False:
             return True
-        if value.get("status") in ("error", "failed", "approval_required", "waiting_for_approval"):
+        if value.get("status") in ("error", "failed", "approval_required",
+                                   "waiting_for_approval", "denied", "blocked"):
             return True
-    # A LangChain/MCP adapter may deliver a content list.
+        if value.get("type") == "text":
+            return _tool_failed(value.get("text"), _depth=_depth + 1)
+        for key in ("structuredContent", "content"):
+            if key in value and _tool_failed(value[key], _depth=_depth + 1):
+                return True
     if isinstance(value, list):
-        return any(_tool_failed(item) for item in value)
+        return any(_tool_failed(item, _depth=_depth + 1) for item in value)
+    if isinstance(value, str) and len(value) <= 100000 and value.lstrip()[:1] in ("{", "["):
+        try:
+            decoded = json.loads(value)
+        except ValueError:
+            return False
+        return _tool_failed(decoded, _depth=_depth + 1)
     return False
+
+
+def input_schema(tool: Any) -> dict:
+    """Use the actual MCP JSON schema, not a lossy inferred Pydantic model."""
+    raw = getattr(tool, "args_schema", None)
+    if isinstance(raw, dict):
+        return raw
+    schema_fn = getattr(tool, "get_input_schema", None)
+    if not callable(schema_fn):
+        raise ValueError("MCP tool input schema unavailable")
+    schema = schema_fn()
+    if isinstance(schema, dict):
+        return schema
+    if hasattr(schema, "model_json_schema"):
+        return schema.model_json_schema()
+    raise ValueError("MCP tool input schema unavailable")
+
+
+def schema_digest(schema: dict) -> str:
+    return hashlib.sha256(_json_bytes(schema)).hexdigest()
+
+
+def validate_arguments(tool: Any, arguments: dict) -> None:
+    raw = getattr(tool, "args_schema", None)
+    schema_fn = getattr(tool, "get_input_schema", None)
+    if not isinstance(raw, dict) and callable(schema_fn):
+        schema_model = schema_fn()
+        if hasattr(schema_model, "model_validate"):
+            schema_model.model_validate(arguments)
+            return
+    schema = input_schema(tool)
+    from jsonschema.validators import validator_for
+    from referencing import Registry
+    validator = validator_for(schema)
+    validator.check_schema(schema)
+    # Never fetch a remote reference while validating model-controlled input.
+    try:
+        validator(schema, registry=Registry()).validate(arguments)
+    except Exception as error:
+        raise ValueError("MCP arguments do not satisfy the advertised schema") from error
 
 
 async def invoke_granted_mcp_tool(
@@ -164,6 +230,7 @@ async def invoke_granted_mcp_tool(
     approved_ids: frozenset[str], arguments: dict,
     unattended_read_ids: frozenset[str] | None = None,
     timeout_seconds: int = 18,
+    expected_schema_sha256: str | None = None,
 ) -> ToolOutcome:
     """Invoke the same adapted tool callable used by chat agents.
 
@@ -184,15 +251,10 @@ async def invoke_granted_mcp_tool(
     if len(matched) != 1:
         raise ValueError("Authorized MCP tool not discovered uniquely")
     selected = matched[0]
-    schema_fn = getattr(selected, "get_input_schema", None)
-    if callable(schema_fn):
-        schema = schema_fn()
-        if hasattr(schema, "model_validate"):
-            schema.model_validate(arguments)
-        else:
-            required = schema.model_json_schema().get("required", [])
-            if any(key not in arguments for key in required):
-                raise ValueError("Scheduled MCP call requires missing arguments")
+    if expected_schema_sha256 is not None:
+        if schema_digest(input_schema(selected)) != expected_schema_sha256:
+            raise ValueError("MCP tool schema changed; describe again before invocation")
+    validate_arguments(selected, arguments)
     if not 1 <= timeout_seconds <= 120:
         raise ValueError("Invalid MCP execution timeout")
 
