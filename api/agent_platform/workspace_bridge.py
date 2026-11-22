@@ -66,6 +66,8 @@ async def run_workspace(
             approved_tool_names=approved,
             max_tools=20,
         ), timeout=20)
+        if not tools:
+            raise ValueError("Authorized Workspace capability set is empty")
         # Never mix Personal goals, Personal token tools or unscoped tools
         # into a delegated Operly business Workspace.
         agent = build_frontier_agent(model_client(), checkpointer, delegated_tools=tools)
