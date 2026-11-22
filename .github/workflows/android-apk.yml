@@ -1,7 +1,7 @@
 name: Android APK
 on:
   push:
-    branches: [develop, feat/android-apk]
+    branches: [develop, feat/android-apk, release/android-play-beta-20261122]
     paths: ["android/**", ".github/workflows/android-apk.yml"]
   pull_request:
     paths: ["android/**", ".github/workflows/android-apk.yml"]
