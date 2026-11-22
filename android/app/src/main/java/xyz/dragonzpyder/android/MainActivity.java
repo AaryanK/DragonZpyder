@@ -69,6 +69,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         loginScreen("");
         submit("Checking secure session…",()->api.restore(getApplicationContext()),result->{
             if(Boolean.TRUE.equals(result)){signedIn=true;chatScreen();if(restorePending&&chatUi!=null)chatUi.setDraft(restoredDraft);loadHistory(true);}
+            else processOAuthIntent(getIntent());
         },true);
     }
     private int dp(float n){return Math.round(n*getResources().getDisplayMetrics().density);}
@@ -108,6 +109,80 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private boolean strong(String p){if(p.length()<12){setStatus("Use at least 12 characters for your password.");return false;}return true;}
     private boolean six(String code){if(!code.matches("[0-9]{6}")){setStatus("Enter the six-digit code.");return false;}return true;}
     private void authSuccess(){restorePending=false;restoredDraft="";restoredConversation="";authEmail="";challengeId="";signedIn=true;accountOpen=false;chatScreen();loadHistory(true);}
+    private final MobileOAuthStore mobileOAuth=new MobileOAuthStore(this);
+    private Intent queuedOAuthIntent;
+    private Button providerButton(String symbol,String title,int identityColor,Runnable action){
+        Button button=button(symbol+"   "+title,action);
+        button.setContentDescription(title);
+        button.setTextSize(15);
+        button.setGravity(Gravity.CENTER);
+        GradientDrawable shape=surface(dark?0xff282529:0xffffffff,14);
+        shape.setStroke(dp(1),dark?0xff65514a:0xffded5cf);
+        button.setBackground(new android.graphics.drawable.RippleDrawable(
+            android.content.res.ColorStateList.valueOf(dark?0x33ffffff:0x18000000),shape,null));
+        return button;
+    }
+    private void startGoogleSignIn(){
+        if(busy)return;
+        submit("Preparing Google sign-in…",()->api.googleBootstrap(),data->{
+            JSONObject info=(JSONObject)data;
+            GoogleCredentialLogin.start(this,
+                info.optString("client_id"),info.optString("nonce"),
+                runnable->runOnUiThread(runnable),
+                token->submit("Verifying Google account…",()->{
+                    api.loginWithGoogle(token);return Boolean.TRUE;
+                },result->authSuccess(),true),
+                reason->setStatus(reason));
+        },true);
+    }
+    private void startDiscordSignIn(){
+        if(busy)return;
+        submit("Checking Discord sign-in…",()->api.discordMobileAvailable(),enabled->{
+            if(!Boolean.TRUE.equals(enabled)){
+                setStatus("Discord sign-in requires the secure mobile OAuth backend to be enabled.");
+                return;
+            }
+            try{
+                String state=MobileOAuthStore.randomToken();
+                String verifier=MobileOAuthStore.randomToken();
+                mobileOAuth.begin(state,verifier);
+                String challenge=MobileOAuthStore.challenge(verifier);
+                String url="https://dragonzpyder.xyz/api/identities/discord/mobile/start"+
+                    "?state="+android.net.Uri.encode(state)+"&code_challenge="+android.net.Uri.encode(challenge);
+                androidx.browser.customtabs.CustomTabsIntent intent=
+                    new androidx.browser.customtabs.CustomTabsIntent.Builder().setShowTitle(true).build();
+                intent.launchUrl(this,android.net.Uri.parse(url));
+                setStatus("Complete Discord sign-in in your browser to return securely.");
+            }catch(Exception error){
+                mobileOAuth.clear();
+                setStatus("Could not open secure Discord sign-in on this device.");
+            }
+        },true);
+    }
+    private void processOAuthIntent(Intent intent){
+        if(intent==null||intent.getData()==null)return;
+        android.net.Uri uri=intent.getData();
+        if(!"dragonzpyder".equals(uri.getScheme())||!"auth".equals(uri.getHost())||
+            !"/discord".equals(uri.getPath()))return;
+        if(busy){queuedOAuthIntent=intent;return;}
+        queuedOAuthIntent=null;
+        setIntent(new Intent(this,MainActivity.class));
+        String ticket=uri.getQueryParameter("ticket");
+        String state=uri.getQueryParameter("state");
+        if(ticket==null||state==null||!ticket.matches("[A-Za-z0-9_-]{40,120}")){
+            mobileOAuth.clear();setStatus("Discord sign-in returned an invalid response.");return;
+        }
+        String[] proof=mobileOAuth.take(state);
+        if(proof==null){setStatus("Discord device verification expired. Please start again.");return;}
+        final String verifier=proof[1];
+        submit("Completing Discord sign-in…",()->{
+            api.redeemDiscordMobile(ticket,verifier);return Boolean.TRUE;
+        },result->authSuccess(),true);
+    }
+    @Override protected void onNewIntent(Intent intent){
+        super.onNewIntent(intent);setIntent(intent);
+        processOAuthIntent(intent);
+    }
     private void authScreen(String mode,String message){
         signedIn=false;accountOpen=false;chatUi=null;authMode=mode;getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);accountLayout();
         sectionLabel(accountPage,"ONE IDENTITY · YOUR INTELLIGENCE");accountPage.addView(heading("Always yours.",38));gap(accountPage,8);accountPage.addView(text("Your conversations, personal AI, and authorised connections—all in one account.",14,MUTED));gap(accountPage,22);
