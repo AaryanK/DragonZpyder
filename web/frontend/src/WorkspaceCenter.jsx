@@ -61,7 +61,7 @@ function Empty({ title, children }) { return <div className="dz-center-empty"><s
 
 export function WorkspaceCenter() {
   const [open, setOpen] = useState(false);
-  const [native, setNative] = useState(() => Boolean(window.dragonzpyderNativeMode));
+  const [native, setNative] = useState(() => typeof window !== "undefined" && Boolean(window.dragonzpyderNativeMode));
   const [page, setPage] = useState("connections");
   useEffect(() => {
     const sync = event => setNative(event.detail?.firstParty === true);
