@@ -59,3 +59,29 @@ def test_web_cutover_requires_explicit_flag(monkeypatch):
         assert client.get("/dz/status").json() == {"web_cutover_enabled": False}
         monkeypatch.setenv("DRAGONZPYDER_FIRST_PARTY_WEB_CUTOVER_ENABLED", "1")
         assert client.get("/dz/status").json() == {"web_cutover_enabled": True}
+
+
+def test_native_cutover_never_uses_operly_mesh_voice_or_legacy_auth(monkeypatch):
+    monkeypatch.setenv("DRAGONZPYDER_FIRST_PARTY_WEB_CUTOVER_ENABLED", "1")
+    upstream = []
+    def handler(request):
+        upstream.append(str(request.url))
+        return httpx.Response(200, json={"ok": True})
+    with TestClient(app, base_url="https://www.dragonzpyder.xyz") as client:
+        original = client.app.state.http
+        client.app.state.http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        try:
+            for route in [
+                "/api/auth/login", "/api/personal-agent/chat",
+                "/api/personal-tools", "/api/agent/chat",
+            ]:
+                assert client.post(route).status_code == 410
+            assert client.get("/mesh/models").status_code == 503
+            assert client.get("/companion/realtime").status_code == 503
+            assert upstream == [], "Native cutover must not contact legacy Operly."
+            response = client.post("/dz/identity/v1/provider/google/start",
+                headers={"origin": "https://www.dragonzpyder.xyz"})
+            assert response.status_code == 200
+            assert upstream == ["https://api.dragonzpyder.xyz/identity/v1/provider/google/start"]
+        finally:
+            client.app.state.http = original
