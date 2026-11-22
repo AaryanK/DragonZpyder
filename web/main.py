@@ -76,7 +76,7 @@ async def secure_headers(request: Request, call_next):
     return response
 
 
-async def proxy(request: Request, destination: str, rewrite_origin=False):
+async def proxy(request: Request, destination: str, rewrite_origin=False, upstream_path=None):
     # Fixed trusted service origins; never proxy to a host provided by the browser.
     headers = {k: v for k, v in request.headers.items() if k.lower() not in HOP_HEADERS}
     if rewrite_origin:
@@ -85,7 +85,7 @@ async def proxy(request: Request, destination: str, rewrite_origin=False):
     body = await request.body()
     try:
         upstream = await request.app.state.http.request(
-            request.method, destination + request.url.path +
+            request.method, destination + (upstream_path or request.url.path) +
             ("?" + request.url.query if request.url.query else ""),
             headers=headers, content=body)
     except httpx.HTTPError:
@@ -222,7 +222,31 @@ async def dispatch(path: str, request: Request):
     route = "/" + path
     if route == "/admin" or route == "/admin/api/usage":
         return await admin_route(request)
+    # First-party identity, native chat and browser-only MCP routes terminate
+    # at DragonZpyder API. No wildcard /internal proxy: browsers must never
+    # reach the model gateway's service-token-bearing private routes.
+    if route.startswith("/dz/"):
+        native = route[3:]
+        permitted = (
+            native.startswith("/v2/personal/")
+            or native in (
+                "/identity/v1/password/login",
+                "/identity/v1/logout",
+            )
+            or native.startswith("/internal/mcp/")
+        )
+        if not permitted:
+            return JSONResponse({"detail": "Not found"}, status_code=404)
+        if request.method not in ("GET", "HEAD", "OPTIONS"):
+            # Reject cross-site browser mutation *before* re-authoring the
+            # Origin header for the private first-party API.
+            expected = "https://" + (request.url.hostname or "").lower()
+            if request.headers.get("origin") != expected:
+                return JSONResponse({"detail": "Origin rejected"}, status_code=403)
+        return await proxy(request, API, rewrite_origin=True, upstream_path=native)
     if route.startswith("/api/"):
+        # Compatibility only: legacy Operly auth/business endpoints remain
+        # isolated while clients migrate to /dz/. Do not add new agent routes.
         return await proxy(request, OPERLY, rewrite_origin=True)
     if route.startswith("/internal/v1/"):
         return await proxy(request, API)
