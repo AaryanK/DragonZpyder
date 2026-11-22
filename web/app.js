@@ -596,8 +596,11 @@ async function sendMessage(message, { companion = false, fromComposer = false } 
     // declare itself a DragonZpyder harness run in the answer text.
     if (result.dispatch === "dragonzpyder_personal_mcp"
         || result.dispatch === "dragonzpyder_first_party") {
-      const tools = Array.isArray(result.capability_calls)
-        ? result.capability_calls.filter(name => typeof name === "string" && /^operly_[a-zA-Z0-9_-]{1,64}$/.test(name)).slice(0, 20)
+      const rawTools = result.dispatch === "dragonzpyder_first_party"
+        ? result.execution_receipts?.tool_names : result.capability_calls;
+      const tools = Array.isArray(rawTools)
+        ? rawTools.filter(name => typeof name === "string"
+            && /^[A-Za-z_][A-Za-z0-9_-]{0,79}$/.test(name)).slice(0, 20)
         : [];
       const meta = document.createElement("div");
       meta.className = "message-meta";
