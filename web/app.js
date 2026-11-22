@@ -2,6 +2,7 @@ import { renderMarkdown } from "./frontend/src/markdown.js";
 const state = {
   session: null,
   firstParty: false,
+  selectedMcpConnections: [],
   conversationId: null,
   conversations: [],
   approvals: [],
@@ -224,6 +225,8 @@ async function bootstrapAuth() {
     // never fall back to Operly when the DragonZpyder API is unavailable.
     const routing = await api("/dz/status", { csrf: false });
     state.firstParty = routing.web_cutover_enabled === true;
+    window.dragonzpyderNativeMode = state.firstParty;
+    window.dispatchEvent(new CustomEvent("dragonzpyder:runtime-mode", { detail: { firstParty: state.firstParty } }));
     if (state.firstParty) {
       // Voice/Mesh still use the legacy Operly session verifier. Until those
       // routes receive first-party identity, never expose that old path.
@@ -546,6 +549,9 @@ async function submitViaClientAdapter(message, requestId) {
   // Use the supported personal-agent chat API directly.
   const body = { message };
   if (state.conversationId) body.conversation_id = state.conversationId;
+  if (state.firstParty && state.selectedMcpConnections.length) {
+    body.mcp_connection_ids = [...state.selectedMcpConnections];
+  }
   const result = await api(state.firstParty
     ? "/dz/v2/personal/chat" : "/api/personal-agent/chat",
     { method: "POST", body });
@@ -963,6 +969,12 @@ function syncComposerAction() {
   sendButton.hidden = !pending;
 }
 window.dragonzpyderComposerSync = syncComposerAction;
+window.addEventListener("dragonzpyder:mcp-selection", (event) => {
+  const ids = event.detail?.ids;
+  state.selectedMcpConnections = Array.isArray(ids)
+    ? [...new Set(ids.filter(id => typeof id === "string" && /^c[a-f0-9]{30}$/.test(id)))].slice(0, 10)
+    : [];
+});
 
 function autoSizeInput() {
   messageInput.style.height = "auto";
