@@ -153,7 +153,7 @@ def specialist_specs(models: dict | None = None, search_tools=None) -> list[dict
     return specs
 
 
-def build_frontier_agent(model, checkpointer, *, specialist_models=None, synthetic_tools=None, delegated_tools=None):
+def build_frontier_agent(model, checkpointer, *, specialist_models=None, synthetic_tools=None, delegated_tools=None, product_surface="dragonzpyder"):
     """Compose real LangChain primitives without making a provider request."""
     virtual_state = StateBackend()
     # Explicit staging/test injection only. Never enable synthetic business tools
@@ -166,7 +166,22 @@ def build_frontier_agent(model, checkpointer, *, specialist_models=None, synthet
     delegated_tools = list(delegated_tools or [])
     allow_search = os.getenv("DRAGONZPYDER_AGENT_WEB_SEARCH_ENABLED") == "1"
     search_tools = []
+    if product_surface not in ("dragonzpyder", "operly"):
+        raise ValueError("Unknown agent product surface")
     prompt = SUPERVISOR_PROMPT
+    if product_surface == "operly":
+        # Branding changes wording ONLY. Identity, model, tools, and trust
+        # boundaries remain the single DragonZpyder core harness.
+        prompt += (
+            "\nPresentation: You are the Operly AI assistant inside the Operly "
+            "business application. DragonZpyder is the underlying agent "
+            "execution platform. When asked your identity, explain the two "
+            "roles accurately: Operly is the workspace assistant presented "
+            "to the user, powered by DragonZpyder's shared intelligence. "
+            "Do not claim that Operly operates a separate model harness. "
+            "Only claim access to workspaces, records or actions when "
+            "the authenticated Operly MCP tools actually authorize them."
+        )
     if allow_search:
         from .web_research import web_search
         search_tools = [web_search]
