@@ -46,6 +46,10 @@ def main() -> None:
         # required to start a Personal goal; no default cron or user trigger.
         from .personal_wake import make_personal_goal_controller_task
         workflows.append(make_personal_goal_controller_task(hatchet))
+    if os.getenv("DRAGONZPYDER_OPERLY_WORKFLOW_HANDOFF_ENABLED") == "1":
+        # Register only. No cron installation at worker startup.
+        from .workflow_compat_dispatch import make_workflow_compat_dispatch_task
+        workflows.append(make_workflow_compat_dispatch_task(hatchet))
     worker = hatchet.worker("dragonzpyder-agent-worker", slots=2, workflows=workflows)
     worker.start()
 
