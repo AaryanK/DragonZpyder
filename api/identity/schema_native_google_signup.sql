@@ -13,6 +13,10 @@ ALTER TABLE identity_accounts
 ALTER TABLE identity_accounts
     ADD CONSTRAINT identity_native_origin_valid
       CHECK (identity_origin IN ('operly_import', 'native_google'));
+ALTER TABLE identity_accounts
+    ADD CONSTRAINT identity_source_link_consistency
+      CHECK ((identity_origin = 'operly_import' AND source_operly_user_id IS NOT NULL)
+         OR (identity_origin = 'native_google' AND source_operly_user_id IS NULL));
 
 -- Google subject uniqueness already exists in identity_provider_links.
 -- Google/email collision NEVER merges a pre-existing Operly account.
