@@ -69,7 +69,8 @@ async def run_workspace(
             raise ValueError("Authorized Workspace capability set is empty")
         # Never mix Personal goals, Personal token tools or unscoped tools
         # into a delegated Operly business Workspace.
-        agent = build_frontier_agent(model_client(), checkpointer, delegated_tools=tools)
+        agent = build_frontier_agent(model_client(), checkpointer, delegated_tools=tools,
+                                     product_surface="operly")
     except (ValueError, RuntimeError, asyncio.TimeoutError) as error:
         raise HTTPException(503, "Workspace MCP capability discovery unavailable") from error
 
