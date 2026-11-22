@@ -231,6 +231,13 @@ test("public landing explains Safari install on a narrow iPhone viewport", async
   const bounds = await page.evaluate(() => ({
     scrollWidth:document.documentElement.scrollWidth,
     viewport:window.innerWidth,
+    offenders:[...document.querySelectorAll("body *")].map(el => ({
+      tag:el.tagName.toLowerCase(), className:typeof el.className === "string" ? el.className.slice(0,90) : "",
+      text:(el.textContent || "").trim().slice(0,45),
+      right:Math.round(el.getBoundingClientRect().right),
+      left:Math.round(el.getBoundingClientRect().left)
+    })).filter(el => el.right > window.innerWidth+2 || el.left < -2)
+      .sort((a,b) => b.right-a.right).slice(0,16),
   }));
-  expect(bounds.scrollWidth).toBeLessThanOrEqual(bounds.viewport+1);
+  expect(bounds.scrollWidth, JSON.stringify(bounds.offenders)).toBeLessThanOrEqual(bounds.viewport+1);
 });
