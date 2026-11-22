@@ -293,6 +293,7 @@ async def operly_personal_run(
                 user_id=payload.user_id,
                 session_id=payload.session_id,
                 conversation_id=payload.conversation_id,
+                mcp_connection_ids=payload.mcp_connection_ids,
             )]
         if (not payload.scheduled_wake and
                 os.getenv("DRAGONZPYDER_NATIVE_CANARY_ENABLED") == "1"):
