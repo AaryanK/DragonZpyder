@@ -241,6 +241,7 @@ export function VoiceOrb() {
   const [session, setSession] = useState("idle");
   const [status, setStatus] = useState("Ready");
   const [connected, setConnected] = useState(false);
+  const [voiceMode, setVoiceMode] = useState("realtime");
   const [inputStream, setInputStream] = useState(null);
   const [outputStream, setOutputStream] = useState(null);
   const [microphoneMuted, setMicrophoneMuted] = useState(false);
@@ -253,7 +254,7 @@ export function VoiceOrb() {
     const events = {
       "dragonzpyder:voice-open": () => {
         setSession("connecting"); setStatus("Connecting…");
-        setConnected(false); setMicrophoneMuted(false); setTranscripts([]);
+        setConnected(false); setVoiceMode("realtime"); setMicrophoneMuted(false); setTranscripts([]); setTranscriptOpen(false);
       },
       "dragonzpyder:voice-closed": () => {
         setSession("idle"); setConnected(false);
@@ -266,16 +267,17 @@ export function VoiceOrb() {
         setStatus(e.detail?.message || "Ready");
       },
       "dragonzpyder:voice-session": e => setConnected(Boolean(e.detail?.connected)),
+      "dragonzpyder:voice-mode": e => setVoiceMode(e.detail?.mode === "browser" ? "browser" : "realtime"),
       "dragonzpyder:voice-mute": e => setMicrophoneMuted(Boolean(e.detail?.muted)),
       "dragonzpyder:voice-transcript": e => {
-        const { id, label, value, append } = e.detail || {};
+        const { id, label, value, append, interim } = e.detail || {};
         if (typeof value !== "string" || !value || !id || !label) return;
         setTranscripts(previous => {
           const index = previous.findIndex(item => item.id === id);
-          if (index < 0) return [...previous.slice(-49), { id, label, value: value.slice(0, 4000) }];
+          if (index < 0) return [...previous.slice(-49), { id, label, value: value.slice(0, 4000), interim: Boolean(interim) }];
           const next = previous.slice();
           const old = next[index];
-          next[index] = { ...old, value: (append ? old.value + value : value).slice(-4000) };
+          next[index] = { ...old, value: (append ? old.value + value : value).slice(-4000), interim: Boolean(interim) };
           return next;
         });
       },
@@ -290,11 +292,13 @@ export function VoiceOrb() {
     setPlaybackMuted(audioRef.current.muted);
   };
 
-  const label = session === "error" ? "VOICE ERROR" :
+  const browserOnly = voiceMode === "browser";
+  const latestTranscript = transcripts[transcripts.length - 1];
+  const label = browserOnly ? "TRANSCRIPTION" : session === "error" ? "VOICE ERROR" :
     connected ? "VOICE CONNECTED" :
     session === "connecting" ? "CONNECTING" : "PERSONAL VOICE";
 
-  return <div className="dz-voice-orb-shell" data-connected={connected} data-session={session}>
+  return <div className="dz-voice-orb-shell" data-connected={connected} data-session={session} data-voice-mode={voiceMode}>
     <div className="dz-voice-orb-vignette" aria-hidden="true"/>
     <div className="dz-voice-orb-ui">
       <header className="dz-voice-orb-head">
@@ -313,18 +317,22 @@ export function VoiceOrb() {
                 <p id="companion-status" role="status" aria-live="polite">{status}</p>
               </div>
             : <>
-                <h2>Your intelligence, in conversation.</h2>
+                <h2>{browserOnly ? "Speak naturally" : "Your intelligence, in conversation."}</h2>
                 <p id="companion-status" role="status" aria-live="polite">{status}</p>
+                {browserOnly && <>
+                  <p className="dz-voice-browser-notice">Browser speech-to-text · No AI replies</p>
+                  <p className="dz-voice-live-caption" data-interim={Boolean(latestTranscript?.interim)} aria-label="Latest transcription">{latestTranscript?.value || "Your words will appear here."}</p>
+                </>}
               </>}
         </div>
       </main>
       <footer className="dz-voice-orb-footer">
-        <p className="dz-voice-orb-footnote">DRAGONZPYDER PERSONAL / VOICE<br/>SECURE SESSION · AUDIO STREAMED TO PROVIDER</p>
+        <p className="dz-voice-orb-footnote">DRAGONZPYDER PERSONAL / VOICE<br/>{browserOnly ? "BROWSER SPEECH RECOGNITION" : "SECURE SESSION · AUDIO STREAMED TO PROVIDER"}</p>
         <div className="dz-voice-orb-controls">
-          <button type="button" className="dz-voice-orb-circle" aria-label={playbackMuted ? "Unmute speaker" : "Mute speaker"} onClick={togglePlayback} title={playbackMuted ? "Unmute AI playback" : "Mute AI playback"}>
+          <button type="button" className="dz-voice-orb-circle" aria-label={playbackMuted ? "Unmute speaker" : "Mute speaker"} onClick={togglePlayback} disabled={browserOnly} title={playbackMuted ? "Unmute AI playback" : "Mute AI playback"}>
             <SpeakerIcon muted={playbackMuted}/>
           </button>
-          <button type="button" id="companion-mute" className={"dz-voice-orb-circle dz-voice-orb-mic" + (microphoneMuted ? " is-muted" : "")} disabled={!connected} aria-label={microphoneMuted ? "Unmute microphone" : "Mute microphone"} title={microphoneMuted ? "Unmute microphone" : "Mute microphone"}>
+          <button type="button" id="companion-mute" className={"dz-voice-orb-circle dz-voice-orb-mic" + (microphoneMuted ? " is-muted" : "")} disabled={!connected && !browserOnly} aria-label={microphoneMuted ? "Unmute microphone" : "Mute microphone"} title={microphoneMuted ? "Unmute microphone" : "Mute microphone"}>
             <MicrophoneIcon muted={microphoneMuted}/>
           </button>
           <button type="button" className="dz-voice-orb-circle" onClick={() => setTranscriptOpen(value => !value)} aria-label={transcriptOpen ? "Hide transcript" : "Show transcript"} aria-pressed={transcriptOpen} title="Transcript">
@@ -336,9 +344,9 @@ export function VoiceOrb() {
       <section className={"dz-voice-orb-transcript-panel" + (transcriptOpen ? " is-open" : "")} aria-label="Live voice transcript" aria-hidden={!transcriptOpen}>
         <div className="dz-voice-orb-transcript-heading">Live transcript <button type="button" onClick={() => setTranscriptOpen(false)} aria-label="Close transcript">×</button></div>
         <div className="companion-transcript" id="companion-transcript" aria-label="Live transcript">
-          {transcripts.length ? transcripts.map(item => <p key={item.id}><strong>{item.label}: </strong><span>{item.value}</span></p>) : <p className="dz-voice-transcript-empty">Spoken words will appear here when transcription is available.</p>}
+          {transcripts.length ? transcripts.map(item => <p key={item.id} data-interim={Boolean(item.interim)}><strong>{item.label}: </strong><span>{item.value}</span></p>) : <p className="dz-voice-transcript-empty">Spoken words will appear here when transcription is available.</p>}
         </div>
-        <p>Voice is streamed to the provider. Connected actions still require your Personal permissions and approvals.</p>
+        <p>{browserOnly ? "Speech recognition is provided by your browser and may use an online service. Transcriptions are not automatically sent to the agent." : "Voice is streamed to the provider. Connected actions still require your Personal permissions and approvals."}</p>
       </section>
     </div>
     <audio ref={audioRef} id="companion-audio" autoPlay playsInline />
