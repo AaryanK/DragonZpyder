@@ -1,6 +1,72 @@
 const launch=document.getElementById("companion-open"),panel=document.getElementById("companion-panel"),end=document.getElementById("companion-end"),mute=document.getElementById("companion-mute"),audio=document.getElementById("companion-audio");
 let peer=null,channel=null,mic=null,controller=null,live=false,starting=false,silent=false,version=0;
 const calls=new Set();
+// This is transcription only: browser speech recognition must not trigger agent calls.
+const SpeechApi=window.SpeechRecognition||window.webkitSpeechRecognition;
+let browserMode=false,recognition=null,recognitionRun=0,restartTimer=null;
+function browserEvent(name,detail){window.dispatchEvent(new CustomEvent("dragonzpyder:"+name,{detail}))}
+function stopRecognition(){
+  clearTimeout(restartTimer);restartTimer=null;
+  const instance=recognition;recognition=null;
+  if(instance){try{instance.abort()}catch{}}
+}
+function browserPaused(message="Tap the microphone to resume transcription."){
+  silent=true;browserEvent("voice-mute",{muted:true});setStatus(message,"paused");
+}
+function listenInBrowser(){
+  if(!browserMode||recognition||!SpeechApi)return;
+  clearTimeout(restartTimer);restartTimer=null;
+  const instance=new SpeechApi(),v=version,run=++recognitionRun;
+  recognition=instance;
+  let failed=false,hadSpeech=false;
+  silent=false;browserEvent("voice-mute",{muted:false});
+  setStatus("Starting browser transcription…","transcribing");
+  const current=()=>browserMode&&v===version&&recognition===instance;
+  instance.lang=navigator.language||"en-US";
+  instance.continuous=true;
+  instance.interimResults=true;
+  instance.onstart=()=>{if(current())setStatus("Listening — speak naturally","transcribing")};
+  instance.onresult=event=>{
+    if(!current()||silent)return;
+    for(let i=event.resultIndex||0;i<event.results.length;i++){
+      const result=event.results[i],value=result[0]?.transcript?.trim();
+      if(!value)continue;
+      hadSpeech=hadSpeech||Boolean(result.isFinal);
+      browserEvent("voice-transcript",{id:"browser-"+run+"-"+i,label:"You",value,append:false,interim:!result.isFinal});
+    }
+  };
+  instance.onerror=event=>{
+    if(!current())return;
+    failed=true;
+    if(event.error==="aborted")return;
+    if(event.error==="not-allowed"||event.error==="service-not-allowed"){
+      browserPaused("Speech recognition permission denied. Check browser permissions, then tap the mic.");
+    }else if(event.error==="no-speech"){
+      browserPaused("No speech detected. Tap the microphone to try again.");
+    }else{
+      browserPaused("Browser transcription stopped. Tap the microphone to retry.");
+    }
+  };
+  instance.onend=()=>{
+    if(!current())return;
+    recognition=null;
+    // Mobile browsers may end after an utterance even with continuous=true.
+    // Restart only following actual final speech; never loop on denied permissions,
+    // unavailable services, silence, or an explicit pause.
+    if(!failed&&hadSpeech&&!silent){
+      restartTimer=setTimeout(()=>{if(browserMode&&v===version&&!silent)listenInBrowser()},250);
+    }else if(!silent){browserPaused()}
+  };
+  try{instance.start()}catch{recognition=null;browserPaused("Tap the microphone to start browser transcription.")}
+}
+function beginBrowserFallback(){
+  if(!SpeechApi)return false;
+  cleanup();
+  browserMode=true;panel.hidden=false;launch.setAttribute("aria-expanded","true");
+  browserEvent("voice-mode",{mode:"browser"});
+  listenInBrowser();
+  return true;
+}
 function setStatus(message,kind="idle"){
   panel.dataset.state=kind;
   window.dispatchEvent(new CustomEvent("dragonzpyder:voice-state",{detail:{kind,message}}));
@@ -15,6 +81,8 @@ function row(id,label,value,append=false){
 function send(event){if(channel?.readyState==="open")channel.send(JSON.stringify(event))}
 function cleanup(){
   version++;controller?.abort();controller=null;
+  browserMode=false;stopRecognition();
+  browserEvent("voice-mode",{mode:"realtime"});
   for(const t of mic?.getTracks()||[])t.stop();mic=null;
   if(channel)channel.close();channel=null;if(peer)peer.close();peer=null;
   audio.pause();audio.srcObject=null;live=false;starting=false;silent=false;
@@ -53,11 +121,14 @@ function onEvent(text,v){
   if(e.type==="error")setStatus(String(e.error?.message||"Voice error"),"error");
 }
 async function start(){
-  if(live||starting)return;
+  if(live||starting||browserMode)return;
   window.dispatchEvent(new Event("dragonzpyder:live-start"));
   panel.hidden=false;launch.setAttribute("aria-expanded","true");
   window.dispatchEvent(new Event("dragonzpyder:voice-open"));
-  if(!navigator.mediaDevices?.getUserMedia||!window.RTCPeerConnection){setStatus("This browser cannot stream live audio","error");return}
+  if(!navigator.mediaDevices?.getUserMedia||!window.RTCPeerConnection){
+    if(!beginBrowserFallback())setStatus("This browser cannot stream live audio or transcribe speech.","error");
+    return;
+  }
   const v=++version;starting=true;controller=new AbortController();calls.clear();setStatus("Requesting microphone…","connecting");
   try{
     const acquired=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}});
@@ -74,7 +145,14 @@ async function start(){
     channel.onclose=()=>{if(v===version&&live)close()};
     const offer=await peer.createOffer();await peer.setLocalDescription(offer);setStatus("Connecting live voice…","connecting");
     const r=await fetch("/companion/realtime",{method:"POST",credentials:"same-origin",headers:{"content-type":"application/sdp","x-csrf-token":csrf()},body:peer.localDescription.sdp,signal:controller.signal});
-    if(!r.ok){const data=await r.json().catch(()=>({}));throw Error(data.detail?.message||"Connection failed: "+r.status)}
+    if(!r.ok){
+      const data=await r.json().catch(()=>({}));
+      if(v!==version)return;
+      // Only provider availability failures can fall back; never bypass an
+      // authentication error, CSRF rejection, or the provider rate limit.
+      if((r.status===502||r.status===503)&&beginBrowserFallback())return;
+      throw Error(data.detail?.message||"Connection failed: "+r.status);
+    }
     const answer=await r.text();if(v!==version)return;
     await peer.setRemoteDescription({type:"answer",sdp:answer});live=true;starting=false;
     window.dispatchEvent(new CustomEvent("dragonzpyder:voice-session",{detail:{connected:true}}));
@@ -83,6 +161,11 @@ async function start(){
 }
 launch.addEventListener("click",start);end.addEventListener("click",close);
 mute.addEventListener("click",()=>{
+  if(browserMode){
+    if(!silent){stopRecognition();browserPaused()}
+    else{stopRecognition();listenInBrowser()}
+    return;
+  }
   if(!mic||!live)return;
   silent=!silent;mic.getAudioTracks().forEach(t=>t.enabled=!silent);
   window.dispatchEvent(new CustomEvent("dragonzpyder:voice-mute",{detail:{muted:silent}}));
