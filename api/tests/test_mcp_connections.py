@@ -479,13 +479,20 @@ def test_secret_post_is_preserved_through_all_oauth_phases(manager, monkeypatch)
 @pytest.mark.parametrize("method", ["client_secret_post", "client_secret_basic"])
 def test_actual_authlib_secret_authentication_conformance(method):
     """Use real Authlib and a local HTTPX transport, without third-party calls."""
-    import httpx
+    import importlib
     import json
     from authlib.integrations.httpx_client import AsyncOAuth2Client
 
+    # Authlib may use httpx2, a separate compatibility transport package.
+    # Construct mocks from the SAME HTTPX implementation as the OAuth client.
+    module_name = next(
+        cls.__module__.split(".")[0] for cls in AsyncOAuth2Client.__mro__
+        if cls.__module__.startswith(("httpx.", "httpx2."))
+    )
+    oauth_httpx = importlib.import_module(module_name)
     seen = []
 
-    class MockAsyncBody(httpx.AsyncByteStream):
+    class MockAsyncBody(oauth_httpx.AsyncByteStream):
         async def __aiter__(self):
             yield json.dumps({
                 "access_token": "test-token-access-123456789",
@@ -494,7 +501,7 @@ def test_actual_authlib_secret_authentication_conformance(method):
 
     def responder(request):
         seen.append((request.headers.get("authorization", ""), request.content.decode()))
-        return httpx.Response(200, headers={"content-type": "application/json"},
+        return oauth_httpx.Response(200, headers={"content-type": "application/json"},
                               stream=MockAsyncBody())
 
     async def run():
@@ -502,7 +509,7 @@ def test_actual_authlib_secret_authentication_conformance(method):
         async with AsyncOAuth2Client(
             client_id="registered-client", client_secret=credential,
             token_endpoint_auth_method=method,
-            transport=httpx.MockTransport(responder),
+            transport=oauth_httpx.MockTransport(responder),
             follow_redirects=False, trust_env=False,
         ) as oauth:
             return await oauth.fetch_token(
