@@ -18,7 +18,14 @@ export function createVoiceOrbRenderer(canvas) {
     ctx.setTransform(DPR,0,0,DPR,0,0);
     cx=W/2;cy=H<650?H*.435:H*.448;
     radius=Math.min(W*.28,H*.248,226);
+    // Preserve the source preview's 70%-width orb on phones. Desktop-site
+    // browser mode may report 980 CSS px in a narrow physical phone.
     if(W<680){cy=H*.425;radius=Math.min(W*.35,H*.204,155)}
+    else if(H>W*1.16){
+      cy=H*.425;radius=Math.min(W*.35,H*.204);
+    }
+    canvas.dataset.orbRadius=radius.toFixed(2);
+    canvas.dataset.orbCenterY=cy.toFixed(2);
     if(reduce||!active)draw(0);
   };
   const observer=new ResizeObserver(resize);observer.observe(canvas);
@@ -72,7 +79,7 @@ if(!reduce&&!destroyed&&active)frameId=requestAnimationFrame(draw)}
 
   resize();draw(0);
   return {
-    setActive(next){active=Boolean(next);cancelAnimationFrame(frameId);if(active&&!reduce)frameId=requestAnimationFrame(draw);else draw(0)},
+    setActive(next){active=Boolean(next);cancelAnimationFrame(frameId);if(active)resize();if(active&&!reduce)frameId=requestAnimationFrame(draw);else draw(0)},
     setInputStream(stream){if(stream)attach(stream,"input");else{inputSource?.disconnect();inputSource=null;analyser=null;data=null;playing=false}},
     setOutputStream(stream){if(stream)attach(stream,"output");else{outputSource?.disconnect();outputSource=null;outputAnalyser=null;outputData=null}},
     setStatus(status){if(status==="ended"||status==="error")outputLevel=0},
