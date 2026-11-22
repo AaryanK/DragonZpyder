@@ -57,6 +57,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
 
     @Override public void onCreate(Bundle b) {
         super.onCreate(b);
+        mobileOAuth=new MobileOAuthStore(getApplicationContext());
         if(b!=null){
             restoredConversation=b.getString("dz.conversation","");
             restoredDraft=b.getString("dz.draft","");
@@ -109,7 +110,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private boolean strong(String p){if(p.length()<12){setStatus("Use at least 12 characters for your password.");return false;}return true;}
     private boolean six(String code){if(!code.matches("[0-9]{6}")){setStatus("Enter the six-digit code.");return false;}return true;}
     private void authSuccess(){restorePending=false;restoredDraft="";restoredConversation="";authEmail="";challengeId="";signedIn=true;accountOpen=false;chatScreen();loadHistory(true);}
-    private final MobileOAuthStore mobileOAuth=new MobileOAuthStore(this);
+    private MobileOAuthStore mobileOAuth;
     private Intent queuedOAuthIntent;
     private Button providerButton(String symbol,String title,int identityColor,Runnable action){
         Button button=button(symbol+"   "+title,action);
@@ -185,7 +186,14 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     }
     private void authScreen(String mode,String message){
         signedIn=false;accountOpen=false;chatUi=null;authMode=mode;getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);accountLayout();
-        sectionLabel(accountPage,"ONE IDENTITY · YOUR INTELLIGENCE");accountPage.addView(heading("Always yours.",38));gap(accountPage,8);accountPage.addView(text("Your conversations, personal AI, and authorised connections—all in one account.",14,MUTED));gap(accountPage,22);
+        LinearLayout hero=column();hero.setPadding(dp(20),dp(20),dp(20),dp(22));
+        GradientDrawable shine=new GradientDrawable(GradientDrawable.Orientation.TL_BR,
+            dark?new int[]{0xff37231f,0xff1e1919,0xff141416}:new int[]{0xffffe5d3,0xfffff2e8,0xfffffaf5});
+        shine.setCornerRadius(dp(24));shine.setStroke(dp(1),dark?0xff715043:0xffefcdb8);hero.setBackground(shine);
+        TextView eyebrow=text("✦   ONE IDENTITY · YOUR INTELLIGENCE",11,dark?0xffffb88f:0xffa64b24);eyebrow.setLetterSpacing(.10f);hero.addView(eyebrow);gap(hero,14);
+        TextView headline=serif("Always yours.",37);headline.setTextColor(TEXT);hero.addView(headline);gap(hero,9);
+        hero.addView(text("Your conversations, personal AI and authorized connections—one account, wherever you work.",14,MUTED));
+        accountPage.addView(hero);gap(accountPage,18);
         LinearLayout card=accountCard();
         if(mode.equals("login")||mode.equals("signup")){
             LinearLayout tabs=row();Button sign=mode.equals("login")?primary("Sign in",()->authScreen("login","")):button("Sign in",()->authScreen("login",""));Button create=mode.equals("signup")?primary("Create account",()->authScreen("signup","")):button("Create account",()->authScreen("signup",""));
@@ -194,6 +202,18 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         String title=mode.equals("signup")?"Create your account.":mode.equals("verify")?"Verify your email.":mode.equals("forgot")?"Reset your password.":mode.equals("reset")?"Set a new password.":"Welcome back.";
         card.addView(heading(title,27));gap(card,6);card.addView(text(mode.equals("signup")?"Start personal. Connect workspaces when you choose.":mode.equals("verify")?"Enter the six-digit code emailed to you.":mode.equals("forgot")?"We’ll email reset instructions if an account exists.":mode.equals("reset")?"Use the six-digit code from your password-reset email.":"Continue to your personal DragonZpyder.",14,MUTED));gap(card,20);
         status=text(message,13,message.isEmpty()?MUTED:TEXT);status.setLineSpacing(dp(2),1);card.addView(status);gap(card,8);
+        if(mode.equals("login")||mode.equals("signup")){
+            card.addView(providerButton("G","Continue with Google",0xff4285f4,this::startGoogleSignIn));
+            gap(card,10);
+            card.addView(providerButton("◈","Continue with Discord",0xff5865f2,this::startDiscordSignIn));
+            gap(card,18);
+            LinearLayout separator=row();View left=new View(this);left.setBackgroundColor(LINE);
+            separator.addView(left,new LinearLayout.LayoutParams(0,dp(1),1));
+            TextView orLabel=text("  OR CONTINUE WITH EMAIL  ",11,MUTED);orLabel.setLetterSpacing(.08f);
+            separator.addView(orLabel);View right=new View(this);right.setBackgroundColor(LINE);
+            separator.addView(right,new LinearLayout.LayoutParams(0,dp(1),1));
+            card.addView(separator);gap(card,20);
+        }
         EditText name=mode.equals("signup")?accountField(card,"Your name","",1,View.AUTOFILL_HINT_NAME):null;
         EditText email=accountField(card,"Email address",authEmail,33,View.AUTOFILL_HINT_EMAIL_ADDRESS);
         EditText code=mode.equals("verify")||mode.equals("reset")?accountField(card,mode.equals("verify")?"Verification code":"Reset code","",2,"smsOTPCode"):null;
@@ -470,6 +490,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                     if(e instanceof DragonApi.ApiError && ((DragonApi.ApiError)e).status==401 && signedIn){api.clear();pendingPrompt="";attachment=null;attachmentName="";transcript.clear();conversation="";meshMessages=new JSONArray();meshMode=false;loginScreen("Session expired. Sign in again.");}
                     else if(report){boolean hadPartial=chatUi!=null&&!chatUi.getPartialReply().isEmpty();if(hadPartial){append("assistant",chatUi.getPartialReply()+"\n\n[Reply incomplete]");chatUi.setPartialReply("");}if(!pendingPrompt.isEmpty()&&chatUi!=null){if(chatUi.getDraft().isEmpty()&&!hadPartial)chatUi.setDraft(pendingPrompt);append("system","Request did not return a confirmed completion. Check server history or tasks before resending an agent action.");pendingPrompt="";}if(restorePending)applyRestoredDraft();setStatus(e.getMessage()==null?"Request failed":e.getMessage());}
                 }
+                if(!busy&&queuedOAuthIntent!=null){Intent oauth=queuedOAuthIntent;queuedOAuthIntent=null;processOAuthIntent(oauth);}
             });
         });
     }
