@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useModalFocus } from "./WorkspaceControls.jsx";
+import { NativeMcpCenter } from "./NativeMcpCenter.jsx";
 
 /**
  * The account-scoped API lives behind DragonZpyder's same-origin /api proxy.
@@ -60,7 +61,13 @@ function Empty({ title, children }) { return <div className="dz-center-empty"><s
 
 export function WorkspaceCenter() {
   const [open, setOpen] = useState(false);
+  const [native, setNative] = useState(() => Boolean(window.dragonzpyderNativeMode));
   const [page, setPage] = useState("connections");
+  useEffect(() => {
+    const sync = event => setNative(event.detail?.firstParty === true);
+    window.addEventListener("dragonzpyder:runtime-mode", sync);
+    return () => window.removeEventListener("dragonzpyder:runtime-mode", sync);
+  }, []);
   const [data, setData] = useState({});
   const [pending, setPending] = useState({});
   const [errors, setErrors] = useState({});
@@ -144,10 +151,10 @@ export function WorkspaceCenter() {
   }, []);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || native) return;
     if (page === "tasks") void loadTasks();
     else if (routes[page]) void load(page);
-  }, [open, page, load, loadTasks]);
+  }, [open, page, load, loadTasks, native]);
 
   useEffect(() => {
     if (!open) return;
@@ -379,6 +386,7 @@ export function WorkspaceCenter() {
   };
 
   if (!open) return null;
+  if (native) return <NativeMcpCenter onClose={() => setOpen(false)} page={page}/>;
   return createPortal(<div className="dz-center-scrim" onMouseDown={e=>{if(e.target===e.currentTarget)setOpen(false);}}>
     <section ref={dialogRef} className="dz-center-shell" role="dialog" aria-modal="true" aria-labelledby="dz-center-title">
       <aside className="dz-center-rail"><div className="dz-center-brand"><span className="dz-center-mark">✳</span><strong id="dz-center-title">Your DragonZpyder</strong></div>
