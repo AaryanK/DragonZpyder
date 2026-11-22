@@ -480,20 +480,27 @@ def test_secret_post_is_preserved_through_all_oauth_phases(manager, monkeypatch)
 def test_actual_authlib_secret_authentication_conformance(method):
     """Use real Authlib and a local HTTPX transport, without third-party calls."""
     import httpx
+    import json
     from authlib.integrations.httpx_client import AsyncOAuth2Client
 
     seen = []
 
+    class MockAsyncBody(httpx.AsyncByteStream):
+        async def __aiter__(self):
+            yield json.dumps({
+                "access_token": "test-token-access-123456789",
+                "token_type": "Bearer", "expires_in": 3600,
+            }).encode()
+
     def responder(request):
         seen.append((request.headers.get("authorization", ""), request.content.decode()))
-        return httpx.Response(200, json={
-            "access_token": "test-token-access-123456789",
-            "token_type": "Bearer", "expires_in": 3600,
-        })
+        return httpx.Response(200, headers={"content-type": "application/json"},
+                              stream=MockAsyncBody())
 
     async def run():
+        credential = "registered-secret"  # synthetic test value, not production authority
         async with AsyncOAuth2Client(
-            client_id="registered-client", client_secret="registered-secret",
+            client_id="registered-client", client_secret=credential,
             token_endpoint_auth_method=method,
             transport=httpx.MockTransport(responder),
             follow_redirects=False, trust_env=False,
