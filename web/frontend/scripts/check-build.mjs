@@ -31,6 +31,8 @@ for (const [page, html] of [["home", home], ["app", app], ["account", account]])
 }
 assert.match(home, /Make progress|best of AI|All that intelligence/i);
 assert.match(home, /runtime-dot/);
+assert.match(home, /id="install-ios"/, "Public React landing needs an iPhone installation section");
+assert.match(home, /Add to Home Screen/, "Safari install directions missing from landing");
 assert.match(home, /href="\/app"/, "Marketing CTA must link to the canonical React page");
 for (const [name, markup] of [["home", home], ["app", app], ["account", account]]) {
   assert.doesNotMatch(markup, /href="\/(?:app|account)\.html(?:[?"#])/,
