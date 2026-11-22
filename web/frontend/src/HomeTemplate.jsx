@@ -20,6 +20,9 @@ const iphoneStyles = `
 .dz-install-steps small{display:block;color:#c6bab2;font-size:12px;line-height:1.7;margin-top:5px}
 .dz-ios-hero-link{display:inline-flex;align-items:center;margin-top:17px;font-size:12px;color:#bd511c;font-weight:750;border-bottom:1px solid #cf845d;padding-bottom:4px}
 .dz-ios-hero-link:hover{color:#8d330b}
+/* Shrink the angled decorative sweep on phones; transformed absolute elements
+   must not enlarge the entire document's horizontal scroll area. */
+@media(max-width:900px){.dz-stage .dz-sweep{left:64%;width:clamp(52px,13vw,112px);transform:skew(-12deg)}}
 @media(max-width:790px){.dz-install-section{padding:65px 0}.dz-install-grid{grid-template-columns:1fr;gap:24px}.dz-install-steps{padding-left:16px;gap:13px}}
 @media(max-width:500px){.dz-install-section h2{font-size:clamp(35px,10vw,45px)}.dz-install-section p{font-size:13px}.dz-install-steps strong{font-size:14px}}
 `;
