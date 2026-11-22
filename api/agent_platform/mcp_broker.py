@@ -11,6 +11,8 @@ the separate authorization/policy layer and must be renewed at execution.
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timezone
+from uuid import uuid4
 from dataclasses import dataclass
 import hashlib
 import json
@@ -46,6 +48,9 @@ class ToolReceipt:
     arguments_sha256: str
     result_sha256: str
     status: str = "completed"
+    started_at: str | None = None
+    finished_at: str | None = None
+    schema_sha256: str | None = None
 
 
 @dataclass(frozen=True)
@@ -67,7 +72,7 @@ def tool_alias(provider_id: str, capability_id: str) -> str:
     if _ALIAS.fullmatch(alias):
         return alias
     digest = hashlib.sha256((provider_id + "\0" + capability_id).encode()).hexdigest()[:24]
-    return provider_id + "_mcp_" + digest
+    return provider_id.replace("-", "_") + "_mcp_" + digest
 
 
 def _connection(grant: McpGrant) -> dict:
@@ -258,7 +263,27 @@ async def invoke_granted_mcp_tool(
     if not 1 <= timeout_seconds <= 120:
         raise ValueError("Invalid MCP execution timeout")
 
-    result = await asyncio.wait_for(selected.ainvoke(arguments), timeout=timeout_seconds)
+    started_at = datetime.now(timezone.utc).isoformat()
+    # The official adapter uses content_and_artifact. A plain argument call
+    # drops ToolMessage.artifact (including MCP structured_content). Invoke
+    # with a ToolCall envelope so both status and structured output survive.
+    if getattr(selected, "response_format", None) == "content_and_artifact":
+        from langchain_core.messages import ToolMessage
+        tool_message = await asyncio.wait_for(selected.ainvoke({
+            "type": "tool_call", "id": str(uuid4()), "name": alias,
+            "args": arguments,
+        }), timeout=timeout_seconds)
+        if not isinstance(tool_message, ToolMessage):
+            raise RuntimeError("MCP adapter returned an invalid tool message")
+        if tool_message.status != "success":
+            raise RuntimeError("MCP provider returned an unsuccessful tool result")
+        artifact = tool_message.artifact
+        result = tool_message.content
+        if isinstance(artifact, dict) and "structured_content" in artifact:
+            result = {"content": result,
+                      "structuredContent": artifact["structured_content"]}
+    else:
+        result = await asyncio.wait_for(selected.ainvoke(arguments), timeout=timeout_seconds)
     if _tool_failed(result):
         raise RuntimeError("MCP provider returned an unsuccessful tool result")
     receipt = ToolReceipt(
@@ -267,6 +292,8 @@ async def invoke_granted_mcp_tool(
         alias=alias,
         arguments_sha256=hashlib.sha256(data).hexdigest(),
         result_sha256=hashlib.sha256(_json_bytes(result)).hexdigest(),
+        started_at=started_at, finished_at=datetime.now(timezone.utc).isoformat(),
+        schema_sha256=schema_digest(input_schema(selected)),
     )
     return ToolOutcome(receipt=receipt, result=result)
 
