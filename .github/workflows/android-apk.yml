@@ -6,6 +6,9 @@ on:
   pull_request:
     paths: ["android/**", ".github/workflows/android-apk.yml"]
   workflow_dispatch:
+concurrency:
+  group: android-apk-${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
