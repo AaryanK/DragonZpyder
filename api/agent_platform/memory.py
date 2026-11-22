@@ -11,7 +11,13 @@ from urllib.parse import unquote, urlsplit
 
 
 def memory_config() -> dict:
-    dsn = os.getenv("DRAGONZPYDER_MEMORY_DATABASE_URL", "")
+    dsn = os.getenv("DRAGONZPYDER_MEMORY_DATABASE_URL", "").strip()
+    if os.getenv("DRAGONZPYDER_MEM0_USE_AGENT_DATABASE") == "1":
+        if dsn:
+            raise RuntimeError("Ambiguous shared vs dedicated memory database")
+        if os.getenv("DRAGONZPYDER_MEM0_AGENT_DB_APPROVED") != "1":
+            raise RuntimeError("Shared pgvector database requires operator approval")
+        dsn = os.getenv("DRAGONZPYDER_AGENT_DATABASE_URL", "").strip()
     parsed = urlsplit(dsn)
     if parsed.scheme not in {"postgres", "postgresql"} or not parsed.hostname:
         raise RuntimeError("Mem0 requires a PostgreSQL DSN")
