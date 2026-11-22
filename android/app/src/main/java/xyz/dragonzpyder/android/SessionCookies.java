@@ -6,7 +6,7 @@ import java.util.*;
  * Never serialize Java's legacy RFC2965 $Version or quoted Cookie format. */
 final class SessionCookies {
     private static final Set<String> NAMES = new HashSet<>(Arrays.asList(
-        "__Host-operly_session", "__Host-operly_csrf", "operly_preauth_csrf"));
+        "__Host-operly_session", "__Host-operly_csrf", "operly_preauth_csrf", "operly_google_nonce"));
     private final Map<String,HttpCookie> jar=new LinkedHashMap<>();
     private final Map<String,Long> expiry=new HashMap<>();
     private static final String[] SESSION={"__Host-operly_session","__Host-operly_csrf"};
