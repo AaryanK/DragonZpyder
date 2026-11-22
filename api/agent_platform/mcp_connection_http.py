@@ -8,7 +8,7 @@ from __future__ import annotations
 import os
 import re
 from fastapi import APIRouter, Header, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from .mcp_connections import ConnectionDenied, require_gate, reviewed_providers
@@ -96,8 +96,18 @@ async def callback(request: Request, state: str = "", code: str = "",
         )
     except ConnectionDenied:
         raise HTTPException(403, "OAuth callback rejected") from None
-    # No access token, refresh token, authorization code, account ID or
-    # OAuth state is returned to browser JavaScript or URL query parameters.
+    # Immediately replace the code/state-bearing URL before showing a page.
+    # No access token, refresh token, authorization code or account ID is
+    # returned to browser JavaScript or placed in the clean success URL.
+    return RedirectResponse("/internal/mcp/connected", status_code=303,
+                            headers={"Cache-Control": "no-store",
+                                     "Referrer-Policy": "no-referrer"})
+
+
+@router.get("/connected", response_class=HTMLResponse)
+async def connected(request: Request):
+    _enabled()
+    await _session(request, changing=False)
     return HTMLResponse("<h1>Connection saved</h1><p>You may close this tab.</p>",
                         headers={"Cache-Control": "no-store",
                                  "Referrer-Policy": "no-referrer"})
