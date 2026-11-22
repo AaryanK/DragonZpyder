@@ -162,12 +162,13 @@ async def chat(payload: ChatInput, request: Request):
         if manager is None or os.getenv("DRAGONZPYDER_MCP_USER_CONNECTIONS_ENABLED") != "1":
             raise HTTPException(503, "User-scoped MCP connections unavailable")
         from .mcp_managed_catalog import managed_catalog_tools
+        from .mcp_connections import ConnectionDenied
         try:
             tools = await managed_catalog_tools(
                 manager=manager, owner=user, selected_account_ids=chosen,
                 scheduled=False,
             )
-        except (ValueError, RuntimeError):
+        except (ConnectionDenied, ValueError, RuntimeError):
             raise HTTPException(403, "MCP connection not authorized") from None
 
     conversation_id = payload.conversation_id or uuid4()
