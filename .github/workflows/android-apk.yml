@@ -26,6 +26,13 @@ jobs:
           packages: 'platform-tools'
       - name: Android SDK
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - name: Verify session cookie contract
+        run: |
+          mkdir -p /tmp/dz-cookie-test
+          javac -d /tmp/dz-cookie-test android/app/src/main/java/xyz/dragonzpyder/android/SessionCookies.java android/tests/SessionCookiesTest.java
+          java -cp /tmp/dz-cookie-test xyz.dragonzpyder.android.SessionCookiesTest
+      - name: Package official brand assets
+        run: bash android/prepare-brand.sh
       - name: Build and lint
         working-directory: android
         run: gradle --no-daemon :app:assembleDebug :app:lintDebug
