@@ -56,6 +56,13 @@ CREATE TABLE IF NOT EXISTS dz_personal_mcp_receipts (
 );
 ALTER TABLE dz_personal_mcp_goals
     ADD COLUMN IF NOT EXISTS blocked_reason text;
+-- Only non-secret hashes. OAuth credentials remain in a separate API-only DB.
+CREATE TABLE IF NOT EXISTS dz_mcp_goal_selections (
+    goal_id text PRIMARY KEY,
+    owner_id text NOT NULL,
+    selection_hash char(64) NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now()
+);
 """
 
 
