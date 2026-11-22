@@ -353,3 +353,28 @@ def test_multi_provider_catalog_reauth_redacts_and_scheduled_policy(manager, mon
             await managed_catalog_tools(manager=service, owner="other",
                                         selected_account_ids=[one], scheduled=True)
     asyncio.run(run())
+
+
+
+def test_real_authlib_client_constructs_pkce_s256_and_resource():
+    """This uses actual Authlib request construction, not FakeOAuth."""
+    from authlib.integrations.httpx_client import AsyncOAuth2Client
+
+    async def build():
+        async with AsyncOAuth2Client(
+            client_id="client-123", redirect_uri="https://identity.example.com/internal/mcp/oauth/callback",
+            code_challenge_method="S256", follow_redirects=False, trust_env=False,
+        ) as oauth:
+            return oauth.create_authorization_url(
+                "https://login.example.com/authorize", state="test-csrf-state",
+                code_verifier="this-is-a-valid-pkce-code-verifier-with-entropy-123456789",
+                resource="https://archive.example.com/mcp",
+            )[0]
+
+    url = asyncio.run(build())
+    params = parse_qs(urlsplit(url).query)
+    assert params["state"] == ["test-csrf-state"]
+    assert params["code_challenge_method"] == ["S256"]
+    assert len(params["code_challenge"][0]) == 43
+    assert params["resource"] == ["https://archive.example.com/mcp"]
+    assert "code_verifier" not in params
