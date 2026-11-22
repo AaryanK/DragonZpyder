@@ -1,14 +1,11 @@
-# DragonZpyder Android preview
+# DragonZpyder native Android preview (0.2.0)
 
-Install the debug APK from the Android APK GitHub Actions artifact. This is a lightweight Android launcher for the existing live React product at https://dragonzpyder.xyz/app, not a duplicate agent runtime or an offline native rewrite.
+Native Android Activity, widgets and HTTPS client. No browser wrapper, Custom Tabs, or WebView. Uses the existing DragonZpyder public user-session API at dragonzpyder.xyz; the backend currently proxies Personal authentication and chat to Operly. Private inference tokens are never embedded.
 
-The device browser handles authentication, cookies, microphone/camera prompts, downloads, uploads and browser speech APIs. Actual functionality is subject to browser support and existing server configuration. Nothing adds access to user data or provider keys. The launcher first attempts a Trusted Web Activity (TWA); until the deployed HTTPS site verifies the signing certificate through Digital Asset Links, compatible browsers display the browser origin bar. Standard browser fallback is intentional. No production changes are made.
+Included: email/password sign-in, Personal scope validation, agent chat, server conversation history, AI Mesh text model selection, system speech dictation and text-to-speech, read-only pending approvals, logout. Session cookies are held in process memory only; a cold restart requires sign-in. Voice is turn-based, not realtime WebRTC. Google sign-in, signup, files/media, approval execution, streaming, persistent secure login, and realtime companion are not yet implemented. No backend changes.
 
-Build with JDK 17, Android SDK 35 and Gradle 8.9:
-
+Build with JDK 17, SDK 35 and Gradle 8.9:
     cd android
-    gradle :app:assembleDebug
+    gradle :app:assembleDebug :app:lintDebug
 
-APK: app/build/outputs/apk/debug/app-debug.apk
-
-This is a debug build for testing, not Play Store release signing. CI debug keys may change; uninstall an earlier debug build if Android rejects the update due to a signature mismatch. For a stable signed release, provision a release key outside source, publish matching package and SHA-256 certificate in /.well-known/assetlinks.json on dragonzpyder.xyz, validate navigation/fullscreen on device, and audit login, chat, voice, upload, sign-out and revocation. No offline capability is claimed.
+APK artifact: DragonZpyder-Android-debug. Debug signing only. If signatures differ, uninstall the prior preview before installing. Test login, chat, conversation restoration, text model selection, dictation and logout on a real device before claiming functional parity.
