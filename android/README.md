@@ -1,4 +1,4 @@
-# DragonZpyder native Android preview (0.2.0)
+# DragonZpyder native Android preview (0.3.0)
 
 Native Android Activity, widgets and HTTPS client. No browser wrapper, Custom Tabs, or WebView. Uses the existing DragonZpyder public user-session API at dragonzpyder.xyz; the backend currently proxies Personal authentication and chat to Operly. Private inference tokens are never embedded.
 
@@ -6,6 +6,9 @@ Included: email/password sign-in, Personal scope validation, agent chat, server 
 
 Build with JDK 17, SDK 35 and Gradle 8.9:
     cd android
+    bash prepare-brand.sh
     gradle :app:assembleDebug :app:lintDebug
 
 APK artifact: DragonZpyder-Android-debug. Debug signing only. If signatures differ, uninstall the prior preview before installing. Test login, chat, conversation restoration, text model selection, dictation and logout on a real device before claiming functional parity.
+
+Version 0.3.0 sends exact host-bound production cookies and the matching session CSRF value, checks the current session before switching scope, and compiles the website's pinned official logo into the package. No backend exemptions were added. Verify successful sign-in on device before certifying authentication.
