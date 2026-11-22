@@ -175,7 +175,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             ScrollView listScroll=new ScrollView(this);LinearLayout list=column();listScroll.addView(list);sidebar.addView(listScroll,new LinearLayout.LayoutParams(-1,0,1));
             Runnable filter=()->{list.removeAllViews();String query=search.getText().toString().toLowerCase(Locale.ROOT);for(int i=0;i<history.length();i++){JSONObject c=history.optJSONObject(i);if(c==null)continue;String name=c.optString("title","Conversation");if(!name.toLowerCase(Locale.ROOT).contains(query))continue;Button b=button(name,()->{drawer.dismiss();open(c.optString("id"));});b.setGravity(Gravity.START|Gravity.CENTER_VERTICAL);list.addView(b);gap(list,3);}};
             search.addTextChangedListener(new android.text.TextWatcher(){public void beforeTextChanged(CharSequence s,int start,int count,int after){}public void onTextChanged(CharSequence s,int start,int before,int count){filter.run();}public void afterTextChanged(android.text.Editable e){}});filter.run();
-            sidebar.addView(button("Your tools",()->{drawer.dismiss();showTools();}));sidebar.addView(button("Personal tasks",()->{drawer.dismiss();showTasks();}));sidebar.addView(button("Approvals",()->{drawer.dismiss();approvals();}));sidebar.addView(button("Account & security",()->{drawer.dismiss();showAccount();}));
+            sidebar.addView(button("Connections & tools",()->{drawer.dismiss();showConnections();}));sidebar.addView(button("Your tools",()->{drawer.dismiss();showTools();}));sidebar.addView(button("Personal tasks",()->{drawer.dismiss();showTasks();}));sidebar.addView(button("Approvals",()->{drawer.dismiss();approvals();}));sidebar.addView(button("Account & security",()->{drawer.dismiss();showAccount();}));
             drawer.setContentView(sidebar);drawer.show();Window w=drawer.getWindow();if(w!=null){w.setBackgroundDrawableResource(android.R.color.transparent);w.setGravity(Gravity.START|Gravity.TOP);w.setLayout(Math.min(dp(285),(int)(getResources().getDisplayMetrics().widthPixels*.88)), -1);}
         },true);
     }
@@ -200,10 +200,10 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         JSONArray list=p.optJSONArray("native_sessions");if(list!=null)for(int i=0;i<list.length();i++){JSONObject item=list.optJSONObject(i);if(item==null)continue;sessions.addView(text(item.optString("device","Session")+(item.optBoolean("current")?" · This device":""),14,TEXT));sessions.addView(text(item.optString("scope",""),12,MUTED));gap(sessions,12);}
         gap(accountPage,14);LinearLayout spaces=accountCard();sectionLabel(spaces,"04 / SCOPE");spaces.addView(heading("Your workspaces",21));gap(spaces,8);
         JSONArray work=p.optJSONArray("native_workspaces");if(p.optBoolean("workspaces_unavailable"))spaces.addView(text("Workspace information is unavailable.",13,MUTED));else if(work==null||work.length()==0)spaces.addView(text("No business workspaces attached to this account.",13,MUTED));else for(int i=0;i<work.length();i++){JSONObject w=work.optJSONObject(i);if(w!=null){spaces.addView(text(w.optString("name")+" · "+w.optString("role"),14,TEXT));gap(spaces,8);}}
-        gap(accountPage,14);Button out=button("Sign out",this::confirmSignOut);out.setTextColor(dark?0xffffa59a:0xffb6382b);accountPage.addView(out);gap(accountPage,10);accountPage.addView(text("Signs out this device and clears its local conversation view. Your server conversations are retained.",12,MUTED));
+        gap(accountPage,14);accountPage.addView(button("Manage connections & tools",this::showConnections));gap(accountPage,14);Button out=button("Sign out",this::confirmSignOut);out.setTextColor(dark?0xffffa59a:0xffb6382b);accountPage.addView(out);gap(accountPage,10);accountPage.addView(text("Signs out this device and clears its local conversation view. Your server conversations are retained.",12,MUTED));
     }
     private void confirmSignOut(){new AlertDialog.Builder(this).setTitle("Sign out of DragonZpyder?").setMessage("You’ll need to sign in again to access your Personal workspace on this device.").setNegativeButton("Cancel",null).setPositiveButton("Sign out",(d,i)->signOut()).show();}
-    private void showCommands(){new AlertDialog.Builder(this).setTitle("What would you like to do?").setItems(new String[]{"New chat","Find conversations","Switch mode","Approvals","Dictate a message","Toggle appearance"},(d,i)->{switch(i){case 0:newChat();break;case 1:showMenu();break;case 2:showModes();break;case 3:approvals();break;case 4:dictate();break;case 5:toggleTheme();break;}}).setNegativeButton("Close",null).show();}
+    private void showCommands(){new AlertDialog.Builder(this).setTitle("What would you like to do?").setItems(new String[]{"New chat","Find conversations","Switch mode","Approvals","Dictate a message","Toggle appearance","Connections & tools","Personal tasks"},(d,i)->{switch(i){case 0:newChat();break;case 1:showMenu();break;case 2:showModes();break;case 3:approvals();break;case 4:dictate();break;case 5:toggleTheme();break;case 6:showConnections();break;case 7:showTasks();break;}}).setNegativeButton("Close",null).show();}
     private void showAdd(){
         new AlertDialog.Builder(this).setTitle("Add to your message")
           .setItems(new String[]{"Attach a file or photo","Camera and screen capture (not yet available)"},(d,i)->{
@@ -354,6 +354,30 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                 new AlertDialog.Builder(this).setTitle(approved?"Execution result":"Decision recorded").setMessage("Server status: "+reported+"\n\n"+value.toString()).setPositiveButton("Close",null).show();
             },true);
         }).show();
+    }
+    private void showConnections(){
+        submit("Checking connections…",()->api.call("/api/personal-connectors",null),result->{
+            JSONArray rows=result instanceof JSONArray?(JSONArray)result:result instanceof JSONObject?((JSONObject)result).optJSONArray("connectors"):null;
+            if(rows==null)throw new Exception("Connection catalog unavailable.");
+            Dialog dialog=new Dialog(this);LinearLayout page=column();page.setPadding(dp(18),dp(20),dp(18),dp(12));page.setBackgroundColor(BG);
+            page.addView(heading("Connections & tools",25));gap(page,8);
+            page.addView(text("Manage services already authorized for your Personal account. Sign-in does not automatically grant access to connected services.",14,MUTED));gap(page,14);
+            ScrollView area=new ScrollView(this);LinearLayout list=column();area.addView(list);page.addView(area,new LinearLayout.LayoutParams(-1,0,1));
+            if(rows.length()==0)list.addView(text("No authorized connections returned. New provider authorization is not yet available in this Android preview.",14,MUTED));
+            for(int i=0;i<rows.length();i++){
+                JSONObject c=rows.optJSONObject(i);if(c==null)continue;String id=c.optString("id");if(id.isEmpty())continue;
+                LinearLayout card=column();GradientDrawable skin=surface(PANEL,16);skin.setStroke(dp(1),LINE);card.setBackground(skin);card.setPadding(dp(14),dp(14),dp(14),dp(14));
+                String name=c.optString("displayName",c.optString("provider","Connection"));
+                card.addView(heading(name,18));gap(card,6);card.addView(text(c.optString("account","Account details unavailable"),14,MUTED));gap(card,8);card.addView(text(c.optString("healthStatus",c.optString("status","Status unavailable"))+" · "+(c.optBoolean("enabled")?"Enabled":"Not enabled"),13,TEXT));
+                if(!c.optString("lastError").isEmpty())card.addView(text(c.optString("lastError"),13,MUTED));
+                if(c.optJSONArray("capabilities")!=null)card.addView(text(c.optJSONArray("capabilities").toString(),13,MUTED));
+                gap(card,12);LinearLayout buttons=row();
+                buttons.addView(button("Test",()->{dialog.dismiss();submit("Testing connection…",()->api.call("/api/personal-connectors/"+DragonApi.segment(id)+"/test",new JSONObject()),r->new AlertDialog.Builder(this).setTitle("Connection test result").setMessage(String.valueOf(r)).setPositiveButton("Refresh",(d,x)->showConnections()).setNegativeButton("Close",null).show(),true);}),new LinearLayout.LayoutParams(0,-2,1));
+                buttons.addView(button("Disconnect",()->new AlertDialog.Builder(this).setTitle("Disconnect "+name+"?").setMessage("Your agents will lose this connection's authorization.").setNegativeButton("Cancel",null).setPositiveButton("Disconnect",(d,x)->{dialog.dismiss();submit("Disconnecting…",()->api.call("/api/personal-connectors/"+DragonApi.segment(id),"DELETE",new JSONObject()),r->showConnections(),true);}).show()),new LinearLayout.LayoutParams(0,-2,1));
+                card.addView(buttons);list.addView(card);gap(list,12);
+            }
+            page.addView(button("Browse available tools",()->{dialog.dismiss();showTools();}));page.addView(button("Close",dialog::dismiss));dialog.setContentView(page);dialog.show();Window w=dialog.getWindow();if(w!=null){w.setBackgroundDrawableResource(android.R.color.transparent);w.setLayout(-1,-1);}
+        },true);
     }
     private void showTools(){
         submit("Discovering tools…",()->api.call("/api/personal-tools",null),r->{
