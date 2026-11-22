@@ -48,3 +48,10 @@ body:has(#profile-panel:not([hidden])) #mode-tabs{display:none}
 @media(prefers-reduced-motion:reduce){.dz-account-shortcuts,.dz-account-group{scroll-behavior:auto}}
 
 .dz-account-resource-action{font:inherit;font-size:11px;white-space:nowrap;border:1px solid var(--line);background:transparent;color:#eac39f;border-radius:8px;padding:10px 12px;cursor:pointer}.dz-account-resource-action:hover{border-color:var(--copper)}@media(max-width:760px){.dz-account-resource-action{margin-left:52px}}
+
+/* Safari focuses form fields without involuntarily zooming the viewport. */
+@media(max-width:760px){
+  .account-panel input,.dz-account-form input{font-size:16px}
+  .top,main,footer{max-width:100%;min-width:0}
+  .account-card,.dz-account-group{overflow-wrap:anywhere}
+}
