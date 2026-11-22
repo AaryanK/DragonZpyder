@@ -56,9 +56,13 @@ def test_authorize_rejects_cross_origin_and_non_pkce(monkeypatch):
 
 def test_authorize_requires_real_session_and_safely_redirects(monkeypatch):
     monkeypatch.setenv("DRAGONZPYDER_IDENTITY_HTTP_ENABLED", "1")
+    class DummyDB:
+        @asynccontextmanager
+        async def transaction(self):
+            yield self
     @asynccontextmanager
     async def db():
-        yield object()
+        yield DummyDB()
     monkeypatch.setattr(bridge, "_identity_db", db)
     async def authenticate(db, *, secret, csrf, require_csrf):
         assert require_csrf
@@ -71,9 +75,15 @@ def test_authorize_requires_real_session_and_safely_redirects(monkeypatch):
         return AuthorizationGrant(code="single-use-secret", expires_at=datetime.now(timezone.utc) + timedelta(seconds=90))
     monkeypatch.setattr(bridge, "resolve_browser_session", authenticate)
     monkeypatch.setattr(bridge, "authorize_code", issue)
+    async def consent(conn, **kwargs):
+        assert kwargs["ticket"] == "t" * 48
+        assert kwargs["subject"] == "existing-operly-user"
+        assert kwargs["session_secret"] == "session-secret"
+        assert kwargs["request"]["scope"] == "operly:access"
+    monkeypatch.setattr(bridge, "consume_interaction", consent)
     with TestClient(app) as c:
         c.cookies.set("__Host-dz_identity", "session-secret")
-        resp = c.post("/identity/v1/authorize", json=payload(),
+        resp = c.post("/identity/v1/authorize", json={**payload(), "consent_ticket": "t" * 48},
                       headers={"Origin": ISSUER, "x-dz-csrf": "csrf-secret"}, follow_redirects=False)
         assert resp.status_code == 303
         uri = urlsplit(resp.headers["location"])
