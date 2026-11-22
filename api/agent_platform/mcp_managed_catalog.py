@@ -84,7 +84,8 @@ def _redact(value, secret: str, depth: int = 0):
     if isinstance(value, str):
         return value.replace(secret, "[redacted credential]") if secret else value
     if isinstance(value, dict):
-        return {str(k)[:200]: _redact(v, secret, depth + 1) for k, v in value.items()}
+        return {_redact(str(k), secret, depth + 1)[:200]: _redact(v, secret, depth + 1)
+                for k, v in value.items()}
     if isinstance(value, (list, tuple)):
         return [_redact(v, secret, depth + 1) for v in value]
     return value
