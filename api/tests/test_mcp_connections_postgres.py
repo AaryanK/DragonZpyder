@@ -50,6 +50,19 @@ def test_real_postgres_oauth_lifecycle_and_concurrent_refresh(monkeypatch):
                     "agent_platform/migrations/20261122_mcp_connections.sql"
                 ).read_text()
                 await db.execute(migration)
+                # Selection hashes live in the Personal goals DB, not the credential DB.
+                # Model independent databases using separate PostgreSQL schemas.
+                assert await db.fetchval(
+                    "SELECT to_regclass('public.dz_mcp_goal_selections')"
+                ) is None
+                await db.execute("DROP SCHEMA IF EXISTS dz_mcp_goal_test CASCADE")
+                await db.execute("CREATE SCHEMA dz_mcp_goal_test")
+                await db.execute("SET search_path TO dz_mcp_goal_test")
+                await db.execute((
+                    Path(__file__).resolve().parents[1] /
+                    "agent_platform/migrations/20261122_personal_mcp_goal_selections.sql"
+                ).read_text())
+                await db.execute("RESET search_path")
             manager = module.OAuthConnectionManager(
                 pool, module.CredentialCipher(), http=object(),
             )
@@ -150,11 +163,11 @@ def test_real_postgres_oauth_lifecycle_and_concurrent_refresh(monkeypatch):
                     "SELECT encrypted_tokens FROM dz_mcp_connections WHERE public_alias=$1", one,
                 ) is None
                 await db.execute(
-                    """INSERT INTO dz_mcp_goal_selections(goal_id,owner_id,selection_hash)
+                    """INSERT INTO dz_mcp_goal_test.dz_mcp_goal_selections(goal_id,owner_id,selection_hash)
                        VALUES($1,$2,$3)""", "goal1", "alice", "a" * 64,
                 )
                 assert await db.fetchval(
-                    "SELECT selection_hash FROM dz_mcp_goal_selections WHERE goal_id='goal1'"
+                    "SELECT selection_hash FROM dz_mcp_goal_test.dz_mcp_goal_selections WHERE goal_id='goal1'"
                 ) == "a" * 64
         finally:
             await pool.close()
