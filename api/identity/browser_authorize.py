@@ -92,11 +92,14 @@ async def interactive_authorization(request: Request):
 <p>Continue securely to <strong>{client}</strong>.</p>
 <section id="signin" {'hidden' if authenticated else ''}>
 <h2>Sign in</h2>
-<form id="login-form" autocomplete="on">
+<form id="login-form" method="post" action="/identity/v1/password/login" autocomplete="on">
+<fieldset id="login-fields" disabled>
 <label>Email <input name="email" type="email" autocomplete="username" required></label>
 <label>Password <input name="password" type="password" autocomplete="current-password" required></label>
 <button type="submit">Sign in</button>
+</fieldset>
 </form>
+<noscript>JavaScript is required for secure sign-in. No credentials have been submitted.</noscript>
 </section>
 <section id="consent" {'' if authenticated else 'hidden'}>
 <h2>Authorize this application</h2>

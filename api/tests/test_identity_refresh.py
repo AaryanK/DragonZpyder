@@ -70,6 +70,12 @@ async def test_rotate_and_replay_revoke_entire_family(monkeypatch):
                                   redirect_uri=REDIRECT)
     assert second.subject == "existing-id"
     assert second.value != initial.value
+    assert second.expires_at == initial.expires_at
+    # Wrong-client replay is rejected without revoking the real family.
+    with pytest.raises(OAuthGrantDenied):
+        await rotate_refresh(db, token=initial.value, client_id="different-client",
+                             redirect_uri=REDIRECT)
+    assert all(row["revoked_at"] is None for row in db.grants.values())
     with pytest.raises(OAuthGrantDenied):
         await rotate_refresh(db, token=initial.value, client_id="operly-web",
                              redirect_uri=REDIRECT)

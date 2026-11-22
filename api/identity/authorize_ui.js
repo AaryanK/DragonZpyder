@@ -1,6 +1,7 @@
 "use strict";
 // No third-party scripts, storage, local account IDs or unsafe DOM HTML.
-const status = document.getElementById("status");
+const statusEl = document.getElementById("status");
+const loginForm = document.getElementById("login-form");
 const query = new URLSearchParams(location.search);
 const fields = [
   "response_type", "client_id", "redirect_uri", "scope", "state",
@@ -13,9 +14,9 @@ function csrfCookie() {
   const found = document.cookie.split("; ").find(c => c.startsWith("__Host-dz_csrf="));
   return found ? decodeURIComponent(found.slice("__Host-dz_csrf=".length)) : "";
 }
-document.getElementById("login-form").addEventListener("submit", async (event) => {
+loginForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  status.textContent = "Signing in…";
+  statusEl.textContent = "Signing in…";
   const form = new FormData(event.target);
   try {
     const response = await fetch("/identity/v1/password/login", {
@@ -27,11 +28,13 @@ document.getElementById("login-form").addEventListener("submit", async (event) =
     if (!response.ok) throw new Error("Sign-in could not be verified");
     location.reload();
   } catch {
-    status.textContent = "Sign-in failed. Check your credentials.";
+    statusEl.textContent = "Sign-in failed. Check your credentials.";
   }
 });
+// Never enable password fields until the submit handler is installed.
+document.getElementById("login-fields").disabled = false;
 document.getElementById("approve").addEventListener("click", async () => {
-  status.textContent = "Confirming authorization…";
+  statusEl.textContent = "Confirming authorization…";
   try {
     const response = await fetch("/identity/v1/authorize", {
       method: "POST", credentials: "same-origin", cache: "no-store",
@@ -44,10 +47,10 @@ document.getElementById("approve").addEventListener("click", async () => {
     if (!result || typeof result.redirect_url !== "string") throw new Error("Invalid response");
     location.assign(result.redirect_url);
   } catch {
-    status.textContent = "Authorization could not be completed.";
+    statusEl.textContent = "Authorization could not be completed.";
   }
 });
 document.getElementById("deny").addEventListener("click", () => {
-  status.textContent = "Cancelled. You may close this page.";
+  statusEl.textContent = "Cancelled. You may close this page.";
   document.getElementById("approve").disabled = true;
 });
