@@ -59,7 +59,9 @@ def test_get_authorize_shows_login_without_leaking_client_secrets(app):
     with TestClient(app, base_url=ISSUER) as c:
         response = c.get("/identity/v1/authorize?" + urlencode(query()))
     assert response.status_code == 200
-    assert "login-form" in response.text
+    assert '<form id="login-form" method="post" action="/identity/v1/password/login"' in response.text
+    assert '<fieldset id="login-fields" disabled>' in response.text
+    assert "<noscript>" in response.text
     assert "consent" in response.text
     assert "hidden" in response.text
     assert "openid operly:access" in response.text
