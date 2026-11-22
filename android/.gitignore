@@ -3,3 +3,5 @@
 local.properties
 *.jks
 *.keystore
+
+app/src/main/res/drawable-nodpi/brand_icon.png
