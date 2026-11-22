@@ -88,20 +88,26 @@ for (const viewport of [{width:390,height:750},{width:980,height:1830},{width:36
     const panel=page.getByRole("dialog",{name:"Live companion"});
     await expect(panel.getByText("TRANSCRIPTION",{exact:true})).toBeVisible();
     await expect(panel.locator(".dz-voice-orb-footnote")).toBeHidden();
-    await expect(panel.locator(".dz-voice-audio-wave")).toBeHidden();
+    await expect(panel.locator("canvas.dz-voice-original-canvas")).toBeVisible();
     await page.evaluate(() => window.__recognition.onresult({resultIndex:0,results:[Object.assign([{transcript:"This is a live transcription test."}],{isFinal:true})]}));
     await expect(panel.getByLabel("Latest transcription")).toHaveText("This is a live transcription test.");
     const metrics=await page.evaluate(()=>{
       const rect=selector=>document.querySelector(selector).getBoundingClientRect();
       const scale=innerWidth/390;
-      const mic=rect("#companion-mute"),speaker=rect(".dz-voice-orb-controls button"),orb=rect(".dz-voice-sphere > circle"),area=rect(".dz-voice-orb-space"),caption=rect(".dz-voice-live-caption"),text=rect(".dz-voice-orb-conversation"),controls=rect(".dz-voice-orb-controls"),end=rect("#companion-end"),header=rect(".dz-voice-orb-head");
-      return {scale, mic:mic.width,speaker:speaker.width,orb:orb.width,orbBottom:orb.bottom,areaBottom:area.bottom,textTop:text.top,captionBottom:caption.bottom,controlsTop:controls.top,controlsBottom:controls.bottom,endTop:end.top,endBottom:end.bottom,headerRight:header.right,width:innerWidth,height:innerHeight,captionFont:parseFloat(getComputedStyle(document.querySelector(".dz-voice-live-caption")).fontSize)};
+      const canvas=document.querySelector("canvas.dz-voice-original-canvas");
+      const canvasRect=canvas.getBoundingClientRect();
+      const orbRadius=Number(canvas.dataset.orbRadius);
+      const orbBottom=canvasRect.top+Number(canvas.dataset.orbCenterY)+orbRadius;
+      const mic=rect("#companion-mute"),speaker=rect(".dz-voice-orb-controls button"),area=rect(".dz-voice-orb-space"),caption=rect(".dz-voice-live-caption"),text=rect(".dz-voice-orb-conversation"),controls=rect(".dz-voice-orb-controls"),end=rect("#companion-end"),header=rect(".dz-voice-orb-head");
+      return {scale, mic:mic.width,speaker:speaker.width,orb:orbRadius*2,orbBottom,areaBottom:area.bottom,textTop:text.top,captionBottom:caption.bottom,controlsTop:controls.top,controlsBottom:controls.bottom,endTop:end.top,endBottom:end.bottom,headerRight:header.right,width:innerWidth,height:innerHeight,captionFont:parseFloat(getComputedStyle(document.querySelector(".dz-voice-live-caption")).fontSize)};
     });
     expect(metrics.mic/metrics.scale).toBeGreaterThanOrEqual(64);
     expect(metrics.speaker/metrics.scale).toBeGreaterThanOrEqual(48);
     expect(metrics.captionFont/metrics.scale).toBeGreaterThanOrEqual(18);
     expect(metrics.orb/metrics.width).toBeGreaterThanOrEqual(.5);
-    expect(metrics.orbBottom).toBeLessThanOrEqual(metrics.areaBottom+2);
+    // The source artwork deliberately reaches the title baseline by ~20px.
+    // Do not force the fluid orb entirely into the invisible spacing element.
+    expect(metrics.orbBottom-metrics.textTop).toBeLessThanOrEqual(39*metrics.scale);
     expect(metrics.areaBottom).toBeLessThan(metrics.textTop);
     expect(metrics.captionBottom).toBeLessThan(metrics.controlsTop);
     expect(metrics.controlsBottom).toBeLessThan(metrics.endTop);
