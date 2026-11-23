@@ -53,6 +53,11 @@ test("native Agent mode never calls the Operly proxy and scopes MCP aliases", as
     status: document.querySelector("#status-text")?.textContent,
     authHidden: document.querySelector("#auth-modal")?.hidden,
     hasCsrf: document.cookie.includes("__Host-dz_csrf="),
+    modals: [...document.querySelectorAll("#auth-modal")].map(node => ({
+      hidden: node.hidden, display: getComputedStyle(node).display,
+      visibility: getComputedStyle(node).visibility,
+      html: node.outerHTML.slice(0, 180),
+    })),
   }));
   console.info("native-routing-probe:", JSON.stringify(probe));
   await expect(page.locator("#auth-modal")).toBeHidden();
