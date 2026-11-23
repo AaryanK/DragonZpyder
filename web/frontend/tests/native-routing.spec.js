@@ -38,7 +38,6 @@ test("native Agent mode never calls the Operly proxy and scopes MCP aliases", as
     ] }),
   }));
   await page.route("**/dz/v2/personal/chat", async route => {
-    console.info("native-request-test-headers:", JSON.stringify(route.request().headers()));
     expect(route.request().headers()["x-dz-csrf"]).toBe("synthetic-native-csrf");
     expect(route.request().headers()["x-csrf-token"]).toBeUndefined();
     chats.push(route.request().postDataJSON());
