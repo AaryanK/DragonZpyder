@@ -154,3 +154,33 @@ def test_refresh_grant_routes_only_to_rotating_refresh_handler(monkeypatch):
         assert "id_token" not in response.json()
         invalid = c.post("/identity/v1/token", data={**data, "sub": "other-person"})
         assert invalid.status_code == 400
+
+
+
+@pytest.mark.asyncio
+async def test_production_identity_database_refuses_template_superuser(monkeypatch):
+    from fastapi import HTTPException
+    monkeypatch.setenv("RAILWAY_ENVIRONMENT_NAME", "production")
+    for user in ("postgres", "root", "railway"):
+        monkeypatch.setenv(
+            "DRAGONZPYDER_IDENTITY_DATABASE_URL",
+            f"postgresql://{user}:redacted@identity-db.railway.internal/railway")
+        with pytest.raises(HTTPException) as exc:
+            async with bridge._identity_db():
+                raise AssertionError("Superuser connection was permitted")
+        assert exc.value.status_code == 503
+        assert exc.value.detail == "Restricted identity database role required"
+
+    monkeypatch.setenv("DRAGONZPYDER_IDENTITY_DATABASE_URL",
+                       "postgresql://dz_identity_api:dummy@identity-db.railway.internal/railway")
+    connected = []
+    class SyntheticDB:
+        async def close(self):
+            connected.append("closed")
+    async def fake_connect(*, dsn, **kwargs):
+        assert "dz_identity_api" in dsn
+        return SyntheticDB()
+    monkeypatch.setattr(bridge.asyncpg, "connect", fake_connect)
+    async with bridge._identity_db() as db:
+        assert isinstance(db, SyntheticDB)
+    assert connected == ["closed"]
