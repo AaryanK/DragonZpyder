@@ -1,7 +1,7 @@
 name: Android APK
 on:
   push:
-    branches: [develop, feat/android-apk]
+    branches: [develop, feat/android-apk, release/android-play-beta-20261122]
     paths: ["android/**", ".github/workflows/android-apk.yml"]
   pull_request:
     paths: ["android/**", ".github/workflows/android-apk.yml"]
@@ -23,17 +23,19 @@ jobs:
           java-version: '17'
       - uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.9'
+          gradle-version: '8.13'
       - uses: android-actions/setup-android@v4
         with:
           packages: 'platform-tools'
       - name: Android SDK
-        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
       - name: Verify session cookie contract
         run: |
           mkdir -p /tmp/dz-cookie-test
           javac -d /tmp/dz-cookie-test android/app/src/main/java/xyz/dragonzpyder/android/SessionCookies.java android/tests/SessionCookiesTest.java
           java -cp /tmp/dz-cookie-test xyz.dragonzpyder.android.SessionCookiesTest
+      - name: Install beta brand generator
+        run: python3 -m pip install --disable-pip-version-check --break-system-packages Pillow==11.3.0
       - name: Package official brand assets
         run: bash android/prepare-brand.sh
       - name: Build and lint
@@ -58,7 +60,7 @@ jobs:
           target: google_apis
           script: cd android && gradle --no-daemon :app:connectedDebugAndroidTest
       - name: Verify APK signature
-        run: '"$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs android/app/build/outputs/apk/debug/app-debug.apk'
+        run: '"$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs android/app/build/outputs/apk/debug/app-debug.apk'
       - uses: actions/upload-artifact@v4
         with:
           name: DragonZpyder-Android-debug

@@ -84,7 +84,7 @@ class NativeChatView(context: Context, private val dark: Boolean, private val ac
                 Row(Modifier.fillMaxWidth().heightIn(min=54.dp), verticalAlignment=Alignment.CenterVertically) {
                     ToolButton("menu", "Conversations", actions::menu)
                     Column(Modifier.weight(1f).padding(horizontal=6.dp)) {
-                        Text("Personal",color=ink,fontWeight=FontWeight.SemiBold,fontSize=15.sp)
+                        Row(verticalAlignment=Alignment.CenterVertically){Text("Personal",color=ink,fontWeight=FontWeight.SemiBold,fontSize=15.sp);Spacer(Modifier.width(7.dp));Text("BETA",color=accent,fontSize=9.sp,fontWeight=FontWeight.Bold,modifier=Modifier.background(panel,RoundedCornerShape(5.dp)).padding(horizontal=5.dp,vertical=2.dp))}
                         Text(statusText, color=muted,fontSize=11.sp,maxLines=2)
                     }
                     ToolButton("command","Commands",actions::commands)

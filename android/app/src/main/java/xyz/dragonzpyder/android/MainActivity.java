@@ -92,7 +92,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private void loginScreen(String message){authMode="login";authScreen("login",message);}
     private void accountLayout(){
         reset();ScrollView scroller=new ScrollView(this);scroller.setFillViewport(true);accountPage=column();accountPage.setPadding(dp(12),dp(14),dp(12),dp(30));scroller.addView(accountPage);root.addView(scroller,new LinearLayout.LayoutParams(-1,0,1));
-        LinearLayout bar=row();bar.addView(logo(32));bar.addView(heading("  DragonZpyder",19));bar.addView(new View(this),new LinearLayout.LayoutParams(0,1,1));bar.addView(button(dark?"☀":"☾",()->{dark=!dark;getPreferences(MODE_PRIVATE).edit().putBoolean("dark",dark).apply();palette();if(signedIn)showAccount();else authScreen(authMode,"");}));accountPage.addView(bar);gap(accountPage,24);
+        LinearLayout bar=row();bar.addView(logo(32));bar.addView(heading("  DragonZpyder",19));TextView beta=text("BETA",10,ACCENT);beta.setTypeface(Typeface.DEFAULT_BOLD);beta.setPadding(dp(7),dp(4),dp(7),dp(4));beta.setBackground(surface(CHIP,7));bar.addView(beta);bar.addView(new View(this),new LinearLayout.LayoutParams(0,1,1));bar.addView(button(dark?"☀":"☾",()->{dark=!dark;getPreferences(MODE_PRIVATE).edit().putBoolean("dark",dark).apply();palette();if(signedIn)showAccount();else authScreen(authMode,"");}));accountPage.addView(bar);gap(accountPage,24);
     }
     private void sectionLabel(LinearLayout parent,String label){TextView t=text(label,11,ACCENT);t.setLetterSpacing(.12f);parent.addView(t);gap(parent,8);}
     private EditText accountField(LinearLayout parent,String label,String value,int kind,String hint){
