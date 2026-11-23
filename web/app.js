@@ -230,7 +230,12 @@ async function bootstrapAuth() {
     state.firstParty = routing.web_cutover_enabled === true;
     window.dragonzpyderNativeMode = state.firstParty;
     window.dispatchEvent(new CustomEvent("dragonzpyder:runtime-mode", { detail: { firstParty: state.firstParty } }));
+    if (!state.firstParty) {
+      await discoverCentralIdentity();
+    }
     if (state.firstParty) {
+      const obsolete = $("dragonzpyder-central-signin-modal");
+      if (obsolete) obsolete.hidden = true;
       // Voice/Mesh still use the legacy Operly session verifier. Until those
       // routes receive first-party identity, never expose that old path.
       const mesh = $("mesh-switch");
@@ -1047,7 +1052,6 @@ window.addEventListener("online", () => setRuntimeStatus(state.session ? "online
 window.addEventListener("offline", () => setRuntimeStatus("error", "Offline"));
 
 autoSizeInput();
-discoverCentralIdentity().catch(() => {});
 bootstrapAuth();
 
 window.addEventListener("dragonzpyder:mesh-disabled",()=>{ if(state.conversationId)openConversation(state.conversationId);else showEmptyState(); });
