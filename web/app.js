@@ -110,7 +110,10 @@ async function api(path, { method = "GET", body = undefined, csrf = true, csrfTo
   if (!["GET", "HEAD", "OPTIONS"].includes(upper) && csrf) {
     const token = csrfToken || sessionCsrf() || state.preauthCsrf;
     if (!token) throw new ApiError("Secure session token is missing. Sign in again.", { code: "CSRF_TOKEN_MISSING", status: 401 });
-    headers["X-CSRF-Token"] = token;
+    // The native identity issuer uses its own anti-CSRF header. Never mix
+    // the legacy Operly CSRF header with first-party DragonZpyder sessions.
+    headers[state.firstParty && path.startsWith("/dz/")
+      ? "X-DZ-CSRF" : "X-CSRF-Token"] = token;
   }
 
   let response;
@@ -227,7 +230,12 @@ async function bootstrapAuth() {
     state.firstParty = routing.web_cutover_enabled === true;
     window.dragonzpyderNativeMode = state.firstParty;
     window.dispatchEvent(new CustomEvent("dragonzpyder:runtime-mode", { detail: { firstParty: state.firstParty } }));
+    if (!state.firstParty) {
+      await discoverCentralIdentity();
+    }
     if (state.firstParty) {
+      const obsolete = $("dragonzpyder-central-signin-modal");
+      if (obsolete) obsolete.hidden = true;
       // Voice/Mesh still use the legacy Operly session verifier. Until those
       // routes receive first-party identity, never expose that old path.
       const mesh = $("mesh-switch");
@@ -1044,7 +1052,6 @@ window.addEventListener("online", () => setRuntimeStatus(state.session ? "online
 window.addEventListener("offline", () => setRuntimeStatus("error", "Offline"));
 
 autoSizeInput();
-discoverCentralIdentity().catch(() => {});
 bootstrapAuth();
 
 window.addEventListener("dragonzpyder:mesh-disabled",()=>{ if(state.conversationId)openConversation(state.conversationId);else showEmptyState(); });
