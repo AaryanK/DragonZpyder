@@ -56,6 +56,16 @@ async def _identity_db():
     dsn = os.getenv("DRAGONZPYDER_IDENTITY_DATABASE_URL", "")
     if not dsn or not dsn.startswith(("postgresql://", "postgres://")):
         raise HTTPException(503, "Identity database not configured")
+    # A Railway Postgres template initially exposes a superuser DATABASE_URL.
+    # It may install the schema, but it must NEVER become the live identity
+    # application's production credential. Separate roles and GRANTs are needed.
+    if os.getenv("RAILWAY_ENVIRONMENT_NAME", "").lower() == "production":
+        try:
+            user = urlsplit(dsn).username
+        except ValueError:
+            raise HTTPException(503, "Invalid identity database URL") from None
+        if not user or user.lower() in {"postgres", "root", "railway"}:
+            raise HTTPException(503, "Restricted identity database role required")
     # Dedicated identity DB role; never reuse the model gateway DB credentials.
     try:
         conn = await asyncpg.connect(dsn=dsn, timeout=5, command_timeout=8)
