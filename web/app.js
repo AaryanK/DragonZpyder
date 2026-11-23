@@ -110,7 +110,7 @@ async function api(path, { method = "GET", body = undefined, csrf = true, csrfTo
   if (!["GET", "HEAD", "OPTIONS"].includes(upper) && csrf) {
     const token = csrfToken || sessionCsrf() || state.preauthCsrf;
     if (!token) throw new ApiError("Secure session token is missing. Sign in again.", { code: "CSRF_TOKEN_MISSING", status: 401 });
-    headers["X-CSRF-Token"] = token;
+    // The native identity issuer uses its own anti-CSRF header. Never mix\n    // the legacy Operly CSRF header with first-party DragonZpyder sessions.\n    headers[state.firstParty && path.startsWith("/dz/")\n      ? "X-DZ-CSRF" : "X-CSRF-Token"] = token;
   }
 
   let response;
