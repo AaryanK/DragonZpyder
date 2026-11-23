@@ -47,6 +47,14 @@ test("native Agent mode never calls the Operly proxy and scopes MCP aliases", as
         execution_receipts: { tool_names: [], failed_tool_count: 0, status: "completed" } }) });
   });
   await page.goto("/app");
+  await page.waitForTimeout(600);
+  const probe = await page.evaluate(() => ({
+    native: window.dragonzpyderNativeMode,
+    status: document.querySelector("#status-text")?.textContent,
+    authHidden: document.querySelector("#auth-modal")?.hidden,
+    hasCsrf: document.cookie.includes("__Host-dz_csrf="),
+  }));
+  console.info("native-routing-probe:", JSON.stringify(probe));
   await expect(page.locator("#auth-modal")).toBeHidden();
   await expect(page.locator("#mesh-switch")).toBeHidden();
   await page.getByRole("button", { name: "Connections & tools" }).first().click();
