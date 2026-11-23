@@ -4,6 +4,11 @@ test("native Agent mode never calls the Operly proxy and scopes MCP aliases", as
   const oldRoutes = [];
   const chats = [];
   const alias = "c" + "1".repeat(30);
+  // Browser owns the CSRF cookie. An opaque bearer never enters model context.
+  await page.context().addCookies([{
+    name: "__Host-dz_csrf", value: "synthetic-native-csrf", secure: true,
+    sameSite: "Lax", url: "http://127.0.0.1:5189",
+  }]);
 
   await page.route("**/api/**", async route => {
     oldRoutes.push(new URL(route.request().url()).pathname);
@@ -33,6 +38,8 @@ test("native Agent mode never calls the Operly proxy and scopes MCP aliases", as
     ] }),
   }));
   await page.route("**/dz/v2/personal/chat", async route => {
+    expect(route.request().headers()["x-dz-csrf"]).toBe("synthetic-native-csrf");
+    expect(route.request().headers()["x-csrf-token"]).toBeUndefined();
     chats.push(route.request().postDataJSON());
     await route.fulfill({ status: 200, contentType: "application/json",
       body: JSON.stringify({ conversation_id: "00000000-0000-4000-8000-000000000001",
