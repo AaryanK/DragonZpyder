@@ -7,7 +7,7 @@ test("native Agent mode never calls the Operly proxy and scopes MCP aliases", as
   // Browser owns the CSRF cookie. An opaque bearer never enters model context.
   await page.context().addCookies([{
     name: "__Host-dz_csrf", value: "synthetic-native-csrf", secure: true,
-    sameSite: "Lax", url: "http://127.0.0.1:5189",
+    sameSite: "Lax", url: "https://127.0.0.1:5189",
   }]);
 
   await page.route("**/api/**", async route => {
