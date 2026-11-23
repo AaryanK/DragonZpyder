@@ -22,7 +22,7 @@ SQL = (BASE / "schema_bootstrap_manual.sql").read_text("utf-8")
 
 
 @pytest.mark.asyncio
-async def test_identity_bootstrap_on_empty_disposable_postgres_only():
+async def test_identity_bootstrap_on_empty_disposable_postgres_only(monkeypatch):
     dsn = os.getenv("DRAGONZPYDER_IDENTITY_TEST_DSN", "")
     if not dsn:
         pytest.skip("No dedicated disposable identity_test PostgreSQL")
@@ -81,7 +81,7 @@ async def test_identity_bootstrap_on_empty_disposable_postgres_only():
         ) == 1
         # Real PostgreSQL, separate sessions, two different owner IDs.
         # No real provider token, business tools or paid model call.
-        os.environ["DRAGONZPYDER_IDENTITY_GRANT_HASH_KEY"] = (
+        monkeypatch.setenv("DRAGONZPYDER_IDENTITY_GRANT_HASH_KEY",
             "ci-disposable-token-hashing-only-" + "x" * 48)
         with pytest.raises(SessionDenied):
             await create_browser_session(conn, authenticated_subject="imported-1")
