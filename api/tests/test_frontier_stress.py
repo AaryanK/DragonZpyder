@@ -589,3 +589,17 @@ def test_live_diagnostic_reports_cleanup_failure_after_handled_execution(monkeyp
     monkeypatch.setattr(runtime_module, "AgentRuntime", FakeRuntime)
     with pytest.raises(RuntimeError, match="synthetic cleanup failure"):
         asyncio.run(stress.run_live_case("F01"))
+
+
+def test_case_thread_ids_are_unique_case_scoped_and_fail_closed():
+    from agent_platform.frontier_stress import case_thread_id
+    import re
+
+    for case in load_suite():
+        first = case_thread_id(case["id"])
+        second = case_thread_id(case["id"])
+        assert first != second
+        assert re.fullmatch(case["id"].lower() + r"-[0-9a-f]{20}", first)
+    for invalid in ("F00", "f08", "", "../F08"):
+        with pytest.raises(ValueError, match="Unknown long-horizon case"):
+            case_thread_id(invalid)
