@@ -142,3 +142,9 @@ async def test_scoped_history_transfer_disposable_postgres():
           END $$;
         """)
         await conn.close()
+
+
+def test_timezone_offsets_preserve_instant():
+    from agent_platform.personal_history_import import _utc
+    assert _utc("2026-11-25T17:00:00-06:00") == "2026-11-25T23:00:00+00:00"
+    assert _utc(datetime(2026,11,25,23,0)) == "2026-11-25T23:00:00+00:00"
