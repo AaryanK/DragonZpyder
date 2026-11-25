@@ -14,6 +14,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
@@ -101,7 +104,8 @@ private fun MarkdownBlock(node: Node, c: MarkdownColors, copy: (String) -> Unit,
 private fun MarkdownList(list: Node, numbered: Boolean, c: MarkdownColors, copy: (String)->Unit, depth: Int) {
     val start = (list as? OrderedList)?.startNumber ?: 1
     Column(Modifier.fillMaxWidth(), verticalArrangement=Arrangement.spacedBy(6.dp)) {
-        MarkdownDocument.children(list).take(300).forEachIndexed { index, item ->
+        val children=MarkdownDocument.children(list)
+        children.take(300).forEachIndexed { index, item ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement=Arrangement.spacedBy(6.dp)) {
                 Text(
                     if(numbered) "${start+index}." else "•",
@@ -115,6 +119,7 @@ private fun MarkdownList(list: Node, numbered: Boolean, c: MarkdownColors, copy:
                 }
             }
         }
+        if(children.size>300) Text("List truncated after 300 items. Copy the response for the full list.",color=c.muted,fontSize=12.sp)
     }
 }
 
@@ -155,7 +160,7 @@ private fun tableRows(block:TableBlock): List<TableDisplayRow> {
         val header=section is TableHead
         for(row in MarkdownDocument.children(section)){
             if(row !is TableRow)continue
-            result.add(TableDisplayRow(MarkdownDocument.children(row).filterIsInstance<TableCell>().take(12),header))
+            result.add(TableDisplayRow(MarkdownDocument.children(row).filterIsInstance<TableCell>().take(13),header))
             if(result.size>=200)return result
         }
     }
@@ -169,7 +174,8 @@ private fun MarkdownTable(table:TableBlock,c:MarkdownColors) {
     if(cols==0)return
     val cellWidth=if(cols <= 2) 155.dp else 175.dp
     Column(Modifier.fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(4.dp)) {
-        if(cols>2)Text("Scroll horizontally to view the table",fontSize=11.sp,color=c.muted)
+        Text("Scroll horizontally to view the table",fontSize=11.sp,color=c.muted)
+        if(rows.any{it.cells.size>12}) Text("Table limited to 12 columns. Copy the response for the full table.",fontSize=11.sp,color=c.muted)
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
             Column {
                 rows.forEachIndexed { index,row ->
@@ -217,8 +223,12 @@ private fun inline(parent:Node,c:MarkdownColors):AnnotatedString=buildAnnotatedS
             is Strikethrough -> withStyle(SpanStyle(textDecoration=TextDecoration.LineThrough)) {
                 MarkdownDocument.children(node).forEach { visit(it,depth+1) }
             }
-            is Link -> withStyle(SpanStyle(color=c.accent,textDecoration=TextDecoration.Underline)) {
-                MarkdownDocument.children(node).forEach { visit(it,depth+1) }
+            is Link -> {
+                val destination=node.destination.orEmpty()
+                val safe=try { val uri=java.net.URI(destination); uri.scheme.equals("https",ignoreCase=true)&&!uri.host.isNullOrBlank()&&uri.rawUserInfo==null } catch (_:Exception) { false }
+                if(safe) withLink(LinkAnnotation.Url(destination,TextLinkStyles(style=SpanStyle(color=c.accent,textDecoration=TextDecoration.Underline)))) {
+                    MarkdownDocument.children(node).forEach { visit(it,depth+1) }
+                } else MarkdownDocument.children(node).forEach { visit(it,depth+1) }
             }
             is Image -> { append("[image: ");MarkdownDocument.children(node).forEach{visit(it,depth+1)};append("]") }
             is HtmlInline -> append(node.literal)
