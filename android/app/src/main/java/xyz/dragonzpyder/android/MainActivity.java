@@ -66,7 +66,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     @Override public void onCreate(Bundle b) {
         super.onCreate(b);
         agentRequests=new androidx.lifecycle.ViewModelProvider(this).get(AgentRequestViewModel.class);
-        mobileOAuth=new MobileOAuthStore(getApplicationContext());
+        mobileOAuth=new MobileOAuthStore(getApplicationContext());mcpOAuth=new MobileOAuthStore(getApplicationContext(),true);
         if(b!=null){
             restoredConversation=b.getString("dz.conversation","");
             restoredDraft=b.getString("dz.draft","");
@@ -82,7 +82,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         agentRequests.outcomes().observe(this,outcome->{if(signedIn)handleAgentOutcome(outcome);});
         submit("Checking secure session…",()->api.restore(getApplicationContext()),result->{
             if(Boolean.TRUE.equals(result)){signedIn=true;if(!api.isFirstParty()&&restorePending&&restoredMesh&&!restoredModel.isEmpty()){meshMode=true;model=restoredModel;modelAcceptsImages=restoredModelAcceptsImages;chatScreen();applyRestoredDraft();append("system","Android recreated this screen. Previous AI Mesh context and attachments were not saved; this is a new model conversation.");loadHistory(false);}else{chatScreen();if(restorePending&&chatUi!=null)chatUi.setDraft(restoredDraft);if(!activeRequestId.isEmpty()){AgentRequestViewModel.Outcome retained=agentRequests.current();if(retained!=null&&activeRequestId.equals(retained.id))handleAgentOutcome(retained);else checkAgentRequest();}else loadHistory(true);}}
-            else {activeRequestId="";agentRequests.reset();loginScreen("");processOAuthIntent(getIntent());}
+            else {activeRequestId="";agentRequests.reset();mcpOAuth.clear();loginScreen("");processOAuthIntent(getIntent());}
         },true);
     }
     private int dp(float n){return Math.round(n*getResources().getDisplayMetrics().density);}
@@ -127,10 +127,10 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         meshMode=false;model="";modelAcceptsImages=false;restoredMesh=false;restoredModel="";restoredModelAcceptsImages=false;lastAnswer="";meshMessages=new JSONArray();history=new JSONArray();
         profileInitial="D";authEmail="";challengeId="";restoredDraft="";restoredConversation="";selectedMcpConnections.clear();
         restorePending=false;interruptedRequest=false;transcriptionModel="";queuedOAuthIntent=null;googleSignInPending=false;googleAttempt++;
-        if(mobileOAuth!=null)mobileOAuth.clear();discardCamera();stopMedia();if(tts!=null)tts.stop();chatUi=null;
+        if(mobileOAuth!=null)mobileOAuth.clear();if(mcpOAuth!=null)mcpOAuth.clear();discardCamera();stopMedia();if(tts!=null)tts.stop();chatUi=null;
     }
     private void authSuccess(){clearAccountView();signedIn=true;accountOpen=false;chatScreen();loadHistory(true);}
-    private MobileOAuthStore mobileOAuth;
+    private MobileOAuthStore mobileOAuth,mcpOAuth;
     private Intent queuedOAuthIntent;
     private boolean googleSignInPending;
     private long googleAttempt;
@@ -835,11 +835,51 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private void manageFirstPartyMcp(JSONArray rows){
         ArrayList<String> labels=new ArrayList<>(),aliases=new ArrayList<>();
         for(int i=0;i<rows.length();i++){JSONObject item=rows.optJSONObject(i);if(item==null||!"active".equals(item.optString("status")))continue;String alias=item.optString("connection_id");if(!alias.matches("c[a-f0-9]{30}"))continue;aliases.add(alias);labels.add(item.optString("label",item.optString("provider_id","Connection")));}
-        labels.add("Connect a provider on website");
+        labels.add("Connect a provider");labels.add("Complete pending connection");labels.add("Manage on website");
         alert().setTitle("Manage MCP accounts").setItems(labels.toArray(new String[0]),(d,i)->{
-            if(i==aliases.size()){try{startActivity(new Intent(Intent.ACTION_VIEW,android.net.Uri.parse("https://dragonzpyder.xyz/app")));}catch(Exception unavailable){setStatus("Browser unavailable.");}return;}
+            if(i==aliases.size()){chooseMcpProvider();return;}
+            if(i==aliases.size()+1){completeMcpConnection();return;}
+            if(i==aliases.size()+2){try{startActivity(new Intent(Intent.ACTION_VIEW,android.net.Uri.parse("https://dragonzpyder.xyz/app")));}catch(Exception unavailable){setStatus("Browser unavailable.");}return;}
             String alias=aliases.get(i);alert().setTitle("Disconnect "+labels.get(i)+"?").setMessage("This revokes the selected account's local agent authority.").setNegativeButton("Cancel",null).setPositiveButton("Disconnect",(dd,j)->submit("Disconnecting MCP account…",()->api.call("/dz/internal/mcp/connections/"+alias,"DELETE",null),r->{if(!((JSONObject)r).optBoolean("disconnected"))throw new Exception("Disconnection not confirmed");selectedMcpConnections.remove(alias);showFirstPartyConnections();},true)).show();
         }).setNegativeButton("Close",null).show();
+    }
+    private void chooseMcpProvider(){
+        if(mcpOAuth.peek()!=null){
+            alert().setTitle("A connection is pending").setMessage("Complete the current authorization or explicitly discard the local proof to start again.").setNegativeButton("Close",null).setPositiveButton("Complete",(d,i)->completeMcpConnection()).setNeutralButton("Discard",(d,i)->{mcpOAuth.clear();chooseMcpProvider();}).show();return;
+        }
+        submit("Loading reviewed providers…",()->api.call("/dz/internal/mcp/providers",null),r->{
+            JSONArray providers=((JSONObject)r).optJSONArray("providers");if(providers==null)throw new Exception("Invalid provider catalog");
+            ArrayList<JSONObject> items=new ArrayList<>();ArrayList<String> names=new ArrayList<>();
+            for(int i=0;i<providers.length();i++){JSONObject p=providers.optJSONObject(i);if(p==null||!p.optString("provider_id").matches("[a-z][a-z0-9_-]{1,30}"))continue;items.add(p);names.add(p.optString("provider_id"));}
+            if(items.isEmpty()){setStatus("No reviewed MCP providers are available.");return;}
+            alert().setTitle("Connect a provider").setItems(names.toArray(new String[0]),(d,i)->{
+                JSONObject p=items.get(i);JSONArray scopes=p.optJSONArray("requested_scopes");String name=p.optString("provider_id");
+                alert().setTitle("Authorize "+name+"?").setMessage(p.optString("description")+"\n\nRequested scopes: "+(scopes==null?"Unavailable":scopes.toString())+"\n\nReview the provider consent screen in your browser.").setNegativeButton("Cancel",null).setPositiveButton("Continue",(dd,j)->beginMcpConnection(name)).show();
+            }).setNegativeButton("Close",null).show();
+        },true);
+    }
+    private void beginMcpConnection(String provider){
+        final String verifier=MobileOAuthStore.randomToken();
+        submit("Preparing secure provider authorization…",()->{
+            JSONObject response=(JSONObject)api.call("/dz/internal/mcp/connections/"+DragonApi.segment(provider)+"/native/start",new JSONObject().put("code_challenge",MobileOAuthStore.challenge(verifier)).put("label",""));
+            String state=response.getString("state");String url=response.getString("authorization_url");
+            java.net.URI target=new java.net.URI(url);
+            if(!"https".equalsIgnoreCase(target.getScheme())||target.getHost()==null||target.getRawUserInfo()!=null||url.length()>8192)throw new Exception("Invalid provider authorization URL");
+            if(!state.equals(android.net.Uri.parse(url).getQueryParameter("state")))throw new Exception("Provider authorization state mismatch");
+            mcpOAuth.begin(state,verifier);return url;
+        },r->{
+            try{new androidx.browser.customtabs.CustomTabsIntent.Builder().setShowTitle(true).build().launchUrl(this,android.net.Uri.parse((String)r));setStatus("Authorize in the browser, then return and choose Complete pending connection.");}
+            catch(Exception unavailable){mcpOAuth.clear();throw new Exception("Secure browser unavailable.");}
+        },true);
+    }
+    private void completeMcpConnection(){
+        final String[] proof=mcpOAuth.peek();
+        if(proof==null){setStatus("No valid pending connection. Start a new authorization.");return;}
+        submit("Completing provider connection…",()->api.call("/dz/internal/mcp/connections/native/complete",new JSONObject().put("state",proof[0]).put("verifier",proof[1])),r->{
+            JSONObject account=(JSONObject)r;
+            if(!"active".equals(account.optString("status"))||!account.optString("connection_id").matches("c[a-f0-9]{30}"))throw new Exception("Connection was not confirmed.");
+            mcpOAuth.clear();showFirstPartyConnections();
+        },true);
     }
     private void showTools(){
         if(api.isFirstParty()){showConnections();return;}
