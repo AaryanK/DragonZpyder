@@ -248,3 +248,40 @@ use operly_legacy_history_inventory_manual.sql before any further export.
 No production gates were enabled by these commits. Browser and integration
 CI must be green for the exact deployment revision, and live two-account
 tests are still required.
+
+
+## Native pending recovery — implementation review
+
+The new `schema_native_pending_recovery_review.sql` and
+`native_recovery_http.py` are review-only and disabled by default. They support
+a pending imported subject with an already verified email and no password.
+An operator must explicitly approve a time-limited recovery authority record
+for that exact subject and email after fresh source reconciliation and a
+verified source-authority handoff. The normal API cannot write the authority
+or directly read or mutate the challenge table. Narrow security-definer
+functions issue and consume one-time challenge digests, check the pending
+state and approved email, and atomically establish a hash plus an activation
+proof. The identity verifier is trusted; this does not defend against a
+compromised verifier process. No session, account activation or overwrite
+of an existing hash is performed. Active-account password resets are not
+implemented by this path.
+
+The optional transactional mail transport uses verified implicit TLS SMTP
+on port 465. The identity service needs private, separately scoped
+`DRAGONZPYDER_RECOVERY_SMTP_HOST`, `DRAGONZPYDER_RECOVERY_SMTP_FROM`,
+`DRAGONZPYDER_RECOVERY_SMTP_USERNAME` and
+`DRAGONZPYDER_RECOVERY_SMTP_PASSWORD` settings. No email credentials are
+copied from Operly automatically. Require real delivery testing and abuse
+review; generic response bodies do not prove resistance to timing-based
+account enumeration. Codes are high entropy, HMAC-hashed at rest, expire
+after 20 minutes and are not printed by the API.
+
+The UI at `/account?mode=migration-recovery` additionally requires
+`DRAGONZPYDER_NATIVE_PENDING_RECOVERY_WEB_ENABLED=1` and the migration Web
+gate. API recovery requires the separate
+`DRAGONZPYDER_NATIVE_PENDING_RECOVERY_ENABLED=1` plus proof gates.
+All remain off in production. The source-authority handoff, active-account
+password reset/revocation, delivery and browser acceptance are still release
+blockers; do not globally disable Operly recovery or approve all 51 subjects.
+No actual recovery messages have been sent. CI and production operator review
+are required for the exact deployment revision.
