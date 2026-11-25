@@ -16,7 +16,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install FastAPI and tests
-        run: pip install -r api/requirements.txt pytest
+        run: pip install -r api/requirements.txt pytest pytest-asyncio
       - name: Validate Python source
         run: python -m compileall -q api/main.py api/provider_gateway.py api/usage_ledger.py api/observability.py api/agent_platform api/tests
       - name: Run FastAPI contract checks
