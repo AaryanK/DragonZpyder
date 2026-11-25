@@ -14,7 +14,7 @@ final class ApiRoutePolicy {
     private static final Set<String> FIRST_PARTY_ROUTES=new HashSet<>(Arrays.asList(
         "/dz/v2/personal/session", "/dz/v2/personal/chat", "/dz/v2/personal/conversations",
         "/dz/identity/v1/me", "/dz/identity/v1/logout",
-        "/dz/internal/mcp/connections", "/dz/internal/mcp/providers", "/dz/v2/personal/goals", "/dz/internal/mcp/connections/native/complete"));
+        "/dz/internal/mcp/connections", "/dz/internal/mcp/providers", "/dz/v2/personal/goals", "/dz/v2/personal/voice/start", "/dz/internal/mcp/connections/native/complete"));
     private ApiRoutePolicy(){}
     static String route(boolean firstParty,String requested){
         if(requested==null||requested.contains("..")||requested.contains("\\")||requested.contains("#"))return null;
@@ -26,6 +26,7 @@ final class ApiRoutePolicy {
         if(FIRST_PARTY_ROUTES.contains(value)||FIRST_PARTY_PREAUTH.contains(value))return value;
         if(value.matches("/dz/v2/personal/conversations/[0-9a-fA-F-]{36}/messages"))return value;
         if(value.matches("/dz/v2/personal/requests/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"))return value;
+        if(value.matches("/dz/v2/personal/voice/[0-9a-fA-F-]{36}/end"))return value;
         if(value.matches("/dz/v2/personal/goals/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}(/cancel)?"))return value;
         if(value.matches("/dz/internal/mcp/connections/c[a-f0-9]{30}"))return value;
         if(value.matches("/dz/internal/mcp/connections/[a-z][a-z0-9_-]{1,30}/native/start"))return value;
