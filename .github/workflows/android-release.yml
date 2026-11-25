@@ -1,0 +1,66 @@
+name: Android Signed Release
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: android-signed-release
+  cancel-in-progress: false
+jobs:
+  release:
+    if: github.ref == 'refs/heads/develop'
+    runs-on: ubuntu-latest
+    environment: android-release
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools'
+      - run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - run: bash android/prepare-brand.sh
+      - name: Verify and build production APK and AAB
+        working-directory: android
+        env:
+          KEYSTORE_B64: ${{ secrets.DZ_ANDROID_KEYSTORE_B64 }}
+          DZ_ANDROID_STORE_PASSWORD: ${{ secrets.DZ_ANDROID_STORE_PASSWORD }}
+          DZ_ANDROID_KEY_ALIAS: ${{ secrets.DZ_ANDROID_KEY_ALIAS }}
+          DZ_ANDROID_KEY_PASSWORD: ${{ secrets.DZ_ANDROID_KEY_PASSWORD }}
+          EXPECTED_SIGNER_SHA256: ${{ vars.DZ_ANDROID_UPLOAD_CERT_SHA256 }}
+        run: |
+          set -euo pipefail
+          test -n "$KEYSTORE_B64" && test -n "$DZ_ANDROID_STORE_PASSWORD" && test -n "$DZ_ANDROID_KEY_ALIAS" && test -n "$DZ_ANDROID_KEY_PASSWORD" && test -n "$EXPECTED_SIGNER_SHA256"
+          export DZ_ANDROID_KEYSTORE="$RUNNER_TEMP/dragonzpyder-upload.jks"
+          trap 'rm -f "$DZ_ANDROID_KEYSTORE"' EXIT
+          umask 077
+          printf '%s' "$KEYSTORE_B64" | base64 --decode > "$DZ_ANDROID_KEYSTORE"
+          unset KEYSTORE_B64
+          gradle --no-daemon :app:testReleaseUnitTest :app:lintRelease :app:assembleRelease :app:bundleRelease
+          apk=app/build/outputs/apk/release/app-release.apk
+          aab=app/build/outputs/bundle/release/app-release.aab
+          test -s "$apk" && test -s "$aab"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs "$apk" | tee "$RUNNER_TEMP/apk-cert.txt"
+          actual=$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$RUNNER_TEMP/apk-cert.txt")
+          expected=$(printf '%s' "$EXPECTED_SIGNER_SHA256" | tr -d ':' | tr '[:upper:]' '[:lower:]')
+          test "$actual" = "$expected"
+          jarsigner -verify "$aab"
+          keytool -printcert -jarfile "$aab" | tee "$RUNNER_TEMP/aab-cert.txt"
+          actual_bundle=$(sed -n 's/^[[:space:]]*SHA256: //p' "$RUNNER_TEMP/aab-cert.txt" | head -1 | tr -d ':' | tr '[:upper:]' '[:lower:]')
+          test "$actual_bundle" = "$expected"
+          sha256sum "$apk" "$aab" > "$RUNNER_TEMP/dragonzpyder-release-sha256.txt"
+      - name: Upload verified signed artifacts (no Play publication)
+        uses: actions/upload-artifact@v4
+        with:
+          name: DragonZpyder-signed-release
+          path: |
+            android/app/build/outputs/apk/release/app-release.apk
+            android/app/build/outputs/bundle/release/app-release.aab
+            ${{ runner.temp }}/dragonzpyder-release-sha256.txt
+          if-no-files-found: error
