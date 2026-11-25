@@ -6,7 +6,7 @@ from pathlib import Path
 
 import httpx
 from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse, JSONResponse, Response, RedirectResponse, HTMLResponse
+from fastapi.responses import FileResponse, JSONResponse, Response, RedirectResponse, HTMLResponse, StreamingResponse
 
 from backend.voice import realtime
 from backend.mesh import mesh
@@ -83,6 +83,28 @@ async def proxy(request: Request, destination: str, rewrite_origin=False, upstre
         headers["origin"] = destination
         headers["referer"] = destination + "/"
     body = await request.body()
+    if upstream_path == "/v2/personal/chat/stream":
+        client = request.app.state.http
+        try:
+            outgoing = client.build_request(request.method, destination + upstream_path,
+                                            headers=headers, content=body)
+            streamed = await client.send(outgoing, stream=True)
+        except httpx.HTTPError:
+            return JSONResponse({"detail":{"message":"Agent stream unavailable"}}, status_code=502)
+        if streamed.status_code != 200 or "text/event-stream" not in streamed.headers.get("content-type",""):
+            try:
+                return Response(content=await streamed.aread(), status_code=streamed.status_code,
+                                media_type=streamed.headers.get("content-type","application/json"))
+            finally:
+                await streamed.aclose()
+        async def body_stream():
+            try:
+                async for chunk in streamed.aiter_bytes():
+                    yield chunk
+            finally:
+                await streamed.aclose()
+        return StreamingResponse(body_stream(), media_type="text/event-stream",
+                                 headers={"Cache-Control":"no-store","X-Accel-Buffering":"no"})
     try:
         upstream = await request.app.state.http.request(
             request.method, destination + (upstream_path or request.url.path) +
