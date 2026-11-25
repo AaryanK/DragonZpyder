@@ -12,7 +12,7 @@ import static org.junit.Assert.*;
 public final class PendingAgentRequestStoreTest {
     @Test public void markerSurvivesNewStoreAndIsBoundToOriginalSession(){
         Context context=ApplicationProvider.getApplicationContext();
-        String first="a".repeat(64),second="b".repeat(64),id=UUID.randomUUID().toString();
+        String first="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",second="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",id=UUID.randomUUID().toString();
         PendingAgentRequestStore original=new PendingAgentRequestStore(context);
         assertTrue(original.save(first,id));
         try{
