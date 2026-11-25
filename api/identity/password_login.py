@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from .grants import _secret_digest
-from .passwords import normalize_email, verify_and_update_password, EmailAddressError
+from .passwords import normalize_email, verify_and_update_password, EmailAddressError, hash_password
 from .sessions import BrowserSession, create_browser_session
 
 
@@ -21,6 +21,8 @@ class LoginDenied(PermissionError):
 
 
 MAX_ATTEMPTS = 8
+# Use a process-local synthetic hash to avoid a cheap missing-account path.
+DUMMY_PASSWORD_HASH = hash_password('synthetic-non-account-password-proof')
 
 
 async def consume_password_attempt(conn, *, normalized: str) -> None:
@@ -55,14 +57,15 @@ async def password_login(conn, *, email: str, password: str) -> BrowserSession:
     await consume_password_attempt(conn, normalized=normalized)
     row = await conn.fetchrow(
         """SELECT subject, password_hash FROM identity_accounts
-           WHERE email=$1 AND source_active=TRUE AND status='active'""",
+           WHERE email=$1 AND source_active=TRUE AND status='active'
+             AND email_verified_at IS NOT NULL""",
         normalized,
     )
     # User-controlled plaintext passwords must never enter model context,
     # logs, exception messages, tracing, or any agent tools.
     stored = row["password_hash"] if row is not None else None
-    result = await asyncio.to_thread(verify_and_update_password, password, stored)
-    if not result.valid or row is None:
+    result = await asyncio.to_thread(verify_and_update_password, password, stored or DUMMY_PASSWORD_HASH)
+    if not result.valid or row is None or not stored:
         raise LoginDenied("Invalid credentials")
     if result.upgraded_hash:
         await conn.execute(
