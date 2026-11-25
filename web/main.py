@@ -251,8 +251,25 @@ async def dispatch(path: str, request: Request):
         return JSONResponse({"web_cutover_enabled":
             os.getenv("DRAGONZPYDER_FIRST_PARTY_WEB_CUTOVER_ENABLED") == "1"},
             headers={"Cache-Control": "no-store"})
+    if route == "/dz/import-proof/status" and request.method == "GET":
+        return JSONResponse({"enabled": os.getenv("DRAGONZPYDER_IMPORT_PROOF_WEB_ENABLED") == "1"},
+                            headers={"Cache-Control": "no-store"})
     if route.startswith("/dz/"):
         native = route[3:]
+        proof_routes = {
+            "/identity/v1/import-proof/password",
+            "/identity/v1/import-proof/google/start",
+            "/identity/v1/import-proof/google/complete",
+        }
+        if native.startswith("/identity/v1/import-proof/"):
+            if (native not in proof_routes or request.method != "POST"
+                    or os.getenv("DRAGONZPYDER_IMPORT_PROOF_WEB_ENABLED") != "1"):
+                return JSONResponse({"detail": "Not found"}, status_code=404,
+                                    headers={"Cache-Control": "no-store"})
+            if request.headers.get("origin") != "https://" + (request.url.hostname or "").lower():
+                return JSONResponse({"detail": "Origin rejected"}, status_code=403,
+                                    headers={"Cache-Control": "no-store"})
+            return await proxy(request, API, rewrite_origin=True, upstream_path=native)
         permitted = (
             native.startswith("/v2/personal/")
             or native in (
