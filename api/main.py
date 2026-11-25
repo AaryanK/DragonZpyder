@@ -154,6 +154,8 @@ app.include_router(identity_login_router)
 app.include_router(identity_provider_router)
 app.include_router(agent_router)
 app.include_router(operly_personal_bridge_router)
+from agent_platform.artifact_http import router as artifact_router
+app.include_router(artifact_router)
 app.include_router(first_party_chat_router)
 app.include_router(first_party_voice_router)
 app.include_router(operly_workspace_bridge_router)

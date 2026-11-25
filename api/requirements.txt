@@ -31,3 +31,10 @@ google-auth[requests]>=2.40,<3
 
 # Standards-based authorization code/PKCE and OAuth token refresh for reviewed MCP providers.
 Authlib>=1.6,<2
+
+# Bounded deterministic document artifacts (no macro execution).
+reportlab>=4.4,<5
+pypdf>=6,<7
+python-docx>=1.2,<2
+openpyxl>=3.1,<4
+python-pptx>=1,<2
