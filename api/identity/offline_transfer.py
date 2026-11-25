@@ -123,6 +123,48 @@ def _key():
         return getpass.getpass("Transfer key (hidden): ").encode("ascii")
 
 
+async def _require_migration_role(conn, role):
+    # Fail closed on accidental use of an administrative or application DSN.
+    allowed = await conn.fetchval("""
+        SELECT current_user=$1 AND session_user=current_user
+          AND NOT (r.rolsuper OR r.rolcreaterole OR r.rolcreatedb OR
+                   r.rolreplication OR r.rolbypassrls OR r.rolinherit)
+          AND NOT EXISTS (SELECT 1 FROM pg_auth_members m WHERE m.member=r.oid)
+          AND NOT EXISTS (SELECT 1 FROM pg_database d WHERE d.datname=current_database()
+                          AND d.datdba=r.oid)
+          AND NOT has_database_privilege(current_user,current_database(),'CREATE')
+          AND NOT has_schema_privilege(current_user,'public','CREATE')
+          AND NOT EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+                          WHERE n.nspname='public' AND c.relowner=r.oid)
+        FROM pg_roles r WHERE r.rolname=current_user
+    """, role)
+    if allowed is not True:
+        raise PermissionError("Dedicated migration role required")
+    if role == "dz_identity_export":
+        allowed = await conn.fetchval("""
+            SELECT NOT EXISTS (
+                SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+                WHERE n.nspname='public' AND c.relkind IN ('r','p','v','m','f')
+                  AND (has_any_column_privilege(current_user,c.oid,'INSERT,UPDATE,REFERENCES')
+                    OR has_table_privilege(current_user,c.oid,'DELETE,TRUNCATE,TRIGGER')
+                    OR (c.relname NOT IN ('app_users','auth_identities')
+                        AND has_any_column_privilege(current_user,c.oid,'SELECT'))))
+        """)
+    else:
+        allowed = await conn.fetchval("""
+            SELECT NOT EXISTS (
+                SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+                WHERE n.nspname='public' AND c.relkind IN ('r','p','v','m','f')
+                  AND (has_any_column_privilege(current_user,c.oid,'UPDATE,REFERENCES')
+                    OR has_table_privilege(current_user,c.oid,'DELETE,TRUNCATE,TRIGGER')
+                    OR (c.relname NOT IN ('identity_accounts','identity_provider_links')
+                        AND has_any_column_privilege(current_user,c.oid,'INSERT'))))
+              AND NOT has_column_privilege(current_user,'public.identity_accounts','password_hash','SELECT')
+        """)
+    if allowed is not True:
+        raise PermissionError("Migration role has unexpected effective permissions")
+
+
 async def run(args, key):
     approved = ApprovedInventory(args.expected_accounts, args.expected_google_links)
     recovery = args.expected_unsupported_passwords
@@ -132,6 +174,7 @@ async def run(args, key):
             raise PermissionError("Explicit export approval required")
         source = await asyncpg.connect(os.environ["OPERLY_IDENTITY_EXPORT_DSN"], timeout=10, command_timeout=30)
         try:
+            await _require_migration_role(source, 'dz_identity_export')
             bundle = await read_source_snapshot(source, approved, expected_unsupported_passwords=recovery)
         finally:
             await source.close()
@@ -144,6 +187,7 @@ async def run(args, key):
     bundle = open_package(_read_private(args.package), approved, recovery, key, args.expected_sha256)
     target = await asyncpg.connect(os.environ["DRAGONZPYDER_IDENTITY_MIGRATION_DSN"], timeout=10, command_timeout=30)
     try:
+        await _require_migration_role(target, 'dz_identity_migration')
         result = await import_pending_production(target, bundle, approved, operator_approved=True)
     finally:
         await target.close()
