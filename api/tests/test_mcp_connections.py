@@ -253,9 +253,10 @@ def test_pkce_csrf_single_use_issuer_and_no_browser_token(manager):
         with pytest.raises(m.ConnectionDenied, match="mismatched"):
             await service.finish(owner="mallory", session_secret="a" * 40,
                                  state=state, code="code")
+        assert state and len(db.attempts)==1
+        await service.finish(owner="alice", session_secret="a" * 40, state=state, code="code")
         with pytest.raises(m.ConnectionDenied):
-            await service.finish(owner="alice", session_secret="a" * 40,
-                                 state=state, code="code")
+            await service.finish(owner="alice", session_secret="a" * 40, state=state, code="code")
         url = await service.begin(owner="alice", session_secret="a" * 40,
                                   provider_id="archive")
         state = parse_qs(urlsplit(url).query)["state"][0]
@@ -589,3 +590,35 @@ def test_operly_is_optional_oauth_provider_and_never_global_authority(monkeypatc
                        "https://attacker.example/steal")
     with pytest.raises(m.ConnectionDenied, match="redirect URI"):
         m.callback_url()
+
+
+def test_native_browser_stage_requires_original_device_and_session(manager, monkeypatch):
+    import base64
+    import hashlib
+    service, db = manager
+    monkeypatch.setenv("DRAGONZPYDER_NATIVE_MCP_OAUTH_ENABLED", "1")
+    verifier = "v" * 43
+    challenge=base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip("=")
+    async def run():
+        url=await service.begin(owner="alice",session_secret="a"*40,provider_id="archive",
+                                native_challenge=challenge)
+        state=parse_qs(urlsplit(url).query)["state"][0]
+        with pytest.raises(m.NativeCallbackPending):
+            await service.finish_native(owner="alice",session_secret="a"*40,state=state,verifier=verifier)
+        assert await service.stage_native_callback(state=state,code="provider-code",issuer_response="https://login.example.com")
+        assert len(FakeOAuth.exchanges)==0
+        blob=next(iter(db.attempts.values()))["native_callback"]
+        assert b"provider-code" not in blob
+        with pytest.raises(m.ConnectionDenied):
+            await service.finish_native(owner="mallory",session_secret="a"*40,state=state,verifier=verifier)
+        with pytest.raises(m.ConnectionDenied):
+            await service.finish_native(owner="alice",session_secret="b"*40,state=state,verifier=verifier)
+        with pytest.raises(m.ConnectionDenied):
+            await service.finish_native(owner="alice",session_secret="a"*40,state=state,verifier="x"*43)
+        with pytest.raises(m.ConnectionDenied):
+            await service.finish(owner="alice",session_secret="a"*40,state=state,code="provider-code")
+        account=await service.finish_native(owner="alice",session_secret="a"*40,state=state,verifier=verifier)
+        assert account["status"]=="active" and len(FakeOAuth.exchanges)==1
+        with pytest.raises(m.ConnectionDenied):
+            await service.finish_native(owner="alice",session_secret="a"*40,state=state,verifier=verifier)
+    asyncio.run(run())
