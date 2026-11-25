@@ -6,6 +6,11 @@ background job, login flag, or application-level migration privilege is needed.
 
 ## Prerequisites
 - Back up the source identity tables and target DB securely; verify restore readiness.
+- Run `api/identity/source_inventory_manual.sql` on the verified source DB using psql with
+  ON_ERROR_STOP=1. It returns aggregate counts only, under a repeatable-read read-only
+  transaction. Use its accounts, google_links and unsupported_passwords as A, G and R.
+  Investigate malformed/invalid/duplicate/orphan counts before export; candidate hash
+  prefixes are not proof of a valid login. No row-level output should leave the runner.
 - Review the source schema, read-only export role and fresh aggregate counts (all accounts,
   explicit Google auth rows, incompatible non-null password hashes). Review duplicate/orphan
   provider subjects, invalid emails/UUIDs and unsupported credential recovery before approval.
