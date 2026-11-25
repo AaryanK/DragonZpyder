@@ -222,7 +222,10 @@ async def messages(conversation_id: UUID, request: Request):
 
 
 def _fingerprint(payload: ChatInput) -> str:
-    canonical = json.dumps(payload.model_dump(mode="json", exclude={"request_id"}),
+    exclude={"request_id"}
+    if not payload.attachment_ids:
+        exclude.add("attachment_ids")  # preserve pre-artifact idempotency fingerprints
+    canonical = json.dumps(payload.model_dump(mode="json", exclude=exclude),
                            sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
@@ -485,6 +488,8 @@ async def _execute_chat(payload: ChatInput, request: Request, user: str, convers
     artifact_run = payload.request_id or uuid4()
     artifact_tools = []
     message = payload.message or "Inspect the attached files."
+    if payload.attachment_ids and not artifacts.enabled():
+        raise HTTPException(503,"Agent attachments unavailable")
     if artifacts.enabled():
         artifacts.cipher()
         async with _conversation_db() as db:
