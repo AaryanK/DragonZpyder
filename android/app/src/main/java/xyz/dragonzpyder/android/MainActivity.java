@@ -113,12 +113,14 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         conversation="";pendingPrompt="";attachment=null;attachmentName="";transcript.clear();
         meshMode=false;model="";lastAnswer="";meshMessages=new JSONArray();history=new JSONArray();
         profileInitial="D";authEmail="";challengeId="";restoredDraft="";restoredConversation="";
-        restorePending=false;interruptedRequest=false;transcriptionModel="";queuedOAuthIntent=null;
+        restorePending=false;interruptedRequest=false;transcriptionModel="";queuedOAuthIntent=null;googleSignInPending=false;googleAttempt++;
         if(mobileOAuth!=null)mobileOAuth.clear();stopMedia();if(tts!=null)tts.stop();chatUi=null;
     }
     private void authSuccess(){clearAccountView();signedIn=true;accountOpen=false;chatScreen();loadHistory(true);}
     private MobileOAuthStore mobileOAuth;
     private Intent queuedOAuthIntent;
+    private boolean googleSignInPending;
+    private long googleAttempt;
     private LinearLayout providerButton(String symbol,String title,int identityColor,Runnable action){
         LinearLayout row=row();row.setMinimumHeight(dp(56));row.setPadding(dp(14),dp(6),dp(12),dp(6));
         TextView mark=text(symbol,22,identityColor);mark.setTypeface(Typeface.create("sans-serif-black",Typeface.BOLD));
@@ -135,20 +137,22 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         return row;
     }
     private void startGoogleSignIn(){
-        if(busy)return;
+        if(mobileOAuth!=null&&!busy)mobileOAuth.clear();
+        if(busy||googleSignInPending)return;
         submit("Preparing Google sign-in…",()->api.googleBootstrap(),data->{
             JSONObject info=(JSONObject)data;
+            final long attempt=++googleAttempt;googleSignInPending=true;busy=true;setStatus("Choose your Google account…");
             GoogleCredentialLogin.start(this,
                 info.optString("client_id"),info.optString("nonce"),
                 runnable->runOnUiThread(runnable),
-                token->submit("Verifying Google account…",()->{
+                token->{if(isDestroyed()||attempt!=googleAttempt||!googleSignInPending)return;googleSignInPending=false;busy=false;submit("Verifying Google account…",()->{
                     api.loginWithGoogle(token);return Boolean.TRUE;
-                },result->authSuccess(),true),
-                reason->setStatus(reason));
+                },result->authSuccess(),true);},
+                reason->{if(isDestroyed()||attempt!=googleAttempt||!googleSignInPending)return;googleSignInPending=false;busy=false;setStatus(reason);});
         },true);
     }
     private void startDiscordSignIn(){
-        if(busy)return;
+        if(busy||googleSignInPending)return;
         submit("Checking Discord sign-in…",()->api.discordMobileAvailable(),enabled->{
             if(!Boolean.TRUE.equals(enabled)){
                 setStatus("Discord sign-in requires the secure mobile OAuth backend to be enabled.");
@@ -172,7 +176,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         },true);
     }
     private void processOAuthIntent(Intent intent){
-        if(intent==null||intent.getData()==null||signedIn||isDestroyed())return;
+        if(intent==null||intent.getData()==null||signedIn||isDestroyed()||googleSignInPending)return;
         android.net.Uri uri=intent.getData();
         if(!"dragonzpyder".equals(uri.getScheme())||!"auth".equals(uri.getHost())||
             !"/discord".equals(uri.getPath()))return;
@@ -315,12 +319,12 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         footer.addView(navRow("◇","Approvals",false,()->{drawer.dismiss();approvals();}),new LinearLayout.LayoutParams(0,dp(48),1));sidebar.addView(footer);
         sidebar.addView(navRow("▦","More commands",false,()->{drawer.dismiss();showCommands();}));
         drawer.setContentView(sidebar);drawer.show();Window w=drawer.getWindow();if(w!=null){w.setBackgroundDrawableResource(android.R.color.transparent);w.setGravity(Gravity.START|Gravity.TOP);w.setLayout(Math.min(dp(320),(int)(getResources().getDisplayMetrics().widthPixels*.88)), -1);w.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE|WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN);}
-        worker.execute(()->{try{JSONArray refreshed=(JSONArray)api.call("/api/personal-agent/conversations",null);runOnUiThread(()->{if(!isDestroyed()&&signedIn){history=refreshed;if(drawer.isShowing())filter.run();}});}catch(Exception e){runOnUiThread(()->{if(!isDestroyed()&&drawer.isShowing())label.setText("CONVERSATIONS · REFRESH FAILED");});}});
+        worker.execute(()->{try{JSONArray refreshed=(JSONArray)api.call("/api/personal-agent/conversations",null);runOnUiThread(()->{if(!isDestroyed()&&signedIn){history=refreshed;if(drawer.isShowing())filter.run();}});}catch(Exception e){runOnUiThread(()->{if(!isDestroyed()&&signedIn&&e instanceof DragonApi.ApiError&&((DragonApi.ApiError)e).status==401&&!busy){drawer.dismiss();api.clear();clearAccountView();loginScreen("Session expired. Sign in again.");}else if(!isDestroyed()&&drawer.isShowing())label.setText("CONVERSATIONS · REFRESH FAILED");});}});
     }
     private void showAccount(){
         submit("Loading account…",()->{
             JSONObject p=api.profile();p.put("native_sessions",api.call("/api/auth/sessions",null));
-            try{p.put("native_workspaces",api.call("/api/auth/workspaces",null));}catch(Exception ignored){p.put("workspaces_unavailable",true);}
+            try{p.put("native_workspaces",api.call("/api/auth/workspaces",null));}catch(Exception failure){if(failure instanceof DragonApi.ApiError&&((DragonApi.ApiError)failure).status==401)throw failure;p.put("workspaces_unavailable",true);}
             return p;
         },r->renderAccount((JSONObject)r),true);
     }
