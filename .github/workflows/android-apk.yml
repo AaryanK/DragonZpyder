@@ -34,6 +34,8 @@ jobs:
           mkdir -p /tmp/dz-cookie-test
           javac -d /tmp/dz-cookie-test android/app/src/main/java/xyz/dragonzpyder/android/SessionCookies.java android/tests/SessionCookiesTest.java
           java -cp /tmp/dz-cookie-test xyz.dragonzpyder.android.SessionCookiesTest
+          javac -d /tmp/dz-cookie-test android/app/src/main/java/xyz/dragonzpyder/android/ApiRoutePolicy.java android/tests/ApiRoutePolicyTest.java
+          java -cp /tmp/dz-cookie-test xyz.dragonzpyder.android.ApiRoutePolicyTest
       - name: Package official brand assets
         run: bash android/prepare-brand.sh
       - name: Build and lint
@@ -57,6 +59,24 @@ jobs:
           arch: x86_64
           target: google_apis
           script: cd android && gradle --no-daemon :app:connectedDebugAndroidTest
+      - name: Run Android regression on minimum supported API 26
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 26
+          arch: x86_64
+          target: google_apis
+          script: cd android && gradle --no-daemon :app:connectedDebugAndroidTest
+      - name: Upload Android test and lint reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: DragonZpyder-Android-test-reports
+          path: |
+            android/app/build/reports/lint-results-debug.*
+            android/app/build/reports/tests/
+            android/app/build/reports/androidTests/
+            android/app/build/outputs/androidTest-results/
+          if-no-files-found: warn
       - name: Verify APK signature
         run: '"$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs android/app/build/outputs/apk/debug/app-debug.apk'
       - uses: actions/upload-artifact@v4
