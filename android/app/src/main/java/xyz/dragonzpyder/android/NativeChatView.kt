@@ -61,6 +61,8 @@ class NativeChatView(context: Context, private val dark: Boolean, private val ac
         fun approvals()
         fun openConversation(id:String)
         fun voice()
+        fun files()
+        fun saveArtifact(metadata:String)
     }
 
     data class Message(val role: String, val content: String)
@@ -71,6 +73,7 @@ class NativeChatView(context: Context, private val dark: Boolean, private val ac
     private var drawerRequest by mutableIntStateOf(0)
     private var historyError by mutableStateOf(false)
     var voiceAvailable by mutableStateOf(false)
+    var filesAvailable by mutableStateOf(false)
     fun openDrawer(){drawerRequest++;historyError=false}
     fun setConversationHistory(history:org.json.JSONArray,selected:String){
         conversations=(0 until history.length()).mapNotNull{history.optJSONObject(it)?.let{row->
@@ -195,6 +198,7 @@ class NativeChatView(context: Context, private val dark: Boolean, private val ac
             LazyColumn(Modifier.weight(1f).fillMaxWidth(),contentPadding=PaddingValues(top=2.dp,bottom=12.dp)){
                 item{DrawerSection("Workspace")}
                 item{DrawerRow("connections","Connections & tools",false){select(actions::connections)}}
+                if(filesAvailable)item{DrawerRow("attach","Your files",false){select(actions::files)}}
                 item{DrawerRow("tasks","Tasks",false){select(actions::tasks)}}
                 item{DrawerRow("approvals","Approvals",false){select(actions::approvals)}}
                 item{DrawerSection("Conversations")}
@@ -237,6 +241,20 @@ class NativeChatView(context: Context, private val dark: Boolean, private val ac
     }
     @Composable private fun MessageRow(message:Message,ongoing:Boolean=false) {
         val user=message.role=="user"
+        if(message.role=="artifact"){
+            val file=remember(message.content){runCatching{org.json.JSONObject(message.content)}.getOrNull()}
+            if(file!=null)OutlinedCard(Modifier.fillMaxWidth()){
+                Row(Modifier.fillMaxWidth().padding(12.dp),verticalAlignment=Alignment.CenterVertically){
+                    NavigationGlyph("attach",accent,26.dp);Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)){
+                        Text(file.optString("filename","Generated file"),fontWeight=FontWeight.Medium,maxLines=2,overflow=TextOverflow.Ellipsis)
+                        Text("${maxOf(1,(file.optInt("size")+1023)/1024)} KB · Generated file",fontSize=12.sp,color=muted)
+                    }
+                    TextButton(onClick={actions.saveArtifact(message.content)},enabled=!busy&&filesAvailable){Text("Save")}
+                }
+            }
+            return
+        }
         if(message.role=="receipt"){
             var expanded by remember(message.content){mutableStateOf(false)}
             OutlinedCard(Modifier.fillMaxWidth()){
@@ -283,7 +301,7 @@ class NativeChatView(context: Context, private val dark: Boolean, private val ac
                     TextButton(onClick=actions::mode,enabled=!busy){Text(modeLabel,color=ink)}
                     Spacer(Modifier.weight(1f))
                     ToolButton("mic","Dictate",actions::dictate)
-                    if(voiceAvailable&&!busy&&draft.isBlank()&&attachmentLabel.isBlank()) ToolButton("voice","Live voice",actions::voice) else Button(onClick={if(streaming)actions.stop() else actions.send()},enabled=streaming||(!busy&&(draft.isNotBlank()||(modeLabel=="AI Mesh"&&attachmentLabel.isNotBlank()))&&draft.length<=(if(modeLabel=="AI Mesh") 5000 else 12000)),shape=RoundedCornerShape(50),contentPadding=PaddingValues(0.dp),modifier=Modifier.size(48.dp).semantics{contentDescription=if(streaming)"Stop response" else "Send message"},colors=ButtonDefaults.buttonColors(containerColor=Color(0xFFB94A21),contentColor=Color.White,disabledContainerColor=line.copy(alpha=.35f),disabledContentColor=muted)) { NavigationGlyph(if(streaming)"stop" else "send",if(streaming||draft.isNotBlank()||attachmentLabel.isNotBlank())Color.White else muted) }
+                    if(voiceAvailable&&!busy&&draft.isBlank()&&attachmentLabel.isBlank()) ToolButton("voice","Live voice",actions::voice) else Button(onClick={if(streaming)actions.stop() else actions.send()},enabled=streaming||(!busy&&(draft.isNotBlank()||((modeLabel=="AI Mesh"||filesAvailable)&&attachmentLabel.isNotBlank()))&&draft.length<=(if(modeLabel=="AI Mesh") 5000 else 12000)),shape=RoundedCornerShape(50),contentPadding=PaddingValues(0.dp),modifier=Modifier.size(48.dp).semantics{contentDescription=if(streaming)"Stop response" else "Send message"},colors=ButtonDefaults.buttonColors(containerColor=Color(0xFFB94A21),contentColor=Color.White,disabledContainerColor=line.copy(alpha=.35f),disabledContentColor=muted)) { NavigationGlyph(if(streaming)"stop" else "send",if(streaming||draft.isNotBlank()||attachmentLabel.isNotBlank())Color.White else muted) }
                 }
             }
         }
