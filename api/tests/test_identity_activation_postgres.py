@@ -1,5 +1,6 @@
 """Disposable PostgreSQL contract for operator-only imported account activation."""
 import os
+import sys
 from pathlib import Path
 from urllib.parse import urlsplit
 from uuid import uuid4
@@ -9,6 +10,7 @@ import pytest
 DSN = os.getenv("DRAGONZPYDER_IDENTITY_TEST_DSN", "")
 pytestmark = [pytest.mark.asyncio, pytest.mark.skipif(not DSN, reason="No disposable identity_test PostgreSQL")]
 ROOT = Path(__file__).resolve().parents[1] / "identity"
+sys.path.insert(0, str(ROOT.parent))
 
 
 async def test_activation_receipt_fence():
@@ -45,6 +47,23 @@ async def test_activation_receipt_fence():
             assert not await conn.fetchval("SELECT has_function_privilege('dz_identity_api','public.approve_imported_identity(text,uuid,text,timestamptz)','EXECUTE')")
             assert not await conn.fetchval("SELECT has_column_privilege('dz_identity_api','public.identity_accounts','import_activation_receipt_id','UPDATE')")
             assert not await conn.fetchval("SELECT has_table_privilege('dz_identity_api','public.identity_import_activation_receipts','INSERT')")
+            from fastapi import HTTPException
+            from identity.http_bridge import _restricted_identity_role
+            # The runtime accepts the original least-privilege role after the
+            # new schema, but rejects an accidental grant of activation authority.
+            await conn.execute("SET SESSION AUTHORIZATION dz_identity_api")
+            try:
+                await _restricted_identity_role(conn)
+            finally:
+                await conn.execute("RESET SESSION AUTHORIZATION")
+            await conn.execute("GRANT UPDATE (import_activation_receipt_id) ON public.identity_accounts TO dz_identity_api")
+            await conn.execute("SET SESSION AUTHORIZATION dz_identity_api")
+            try:
+                with pytest.raises(HTTPException):
+                    await _restricted_identity_role(conn)
+            finally:
+                await conn.execute("RESET SESSION AUTHORIZATION")
+            await conn.execute("REVOKE UPDATE (import_activation_receipt_id) ON public.identity_accounts FROM dz_identity_api")
             receipt = uuid4()
             await conn.execute("SELECT public.approve_imported_identity($1,$2,'password',now())",a,receipt)
             assert await conn.fetchval("SELECT status FROM public.identity_accounts WHERE subject=$1",a) == "active"
