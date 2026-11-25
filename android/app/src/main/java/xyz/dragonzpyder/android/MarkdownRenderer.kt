@@ -234,27 +234,28 @@ private fun restoreMath(value:AnnotatedString,c:MarkdownColors):AnnotatedString 
         // Each display expression gets its own scrollable line. Inline math is
         // placed in a wrapping row with the surrounding styled text.
         val group=mutableListOf<Any>()
-        @Composable fun Group(parts:List<Any>){
-            FlowRow(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.Start,verticalArrangement=Arrangement.Center){
-                parts.forEach { part ->
-                    when(part){
-                        is AnnotatedString -> Text(part,color=c.ink,fontSize=16.sp,lineHeight=25.sp,softWrap=true)
-                        is MathMarkup.Formula -> FormulaView(part,c,scale)
-                    }
-                }
-            }
-        }
         for(match in matches){
             if(match.range.first>cursor)group.add(value.subSequence(cursor,match.range.first))
             val formula=c.formulas.getValue(match.value)
             if(formula.display){
-                if(group.isNotEmpty()){Group(group.toList());group.clear()}
+                if(group.isNotEmpty()){MathGroup(group.toList(),c,scale);group.clear()}
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.Center){FormulaView(formula,c,scale)}
             }else group.add(formula)
             cursor=match.range.last+1
         }
         if(cursor<value.length)group.add(value.subSequence(cursor,value.length))
-        if(group.isNotEmpty())Group(group.toList())
+        if(group.isNotEmpty())MathGroup(group.toList(),c,scale)
+    }
+}
+@OptIn(ExperimentalLayoutApi::class)
+@Composable private fun MathGroup(parts:List<Any>,c:MarkdownColors,scale:Float){
+    FlowRow(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.Start,verticalArrangement=Arrangement.Center){
+        parts.forEach { part ->
+            when(part){
+                is AnnotatedString -> Text(part,color=c.ink,fontSize=16.sp,lineHeight=25.sp,softWrap=true)
+                is MathMarkup.Formula -> FormulaView(part,c,scale)
+            }
+        }
     }
 }
 @Composable private fun FormulaView(formula:MathMarkup.Formula,c:MarkdownColors,scale:Float){
@@ -285,7 +286,7 @@ private fun inline(parent:Node,c:MarkdownColors):AnnotatedString=buildAnnotatedS
                 MarkdownDocument.children(node).forEach { visit(it,depth+1) }
             }
             is Link -> {
-                val destination=node.destination.orEmpty()
+                val destination=restoreMath(AnnotatedString(node.destination.orEmpty()),c).text
                 val safe=try { val uri=java.net.URI(destination); uri.scheme.equals("https",ignoreCase=true)&&!uri.host.isNullOrBlank()&&uri.rawUserInfo==null } catch (_:Exception) { false }
                 if(safe) withLink(LinkAnnotation.Url(destination,TextLinkStyles(style=SpanStyle(color=c.accent,textDecoration=TextDecoration.Underline)))) {
                     MarkdownDocument.children(node).forEach { visit(it,depth+1) }
