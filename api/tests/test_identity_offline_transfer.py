@@ -108,3 +108,49 @@ async def test_unsupported_hash_requires_exact_recovery_inventory():
     users[0]["password_hash"] = None
     with pytest.raises(IdentityMigrationConflict):
         await read_source_snapshot(Source(), inventory, expected_unsupported_passwords=1)
+
+
+@pytest.mark.asyncio
+async def test_cli_rejects_unapproved_import_before_file_or_network(monkeypatch, tmp_path):
+    from argparse import Namespace
+    from identity.offline_transfer import run
+    args = Namespace(mode="import", expected_accounts=1, expected_google_links=1,
+                     expected_unsupported_passwords=0, approve_pending_import=True,
+                     package=str(tmp_path / "missing"), expected_sha256="0" * 64)
+    monkeypatch.delenv("DRAGONZPYDER_IDENTITY_PRODUCTION_IMPORT", raising=False)
+    with pytest.raises(PermissionError):
+        await run(args, Fernet.generate_key())
+
+
+@pytest.mark.asyncio
+async def test_encrypted_package_to_pending_disposable_postgres(monkeypatch):
+    import asyncpg
+    from urllib.parse import urlsplit
+    from identity.production_import import import_pending_production
+
+    dsn = os.getenv("DRAGONZPYDER_IDENTITY_TEST_DSN", "")
+    if not dsn:
+        pytest.skip("No disposable identity_test PostgreSQL")
+    if urlsplit(dsn).path != "/identity_test":
+        raise RuntimeError("Never run against non-disposable database")
+    users, links = sample()
+    approved = ApprovedInventory(1, 1)
+    key = Fernet.generate_key()
+    token = seal(prepare_snapshot(users, links, []), approved, 0, key)
+    bundle = open_package(token, approved, 0, key, digest(token))
+    monkeypatch.setenv("DRAGONZPYDER_IDENTITY_PRODUCTION_IMPORT", "1")
+    conn = await asyncpg.connect(dsn)
+    tx = conn.transaction()
+    await tx.start()
+    try:
+        assert not await conn.fetchval("SELECT to_regclass('public.identity_accounts') IS NOT NULL")
+        sql = (Path(__file__).resolve().parents[1] / "identity" / "schema_bootstrap_manual.sql").read_text("utf-8")
+        await conn.execute(sql.replace("BEGIN;\nSET LOCAL", "SET LOCAL", 1).removesuffix("COMMIT;\n"))
+        result = await import_pending_production(conn, bundle, approved, operator_approved=True)
+        assert result == {"accounts": 1, "provider_links": 1, "active_accounts": 0}
+        assert await conn.fetchval("SELECT subject FROM public.identity_accounts") == users[0]["id"]
+        with pytest.raises(IdentityMigrationConflict):
+            await import_pending_production(conn, bundle, approved, operator_approved=True)
+    finally:
+        await tx.rollback()
+        await conn.close()
