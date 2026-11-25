@@ -1,6 +1,7 @@
 package xyz.dragonzpyder.android;
 
 import androidx.lifecycle.ViewModelProvider;
+import androidx.activity.ComponentActivity;
 import androidx.test.core.app.ActivityScenario;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import org.json.JSONObject;
@@ -18,7 +19,7 @@ public final class AgentRequestLifecycleTest {
         AtomicReference<AgentRequestViewModel> original=new AtomicReference<>();
         AtomicInteger executions=new AtomicInteger();
         CountDownLatch entered=new CountDownLatch(1), release=new CountDownLatch(1);
-        try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)){
+        try(ActivityScenario<ComponentActivity> scenario=ActivityScenario.launch(ComponentActivity.class)){
             scenario.onActivity(activity->{
                 AgentRequestViewModel vm=new ViewModelProvider(activity).get(AgentRequestViewModel.class);
                 original.set(vm);
