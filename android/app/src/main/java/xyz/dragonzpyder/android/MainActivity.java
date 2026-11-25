@@ -811,10 +811,17 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                 int count=0;for(boolean on:checked)if(on)count++;
                 if(count>10){setStatus("Select at most ten accounts.");return;}
                 selectedMcpConnections.clear();for(int j=0;j<checked.length;j++)if(checked[j])selectedMcpConnections.add(aliases.get(j));setStatus(selectedMcpConnections.size()+" MCP accounts selected");
-            }).setNeutralButton("Manage on website",(dialog,i)->{
-                try{startActivity(new Intent(Intent.ACTION_VIEW,android.net.Uri.parse("https://dragonzpyder.xyz/app")));}catch(Exception unavailable){setStatus("Browser unavailable.");}
-            }).setNegativeButton("Cancel",null).show();
+            }).setNeutralButton("Manage accounts",(dialog,i)->manageFirstPartyMcp(rows)).setNegativeButton("Cancel",null).show();
         },true);
+    }
+    private void manageFirstPartyMcp(JSONArray rows){
+        ArrayList<String> labels=new ArrayList<>(),aliases=new ArrayList<>();
+        for(int i=0;i<rows.length();i++){JSONObject item=rows.optJSONObject(i);if(item==null||!"active".equals(item.optString("status")))continue;String alias=item.optString("connection_id");if(!alias.matches("c[a-f0-9]{30}"))continue;aliases.add(alias);labels.add(item.optString("label",item.optString("provider_id","Connection")));}
+        labels.add("Connect a provider on website");
+        alert().setTitle("Manage MCP accounts").setItems(labels.toArray(new String[0]),(d,i)->{
+            if(i==aliases.size()){try{startActivity(new Intent(Intent.ACTION_VIEW,android.net.Uri.parse("https://dragonzpyder.xyz/app")));}catch(Exception unavailable){setStatus("Browser unavailable.");}return;}
+            String alias=aliases.get(i);alert().setTitle("Disconnect "+labels.get(i)+"?").setMessage("This revokes the selected account's local agent authority.").setNegativeButton("Cancel",null).setPositiveButton("Disconnect",(dd,j)->submit("Disconnecting MCP account…",()->api.call("/dz/internal/mcp/connections/"+alias,"DELETE",null),r->{if(!((JSONObject)r).optBoolean("disconnected"))throw new Exception("Disconnection not confirmed");selectedMcpConnections.remove(alias);showFirstPartyConnections();},true)).show();
+        }).setNegativeButton("Close",null).show();
     }
     private void showTools(){
         if(api.isFirstParty()){showConnections();return;}
@@ -832,8 +839,32 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         if(!result.optBoolean("done",false)||"failed".equals(result.optString("status")))throw new Exception("Unable to read workflow record.");
         JSONObject payload=result.optJSONObject("result");if(payload==null)throw new Exception("Workflow response was incomplete.");JSONObject value=payload.optJSONObject("value");return value==null?payload:value;
     }
+    private void showFirstPartyGoals(){
+        submit("Loading persistent goals…",()->api.call("/dz/v2/personal/goals",null),r->{
+            JSONArray goals=((JSONObject)r).optJSONArray("goals");if(goals==null)throw new Exception("Invalid goal catalog");
+            ArrayList<String> labels=new ArrayList<>(),ids=new ArrayList<>();
+            for(int i=0;i<goals.length();i++){JSONObject g=goals.optJSONObject(i);if(g==null||g.optString("goal_id").isEmpty())continue;
+                ids.add(g.getString("goal_id"));labels.add(g.optString("state","Unknown")+" · "+g.optInt("completed_wakes")+"/"+g.optInt("total_wakes")+" wakes\n"+g.optString("updated_at",""));
+            }
+            if(ids.isEmpty()){alert().setTitle("Persistent goals").setMessage("No goals returned for this account.").setPositiveButton("Close",null).show();return;}
+            alert().setTitle("Persistent goals").setItems(labels.toArray(new String[0]),(d,i)->showFirstPartyGoal(ids.get(i))).setNegativeButton("Close",null).show();
+        },true);
+    }
+    private void showFirstPartyGoal(String goalId){
+        final String path="/dz/v2/personal/goals/"+DragonApi.segment(goalId);
+        submit("Loading goal receipts…",()->api.call(path,null),r->{
+            JSONObject g=(JSONObject)r;String state=g.optString("state","Unknown");
+            StringBuilder details=new StringBuilder("State: ").append(state).append("\nWakes: ").append(g.optInt("completed_wakes")).append("/").append(g.optInt("total_wakes"));
+            if("blocked".equals(state))details.append("\nReason: ").append(g.optString("blocked_reason","Unavailable"));
+            JSONArray receipts=g.optJSONArray("receipts");if(receipts==null)throw new Exception("Goal receipts unavailable");
+            for(int i=0;i<receipts.length();i++){JSONObject item=receipts.optJSONObject(i);if(item!=null)details.append("\n\nWake ").append(item.optInt("sequence")+1).append(": ").append(item.optString("status")).append("\n").append(item.optString("tool_names","")).append("\n").append(item.optString("at",""));}
+            AlertDialog.Builder dialog=alert().setTitle("Goal details").setMessage(details.toString()).setPositiveButton("Refresh",(d,i)->showFirstPartyGoal(goalId)).setNegativeButton("Close",null);
+            if("active".equals(state)||"preparing".equals(state))dialog.setNeutralButton("Cancel goal",(d,i)->alert().setTitle("Cancel persistent goal?").setMessage("Future queued wakes will stop. Already executed actions are not undone.").setNegativeButton("Keep goal",null).setPositiveButton("Cancel goal",(dd,j)->submit("Cancelling goal…",()->api.call(path+"/cancel",new JSONObject()),result->{JSONObject cancelled=(JSONObject)result;if(!"cancelled".equals(cancelled.optString("state")))throw new Exception("Cancellation not confirmed");showFirstPartyGoal(goalId);},true)).show());
+            dialog.show();
+        },true);
+    }
     private void showTasks(){
-        if(api.isFirstParty()){setStatus("Task management is not yet exposed by the first-party API.");return;}
+        if(api.isFirstParty()){showFirstPartyGoals();return;}
         submit("Loading Personal workflows…",()->{
             JSONObject catalog=(JSONObject)api.call("/api/personal-tools?query=workflow&limit=100",null);
             JSONArray rows=catalog.optJSONArray("tools");HashSet<String> ids=new HashSet<>();if(rows!=null)for(int i=0;i<rows.length();i++){JSONObject t=rows.optJSONObject(i);if(t!=null)ids.add(t.optString("id"));}
