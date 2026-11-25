@@ -140,3 +140,26 @@ messages: do not duplicate the history or import tool leases, pending
 approvals, attachments, or connector secrets into another authority.
 Conversation export/import and legacy-only history recovery remain separate
 engineering work; no live conversation migration has been executed.
+
+
+### Operator-observed recovery inventory (2026-11-25)
+
+The source query reported 69 accounts: 17 active native candidates
+(Google or password with verified email), 51 active accounts with verified
+email but no password/Google link, and one requiring other verification.
+These are candidate paths, not completed individual proofs or successful
+email deliveries. No users were notified or reset.
+
+`recovery_delta.py` permits a strictly reviewed null-to-hash addition from
+a new encrypted source export, preserving the entire set of immutable IDs,
+Google bindings and all other imported fields. The separate temporary
+`dz_identity_recovery_sync` role has only the read permissions needed
+for this comparison and RLS-scoped UPDATE(password_hash) on an active-source,
+verified-email pending import with a NULL old password. It cannot activate
+accounts or replace passwords. Provision the role only when a real recovery
+addition must be synchronized, and retire it afterward. A mismatch in any
+other field or count is a stop condition. The current implementation only
+operates under the original global pending fence: it is not a continuous
+post-activation credential bridge. Do not use this to force mass password
+resets or ask users to disclose credentials. A separately reviewed native
+recovery or per-account authority handoff is needed for staggered cutover.
