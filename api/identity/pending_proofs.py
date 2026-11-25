@@ -20,7 +20,7 @@ async def prove_pending_password(conn, *, email: str, password: str):
     await consume_password_attempt(conn, normalized=normalized)
     row = await conn.fetchrow("""
         SELECT subject,password_hash FROM public.identity_accounts
-        WHERE email=$1 AND source_active AND status='pending'
+        WHERE email=$1 AND source_active AND status='pending' AND email_verified_at IS NOT NULL
           AND identity_origin='operly_import' AND source_operly_user_id=subject
     """, normalized)
     stored = row["password_hash"] if row else None
@@ -34,6 +34,7 @@ async def prove_pending_password(conn, *, email: str, password: str):
         INSERT INTO public.identity_import_proofs(proof_id,subject,proof_method)
         SELECT $1,subject,'password' FROM public.identity_accounts
         WHERE subject=$2 AND password_hash=$3 AND status='pending' AND source_active
+          AND email_verified_at IS NOT NULL
           AND identity_origin='operly_import' AND source_operly_user_id=subject
     """, proof_id, row["subject"], stored)
     if inserted != "INSERT 0 1":
