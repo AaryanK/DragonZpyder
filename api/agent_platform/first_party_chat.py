@@ -16,6 +16,7 @@ from uuid import UUID, uuid4
 
 import asyncpg
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from identity.http_bridge import _identity_db, _issuer
@@ -91,6 +92,7 @@ async def status():
                and os.getenv("DRAGONZPYDER_AGENTS_ENABLED") == "1")
     return {"native_chat_enabled": enabled,
             "request_ledger_enabled": enabled and os.getenv("DRAGONZPYDER_FIRST_PARTY_REQUEST_LEDGER_ENABLED") == "1",
+            "agent_stream_enabled": enabled and os.getenv("DRAGONZPYDER_FIRST_PARTY_REQUEST_LEDGER_ENABLED") == "1" and os.getenv("DRAGONZPYDER_FIRST_PARTY_STREAM_ENABLED") == "1",
             "goal_management_enabled": enabled and os.getenv("DRAGONZPYDER_FIRST_PARTY_GOAL_MANAGEMENT_ENABLED") == "1",
             "web_cutover_enabled": (enabled and
                 os.getenv("DRAGONZPYDER_FIRST_PARTY_WEB_CUTOVER_ENABLED") == "1")}
@@ -226,7 +228,8 @@ def _ledger_response(row, fingerprint: str | None = None):
     if fingerprint is not None and row["fingerprint"] != fingerprint:
         raise HTTPException(409, "Request ID is already bound to different input")
     result = {"request_id": str(row["request_id"]),
-              "conversation_id": str(row["conversation_id"]), "status": row["status"]}
+              "conversation_id": str(row["conversation_id"]), "status": row["status"],
+              "cancel_requested": bool(row.get("cancel_requested", False))}
     if row["status"] == "completed":
         value = row["response"]
         result["response"] = json.loads(value) if isinstance(value, str) else value
@@ -240,9 +243,30 @@ async def request_status(request_id: UUID, request: Request):
         raise HTTPException(503, "Request ledger is not enabled")
     async with _conversation_db() as db:
         row = await db.fetchrow(
-            """SELECT request_id, fingerprint, conversation_id, status, response
+            """SELECT request_id, fingerprint, conversation_id, status, response, cancel_requested
                FROM dz_first_party_chat_requests WHERE owner_id=$1 AND request_id=$2""",
             user, request_id)
+    if row is None:
+        raise HTTPException(404, "Request not found")
+    return _ledger_response(row)
+
+
+@router.post("/requests/{request_id}/cancel")
+async def cancel_request(request_id: UUID, request: Request):
+    user = await _owner(request, changing=True)
+    if os.getenv("DRAGONZPYDER_FIRST_PARTY_REQUEST_LEDGER_ENABLED") != "1":
+        raise HTTPException(503, "Request ledger is not enabled")
+    async with _conversation_db() as db:
+        row = await db.fetchrow(
+            """UPDATE dz_first_party_chat_requests SET cancel_requested=true, updated_at=now()
+               WHERE owner_id=$1 AND request_id=$2 AND status='accepted'
+               RETURNING request_id, fingerprint, conversation_id, status, response, cancel_requested""",
+            user, request_id)
+        if row is None:
+            row = await db.fetchrow(
+                """SELECT request_id, fingerprint, conversation_id, status, response, cancel_requested
+                   FROM dz_first_party_chat_requests WHERE owner_id=$1 AND request_id=$2""",
+                user, request_id)
     if row is None:
         raise HTTPException(404, "Request not found")
     return _ledger_response(row)
@@ -251,6 +275,62 @@ async def request_status(request_id: UUID, request: Request):
 @router.post("/chat")
 async def chat(payload: ChatInput, request: Request):
     user = await _owner(request, changing=True)
+    return await _chat_owned(payload, request, user)
+
+
+@router.post("/chat/stream")
+async def chat_stream(payload: ChatInput, request: Request):
+    user = await _owner(request, changing=True)
+    if (os.getenv("DRAGONZPYDER_FIRST_PARTY_STREAM_ENABLED") != "1"
+            or os.getenv("DRAGONZPYDER_FIRST_PARTY_REQUEST_LEDGER_ENABLED") != "1"):
+        raise HTTPException(503, "Agent streaming unavailable")
+    if payload.request_id is None or not payload.message.strip():
+        raise HTTPException(422, "Streaming requires a request ID and message")
+    queue = asyncio.Queue(maxsize=256)
+    def emit(event):
+        # A disconnected or slow consumer must never block agent execution.
+        try:
+            queue.put_nowait(event)
+        except asyncio.QueueFull:
+            pass
+    def encode(event):
+        return "data: " + json.dumps(event, ensure_ascii=False) + "\n\n"
+    async def events():
+        task = asyncio.create_task(_chat_owned(payload, request, user, emit))
+        tasks = getattr(request.app.state, "native_stream_tasks", None)
+        if tasks is None:
+            tasks = set()
+            request.app.state.native_stream_tasks = tasks
+        tasks.add(task)
+        def cleanup(done):
+            tasks.discard(done)
+            if not done.cancelled():
+                done.exception()
+        task.add_done_callback(cleanup)
+        yield encode({"type":"phase","message":"Request received"})
+        while not task.done():
+            try:
+                event = await asyncio.wait_for(queue.get(), timeout=2)
+                yield encode(event)
+            except asyncio.TimeoutError:
+                yield ": heartbeat\n\n"
+        while not queue.empty():
+            yield encode(queue.get_nowait())
+        try:
+            result = task.result()
+        except HTTPException as error:
+            detail = error.detail
+            message = detail.get("message","Request failed") if isinstance(detail,dict) else str(detail)
+            yield encode({"type":"error","message":message,"status":error.status_code})
+        except (Exception, asyncio.CancelledError):
+            yield encode({"type":"error","message":"Request outcome unconfirmed; check request status"})
+        else:
+            yield encode({"type":"done","response":result})
+    return StreamingResponse(events(), media_type="text/event-stream",
+                             headers={"Cache-Control":"no-store","X-Accel-Buffering":"no"})
+
+
+async def _chat_owned(payload: ChatInput, request: Request, user: str, emit=None):
     if not payload.message.strip():
         raise HTTPException(422, "Message cannot be blank")
     # Old clients remain compatible. New clients explicitly opt into durable
@@ -273,7 +353,7 @@ async def chat(payload: ChatInput, request: Request):
             user, request_id, fingerprint, conversation_id)
         if inserted is None:
             row = await db.fetchrow(
-                """SELECT request_id, fingerprint, conversation_id, status, response
+                """SELECT request_id, fingerprint, conversation_id, status, response, cancel_requested
                    FROM dz_first_party_chat_requests WHERE owner_id=$1 AND request_id=$2""",
                 user, request_id)
             if row is None:
@@ -287,7 +367,7 @@ async def chat(payload: ChatInput, request: Request):
     # external side effects and result persistence remains uncertain, never
     # automatically replayed. This is not an exactly-once tool guarantee.
     try:
-        result = await _execute_chat(payload, request, user, conversation_id)
+        result = await (_execute_chat(payload, request, user, conversation_id, emit) if emit is not None else _execute_chat(payload, request, user, conversation_id))
         result["request_id"] = str(request_id)
         async with _conversation_db() as db:
             await db.execute(
@@ -310,7 +390,80 @@ async def chat(payload: ChatInput, request: Request):
         raise
 
 
-async def _execute_chat(payload: ChatInput, request: Request, user: str, conversation_id: UUID):
+async def _stream_agent(agent, inputs, config, emit):
+    # Stream only the root model's public text. Tool payloads, state values,
+    # reasoning blocks, and subordinate graph output never enter SSE events.
+    from langchain_core.messages import AIMessageChunk
+    final = None
+    step = None
+    suppressed = False
+    async for mode, value in agent.astream(inputs, config=config,
+                                           stream_mode=["messages","values"], subgraphs=False):
+        if mode == "values":
+            final = value
+            continue
+        if mode != "messages":
+            continue
+        chunk, meta = value
+        if not isinstance(chunk, AIMessageChunk) or meta.get("langgraph_node") != "model":
+            continue
+        current = (meta.get("langgraph_step"), chunk.id)
+        if current != step:
+            step, suppressed = current, False
+            emit({"type":"reset"})
+        if getattr(chunk,"tool_call_chunks",None) or getattr(chunk,"tool_calls",None):
+            if not suppressed:
+                emit({"type":"reset"})
+                emit({"type":"phase","message":"Using authorized tools"})
+            suppressed = True
+        if suppressed:
+            continue
+        content = chunk.content
+        if isinstance(content, str):
+            text = content
+        elif isinstance(content, list):
+            text = "".join(block.get("text","") for block in content
+                           if isinstance(block,dict) and block.get("type")=="text" and isinstance(block.get("text"),str))
+        else:
+            text = ""
+        if text:
+            emit({"type":"delta","text":text[:8192]})
+    if not isinstance(final,dict):
+        raise RuntimeError("Agent stream returned no final state")
+    return final
+
+
+async def _invoke_cancellable(agent, inputs, config, db, user, request_id, emit):
+    async def cancelled():
+        return bool(request_id and await db.fetchval(
+            """SELECT cancel_requested FROM dz_first_party_chat_requests
+               WHERE owner_id=$1 AND request_id=$2""", user, request_id))
+    if await cancelled():
+        raise HTTPException(409, "Cancellation requested before execution")
+    if emit is not None:
+        emit({"type":"phase","message":"Agent running"})
+    work = asyncio.create_task(_stream_agent(agent,inputs,config,emit) if emit is not None
+                               else agent.ainvoke(inputs,config=config))
+    deadline = asyncio.get_running_loop().time() + 90
+    try:
+        while True:
+            done, _ = await asyncio.wait({work}, timeout=1)
+            if done:
+                return work.result()
+            if asyncio.get_running_loop().time() >= deadline:
+                raise TimeoutError("Agent execution limit reached")
+            if await cancelled():
+                raise HTTPException(409, "Cancellation requested; prior external effects are not undone")
+    finally:
+        if not work.done():
+            work.cancel()
+            try:
+                await work
+            except (Exception, asyncio.CancelledError):
+                pass
+
+
+async def _execute_chat(payload: ChatInput, request: Request, user: str, conversation_id: UUID, emit=None):
     runtime = getattr(request.app.state, "agent_runtime", None)
     if runtime is None or runtime._checkpointer is None:
         raise HTTPException(503, "Agent checkpoints unavailable")
@@ -380,13 +533,15 @@ async def _execute_chat(payload: ChatInput, request: Request, user: str, convers
                 "recursion_limit": 48,
             }
             try:
-                result = await asyncio.wait_for(agent.ainvoke({
+                result = await _invoke_cancellable(agent, {
                     "messages": [{"role": "user", "content": payload.message}],
-                }, config=config), timeout=90)
+                }, config, db, user, payload.request_id, emit)
                 report = summarize_agent_result(result)
                 readback = await agent.aget_state(config)
                 if not (readback.values or {}).get("messages"):
                     raise RuntimeError("Missing durable checkpoint")
+            except HTTPException:
+                raise
             except Exception:
                 raise HTTPException(503, "DragonZpyder agent execution unavailable") from None
             await db.execute(
