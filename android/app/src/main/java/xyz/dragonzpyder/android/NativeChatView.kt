@@ -184,6 +184,16 @@ class NativeChatView(context: Context, private val dark: Boolean, private val ac
     }
     @Composable private fun MessageRow(message:Message,ongoing:Boolean=false) {
         val user=message.role=="user"
+        if(message.role=="receipt"){
+            var expanded by remember(message.content){mutableStateOf(false)}
+            OutlinedCard(Modifier.fillMaxWidth()){
+                Column(Modifier.padding(12.dp)){
+                    TextButton(onClick={expanded=!expanded},modifier=Modifier.heightIn(min=48.dp)){Text(if(expanded)"Hide execution receipt" else "View execution receipt")}
+                    if(expanded)SelectionContainer{Text(message.content,color=ink,fontSize=13.sp,lineHeight=20.sp)}
+                }
+            }
+            return
+        }
         if(message.role=="system"){Text(message.content,color=muted,fontSize=12.sp,lineHeight=18.sp,modifier=Modifier.fillMaxWidth().padding(vertical=4.dp));return}
         Column(Modifier.fillMaxWidth(),horizontalAlignment=if(user) Alignment.End else Alignment.Start) {
             if(!user) Row(verticalAlignment=Alignment.CenterVertically,modifier=Modifier.padding(bottom=8.dp)){Image(painterResource(R.drawable.brand_icon),"DragonZpyder",Modifier.size(20.dp));Spacer(Modifier.width(7.dp));Text("DragonZpyder",fontSize=12.sp,fontWeight=FontWeight.Medium,color=muted)}
