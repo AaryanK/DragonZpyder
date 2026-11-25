@@ -91,6 +91,7 @@ async def status():
                and os.getenv("DRAGONZPYDER_AGENTS_ENABLED") == "1")
     return {"native_chat_enabled": enabled,
             "request_ledger_enabled": enabled and os.getenv("DRAGONZPYDER_FIRST_PARTY_REQUEST_LEDGER_ENABLED") == "1",
+            "goal_management_enabled": enabled and os.getenv("DRAGONZPYDER_FIRST_PARTY_GOAL_MANAGEMENT_ENABLED") == "1",
             "web_cutover_enabled": (enabled and
                 os.getenv("DRAGONZPYDER_FIRST_PARTY_WEB_CUTOVER_ENABLED") == "1")}
 
@@ -99,6 +100,74 @@ async def status():
 async def session(request: Request):
     await _owner(request, changing=False)
     return {"authenticated": True, "runtime": "dragonzpyder"}
+
+
+def _goals_enabled():
+    if os.getenv("DRAGONZPYDER_FIRST_PARTY_GOAL_MANAGEMENT_ENABLED") != "1":
+        raise HTTPException(503, "First-party goal management unavailable")
+
+
+@router.get("/goals")
+async def goals(request: Request):
+    user = await _owner(request, changing=False)
+    _goals_enabled()
+    async with _conversation_db() as db:
+        rows = await db.fetch(
+            """SELECT goal_id, conversation_id, state, next_sequence, total_wakes,
+                      blocked_reason, updated_at
+               FROM dz_personal_mcp_goals WHERE user_id=$1
+               ORDER BY updated_at DESC LIMIT 100""", user)
+    return {"goals": [
+        {"goal_id": row["goal_id"], "conversation_id": row["conversation_id"],
+         "state": row["state"], "completed_wakes": row["next_sequence"],
+         "total_wakes": row["total_wakes"],
+         "blocked_reason": row["blocked_reason"] if row["state"] == "blocked" else None,
+         "updated_at": row["updated_at"].isoformat()} for row in rows]}
+
+
+@router.get("/goals/{goal_id}")
+async def goal_detail(goal_id: UUID, request: Request):
+    user = await _owner(request, changing=False)
+    _goals_enabled()
+    async with _conversation_db() as db:
+        row = await db.fetchrow(
+            """SELECT goal_id, state, next_sequence, total_wakes, blocked_reason
+               FROM dz_personal_mcp_goals WHERE user_id=$1 AND goal_id=$2""",
+            user, str(goal_id))
+        if row is None:
+            raise HTTPException(404, "Goal not found")
+        receipts = await db.fetch(
+            """SELECT r.sequence, r.status, r.tool_names, r.created_at
+               FROM dz_personal_mcp_receipts r JOIN dz_personal_mcp_goals g
+               ON r.goal_id=g.goal_id WHERE g.user_id=$1 AND g.goal_id=$2
+               ORDER BY r.sequence""", user, str(goal_id))
+    return {"goal_id": str(goal_id), "state": row["state"],
+            "completed_wakes": row["next_sequence"], "total_wakes": row["total_wakes"],
+            "blocked_reason": row["blocked_reason"] if row["state"] == "blocked" else None,
+            "receipts": [{"sequence": x["sequence"], "status": x["status"],
+                          "tool_names": json.loads(x["tool_names"]) if isinstance(x["tool_names"], str) else x["tool_names"],
+                          "at": x["created_at"].isoformat()} for x in receipts]}
+
+
+@router.post("/goals/{goal_id}/cancel")
+async def cancel_goal(goal_id: UUID, request: Request):
+    user = await _owner(request, changing=True)
+    _goals_enabled()
+    async with _conversation_db() as db:
+        row = await db.fetchrow(
+            """UPDATE dz_personal_mcp_goals SET state='cancelled', updated_at=now()
+               WHERE user_id=$1 AND goal_id=$2 AND state IN ('preparing','active')
+               RETURNING state""", user, str(goal_id))
+        if row is None:
+            existing = await db.fetchrow(
+                "SELECT state FROM dz_personal_mcp_goals WHERE user_id=$1 AND goal_id=$2",
+                user, str(goal_id))
+            if existing is None:
+                raise HTTPException(404, "Goal not found")
+            if existing["state"] == "cancelled":
+                return {"goal_id": str(goal_id), "state": "cancelled"}
+            raise HTTPException(409, "Goal is not cancellable in its current state")
+    return {"goal_id": str(goal_id), "state": "cancelled"}
 
 
 @router.get("/conversations")
