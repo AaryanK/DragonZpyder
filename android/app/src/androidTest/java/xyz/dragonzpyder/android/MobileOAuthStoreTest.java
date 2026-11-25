@@ -22,7 +22,8 @@ public final class MobileOAuthStoreTest {
         assertFalse(ciphertext.contains(state));
         assertEquals(43,MobileOAuthStore.challenge(verifier).length());
         assertNull("Wrong state must be rejected",store.take(MobileOAuthStore.randomToken()));
-        assertNull("Attempt must be erased after rejection",store.take(state));
+        assertNotNull("Mismatched callback must not erase the valid proof",store.take(state));
+        assertNull("Valid proof must be single-use",store.take(state));
         store.begin(state,verifier);
         String[] accepted=store.take(state);
         assertNotNull(accepted);
