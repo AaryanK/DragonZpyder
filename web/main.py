@@ -2,6 +2,7 @@
 import os
 import re
 from contextlib import asynccontextmanager
+from http.cookiejar import CookieJar, DefaultCookiePolicy
 from pathlib import Path
 
 import httpx
@@ -34,9 +35,18 @@ HOP_HEADERS = {"connection", "transfer-encoding", "content-length", "host",
                "content-encoding", "keep-alive", "upgrade", "proxy-connection"}
 
 
+class _RejectUpstreamCookies(DefaultCookiePolicy):
+    """A multi-user proxy must not keep any upstream user's cookies."""
+    def set_ok(self, cookie, request):
+        return False
+    def return_ok(self, cookie, request):
+        return False
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    async with httpx.AsyncClient(follow_redirects=False, timeout=120.0) as http:
+    jar = CookieJar(policy=_RejectUpstreamCookies())
+    async with httpx.AsyncClient(follow_redirects=False, timeout=120.0, cookies=jar) as http:
         app.state.http = http
         yield
 
@@ -76,13 +86,33 @@ async def secure_headers(request: Request, call_next):
     return response
 
 
-async def proxy(request: Request, destination: str, rewrite_origin=False, upstream_path=None):
+async def proxy(request: Request, destination: str, rewrite_origin=False, upstream_path=None, *, proof_only=False):
     # Fixed trusted service origins; never proxy to a host provided by the browser.
     headers = {k: v for k, v in request.headers.items() if k.lower() not in HOP_HEADERS}
+    if proof_only:
+        # The migration verifier receives only its own challenge. Never relay
+        # Operly credentials, active identity sessions, or bearer headers.
+        headers = {k:v for k,v in headers.items() if k in ("accept","content-type","user-agent")}
+        challenge = request.cookies.get("__Host-dz_import_proof", "")
+        headers["cookie"] = ("__Host-dz_import_proof=" + challenge
+                             if re.fullmatch(r"[A-Za-z0-9_-]{32,128}", challenge) else "")
+    else:
+        # An explicit empty cookie header also prevents a client's cookie jar
+        # from attaching a previous caller's cookies when no cookie was sent.
+        headers.setdefault("cookie", "")
     if rewrite_origin:
         headers["origin"] = destination
         headers["referer"] = destination + "/"
-    body = await request.body()
+    if proof_only:
+        data = bytearray()
+        async for chunk in request.stream():
+            data.extend(chunk)
+            if len(data) > 12288:
+                return JSONResponse({"detail":"Request too large"},status_code=413,
+                                    headers={"Cache-Control":"no-store"})
+        body = bytes(data)
+    else:
+        body = await request.body()
     if upstream_path == "/v2/personal/chat/stream":
         client = request.app.state.http
         try:
@@ -120,6 +150,8 @@ async def proxy(request: Request, destination: str, rewrite_origin=False, upstre
                         headers=dict((k.decode(), v.decode()) for k, v in response_headers))
     # Headers must retain repeated Set-Cookie values for secure sessions.
     for cookie in upstream.headers.get_list("set-cookie"):
+        if proof_only and not cookie.startswith("__Host-dz_import_proof="):
+            continue
         response.raw_headers.append((b"set-cookie", cookie.encode()))
     return response
 
@@ -269,7 +301,9 @@ async def dispatch(path: str, request: Request):
             if request.headers.get("origin") != "https://" + (request.url.hostname or "").lower():
                 return JSONResponse({"detail": "Origin rejected"}, status_code=403,
                                     headers={"Cache-Control": "no-store"})
-            return await proxy(request, API, rewrite_origin=True, upstream_path=native)
+            if request.url.query:
+                return JSONResponse({"detail":"Unexpected query"},status_code=400,headers={"Cache-Control":"no-store"})
+            return await proxy(request, API, rewrite_origin=True, upstream_path=native, proof_only=True)
         permitted = (
             native.startswith("/v2/personal/")
             or native in (
