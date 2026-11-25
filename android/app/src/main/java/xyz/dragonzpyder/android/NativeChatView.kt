@@ -204,7 +204,7 @@ class NativeChatView(context: Context, private val dark: Boolean, private val ac
                     TextButton(onClick=actions::mode,enabled=!busy){Text("✦ "+modeLabel,color=ink)}
                     Spacer(Modifier.weight(1f))
                     ToolButton("mic","Dictate",actions::dictate)
-                    Button(onClick={if(streaming)actions.stop() else actions.send()},enabled=streaming||(!busy&&draft.isNotBlank()&&draft.length<=(if(modeLabel=="AI Mesh") 5000 else 12000)),shape=RoundedCornerShape(50),contentPadding=PaddingValues(0.dp),modifier=Modifier.size(48.dp).semantics{contentDescription=if(streaming)"Stop response" else "Send message"},colors=ButtonDefaults.buttonColors(containerColor=Color(0xFFB94A21),contentColor=Color.White,disabledContainerColor=line.copy(alpha=.35f),disabledContentColor=muted)) { Text(if(streaming)"■" else "↑",fontSize=23.sp) }
+                    Button(onClick={if(streaming)actions.stop() else actions.send()},enabled=streaming||(!busy&&(draft.isNotBlank()||(modeLabel=="AI Mesh"&&attachmentLabel.isNotBlank()))&&draft.length<=(if(modeLabel=="AI Mesh") 5000 else 12000)),shape=RoundedCornerShape(50),contentPadding=PaddingValues(0.dp),modifier=Modifier.size(48.dp).semantics{contentDescription=if(streaming)"Stop response" else "Send message"},colors=ButtonDefaults.buttonColors(containerColor=Color(0xFFB94A21),contentColor=Color.White,disabledContainerColor=line.copy(alpha=.35f),disabledContentColor=muted)) { Text(if(streaming)"■" else "↑",fontSize=23.sp) }
                 }
             }
         }
