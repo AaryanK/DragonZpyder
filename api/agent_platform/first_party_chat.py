@@ -75,9 +75,11 @@ def _archives_enabled():
 
 
 async def _require_conversation(db, *, user: str, conversation_id: UUID):
-    columns = "id, archived_import" if _archives_enabled() else "id"
+    # Legacy schema has no archived_import column. JSON field lookup gives
+    # false there, without making disabling the display flag permit writes.
     row = await db.fetchrow(
-        "SELECT " + columns + " FROM dz_first_party_conversations WHERE id=$1 AND owner_id=$2",
+        "SELECT id, COALESCE((to_jsonb(c)->>\'archived_import\')::boolean,false) AS archived_import "
+        "FROM dz_first_party_conversations c WHERE id=$1 AND owner_id=$2",
         conversation_id, user,
     )
     if row is None:
@@ -124,7 +126,9 @@ async def messages(conversation_id: UUID, request: Request):
     user = await _owner(request, changing=False)
     async with _conversation_db() as db:
         row = await _require_conversation(db, user=user, conversation_id=conversation_id)
-        if _archives_enabled() and row["archived_import"]:
+        if row["archived_import"]:
+            if not _archives_enabled():
+                raise HTTPException(503, "Imported history temporarily unavailable")
             archived = await db.fetch(
                 """SELECT m.role,m.content FROM public.dz_imported_personal_messages m
                    JOIN public.dz_first_party_conversations c ON c.id=m.conversation_id
@@ -195,7 +199,7 @@ async def chat(payload: ChatInput, request: Request):
     async with _conversation_db() as db:
         if payload.conversation_id is not None:
             row = await _require_conversation(db, user=user, conversation_id=conversation_id)
-            if _archives_enabled() and row["archived_import"]:
+            if row["archived_import"]:
                 raise HTTPException(409, "Imported history is read-only. Start a new conversation.")
         # Atomic per-user daily reservation BEFORE paid inference. Unknown
         # provider outcomes still consume a request slot; the metered gateway
