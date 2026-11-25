@@ -142,4 +142,4 @@ jobs:
       - name: Install isolated identity database test dependencies
         run: pip install asyncpg fastapi pydantic "cryptography>=44,<50" "PyJWT[crypto]>=2.15,<3" pytest pytest-asyncio
       - name: Verify PostgreSQL nonce, atomic code redemption, and family replay
-        run: pytest -q api/tests/test_identity_production_import.py api/tests/test_identity_postgres_integration.py api/tests/test_identity_bootstrap_postgres.py api/tests/test_identity_role_postgres.py
+        run: pytest -q api/tests/test_identity_offline_transfer.py api/tests/test_identity_production_import.py api/tests/test_identity_postgres_integration.py api/tests/test_identity_bootstrap_postgres.py api/tests/test_identity_role_postgres.py
