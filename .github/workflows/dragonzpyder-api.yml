@@ -65,7 +65,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install test-only dependencies
-        run: pip install asyncpg pytest pydantic fastapi "langchain-core>=1,<2" "langgraph>=1,<2" "langgraph-checkpoint-postgres>=2,<5" "psycopg[binary]>=3,<4"
+        run: pip install asyncpg pytest pydantic fastapi "PyJWT[crypto]>=2.15,<3" "langchain-core>=1,<2" "langgraph>=1,<2" "langgraph-checkpoint-postgres>=2,<5" "psycopg[binary]>=3,<4"
       - name: Verify real PostgreSQL concurrency, restart and isolation
         run: pytest -q api/tests/test_persistent_graph_postgres.py api/tests/test_native_canary_postgres.py api/tests/test_budget_postgres_integration.py api/tests/test_local_monitor_postgres.py api/tests/test_long_horizon_monitoring_acceptance.py api/tests/test_local_autonomy_100_postgres.py api/tests/test_persistent_tool_canary_postgres.py api/tests/test_personal_mcp_wake_postgres.py api/tests/test_personal_mcp_checkpoint_postgres.py api/tests/test_first_party_request_ledger_postgres.py
 
