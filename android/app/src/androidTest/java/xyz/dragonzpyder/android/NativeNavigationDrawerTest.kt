@@ -42,6 +42,8 @@ class NativeNavigationDrawerTest {
                     override fun approvals(){}
                     override fun openConversation(id:String){opened=id}
                     override fun voice(){}
+                    override fun files(){}
+                    override fun saveArtifact(metadata:String){}
                 })
                 ui.setConversationHistory(JSONArray().put(JSONObject().put("id","one").put("title","Physics research")).put(JSONObject().put("id","two").put("title","Travel planning")),"one")
                 ui.view
