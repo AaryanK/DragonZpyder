@@ -8,6 +8,8 @@ identity, checkpoint storage, and conversation schema are deployed.
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 import os
 from contextlib import asynccontextmanager
 from uuid import UUID, uuid4
@@ -26,6 +28,7 @@ class ChatInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     message: str = Field(min_length=1, max_length=12000)
     conversation_id: UUID | None = None
+    request_id: UUID | None = None
     # Aliases must belong to the authenticated user and are rechecked at use.
     mcp_connection_ids: list[str] = Field(default_factory=list, max_length=10)
 
@@ -143,11 +146,97 @@ async def messages(conversation_id: UUID, request: Request):
     return {"messages": rows}
 
 
+def _fingerprint(payload: ChatInput) -> str:
+    canonical = json.dumps(payload.model_dump(mode="json", exclude={"request_id"}),
+                           sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _ledger_response(row, fingerprint: str | None = None):
+    if fingerprint is not None and row["fingerprint"] != fingerprint:
+        raise HTTPException(409, "Request ID is already bound to different input")
+    result = {"request_id": str(row["request_id"]),
+              "conversation_id": str(row["conversation_id"]), "status": row["status"]}
+    if row["status"] == "completed":
+        value = row["response"]
+        result["response"] = json.loads(value) if isinstance(value, str) else value
+    return result
+
+
+@router.get("/requests/{request_id}")
+async def request_status(request_id: UUID, request: Request):
+    user = await _owner(request, changing=False)
+    async with _conversation_db() as db:
+        row = await db.fetchrow(
+            """SELECT request_id, fingerprint, conversation_id, status, response
+               FROM dz_first_party_chat_requests WHERE owner_id=$1 AND request_id=$2""",
+            user, request_id)
+    if row is None:
+        raise HTTPException(404, "Request not found")
+    return _ledger_response(row)
+
+
 @router.post("/chat")
 async def chat(payload: ChatInput, request: Request):
     user = await _owner(request, changing=True)
     if not payload.message.strip():
         raise HTTPException(422, "Message cannot be blank")
+    # Old clients remain compatible. New clients explicitly opt into durable
+    # request identity; a missing migration fails closed before any model call.
+    if payload.request_id is None:
+        return await _execute_chat(payload, request, user, payload.conversation_id or uuid4())
+    request_id = payload.request_id
+    fingerprint = _fingerprint(payload)
+    conversation_id = payload.conversation_id or uuid4()
+    async with _conversation_db() as db:
+        if payload.conversation_id is not None:
+            await _require_conversation(db, user=user, conversation_id=conversation_id)
+        inserted = await db.fetchval(
+            """INSERT INTO dz_first_party_chat_requests
+               (owner_id, request_id, fingerprint, conversation_id, status)
+               VALUES ($1,$2,$3,$4,'accepted')
+               ON CONFLICT (owner_id, request_id) DO NOTHING RETURNING request_id""",
+            user, request_id, fingerprint, conversation_id)
+        if inserted is None:
+            row = await db.fetchrow(
+                """SELECT request_id, fingerprint, conversation_id, status, response
+                   FROM dz_first_party_chat_requests WHERE owner_id=$1 AND request_id=$2""",
+                user, request_id)
+            if row is None:
+                raise HTTPException(503, "Request ledger unavailable")
+            saved = _ledger_response(row, fingerprint)
+            if saved["status"] == "completed":
+                return saved["response"]
+            raise HTTPException(409, detail={"message": "Request already accepted; check request status before sending again",
+                                            "code": "REQUEST_ALREADY_ACCEPTED", **saved})
+    # The reservation is committed before execution. A process loss between
+    # external side effects and result persistence remains uncertain, never
+    # automatically replayed. This is not an exactly-once tool guarantee.
+    try:
+        result = await _execute_chat(payload, request, user, conversation_id)
+        result["request_id"] = str(request_id)
+        async with _conversation_db() as db:
+            await db.execute(
+                """UPDATE dz_first_party_chat_requests SET status='completed',
+                   response=$3::jsonb, updated_at=now()
+                   WHERE owner_id=$1 AND request_id=$2 AND status='accepted'""",
+                user, request_id, json.dumps(result))
+        return result
+    except BaseException:
+        # Best-effort uncertainty marker; if storage is unavailable the durable
+        # accepted record still blocks duplicate execution.
+        try:
+            async with _conversation_db() as db:
+                await db.execute(
+                    """UPDATE dz_first_party_chat_requests SET status='uncertain',
+                       updated_at=now() WHERE owner_id=$1 AND request_id=$2 AND status='accepted'""",
+                    user, request_id)
+        except Exception:
+            pass
+        raise
+
+
+async def _execute_chat(payload: ChatInput, request: Request, user: str, conversation_id: UUID):
     runtime = getattr(request.app.state, "agent_runtime", None)
     if runtime is None or runtime._checkpointer is None:
         raise HTTPException(503, "Agent checkpoints unavailable")
@@ -174,7 +263,6 @@ async def chat(payload: ChatInput, request: Request):
         except (ConnectionDenied, ValueError, RuntimeError):
             raise HTTPException(403, "MCP connection not authorized") from None
 
-    conversation_id = payload.conversation_id or uuid4()
     async with _conversation_db() as db:
         if payload.conversation_id is not None:
             await _require_conversation(db, user=user, conversation_id=conversation_id)
