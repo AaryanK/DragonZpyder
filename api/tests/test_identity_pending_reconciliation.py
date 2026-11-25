@@ -103,3 +103,57 @@ async def test_pending_receipt_real_postgres(monkeypatch):
             """)
     finally:
         await conn.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode,env,role", [
+    ("source", "OPERLY_IDENTITY_EXPORT_DSN", "dz_identity_export"),
+    ("target", "DRAGONZPYDER_IDENTITY_DATABASE_URL", "dz_identity_api"),
+])
+async def test_receipt_cli_uses_scoped_connection(monkeypatch, mode, env, role):
+    import asyncpg
+    from identity import pending_reconciliation as module
+    from identity import http_bridge, offline_transfer, production_import
+
+    bundle, approved, key = sample(), ApprovedInventory(1, 1), b"x"*32
+    events = []
+    class Conn:
+        async def close(self):
+            events.append("close")
+    conn = Conn()
+    async def connect(**kwargs):
+        assert kwargs["dsn"] == "test-only-dsn"
+        return conn
+    async def check_source(c, requested):
+        assert c is conn and requested == role
+        events.append("check")
+    async def check_target(c):
+        assert c is conn and role == "dz_identity_api"
+        events.append("check")
+    async def read_source(c, inventory, *, expected_unsupported_passwords):
+        assert c is conn and inventory == approved and expected_unsupported_passwords == 0
+        events.append("read")
+        return bundle
+    async def read_target(c, inventory):
+        assert c is conn and inventory == approved
+        events.append("read")
+        return bundle
+    monkeypatch.setenv(env, "test-only-dsn")
+    monkeypatch.setattr(asyncpg, "connect", connect)
+    monkeypatch.setattr(offline_transfer, "_require_migration_role", check_source)
+    monkeypatch.setattr(http_bridge, "_restricted_identity_role", check_target)
+    monkeypatch.setattr(production_import, "read_source_snapshot", read_source)
+    monkeypatch.setattr(module, "read_pending_target", read_target)
+    assert await module.generate_receipt(mode, approved, key) == snapshot_receipt(bundle, approved, key)
+    assert events == ["check", "read", "close"]
+
+
+def test_cli_compare_does_not_print_receipts(monkeypatch, capsys):
+    from identity import pending_reconciliation as module
+    monkeypatch.setattr(sys, "argv", ["receipt", "compare", "a"*64, "b"*64])
+    with pytest.raises(SystemExit):
+        module.main()
+    assert capsys.readouterr().out.strip() == "IDENTITY_RECONCILIATION_FAILED"
+    monkeypatch.setattr(sys, "argv", ["receipt", "compare", "a"*64, "a"*64])
+    module.main()
+    assert capsys.readouterr().out.strip() == "IDENTITY_RECONCILIATION_MATCH"
