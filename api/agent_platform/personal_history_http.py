@@ -38,8 +38,9 @@ async def archive_conversations(request: Request, response: Response, offset: in
 
 
 @router.get("/conversations/{conversation_id}/messages")
-async def archive_messages(conversation_id: UUID, request: Request, offset: int = 0):
+async def archive_messages(conversation_id: UUID, request: Request, response: Response, offset: int = 0):
     _archive_enabled()
+    response.headers["Cache-Control"] = "no-store"
     owner = await _owner(request, changing=False)
     if not 0 <= offset <= 100000:
         raise HTTPException(400, "Invalid page")
