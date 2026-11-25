@@ -15,3 +15,10 @@ mem0ai>=1,<3
 
 # Sandboxed in-memory JavaScript; activated only by staging feature flag.
 langchain-quickjs>=0.2,<1
+
+# Bounded deterministic document artifacts (no macro execution).
+reportlab>=4.4,<5
+pypdf>=6,<7
+python-docx>=1.2,<2
+openpyxl>=3.1,<4
+python-pptx>=1,<2
