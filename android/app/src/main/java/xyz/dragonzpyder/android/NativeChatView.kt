@@ -55,10 +55,31 @@ class NativeChatView(context: Context, private val dark: Boolean, private val ac
         fun removeAttachment()
         fun copy(value: String)
         fun speak(value: String)
+        fun newChat()
+        fun connections()
+        fun tasks()
+        fun approvals()
+        fun openConversation(id:String)
+        fun voice()
     }
 
     data class Message(val role: String, val content: String)
     private val rows = mutableStateListOf<Message>()
+    private data class Conversation(val id:String,val title:String)
+    private var conversations by mutableStateOf(listOf<Conversation>())
+    private var selectedConversation by mutableStateOf("")
+    private var drawerRequest by mutableIntStateOf(0)
+    private var historyError by mutableStateOf(false)
+    var voiceAvailable by mutableStateOf(false)
+    fun openDrawer(){drawerRequest++;historyError=false}
+    fun setConversationHistory(history:org.json.JSONArray,selected:String){
+        conversations=(0 until history.length()).mapNotNull{history.optJSONObject(it)?.let{row->
+            val id=row.optString("id")
+            if(id.isBlank())null else Conversation(id,row.optString("title").ifBlank{"Untitled conversation"})
+        }}.distinctBy{it.id}
+        selectedConversation=selected
+    }
+    fun markHistoryError(){historyError=true}
     var draft by mutableStateOf("")
     var statusText by mutableStateOf("Personal agent")
     var busy by mutableStateOf(false)
@@ -77,7 +98,7 @@ class NativeChatView(context: Context, private val dark: Boolean, private val ac
     private val userBubble = if (dark) Color(0xFF222922) else Color(0xFFEEEBE6)
 
     val view = ComposeView(context).apply {
-        setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+        setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindowOrReleasedFromPool)
         setContent { Workspace() }
     }
     fun clearMessages() = rows.clear()
@@ -85,27 +106,23 @@ class NativeChatView(context: Context, private val dark: Boolean, private val ac
 
     @Composable private fun Workspace() {
         MaterialTheme(colorScheme = if (dark) darkColorScheme(primary=accent,background=bg,surface=panel,onSurface=ink,onBackground=ink) else lightColorScheme(primary=accent,background=bg,surface=panel,onSurface=ink,onBackground=ink)) {
+            val drawer=rememberDrawerState(DrawerValue.Closed)
+            val drawerScope=rememberCoroutineScope()
+            LaunchedEffect(drawerRequest){if(drawerRequest>0)drawer.open()}
+            ModalNavigationDrawer(drawerState=drawer,gesturesEnabled=false,drawerContent={
+                ModalDrawerSheet(modifier=Modifier.widthIn(max=320.dp).fillMaxWidth(.88f),drawerContainerColor=bg,drawerContentColor=ink){
+                    NavigationDrawerContent(close={drawerScope.launch{drawer.close()}},select={action->drawerScope.launch{drawer.close();action()}})
+                }
+            }){
             Column(Modifier.fillMaxSize().background(bg)) {
-                BoxWithConstraints(Modifier.fillMaxWidth()) {
-                    val narrow=maxWidth<360.dp||LocalDensity.current.fontScale>1.4f
-                    Column {
-                    Row(Modifier.fillMaxWidth().heightIn(min=54.dp), verticalAlignment=Alignment.CenterVertically) {
-                    ToolButton("menu", "Conversations", actions::menu)
-                    Column(Modifier.weight(1f).padding(horizontal=6.dp)) {
-                        Text("Personal",color=ink,fontWeight=FontWeight.SemiBold,fontSize=15.sp,modifier=Modifier.semantics{heading()})
-                        Text(statusText, color=muted,fontSize=11.sp,maxLines=2,overflow=TextOverflow.Ellipsis,modifier=Modifier.semantics{liveRegion=LiveRegionMode.Polite})
+                Row(Modifier.fillMaxWidth().heightIn(min=58.dp).padding(horizontal=4.dp),verticalAlignment=Alignment.CenterVertically){
+                    ToolButton("menu","Conversations",actions::menu)
+                    Column(Modifier.weight(1f).padding(horizontal=6.dp)){
+                        Text("DragonZpyder",color=ink,fontWeight=FontWeight.SemiBold,fontSize=17.sp,maxLines=1,overflow=TextOverflow.Ellipsis,modifier=Modifier.semantics{heading()})
+                        Text(statusText,color=muted,fontSize=11.sp,maxLines=1,overflow=TextOverflow.Ellipsis,modifier=Modifier.semantics{liveRegion=LiveRegionMode.Polite})
                     }
-                    if(narrow){ToolButton("command","Commands",actions::commands)}else{
-                    ToolButton("command","Commands",actions::commands)
-                    ToolButton(if(dark) "sun" else "moon","Switch appearance",actions::theme)
-                    IconButton(onClick=actions::account,enabled=!busy,modifier=Modifier.size(48.dp).semantics { contentDescription="Account" }) { Surface(shape=RoundedCornerShape(50),color=panel,border=BorderStroke(1.dp,line),modifier=Modifier.size(32.dp)) { Box(contentAlignment=Alignment.Center){Text(profileInitial,color=ink,fontWeight=FontWeight.Medium,fontSize=14.sp)} } }
-                    }
-                    }
-                    if(narrow) Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.End,verticalAlignment=Alignment.CenterVertically){
-                        ToolButton(if(dark) "sun" else "moon","Switch appearance",actions::theme)
-                        TextButton(onClick=actions::account,enabled=!busy,modifier=Modifier.heightIn(min=48.dp)){Text("Account",color=ink)}
-                    }
-                    }
+                    ToolButton("new","New chat",actions::newChat)
+                    ToolButton("more","More options",actions::commands)
                 }
                 HorizontalDivider(color=line.copy(alpha=.55f))
                 Column(Modifier.weight(1f).fillMaxWidth(),horizontalAlignment=Alignment.CenterHorizontally) {
@@ -150,23 +167,54 @@ class NativeChatView(context: Context, private val dark: Boolean, private val ac
                 }
                 Box(Modifier.fillMaxWidth().padding(horizontal=8.dp,vertical=6.dp),contentAlignment=Alignment.Center) { Composer() }
             }
+            }
         }
     }
     @Composable private fun ToolButton(symbol:String,label:String,click:()->Unit) {
-        IconButton(onClick=click,enabled=!busy,modifier=Modifier.sizeIn(minWidth=48.dp,minHeight=48.dp).semantics { contentDescription=label }) {
-            Canvas(Modifier.size(21.dp)) {
-                val w=size.width;val h=size.height;val stroke=1.7.dp.toPx()
-                fun segment(x1:Float,y1:Float,x2:Float,y2:Float){drawLine(ink,Offset(x1*w,y1*h),Offset(x2*w,y2*h),stroke,StrokeCap.Round)}
-                when(symbol){
-                    "menu" -> {segment(.12f,.25f,.88f,.25f);segment(.12f,.5f,.72f,.5f);segment(.12f,.75f,.88f,.75f)}
-                    "plus" -> {segment(.5f,.15f,.5f,.85f);segment(.15f,.5f,.85f,.5f)}
-                    "mic" -> {drawRoundRect(ink,Offset(w*.36f,h*.08f),Size(w*.28f,h*.54f),androidx.compose.ui.geometry.CornerRadius(w*.14f),style=Stroke(stroke));drawArc(ink,0f,180f,false,Offset(w*.2f,h*.26f),Size(w*.6f,h*.5f),style=Stroke(stroke,cap=StrokeCap.Round));segment(.5f,.76f,.5f,.94f);segment(.34f,.94f,.66f,.94f)}
-                    "sun" -> {drawCircle(ink,w*.22f,style=Stroke(stroke));for(k in 0..7){val a=k*Math.PI/4;val x=kotlin.math.cos(a).toFloat();val y=kotlin.math.sin(a).toFloat();segment(.5f+x*.34f,.5f+y*.34f,.5f+x*.46f,.5f+y*.46f)}}
-                    "moon" -> {drawArc(ink,52f,258f,false,Offset(w*.15f,h*.09f),Size(w*.73f,h*.82f),style=Stroke(stroke,cap=StrokeCap.Round));drawArc(ink,80f,195f,false,Offset(w*.45f,h*.04f),Size(w*.48f,h*.70f),style=Stroke(stroke,cap=StrokeCap.Round))}
-                    "command" -> {segment(.32f,.32f,.68f,.32f);segment(.32f,.68f,.68f,.68f);segment(.32f,.32f,.32f,.68f);segment(.68f,.32f,.68f,.68f);for(x in listOf(.22f,.78f))for(y in listOf(.22f,.78f))drawCircle(ink,w*.12f,Offset(w*x,h*y),style=Stroke(stroke))}
+        IconButton(onClick=click,enabled=!busy,modifier=Modifier.size(48.dp).semantics{contentDescription=label}){
+            NavigationGlyph(symbol,ink)
+        }
+    }
+    @Composable private fun NavigationDrawerContent(close:()->Unit,select:(()->Unit)->Unit){
+        var query by remember{mutableStateOf("")}
+        val filtered=conversations.filter{it.title.contains(query.trim(),ignoreCase=true)}
+        Column(Modifier.fillMaxSize().padding(horizontal=12.dp)){
+            Row(Modifier.fillMaxWidth().heightIn(min=60.dp),verticalAlignment=Alignment.CenterVertically){
+                Image(painterResource(R.drawable.brand_icon),null,Modifier.size(32.dp))
+                Spacer(Modifier.width(10.dp))
+                Text("DragonZpyder",color=ink,fontWeight=FontWeight.SemiBold,fontSize=17.sp,modifier=Modifier.weight(1f),maxLines=1,overflow=TextOverflow.Ellipsis)
+                IconButton(onClick=close,modifier=Modifier.size(48.dp).semantics{contentDescription="Close menu"}){NavigationGlyph("close",muted)}
+            }
+            Button(onClick={select(actions::newChat)},enabled=!busy,shape=RoundedCornerShape(14.dp),modifier=Modifier.fillMaxWidth().heightIn(min=48.dp),colors=ButtonDefaults.buttonColors(containerColor=accent,contentColor=if(dark)Color(0xFF17110D) else Color.White)){
+                NavigationGlyph("new",if(dark)Color(0xFF17110D) else Color.White)
+                Spacer(Modifier.width(10.dp));Text("New chat",fontWeight=FontWeight.Medium)
+            }
+            Spacer(Modifier.height(10.dp))
+            OutlinedTextField(value=query,onValueChange={query=it},singleLine=true,placeholder={Text("Search conversations",fontSize=13.sp)},leadingIcon={NavigationGlyph("search",muted,22.dp)},modifier=Modifier.fillMaxWidth().semantics{contentDescription="Find conversations"},shape=RoundedCornerShape(14.dp),colors=OutlinedTextFieldDefaults.colors(unfocusedBorderColor=line,focusedBorderColor=accent))
+            Spacer(Modifier.height(8.dp))
+            LazyColumn(Modifier.weight(1f).fillMaxWidth(),contentPadding=PaddingValues(top=2.dp,bottom=12.dp)){
+                item{DrawerSection("Workspace")}
+                item{DrawerRow("connections","Connections & tools",false){select(actions::connections)}}
+                item{DrawerRow("tasks","Tasks",false){select(actions::tasks)}}
+                item{DrawerRow("approvals","Approvals",false){select(actions::approvals)}}
+                item{DrawerSection("Conversations")}
+                if(historyError)item{Text("Could not refresh history",color=muted,fontSize=12.sp,modifier=Modifier.padding(10.dp))}
+                if(filtered.isEmpty())item{Text(if(query.isBlank())"No conversations yet" else "No matching conversations",color=muted,fontSize=13.sp,modifier=Modifier.padding(10.dp))}
+                items(filtered,key={it.id}){item->
+                    NavigationDrawerItem(label={Text(item.title,maxLines=2,overflow=TextOverflow.Ellipsis,fontSize=14.sp,lineHeight=19.sp)},selected=item.id==selectedConversation,onClick={if(!busy)select{actions.openConversation(item.id)}},shape=RoundedCornerShape(10.dp),modifier=Modifier.heightIn(min=48.dp),colors=NavigationDrawerItemDefaults.colors(selectedContainerColor=userBubble,unselectedContainerColor=Color.Transparent,selectedTextColor=ink,unselectedTextColor=ink))
                 }
+                item{DrawerSection("Preferences")}
+                item{DrawerRow("account","Account & security",false){select(actions::account)}}
+                item{DrawerRow(if(dark)"sun" else "moon",if(dark)"Light appearance" else "Dark appearance",false){select(actions::theme)}}
+                item{DrawerRow("more","All commands",false){select(actions::commands)}}
             }
         }
+    }
+    @Composable private fun DrawerSection(title:String){
+        Text(title,color=muted,fontSize=11.sp,fontWeight=FontWeight.SemiBold,modifier=Modifier.padding(start=12.dp,top=14.dp,bottom=6.dp).semantics{heading()})
+    }
+    @Composable private fun DrawerRow(icon:String,label:String,selected:Boolean,click:()->Unit){
+        NavigationDrawerItem(label={Text(label,fontSize=14.sp,maxLines=2,overflow=TextOverflow.Ellipsis)},selected=selected,onClick={if(!busy)click()},icon={NavigationGlyph(icon,ink)},shape=RoundedCornerShape(10.dp),modifier=Modifier.heightIn(min=48.dp),colors=NavigationDrawerItemDefaults.colors(selectedContainerColor=userBubble,unselectedContainerColor=Color.Transparent,selectedTextColor=ink,unselectedTextColor=ink))
     }
     @Composable private fun Welcome() {
         Column(Modifier.fillMaxWidth().padding(horizontal=10.dp,vertical=22.dp),horizontalAlignment=Alignment.CenterHorizontally) {
@@ -214,8 +262,8 @@ class NativeChatView(context: Context, private val dark: Boolean, private val ac
                 }
             }
             if(!user&&!ongoing) Row {
-                TextButton(onClick={actions.copy(message.content)}){Text("Copy",color=muted,fontSize=12.sp)}
-                TextButton(onClick={actions.speak(message.content)}){Text("Read aloud",color=muted,fontSize=12.sp)}
+                IconButton(onClick={actions.copy(message.content)},modifier=Modifier.semantics{contentDescription="Copy"}){NavigationGlyph("copy",muted,22.dp)}
+                IconButton(onClick={actions.speak(message.content)},modifier=Modifier.semantics{contentDescription="Read aloud"}){NavigationGlyph("speak",muted,22.dp)}
             }
         }
     }
@@ -226,11 +274,11 @@ class NativeChatView(context: Context, private val dark: Boolean, private val ac
                 if(draft.length>(if(modeLabel=="AI Mesh") 5000 else 12000)) Text("Message exceeds this mode’s input limit. Shorten it before sending.",color=MaterialTheme.colorScheme.error,fontSize=12.sp,modifier=Modifier.padding(horizontal=8.dp))
                 if(attachmentLabel.isNotBlank()) TextButton(onClick=actions::removeAttachment,enabled=!busy){Text("×  "+attachmentLabel)}
                 Row(verticalAlignment=Alignment.CenterVertically,modifier=Modifier.fillMaxWidth()) {
-                    ToolButton("plus","Attach",actions::add)
-                    TextButton(onClick=actions::mode,enabled=!busy){Text("✦ "+modeLabel,color=ink)}
+                    ToolButton("attach","Attach",actions::add)
+                    TextButton(onClick=actions::mode,enabled=!busy){Text(modeLabel,color=ink)}
                     Spacer(Modifier.weight(1f))
                     ToolButton("mic","Dictate",actions::dictate)
-                    Button(onClick={if(streaming)actions.stop() else actions.send()},enabled=streaming||(!busy&&(draft.isNotBlank()||(modeLabel=="AI Mesh"&&attachmentLabel.isNotBlank()))&&draft.length<=(if(modeLabel=="AI Mesh") 5000 else 12000)),shape=RoundedCornerShape(50),contentPadding=PaddingValues(0.dp),modifier=Modifier.size(48.dp).semantics{contentDescription=if(streaming)"Stop response" else "Send message"},colors=ButtonDefaults.buttonColors(containerColor=Color(0xFFB94A21),contentColor=Color.White,disabledContainerColor=line.copy(alpha=.35f),disabledContentColor=muted)) { Text(if(streaming)"■" else "↑",fontSize=23.sp) }
+                    if(voiceAvailable&&!busy&&draft.isBlank()&&attachmentLabel.isBlank()) ToolButton("voice","Live voice",actions::voice) else Button(onClick={if(streaming)actions.stop() else actions.send()},enabled=streaming||(!busy&&(draft.isNotBlank()||(modeLabel=="AI Mesh"&&attachmentLabel.isNotBlank()))&&draft.length<=(if(modeLabel=="AI Mesh") 5000 else 12000)),shape=RoundedCornerShape(50),contentPadding=PaddingValues(0.dp),modifier=Modifier.size(48.dp).semantics{contentDescription=if(streaming)"Stop response" else "Send message"},colors=ButtonDefaults.buttonColors(containerColor=Color(0xFFB94A21),contentColor=Color.White,disabledContainerColor=line.copy(alpha=.35f),disabledContentColor=muted)) { NavigationGlyph(if(streaming)"stop" else "send",if(streaming||draft.isNotBlank()||attachmentLabel.isNotBlank())Color.White else muted) }
                 }
             }
         }
