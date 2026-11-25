@@ -90,6 +90,7 @@ async def status():
                and os.getenv("DRAGONZPYDER_IDENTITY_HTTP_ENABLED") == "1"
                and os.getenv("DRAGONZPYDER_AGENTS_ENABLED") == "1")
     return {"native_chat_enabled": enabled,
+            "request_ledger_enabled": enabled and os.getenv("DRAGONZPYDER_FIRST_PARTY_REQUEST_LEDGER_ENABLED") == "1",
             "web_cutover_enabled": (enabled and
                 os.getenv("DRAGONZPYDER_FIRST_PARTY_WEB_CUTOVER_ENABLED") == "1")}
 
@@ -166,6 +167,8 @@ def _ledger_response(row, fingerprint: str | None = None):
 @router.get("/requests/{request_id}")
 async def request_status(request_id: UUID, request: Request):
     user = await _owner(request, changing=False)
+    if os.getenv("DRAGONZPYDER_FIRST_PARTY_REQUEST_LEDGER_ENABLED") != "1":
+        raise HTTPException(503, "Request ledger is not enabled")
     async with _conversation_db() as db:
         row = await db.fetchrow(
             """SELECT request_id, fingerprint, conversation_id, status, response
@@ -185,6 +188,8 @@ async def chat(payload: ChatInput, request: Request):
     # request identity; a missing migration fails closed before any model call.
     if payload.request_id is None:
         return await _execute_chat(payload, request, user, payload.conversation_id or uuid4())
+    if os.getenv("DRAGONZPYDER_FIRST_PARTY_REQUEST_LEDGER_ENABLED") != "1":
+        raise HTTPException(503, "Request ledger is not enabled")
     request_id = payload.request_id
     fingerprint = _fingerprint(payload)
     conversation_id = payload.conversation_id or uuid4()
