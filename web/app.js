@@ -2,6 +2,8 @@ import { renderMarkdown } from "./frontend/src/markdown.js";
 const state = {
   session: null,
   firstParty: false,
+  nativeCapabilities: {},
+  agentFiles: [],
   selectedMcpConnections: [],
   conversationId: null,
   conversations: [],
@@ -228,6 +230,8 @@ async function bootstrapAuth() {
     // never fall back to Operly when the DragonZpyder API is unavailable.
     const routing = await api("/dz/status", { csrf: false });
     state.firstParty = routing.web_cutover_enabled === true;
+    state.nativeCapabilities = state.firstParty ? await api('/dz/v2/personal/status', {csrf:false}) : {};
+    window.dragonzpyderNativeCapabilities = state.nativeCapabilities;
     window.dragonzpyderNativeMode = state.firstParty;
     window.dispatchEvent(new CustomEvent("dragonzpyder:runtime-mode", { detail: { firstParty: state.firstParty } }));
     if (!state.firstParty) {
@@ -241,7 +245,7 @@ async function bootstrapAuth() {
       const mesh = $("mesh-switch");
       if (mesh) mesh.hidden = true;
       const voice = $("companion-open");
-      if (voice) voice.hidden = true;
+      if (voice) voice.hidden = !state.nativeCapabilities.voice_enabled;
     }
     await ensurePersonalSession();
     hideAuth();
@@ -552,10 +556,71 @@ function runtimeMessage(result) {
   return String(result.message || result.result?.message || result.output || "DragonZpyder completed the request.");
 }
 
-async function submitViaClientAdapter(message, requestId) {
+function renderAgentFiles() {
+  const area=$("mesh-attachments");
+  if(!area)return;
+  area.replaceChildren();
+  area.hidden=!state.agentFiles.length;
+  state.agentFiles.forEach((item,index)=>{
+    const chip=document.createElement("button");
+    chip.type="button";chip.className="mesh-file-chip";
+    chip.textContent=item.file.name+" · Remove";
+    chip.setAttribute("aria-label","Remove "+item.file.name);
+    chip.disabled=state.sending;
+    chip.addEventListener("click",()=>{if(!state.sending){state.agentFiles.splice(index,1);renderAgentFiles();syncComposerAction();}});
+    area.append(chip);
+  });
+}
+function clearAgentFiles(){state.agentFiles=[];renderAgentFiles();}
+window.dragonzpyderQueueAgentFiles=(files)=>{
+  if(!state.firstParty)return false;
+  if(!state.nativeCapabilities.artifacts_enabled||!state.session){
+    const status=$("mesh-status");status.hidden=false;status.textContent="Agent file uploads are not enabled for this session.";return true;
+  }
+  if(state.sending)return true;
+  const incoming=Array.from(files||[]);
+  if(state.agentFiles.length+incoming.length>5||incoming.some(f=>f.size<1||f.size>10*1024*1024)){
+    const status=$("mesh-status");status.hidden=false;status.textContent="Choose up to five files, 10 MiB each.";return true;
+  }
+  state.agentFiles.push(...incoming.map(file=>({file})));
+  renderAgentFiles();syncComposerAction();return true;
+};
+async function uploadAgentFiles(items) {
+  const ids=[];
+  for(const item of items){
+    if(!item.id){
+      const csrf=sessionCsrf();
+      if(!csrf)throw Error("Sign in again to upload files.");
+      const response=await fetch("/dz/v2/personal/files?filename="+encodeURIComponent(item.file.name),{
+        method:"POST",credentials:"same-origin",headers:{"Content-Type":item.file.type||"application/octet-stream","X-DZ-CSRF":csrf},body:item.file
+      });
+      if(!response.ok)throw Error("File upload failed ("+response.status+"). No agent request was submitted.");
+      const metadata=await response.json();
+      if(!/^[a-f0-9-]{36}$/i.test(metadata.id||""))throw Error("Upload receipt missing.");
+      item.id=metadata.id;
+    }
+    ids.push(item.id);
+  }
+  return ids;
+}
+function appendGeneratedFiles(parent,files){
+  if(!Array.isArray(files))return;
+  for(const file of files){
+    if(!file||typeof file.filename!=="string"||!/^[/]v2[/]personal[/]files[/][a-f0-9-]{36}$/i.test(file.download_path||""))continue;
+    const link=document.createElement("a");
+    link.href="/dz"+file.download_path;
+    link.download=file.filename;
+    link.textContent="Download "+file.filename;
+    link.className="message-meta";
+    parent.append(link);
+  }
+}
+async function submitViaClientAdapter(message, requestId, attachments=[]) {
   // The personal-tools client submission endpoint is not registered in Operly.
   // Use the supported personal-agent chat API directly.
   const body = { message };
+  if(state.firstParty&&state.nativeCapabilities.request_ledger_enabled)body.request_id=requestId;
+  if(attachments.length)body.attachment_ids=attachments;
   if (state.conversationId) body.conversation_id = state.conversationId;
   if (state.firstParty && state.selectedMcpConnections.length) {
     body.mcp_connection_ids = [...state.selectedMcpConnections];
@@ -569,7 +634,8 @@ async function submitViaClientAdapter(message, requestId) {
 
 async function sendMessage(message, { companion = false, fromComposer = false } = {}) {
   const clean = String(message || "").trim();
-  if (!clean || state.sending) { if (companion) throw Error("Personal agent is busy"); return; }
+  const selected=fromComposer&&state.firstParty?[...state.agentFiles]:[];
+  if ((!clean&&!selected.length) || state.sending) { if (companion) throw Error("Personal agent is busy"); return; }
   if (!state.session) { showAuth(); if (companion) throw Error("Sign in first"); return; }
 
   state.sending = true;
@@ -583,17 +649,20 @@ async function sendMessage(message, { companion = false, fromComposer = false } 
     if (window.matchMedia("(max-width: 820px)").matches) messageInput.blur();
   }
   messageInput.disabled = true;
-  appendMessage("user", clean);
+  appendMessage("user", clean+(selected.length?"\n"+selected.map(x=>"[Attachment: "+x.file.name+"]").join("\n"):""));
   const pending = appendMessage("assistant", "", { pending: true });
   const requestId = crypto.randomUUID();
   state.lastRequestId = requestId;
 
   try {
-    const result = await submitViaClientAdapter(clean, requestId);
+    const attachmentIds=await uploadAgentFiles(selected);
+    const result = await submitViaClientAdapter(clean, requestId, attachmentIds);
+    if(selected.length)clearAgentFiles();
     if (result.conversation_id) state.conversationId = String(result.conversation_id);
     const blocker = result.error_code ? String(result.error_code) : "";
     const text = runtimeMessage(result);
     renderMessageContent(pending.value, text);
+    appendGeneratedFiles(pending.body,result.artifacts);
     pending.wrap.classList.remove("dz-running");
     // Add message actions only after the backend has actually returned.
     if (!pending.body.querySelector(".dz-message-actions")) {
@@ -699,7 +768,11 @@ async function sendMessage(message, { companion = false, fromComposer = false } 
     pending.value.classList.add("error");
     // The draft is recoverable on an ordinary failure, but never restore an
     // uncertain-delivery request where pressing Send could duplicate an action.
-    if (fromComposer && !(error instanceof ApiError && error.code === "execution_outcome_uncertain")) {
+    if(selected.length){
+      // Do not automatically replay a file-bearing request whose outcome may be uncertain.
+      clearAgentFiles();
+    }
+    if (fromComposer && !selected.length && !(error instanceof ApiError && error.code === "execution_outcome_uncertain")) {
       messageInput.value = clean;
       autoSizeInput();
     }
@@ -956,6 +1029,7 @@ async function logout() {
   window.dispatchEvent(new Event("dragonzpyder:logout"));
   setSession(null);
   state.conversationId = null;
+  clearAgentFiles();
   state.conversations = [];
   state.approvals = [];
   renderConversations();
@@ -969,10 +1043,10 @@ async function logout() {
 function syncComposerAction() {
   // The single trailing action is Live voice while the composer is empty,
   // and Send when text or attachments are ready.
-  const pending = Boolean(messageInput.value.trim()) ||
+  const pending = Boolean(messageInput.value.trim()) || state.agentFiles.length>0 ||
     Boolean(window.dragonzpyderMesh?.hasAttachments?.());
   const voice = $("companion-open");
-  voice.hidden = state.firstParty || pending;
+  voice.hidden = (state.firstParty&&!state.nativeCapabilities.voice_enabled) || pending;
   voice.disabled = state.sending || Boolean(window.dragonzpyderMesh?.isBusy?.());
   sendButton.hidden = !pending;
 }
