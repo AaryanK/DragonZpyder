@@ -12,7 +12,8 @@ final class DragonApi {
     private SessionCookies cookies = new SessionCookies();
     private volatile boolean firstParty;
     private volatile boolean modeKnown;
-    private volatile boolean requestLedger,agentStream,voiceEnabled;
+    private volatile boolean requestLedger,agentStream,voiceEnabled,filesEnabled;
+    boolean supportsFiles(){return firstParty&&filesEnabled&&requestLedger;}
     boolean supportsVoice(){return firstParty&&voiceEnabled;}
     boolean supportsRequestLedger(){return firstParty&&requestLedger;}
     boolean supportsAgentStream(){return supportsRequestLedger()&&agentStream;}
@@ -25,8 +26,8 @@ final class DragonApi {
         if(!(enabled instanceof Boolean))throw new IOException("Runtime mode was not confirmed by DragonZpyder");
         boolean nativeMode=(Boolean)enabled;
         if(!modeKnown||nativeMode!=firstParty){cookies.clear();cookies=new SessionCookies(nativeMode);authenticated=false;requestBinding="";bootstrapCsrf="";googleState="";firstParty=nativeMode;}
-        requestLedger=false;agentStream=false;voiceEnabled=false;
-        if(nativeMode){try{JSONObject capabilities=(JSONObject)request("/dz/v2/personal/status","GET",null,true);requestLedger=capabilities.optBoolean("request_ledger_enabled",false);agentStream=capabilities.optBoolean("agent_stream_enabled",false);voiceEnabled=capabilities.optBoolean("voice_enabled",false);}catch(Exception unavailable){/* Keep first-party mode; never downgrade identity. */}}
+        requestLedger=false;agentStream=false;voiceEnabled=false;filesEnabled=false;
+        if(nativeMode){try{JSONObject capabilities=(JSONObject)request("/dz/v2/personal/status","GET",null,true);requestLedger=capabilities.optBoolean("request_ledger_enabled",false);agentStream=capabilities.optBoolean("agent_stream_enabled",false);voiceEnabled=capabilities.optBoolean("voice_enabled",false);filesEnabled=capabilities.optBoolean("artifacts_enabled",false);}catch(Exception unavailable){/* Keep first-party mode; never downgrade identity. */}}
         modeKnown=true;
     }
     private void ensureMode() throws Exception {if(!modeKnown)discoverMode();}
@@ -138,6 +139,48 @@ final class DragonApi {
             }
             return payload;
         } finally { connection.disconnect(); }
+    }
+    synchronized JSONObject uploadFile(String name,String mime,byte[] bytes) throws Exception {
+        if(!supportsFiles()||!authenticated)throw unsupported();
+        if(bytes.length<1||bytes.length>10*1024*1024)throw new IOException("File must be 1 byte to 10 MiB");
+        HttpURLConnection c=(HttpURLConnection)ORIGIN.resolve("/dz/v2/personal/files?filename="+segment(name)).toURL().openConnection();
+        try{
+            c.setInstanceFollowRedirects(false);c.setConnectTimeout(15000);c.setReadTimeout(90000);
+            c.setRequestMethod("POST");c.setDoOutput(true);c.setFixedLengthStreamingMode(bytes.length);
+            c.setRequestProperty("Content-Type",mime!=null&&mime.matches("[A-Za-z0-9!#    interface Delta^_.+-]{1,80}/[A-Za-z0-9!#    interface Delta^_.+-]{1,80}")?mime:"application/octet-stream");
+            c.setRequestProperty("Cookie",cookies.header());c.setRequestProperty("Origin",ORIGIN.toString());c.setRequestProperty("X-DZ-CSRF",csrf(ORIGIN));
+            try(OutputStream out=c.getOutputStream()){out.write(bytes);}
+            int status=c.getResponseCode();if(status!=200){if(status==401)clear();throw new ApiError(status,"File upload failed ("+status+").");}
+            byte[] response=boundedBytes(c.getInputStream(),32768);
+            JSONObject metadata=new JSONObject(new String(response,StandardCharsets.UTF_8));
+            if(!metadata.optString("id").matches("[0-9a-f-]{36}")||metadata.optInt("size")!=bytes.length)throw new IOException("Invalid file receipt");
+            if(!sha256(bytes).equals(metadata.optString("sha256")))throw new IOException("File upload integrity mismatch");
+            return metadata;
+        }finally{c.disconnect();}
+    }
+    synchronized byte[] downloadFile(String id,String digest) throws Exception {
+        if(!supportsFiles()||!authenticated)throw unsupported();
+        if(!id.matches("[0-9a-f-]{36}")||!digest.matches("[0-9a-f]{64}"))throw new IOException("Invalid file receipt");
+        HttpURLConnection c=(HttpURLConnection)ORIGIN.resolve("/dz/v2/personal/files/"+id).toURL().openConnection();
+        try{
+            c.setInstanceFollowRedirects(false);c.setConnectTimeout(15000);c.setReadTimeout(90000);
+            c.setRequestProperty("Cookie",cookies.header());c.setRequestProperty("Accept","application/octet-stream");
+            int status=c.getResponseCode();if(status!=200){if(status==401)clear();throw new ApiError(status,"File download failed ("+status+").");}
+            byte[] data=boundedBytes(c.getInputStream(),10*1024*1024);
+            if(!sha256(data).equals(digest))throw new IOException("Downloaded file integrity mismatch");
+            return data;
+        }finally{c.disconnect();}
+    }
+    private static byte[] boundedBytes(InputStream stream,int limit) throws IOException {
+        try(InputStream input=stream;ByteArrayOutputStream out=new ByteArrayOutputStream()){
+            byte[] chunk=new byte[8192];int n;
+            while((n=input.read(chunk))!=-1){if(out.size()+n>limit)throw new IOException("File exceeds limit");out.write(chunk,0,n);}
+            return out.toByteArray();
+        }
+    }
+    private static String sha256(byte[] data) throws Exception {
+        byte[] digest=java.security.MessageDigest.getInstance("SHA-256").digest(data);
+        StringBuilder hex=new StringBuilder(64);for(byte value:digest)hex.append(String.format(Locale.ROOT,"%02x",value&255));return hex.toString();
     }
     interface Delta { void accept(String text); }
     private volatile HttpURLConnection activeStream;
