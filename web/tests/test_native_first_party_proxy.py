@@ -85,3 +85,31 @@ def test_native_cutover_never_uses_operly_mesh_voice_or_legacy_auth(monkeypatch)
             assert upstream == ["https://api.dragonzpyder.xyz/identity/v1/provider/google/start"]
         finally:
             client.app.state.http = original
+
+
+def test_migration_proof_proxy_is_separately_gated_and_exact(monkeypatch):
+    calls = []
+    def handler(request):
+        calls.append((request.method, str(request.url), request.headers.get("origin")))
+        return httpx.Response(202,json={"status":"awaiting_review"})
+    monkeypatch.delenv("DRAGONZPYDER_IMPORT_PROOF_WEB_ENABLED",raising=False)
+    monkeypatch.delenv("DRAGONZPYDER_FIRST_PARTY_WEB_CUTOVER_ENABLED",raising=False)
+    with TestClient(app,base_url="https://www.dragonzpyder.xyz") as client:
+        original=client.app.state.http
+        client.app.state.http=httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        try:
+            root="/dz/identity/v1/import-proof"
+            origin={"origin":"https://www.dragonzpyder.xyz"}
+            assert client.get("/dz/import-proof/status").json()=={"enabled":False}
+            assert client.post(root+"/password",headers=origin,json={}).status_code==404
+            monkeypatch.setenv("DRAGONZPYDER_IMPORT_PROOF_WEB_ENABLED","1")
+            assert client.get("/dz/import-proof/status").json()=={"enabled":True}
+            assert client.get("/dz/status").json()=={"web_cutover_enabled":False}
+            assert client.get(root+"/password").status_code==404
+            assert client.post(root+"/approve",headers=origin).status_code==404
+            assert client.post(root+"/password",headers={"origin":"https://evil.invalid"},json={}).status_code==403
+            assert calls==[]
+            assert client.post(root+"/password",headers=origin,json={}).status_code==202
+            assert calls==[("POST","https://api.dragonzpyder.xyz/identity/v1/import-proof/password","https://api.dragonzpyder.xyz")]
+        finally:
+            client.app.state.http=original
