@@ -39,8 +39,8 @@ async def test_activation_receipt_fence(monkeypatch):
             ]:
                 await conn.execute("""
                     INSERT INTO public.identity_accounts
-                    (subject,source_operly_user_id,email,display_name,password_hash,source_active,status)
-                    VALUES($1,$1,$2,'Synthetic',$3,$4,'pending')
+                    (subject,source_operly_user_id,email,display_name,password_hash,source_active,status,email_verified_at)
+                    VALUES($1,$1,$2,'Synthetic',$3,$4,'pending',now())
                 """, subject, email, password, active)
             await conn.execute("INSERT INTO public.identity_provider_links(subject,provider,provider_subject,source,login_eligible) VALUES($1,'google','synthetic-google','auth',TRUE)",b)
             await conn.execute((ROOT / "schema_import_activation_review.sql").read_text())
