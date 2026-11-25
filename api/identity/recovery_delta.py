@@ -59,7 +59,6 @@ async def apply_pending_recovery_additions(connection, source: ImportBundle,
     updates or overwrites. Never mount this function as HTTP or an agent tool.
     """
     import os
-    from .pending_reconciliation import read_pending_target
     if not operator_approved or os.getenv("DRAGONZPYDER_RECOVERY_SYNC_APPROVED") != "1":
         raise PermissionError("Explicit recovery synchronization approval required")
     if type(expected_additions) is not int or not 0 <= expected_additions <= approved.accounts:
@@ -111,3 +110,48 @@ async def apply_pending_recovery_additions(connection, source: ImportBundle,
         if plan_recovery_additions(source, verified, approved):
             raise IdentityMigrationConflict("Recovery readback mismatch")
     return {"password_additions": expected_additions, "active_accounts": 0}
+
+
+async def _run_recovery_cli(args, key):
+    import os
+    import asyncpg
+    from .offline_transfer import open_package, _read_private
+    approved = ApprovedInventory(args.expected_accounts, args.expected_google_links)
+    if not args.approve_pending_recovery or os.getenv("DRAGONZPYDER_RECOVERY_SYNC_APPROVED") != "1":
+        raise PermissionError("Explicit recovery synchronization approval required")
+    # Use the existing sealed export format; the original 24-hour TTL,
+    # checksum and zero unsupported hashes are enforced.
+    source = open_package(_read_private(args.package), approved, 0, key, args.expected_sha256)
+    conn = await asyncpg.connect(os.environ["DRAGONZPYDER_IDENTITY_RECOVERY_DSN"],
+                                 timeout=10, command_timeout=30)
+    try:
+        return await apply_pending_recovery_additions(conn, source, approved,
+                    expected_additions=args.expected_additions, operator_approved=True)
+    finally:
+        await conn.close()
+
+
+def main():
+    import argparse
+    import asyncio
+    import json
+    from .offline_transfer import _key
+    parser = argparse.ArgumentParser(description="Reviewed pending-only recovery synchronization")
+    parser.add_argument("--package", required=True)
+    parser.add_argument("--expected-sha256", required=True)
+    parser.add_argument("--expected-accounts", type=int, required=True)
+    parser.add_argument("--expected-google-links", type=int, required=True)
+    parser.add_argument("--expected-additions", type=int, required=True)
+    parser.add_argument("--approve-pending-recovery", action="store_true")
+    args = parser.parse_args()
+    try:
+        result = asyncio.run(_run_recovery_cli(args, _key()))
+    except Exception:
+        print("IDENTITY_RECOVERY_SYNC_FAILED")
+        raise SystemExit(1) from None
+    print(json.dumps(result, sort_keys=True))
+    print("IDENTITY_RECOVERY_SYNC_COMPLETE")
+
+
+if __name__ == "__main__":
+    main()
