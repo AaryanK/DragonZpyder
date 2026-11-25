@@ -128,7 +128,7 @@ def test_proof_proxy_never_relays_legacy_or_native_session_credentials(monkeypat
     with TestClient(app,base_url="https://www.dragonzpyder.xyz") as client:
         original=client.app.state.http
         client.app.state.http=httpx.AsyncClient(transport=httpx.MockTransport(handler),
-                                                cookies=original.cookies)
+                                                cookies=original.cookies.jar)
         try:
             path="/dz/identity/v1/import-proof/google/complete"
             origin={"origin":"https://www.dragonzpyder.xyz"}
