@@ -32,7 +32,7 @@ CREATE TABLE public.identity_import_proofs (
  subject varchar(160) NOT NULL REFERENCES public.identity_accounts(subject) ON DELETE RESTRICT,
  proof_method text NOT NULL CHECK (proof_method IN ('password','google')),
  proved_at timestamptz NOT NULL DEFAULT clock_timestamp(),
- UNIQUE(subject,proof_id)
+ UNIQUE(subject,proof_id,proof_method,proved_at)
 );
 REVOKE ALL ON public.identity_import_proofs FROM PUBLIC, dz_identity_api;
 ALTER TABLE public.identity_import_proofs ENABLE ROW LEVEL SECURITY;
@@ -54,7 +54,8 @@ CREATE TABLE public.identity_import_activation_receipts (
  CONSTRAINT identity_activation_receipt_fresh CHECK (
      proof_at <= approved_at AND approved_at - proof_at <= interval '15 minutes'),
  UNIQUE(subject,receipt_id),
- FOREIGN KEY(subject,receipt_id) REFERENCES public.identity_import_proofs(subject,proof_id) ON DELETE RESTRICT
+ FOREIGN KEY(subject,receipt_id,proof_method,proof_at)
+ REFERENCES public.identity_import_proofs(subject,proof_id,proof_method,proved_at) ON DELETE RESTRICT
 );
 REVOKE ALL ON public.identity_import_activation_receipts FROM PUBLIC, dz_identity_api;
 ALTER TABLE public.identity_import_activation_receipts ENABLE ROW LEVEL SECURITY;
@@ -95,7 +96,7 @@ BEGIN
  IF NOT FOUND OR p.proved_at > clock_timestamp()
     OR p.proved_at < clock_timestamp() - interval '15 minutes'
  THEN RAISE EXCEPTION 'Fresh verified proof required'; END IF;
- IF p.proof_method='password' AND a.password_hash IS NULL
+ IF p.proof_method='password' AND (a.password_hash IS NULL OR a.email_verified_at IS NULL)
  THEN RAISE EXCEPTION 'Password proof unavailable'; END IF;
  IF p.proof_method='google' AND NOT EXISTS (
     SELECT 1 FROM public.identity_provider_links WHERE subject=p_subject
