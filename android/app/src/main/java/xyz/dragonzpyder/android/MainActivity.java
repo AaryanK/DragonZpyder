@@ -47,6 +47,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private LinearLayout root;
     private TextView status;
     private JSONObject attachment;
+    private JSONObject pendingFileDownload;
     private String attachmentName="";
     private java.io.File cameraCapture;
     private String conversation="", lastAnswer="", pendingPrompt="";
@@ -130,7 +131,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private void clearAccountView(){
         closeVoice();
         activeRequestId="";if(agentRequests!=null)agentRequests.reset();
-        conversation="";pendingPrompt="";attachment=null;attachmentName="";transcript.clear();
+        conversation="";pendingPrompt="";attachment=null;pendingFileDownload=null;attachmentName="";transcript.clear();
         meshMode=false;model="";modelAcceptsImages=false;restoredMesh=false;restoredModel="";restoredModelAcceptsImages=false;lastAnswer="";meshMessages=new JSONArray();history=new JSONArray();
         profileInitial="D";authEmail="";challengeId="";restoredDraft="";restoredConversation="";selectedMcpConnections.clear();
         restorePending=false;interruptedRequest=false;transcriptionModel="";queuedOAuthIntent=null;googleSignInPending=false;googleAttempt++;
@@ -297,6 +298,8 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             public void approvals(){MainActivity.this.approvals();}
             public void openConversation(String id){open(id);}
             public void voice(){showVoice();}
+            public void files(){showFiles();}
+            public void saveArtifact(String metadata){try{chooseFileDestination(new JSONObject(metadata));}catch(Exception invalid){setStatus("Invalid file receipt.");}}
             public void commands(){showCommands();}
             public void theme(){toggleTheme();}
             public void account(){showAccount();}
@@ -309,7 +312,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             public void copy(String value){android.content.ClipboardManager cb=(android.content.ClipboardManager)getSystemService(Context.CLIPBOARD_SERVICE);cb.setPrimaryClip(android.content.ClipData.newPlainText("DragonZpyder",value));}
             public void speak(String value){if(speechReady)tts.speak(value,TextToSpeech.QUEUE_FLUSH,null,"response");else setStatus("Speech engine unavailable");}
         });
-        chatUi.setDraft(draft);chatUi.setModeLabel(meshMode?"AI Mesh":"Agent");chatUi.setModelLabel(model);chatUi.setAttachmentLabel(attachmentName);chatUi.setProfileInitial(profileInitial);chatUi.setBusy(busy);chatUi.setVoiceAvailable(api.supportsVoice());
+        chatUi.setDraft(draft);chatUi.setModeLabel(meshMode?"AI Mesh":"Agent");chatUi.setModelLabel(model);chatUi.setAttachmentLabel(attachmentName);chatUi.setProfileInitial(profileInitial);chatUi.setBusy(busy);chatUi.setVoiceAvailable(api.supportsVoice());chatUi.setFilesAvailable(api.supportsFiles());
         for(String[] item:transcript)chatUi.append(item[0],item[1]);
         root.addView(chatUi.getView(),new LinearLayout.LayoutParams(-1,0,1));
     }
@@ -377,7 +380,14 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         sheet.setContentView(page);sheet.show();Window w=sheet.getWindow();if(w!=null){w.setBackgroundDrawableResource(android.R.color.transparent);w.setGravity(Gravity.BOTTOM|Gravity.CENTER_HORIZONTAL);w.setLayout(Math.min(getResources().getDisplayMetrics().widthPixels-dp(16),dp(520)),Math.min(dp(570),(int)(getResources().getDisplayMetrics().heightPixels*.78)));w.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE|WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN);}
     }
     private void showAdd(){
-        if(api.isFirstParty()){setStatus("Attachments are not yet supported by the first-party Agent API.");return;}
+        if(api.isFirstParty()){
+            if(!api.supportsFiles()){setStatus("First-party Agent file uploads are not enabled for this session.");return;}
+            alert().setTitle("Attach a file").setMessage("The selected file will be uploaded to your private encrypted file storage. The Agent receives it only when you send a message. Maximum 10 MiB.")
+                .setNegativeButton("Cancel",null).setPositiveButton("Choose file",(d,i)->{
+                    Intent picker=new Intent(Intent.ACTION_OPEN_DOCUMENT);picker.setType("*/*");picker.addCategory(Intent.CATEGORY_OPENABLE);picker.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                    try{startActivityForResult(picker,47);}catch(android.content.ActivityNotFoundException e){setStatus("No file picker available.");}
+                }).show();return;
+        }
         if(!meshMode){setStatus("Choose a compatible AI Mesh model before attaching media.");chooseModel();return;}
         alert().setTitle("Add to your message").setItems(new String[]{"Attach a file or photo","Take a photo"},(d,i)->{
             if(i==1){
@@ -387,6 +397,49 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             Intent picker=new Intent(Intent.ACTION_OPEN_DOCUMENT);picker.setType("*/*");picker.addCategory(Intent.CATEGORY_OPENABLE);picker.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
             try{startActivityForResult(picker,43);}catch(android.content.ActivityNotFoundException e){setStatus("No file picker available.");}
         }).setNegativeButton("Close",null).show();
+    }
+    private void uploadAgentAttachment(android.net.Uri uri){
+        if(busy||!signedIn||!api.supportsFiles())return;
+        submit("Uploading private attachment…",()->{
+            String name="attachment",mime=getContentResolver().getType(uri);
+            try(android.database.Cursor c=getContentResolver().query(uri,new String[]{android.provider.OpenableColumns.DISPLAY_NAME},null,null,null)){if(c!=null&&c.moveToFirst())name=c.getString(0);}
+            if(name==null||name.trim().isEmpty()||name.length()>180||name.contains("/")||name.contains("\\"))throw new Exception("Unsupported filename");
+            java.io.ByteArrayOutputStream bytes=new java.io.ByteArrayOutputStream();
+            try(java.io.InputStream in=getContentResolver().openInputStream(uri)){if(in==null)throw new Exception("Cannot read file");byte[] buffer=new byte[8192];int n;while((n=in.read(buffer))!=-1){if(bytes.size()+n>10*1024*1024)throw new Exception("File exceeds 10 MiB");bytes.write(buffer,0,n);}}
+            return api.uploadFile(name,mime,bytes.toByteArray());
+        },r->{JSONObject receipt=(JSONObject)r;attachment=receipt;attachmentName=receipt.getString("filename");if(chatUi!=null)chatUi.setAttachmentLabel(attachmentName);setStatus("File attached · send to include it in your request");},true);
+    }
+    private void showFiles(){
+        if(!signedIn||!api.supportsFiles()){setStatus("Shared file storage is not enabled for this session.");return;}
+        submit("Loading files…",()->api.call("/dz/v2/personal/files",null),r->{
+            JSONArray items=((JSONObject)r).optJSONArray("files");
+            if(items==null||items.length()==0){alert().setTitle("Your files").setMessage("No files uploaded or generated yet.").setPositiveButton("Close",null).show();return;}
+            ArrayList<JSONObject> valid=new ArrayList<>();ArrayList<String> labels=new ArrayList<>();
+            for(int i=0;i<items.length();i++){JSONObject file=items.optJSONObject(i);if(file==null)continue;valid.add(file);labels.add(file.optString("filename","File")+" · "+Math.max(1,(file.optInt("size")+1023)/1024)+" KB");}
+            alert().setTitle("Your files").setItems(labels.toArray(new String[0]),(d,i)->chooseFileDestination(valid.get(i))).setNegativeButton("Close",null).show();
+        },true);
+    }
+    private void chooseFileDestination(JSONObject file){
+        if(busy||!signedIn||!api.supportsFiles())return;
+        if(!file.optString("id").matches("[0-9a-f-]{36}")||!file.optString("sha256").matches("[0-9a-f]{64}")){setStatus("Invalid file receipt.");return;}
+        String name=file.optString("filename","download");
+        if(name.contains("/")||name.contains("\\")||name.length()>180){setStatus("Invalid filename.");return;}
+        pendingFileDownload=file;
+        Intent picker=new Intent(Intent.ACTION_CREATE_DOCUMENT);picker.addCategory(Intent.CATEGORY_OPENABLE);picker.setType("application/octet-stream");picker.putExtra(Intent.EXTRA_TITLE,name);
+        try{startActivityForResult(picker,48);}catch(Exception unavailable){pendingFileDownload=null;setStatus("File destination picker unavailable.");}
+    }
+    private void saveAgentFile(android.net.Uri uri,JSONObject file){
+        if(busy||!signedIn||!api.supportsFiles()||file==null)return;
+        submit("Downloading verified file…",()->{
+            byte[] data=api.downloadFile(file.getString("id"),file.getString("sha256"));
+            try(java.io.OutputStream out=getContentResolver().openOutputStream(uri,"w")){if(out==null)throw new Exception("Cannot open destination");out.write(data);}
+            return Boolean.TRUE;
+        },r->setStatus("File saved"),true);
+    }
+    private void appendGeneratedFiles(JSONObject answer){
+        JSONArray files=answer.optJSONArray("artifacts");
+        if(files==null)return;
+        for(int i=0;i<Math.min(files.length(),20);i++){JSONObject file=files.optJSONObject(i);if(file!=null&&file.optString("id").matches("[0-9a-f-]{36}")&&file.optString("sha256").matches("[0-9a-f]{64}"))append("artifact",file.toString());}
     }
     private void discardCamera(){
         if(cameraCapture!=null){
@@ -580,7 +633,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private void send(){
         if(busy||!signedIn||chatUi==null)return;
         if(!activeRequestId.isEmpty()){showUnresolvedAgentRequest();return;}
-        String prompt=chatUi.getDraft().trim();if(prompt.isEmpty()&&!(meshMode&&attachment!=null))return;
+        String prompt=chatUi.getDraft().trim();if(prompt.isEmpty()&&attachment==null)return;
         if(prompt.length()>(meshMode?5000:12000)){setStatus("Message is too long for this mode.");return;}
         View focused=getCurrentFocus();if(focused!=null)hideKeyboard(focused);chatUi.setDraft("");pendingPrompt=prompt.isEmpty()?"[Attachment]":prompt;
         if(meshMode){
@@ -595,12 +648,15 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                 pendingPrompt="";target.setPartialReply("");String previousAttachment=attachmentName;attachment=null;attachmentName="";if(chatUi!=null)chatUi.setAttachmentLabel("");meshMessages=next;meshMessages.put(meshMessages.length()-1,new JSONObject().put("role","user").put("content",prompt+(previousAttachment.isEmpty()?"":" [Prior attachment omitted; reattach to inspect it again.]")));if(!previousAttachment.isEmpty())append("system","Attachment was sent for this turn only. Reattach it if a later question needs its original contents.");meshMessages.put(new JSONObject().put("role","assistant").put("content",value.length()>5000?value.substring(0,5000):value));lastAnswer=value;append("assistant",value);
             },true);return;
         }
-        append("user",prompt);
+        final JSONObject selectedAttachment=attachment;
+        if(selectedAttachment!=null&&!api.supportsFiles()){chatUi.setDraft(prompt);pendingPrompt="";setStatus("Agent attachments unavailable.");return;}
+        append("user",prompt+(attachmentName.isEmpty()?"":"\n[Attachment: "+attachmentName+"]"));
         final String id=conversation;
         if(api.supportsRequestLedger()){
             try{
                 final JSONObject body=DragonApi.object("message",prompt);if(!id.isEmpty())body.put("conversation_id",id);
                 if(!selectedMcpConnections.isEmpty())body.put("mcp_connection_ids",new JSONArray(selectedMcpConnections));
+                if(selectedAttachment!=null)body.put("attachment_ids",new JSONArray().put(selectedAttachment.getString("id")));
                 activeRequestId=UUID.randomUUID().toString();body.put("request_id",activeRequestId);
                 if(!pendingAgentStore.save(api.pendingRequestBinding(),activeRequestId)){
                     activeRequestId="";pendingPrompt="";chatUi.setDraft(prompt);
@@ -617,7 +673,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             String value=answer.optString("message",answer.optString("output",""));
             JSONObject nested=answer.optJSONObject("result");if(value.isEmpty()&&nested!=null)value=nested.optString("message");
             if(value.isEmpty())throw new Exception("Agent did not return a message.");
-            pendingPrompt="";lastAnswer=value;append("assistant",value);
+            pendingPrompt="";lastAnswer=value;append("assistant",value);appendGeneratedFiles(answer);
             if(answer.has("error_code")&&!answer.optString("error_code").isEmpty())setStatus(answer.optString("error_code"));
         },true);
     }
@@ -636,10 +692,10 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         if(answer==null||!activeRequestId.equals(answer.optString("request_id"))||answer.optString("conversation_id").isEmpty()||answer.optString("message").isEmpty()){
             pendingPrompt="";if(restorePending)applyRestoredDraft();setStatus("Response incomplete. Check request status.");return;
         }
-        clearTrackedRequest();pendingPrompt="";
+        clearTrackedRequest();pendingPrompt="";attachment=null;attachmentName="";if(chatUi!=null)chatUi.setAttachmentLabel("");
         String completedConversation=answer.optString("conversation_id");
         if(restorePending){interruptedRequest=false;open(completedConversation);return;}
-        conversation=completedConversation;lastAnswer=answer.optString("message");append("assistant",lastAnswer);appendExecutionReceipt(answer);setStatus("Personal agent");
+        conversation=completedConversation;lastAnswer=answer.optString("message");append("assistant",lastAnswer);appendGeneratedFiles(answer);appendExecutionReceipt(answer);setStatus("Personal agent");
     }
     private void appendExecutionReceipt(JSONObject answer){
         JSONObject receipt=answer.optJSONObject("execution_receipts");
@@ -1013,7 +1069,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         try{startActivityForResult(intent,42);}
         catch(android.content.ActivityNotFoundException e){setStatus("No speech recognition service available.");}
     }
-    @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(request==45){if(signedIn&&meshMode&&result==RESULT_OK)attachCameraCapture();else discardCamera();return;}if(request==44){if(signedIn&&result==RESULT_OK&&data!=null&&data.getData()!=null)transcribeAudio(data.getData());else transcriptionModel="";return;}if(request==43&&signedIn&&meshMode&&result==RESULT_OK&&data!=null&&data.getData()!=null){readAttachment(data.getData());return;}if(request==42&&signedIn&&result==RESULT_OK&&data!=null&&chatUi!=null){ArrayList<String> words=data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);if(words!=null&&!words.isEmpty()){String draft=chatUi.getDraft();chatUi.setDraft(draft+(draft.isEmpty()?"":" ")+words.get(0));}}}
+    @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(request==47){if(signedIn&&result==RESULT_OK&&data!=null&&data.getData()!=null)uploadAgentAttachment(data.getData());return;}if(request==48){JSONObject file=pendingFileDownload;pendingFileDownload=null;if(signedIn&&result==RESULT_OK&&data!=null&&data.getData()!=null)saveAgentFile(data.getData(),file);return;}if(request==45){if(signedIn&&meshMode&&result==RESULT_OK)attachCameraCapture();else discardCamera();return;}if(request==44){if(signedIn&&result==RESULT_OK&&data!=null&&data.getData()!=null)transcribeAudio(data.getData());else transcriptionModel="";return;}if(request==43&&signedIn&&meshMode&&result==RESULT_OK&&data!=null&&data.getData()!=null){readAttachment(data.getData());return;}if(request==42&&signedIn&&result==RESULT_OK&&data!=null&&chatUi!=null){ArrayList<String> words=data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);if(words!=null&&!words.isEmpty()){String draft=chatUi.getDraft();chatUi.setDraft(draft+(draft.isEmpty()?"":" ")+words.get(0));}}}
     @Override public void onBackPressed(){if(busy)return;if(accountOpen){accountOpen=false;chatScreen();}else if(!signedIn&&!"login".equals(authMode))authScreen("login","");else super.onBackPressed();}
     private void signOut(){submit("Signing out…",()->{try{api.logout();return Boolean.TRUE;}catch(Exception failure){api.clear();return Boolean.FALSE;}},r->{clearAccountView();loginScreen(Boolean.TRUE.equals(r)?"":"Signed out locally. Server sign-out could not be confirmed; revoke this session from another device if needed.");},true);}
     @Override protected void onDestroy(){closeVoice();discardCamera();stopMedia();api.cancelStream();worker.shutdownNow();if(tts!=null)tts.shutdown();super.onDestroy();}
