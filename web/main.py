@@ -286,6 +286,10 @@ async def dispatch(path: str, request: Request):
     if route == "/dz/import-proof/status" and request.method == "GET":
         return JSONResponse({"enabled": os.getenv("DRAGONZPYDER_IMPORT_PROOF_WEB_ENABLED") == "1"},
                             headers={"Cache-Control": "no-store"})
+    if route == "/dz/import-proof/recovery/status" and request.method == "GET":
+        return JSONResponse({"enabled": os.getenv("DRAGONZPYDER_IMPORT_PROOF_WEB_ENABLED") == "1"
+            and os.getenv("DRAGONZPYDER_NATIVE_PENDING_RECOVERY_WEB_ENABLED") == "1"},
+            headers={"Cache-Control":"no-store"})
     if route.startswith("/dz/"):
         native = route[3:]
         proof_routes = {
@@ -293,6 +297,9 @@ async def dispatch(path: str, request: Request):
             "/identity/v1/import-proof/google/start",
             "/identity/v1/import-proof/google/complete",
         }
+        if os.getenv("DRAGONZPYDER_NATIVE_PENDING_RECOVERY_WEB_ENABLED") == "1":
+            proof_routes.update({"/identity/v1/import-proof/recovery/start",
+                                 "/identity/v1/import-proof/recovery/complete"})
         if native.startswith("/identity/v1/import-proof/"):
             if (native not in proof_routes or request.method != "POST"
                     or os.getenv("DRAGONZPYDER_IMPORT_PROOF_WEB_ENABLED") != "1"):
