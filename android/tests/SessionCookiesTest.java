@@ -36,6 +36,21 @@ public final class SessionCookiesTest {
         require(restored.value("operly_preauth_csrf").isEmpty());
         snapshot.setProperty("__Host-operly_session.expiry","1");restored.restore(snapshot);require(restored.header().isEmpty());
         jar.clear(); require(jar.header().isEmpty());require(jar.snapshot().isEmpty());
+        SessionCookies nativeJar=new SessionCookies(true);
+        nativeJar.receive(Collections.singletonMap("Set-Cookie",Arrays.asList(
+            "__Host-dz_identity=native-session; HttpOnly; Max-Age=604800; Path=/; Secure",
+            "__Host-dz_csrf=native-csrf; Max-Age=604800; Path=/; Secure",
+            "__Host-dz_provider=provider-proof; HttpOnly; Max-Age=300; Path=/; Secure",
+            "__Host-operly_session=legacy; HttpOnly; Max-Age=604800; Path=/; Secure")));
+        require(nativeJar.header().contains("__Host-dz_identity=native-session"));
+        require(nativeJar.header().contains("__Host-dz_provider=provider-proof"));
+        require(!nativeJar.header().contains("operly"));
+        Properties nativeSnapshot=nativeJar.snapshot();require(nativeSnapshot.size()==4);
+        SessionCookies nativeRestored=new SessionCookies(true);nativeRestored.restore(nativeSnapshot);
+        require(nativeRestored.header().contains("__Host-dz_csrf=native-csrf"));
+        require(!nativeRestored.header().contains("__Host-dz_provider"));
+        SessionCookies wrongRealm=new SessionCookies();wrongRealm.restore(nativeSnapshot);require(wrongRealm.header().isEmpty());
+        nativeRestored.restore(snapshot);require(nativeRestored.header().isEmpty());
         System.out.println("Session cookie contract passed");
     }
 }
