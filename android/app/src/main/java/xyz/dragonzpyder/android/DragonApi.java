@@ -12,6 +12,8 @@ final class DragonApi {
     private SessionCookies cookies = new SessionCookies();
     private volatile boolean firstParty;
     private volatile boolean modeKnown;
+    private volatile boolean requestLedger;
+    boolean supportsRequestLedger(){return firstParty&&requestLedger;}
     private String googleState="";
     boolean isFirstParty(){return firstParty;}
     boolean isModeKnown(){return modeKnown;}
@@ -21,6 +23,7 @@ final class DragonApi {
         if(!(enabled instanceof Boolean))throw new IOException("Runtime mode was not confirmed by DragonZpyder");
         boolean nativeMode=(Boolean)enabled;
         if(!modeKnown||nativeMode!=firstParty){cookies.clear();cookies=new SessionCookies(nativeMode);authenticated=false;bootstrapCsrf="";googleState="";firstParty=nativeMode;}
+        requestLedger=nativeMode&&route.optBoolean("request_ledger_enabled",false);
         modeKnown=true;
     }
     private void ensureMode() throws Exception {if(!modeKnown)discoverMode();}
@@ -242,6 +245,11 @@ final class DragonApi {
         if(!challenge.isEmpty())body.put("challenge_id",challenge);
         try{preauth("verify-email",body);ensurePersonal();}
         catch(Exception failure){clear();throw failure;}
+    }
+    synchronized JSONObject requestStatus(String id) throws Exception {
+        if(!supportsRequestLedger())throw new IOException("Request recovery is unavailable on this server.");
+        UUID requestId=UUID.fromString(id);
+        return (JSONObject)call("/dz/v2/personal/requests/"+requestId,null);
     }
     synchronized JSONObject profile() throws Exception { ensureMode();return (JSONObject)call(firstParty?"/dz/identity/v1/me":"/api/auth/me",null); }
     synchronized void updateName(String name) throws Exception { ensureMode();call(firstParty?"/dz/identity/v1/me":"/api/auth/me","PATCH",object("display_name",name)); }
