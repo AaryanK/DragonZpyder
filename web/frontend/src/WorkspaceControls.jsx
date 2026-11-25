@@ -280,7 +280,7 @@ export function ScreenCapture() {
           <button aria-label="Close screen preview" type="button" onClick={stop}>×</button></div>
         <video ref={video} autoPlay muted playsInline />
         {error && <p className="dz-screen-error" role="alert">{error}</p>}
-        <p>Only a screenshot you explicitly capture is added to the message. Nothing is sent until you submit; the existing attachment flow switches to AI Mesh.</p>
+        <p>Only a screenshot you explicitly capture is added to the message. Nothing is sent until you submit; your selected mode receives the attachment.</p>
         <div className="dz-screen-actions"><button type="button" onClick={stop}>Cancel</button>
           <button type="button" onClick={capture} disabled={!!error}>Attach screenshot</button></div>
       </section>
@@ -307,7 +307,7 @@ export function QuickAddMenu({ camera }) {
       <div className="dz-menu-label">Add to this conversation</div>
       <label id="mesh-file-label" className="dz-menu-action" role="button" tabIndex={open ? 0 : -1}
         title="Attach an image or document">
-        <span aria-hidden="true">▤</span><span><strong>Attach files</strong><small>Images, documents, audio</small></span>
+        <span aria-hidden="true">▤</span><span><strong>Attach files</strong><small>Documents, images and other files</small></span>
         <input id="mesh-upload" type="file" multiple
           accept="image/png,image/jpeg,image/webp,.pdf,.docx,.txt,.md,.csv,.json,.py,.log,audio/*"
           aria-label="Choose files to attach" onChange={() => setOpen(false)}/>
@@ -317,7 +317,7 @@ export function QuickAddMenu({ camera }) {
       <button type="button" className="dz-menu-action" onClick={() => { setOpen(false); openWorkspace(); }}>
         <span aria-hidden="true">◈</span><span><strong>More capabilities</strong><small>Agents, projects and tools</small></span>
       </button>
-      <p className="dz-menu-foot">Files and screenshots use AI Mesh. Agent tools require their own permissions.</p>
+      <p className="dz-menu-foot">Files and screenshots are attached to your selected mode. Agent tools require their own permissions.</p>
     </div>
   </div>;
 }
