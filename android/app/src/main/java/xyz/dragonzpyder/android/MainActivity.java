@@ -638,7 +638,21 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         activeRequestId="";pendingPrompt="";
         String completedConversation=answer.optString("conversation_id");
         if(restorePending){interruptedRequest=false;open(completedConversation);return;}
-        conversation=completedConversation;lastAnswer=answer.optString("message");append("assistant",lastAnswer);setStatus("Personal agent");
+        conversation=completedConversation;lastAnswer=answer.optString("message");append("assistant",lastAnswer);appendExecutionReceipt(answer);setStatus("Personal agent");
+    }
+    private void appendExecutionReceipt(JSONObject answer){
+        JSONObject receipt=answer.optJSONObject("execution_receipts");
+        if(receipt==null)return;
+        JSONArray names=receipt.optJSONArray("tool_names");
+        StringBuilder summary=new StringBuilder("Server-reported execution");
+        if(names!=null&&names.length()>0){
+            summary.append("\nTools: ");
+            for(int i=0;i<Math.min(names.length(),40);i++){if(i>0)summary.append(", ");summary.append(names.optString(i));}
+        }
+        if(receipt.has("failed_tool_count"))summary.append("\nFailed tools: ").append(receipt.optInt("failed_tool_count"));
+        if(receipt.has("artifact_readback_count"))summary.append("\nArtifact readbacks: ").append(receipt.optInt("artifact_readback_count"));
+        summary.append("\nObjective verified: ").append(receipt.optBoolean("objective_verified")?"Yes":"No");
+        append("receipt",summary.toString());
     }
     private boolean cancelAgentInFlight;
     private void cancelActiveAgent(){
