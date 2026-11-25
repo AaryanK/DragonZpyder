@@ -1,10 +1,11 @@
 const $ = (id) => document.getElementById(id);
-const panels = ["login","signup","verify","forgot","reset","profile"];
+const panels = ["login","signup","verify","forgot","reset","profile","migration"];
 let mode = "login", bootstrap = null, challenge = null, processing = false, initializedGoogle = false;
 let nativeMode = false, googleRenderedMode = null, nativeGoogleState = null;
+let migrationEnabled = false;
 const messageBox = $("account-message");
 function report(message,isError=false){messageBox.textContent=String(message||"");messageBox.classList.toggle("error",isError);messageBox.hidden=!message;}
-function show(next){if(!panels.includes(next))next="login";if(nativeMode&&!["login","signup","profile"].includes(next))next="login";mode=next;report("");panels.forEach(name=>{$(name+"-panel").hidden=name!==next});$("mode-tabs").hidden=!["login","signup"].includes(next);document.querySelectorAll("[data-mode]").forEach(el=>el.classList.toggle("selected",el.dataset.mode===next));if(next==="login"||(nativeMode&&next==="signup"))loadGoogle().catch(()=>{});}
+function show(next){if(!panels.includes(next))next="login";if(next==="migration"&&!migrationEnabled)next="login";if(nativeMode&&!["login","signup","profile","migration"].includes(next))next="login";mode=next;report("");panels.forEach(name=>{$(name+"-panel").hidden=name!==next});$("mode-tabs").hidden=!["login","signup"].includes(next);document.querySelectorAll("[data-mode]").forEach(el=>el.classList.toggle("selected",el.dataset.mode===next));if(next==="login"||(nativeMode&&next==="signup")||next==="migration")loadGoogle().catch(()=>{});}
 function cookie(name){const part=document.cookie.split(";").map(v=>v.trim()).find(v=>v.startsWith(name+"="));return part?decodeURIComponent(part.slice(name.length+1)):"";}
 function csrf(){return nativeMode?cookie("__Host-dz_csrf"):(cookie("__Host-operly_csrf")||cookie("operly_csrf")||bootstrap?.csrf_token||"");}
 async function loadBootstrap(){
@@ -43,10 +44,20 @@ async function ensurePersonal(){
  if(current.scope!=="personal"){await request("/api/auth/personal-scope",{method:"POST",body:{}});response=await request("/api/auth/sessions");if(!Array.isArray(response)||!response.some(item=>item?.current&&item.scope==="personal"))throw Error("Personal session unavailable.")}
 }
 async function afterSignIn(){await ensurePersonal();authenticated();}
-async function googleCredential(credential){
+function reportProof(result){
+ if(result?.status!=="awaiting_review"||!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(result.proof_reference||""))throw Error("Verification response unavailable.");
+ report("Verification recorded. No account has been activated. Review reference: "+result.proof_reference);
+}
+async function googleCredential(credential,expectedMode){
+ if(mode!==expectedMode)return;
  if(!credential||processing)return;
  processing=true;report("");
  try{
+  if(mode==="migration"){
+   if(!migrationEnabled||!nativeGoogleState?.state)throw Error("Verification challenge expired. Reload and retry.");
+   const result=await request("/dz/identity/v1/import-proof/google/complete",{method:"POST",body:{state:nativeGoogleState.state,credential}});
+   nativeGoogleState=null;reportProof(result);return;
+  }
   if(nativeMode){
    if(!nativeGoogleState?.state)throw Error("Google sign-in challenge expired. Retry.");
    const action=mode==="signup"?"signup":"complete";
@@ -57,6 +68,14 @@ async function googleCredential(credential){
  }catch(e){report(e.message||"Google sign-in failed.",true)}finally{processing=false}
 }
 async function loadGoogle(){
+ if(mode==="migration"){
+  if(!migrationEnabled||googleRenderedMode===mode)return;
+  const g=await request("/dz/identity/v1/import-proof/google/start",{method:"POST"});
+  if(mode!=="migration")return;
+  nativeGoogleState=g;
+  if(g.client_id&&g.nonce)return renderGoogle(g.client_id,g.nonce,"google-provider-migration");
+  return;
+ }
  if(mode!=="login"&&!(nativeMode&&mode==="signup"))return;
  if(nativeMode){
   if(googleRenderedMode===mode)return;
@@ -71,9 +90,10 @@ async function loadGoogle(){
  return renderGoogle(g.google_client_id,g.google_nonce,"google-provider");
 }
 function renderGoogle(clientId,nonce,hostId){
- const render=()=>{if(!window.google?.accounts?.id)return;
+ const expectedMode=mode;
+ const render=()=>{if(mode!==expectedMode||!window.google?.accounts?.id)return;
   const host=$(hostId);host.hidden=false;
-  window.google.accounts.id.initialize({client_id:clientId,nonce,callback:result=>googleCredential(String(result?.credential||"")),auto_select:false,cancel_on_tap_outside:true});
+  window.google.accounts.id.initialize({client_id:clientId,nonce,callback:result=>googleCredential(String(result?.credential||""),expectedMode),auto_select:false,cancel_on_tap_outside:true});
   host.replaceChildren();
   window.google.accounts.id.renderButton(host,{theme:"filled_black",size:"large",text:"continue_with",shape:"rectangular",width:Math.min(360,Math.max(220,host.clientWidth||300))});
   initializedGoogle=true;googleRenderedMode=mode;
@@ -82,6 +102,12 @@ function renderGoogle(clientId,nonce,hostId){
  const script=document.createElement("script");script.src="https://accounts.google.com/gsi/client";script.async=true;script.defer=true;script.onload=render;script.onerror=()=>report("Google sign-in could not load; use email to continue.",true);document.head.append(script);
 }
 document.querySelectorAll("[data-mode]").forEach(el=>el.addEventListener("click",()=>show(el.dataset.mode)));
+$("migration-form").addEventListener("submit",e=>{e.preventDefault();if(mode!=="migration"||!migrationEnabled)return;submitAction(e.currentTarget,async()=>{
+ const passwordInput=$("migration-password");
+ const password=passwordInput.value;passwordInput.value="";
+ const result=await request("/dz/identity/v1/import-proof/password",{method:"POST",body:{email:$("migration-email").value.trim(),password}});
+ reportProof(result);
+})});
 $("login-form").addEventListener("submit",e=>{e.preventDefault();submitAction(e.currentTarget,async()=>{
  await loadBootstrap();
  try{await request(nativeMode?"/dz/identity/v1/password/login":"/api/auth/login",{method:"POST",body:{email:$("login-email").value.trim(),password:$("login-password").value}});await afterSignIn()}
@@ -124,6 +150,17 @@ async function profile(){
 }
 (async()=>{
  const params=new URLSearchParams(location.search);
+ if(params.get("mode")==="migration"){
+  // A separate opt-in pilot, never a fallback from failed login and never
+  // an Operly session or account creation path.
+  const gate=await request("/dz/import-proof/status").catch(()=>({enabled:false}));
+  migrationEnabled=gate.enabled===true;
+  if(migrationEnabled){show("migration");return;}
+  panels.forEach(name=>{$(name+"-panel").hidden=true});
+  $("mode-tabs").hidden=true;
+  report("Account migration verification is not available. Return to /account for regular access.",true);
+  return;
+ }
  try{const route=await request("/dz/status");nativeMode=route.web_cutover_enabled===true;}catch{nativeMode=false;}
  if(nativeMode){
   $("signup-form").hidden=true;
