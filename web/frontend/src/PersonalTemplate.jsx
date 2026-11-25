@@ -101,7 +101,7 @@ function CameraAttachment() {
         </div>
         <div className="camera-capture-view"><video ref={preview} muted autoPlay playsInline /></div>
         {error && <p className="camera-capture-error" role="alert">{error}</p>}
-        <p className="camera-capture-note">The preview stays on your device. Capturing attaches one image to your draft; nothing is sent until you submit it. This may switch the composer to AI Mesh.</p>
+        <p className="camera-capture-note">The preview stays on your device. Capturing attaches one image to your draft; nothing is sent until you submit it. Your selected mode determines how the attachment is processed.</p>
         <div className="camera-capture-actions">
           <button type="button" className="camera-cancel" onClick={close}>Cancel</button>
           <button type="button" className="camera-capture-action" onClick={capture} disabled={Boolean(error)}>Capture photo</button>
