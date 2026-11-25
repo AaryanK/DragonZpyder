@@ -631,20 +631,23 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private void approvals(){
         if(api.isFirstParty()){setStatus("Approval center is not yet exposed by the first-party API.");return;}
         submit("Loading approvals…",()->{
-            LinkedHashMap<String,JSONObject> all=new LinkedHashMap<>();
+            LinkedHashMap<String,JSONObject> all=new LinkedHashMap<>();JSONArray unavailable=new JSONArray();
             for(String source:new String[]{"legacy","kernel"}){
                 String prefix=source.equals("kernel")?"/api/kernel/personal/approvals":"/api/personal-tools/approvals";
-                JSONObject payload=(JSONObject)api.call(prefix+"?status=pending",null);
-                JSONArray rows=payload.optJSONArray("approvals");
-                if(rows!=null)for(int i=0;i<rows.length();i++){JSONObject item=rows.optJSONObject(i);if(item!=null&&!item.optString("id").isEmpty()){item.put("native_source",source);all.put(source+":"+item.optString("id"),item);}}
-            }return new JSONArray(all.values());
-        },r->renderApprovals((JSONArray)r),true);
+                try{
+                    JSONObject payload=(JSONObject)api.call(prefix+"?status=pending",null);
+                    JSONArray rows=payload.optJSONArray("approvals");if(rows==null)throw new Exception("Invalid approvals response");
+                    for(int i=0;i<rows.length();i++){JSONObject item=rows.optJSONObject(i);if(item!=null&&!item.optString("id").isEmpty()){item.put("native_source",source);all.put(item.optString("id"),item);}}
+                }catch(Exception failure){if(failure instanceof DragonApi.ApiError&&((DragonApi.ApiError)failure).status==401)throw failure;unavailable.put(source);}
+            }return new JSONObject().put("rows",new JSONArray(all.values())).put("unavailable",unavailable);
+        },r->{JSONObject data=(JSONObject)r;renderApprovals(data.getJSONArray("rows"),data.getJSONArray("unavailable"));},true);
     }
-    private void renderApprovals(JSONArray rows){
+    private void renderApprovals(JSONArray rows,JSONArray unavailable){
         Dialog dialog=new Dialog(this);LinearLayout page=column();page.setPadding(dp(18),dp(20),dp(18),dp(12));page.setBackgroundColor(BG);
         page.addView(heading("Pending approvals",26));gap(page,10);page.addView(text("Review the exact action and arguments before allowing execution.",14,MUTED));gap(page,16);
         ScrollView area=new ScrollView(this);LinearLayout list=column();area.addView(list);page.addView(area,new LinearLayout.LayoutParams(-1,0,1));
-        if(rows.length()==0)list.addView(text("No Personal actions are waiting for approval.",14,MUTED));
+        if(unavailable.length()>0)list.addView(text("Some approval sources are unavailable. Refresh before reviewing or executing actions. "+unavailable,14,MUTED));
+        if(rows.length()==0&&unavailable.length()==0)list.addView(text("No Personal actions are waiting for approval.",14,MUTED));
         for(int i=0;i<rows.length();i++){JSONObject item=rows.optJSONObject(i);if(item==null)continue;
             LinearLayout card=column();GradientDrawable bg=surface(PANEL,16);bg.setStroke(dp(1),LINE);card.setBackground(bg);card.setPadding(dp(14),dp(14),dp(14),dp(14));
             card.addView(heading(item.optString("capability_id","Personal action"),18));gap(card,8);card.addView(text("Approval: "+item.optString("id"),12,MUTED));
@@ -652,7 +655,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             if(item.has("expires_at"))card.addView(text("Expires: "+item.optString("expires_at"),12,MUTED));
             gap(card,10);TextView arguments=text(item.optString("arguments","{}"),14,TEXT);arguments.setTextIsSelectable(true);card.addView(arguments);gap(card,15);
             LinearLayout actions=row();Button reject=button("Reject",()->confirmApproval(dialog,item,false));Button approve=primary("Approve exact action",()->confirmApproval(dialog,item,true));
-            actions.addView(reject,new LinearLayout.LayoutParams(0,-2,1));actions.addView(approve,new LinearLayout.LayoutParams(0,-2,2));card.addView(actions);list.addView(card);gap(list,12);
+            if(unavailable.length()>0){reject.setEnabled(false);approve.setEnabled(false);}actions.addView(reject,new LinearLayout.LayoutParams(0,-2,1));actions.addView(approve,new LinearLayout.LayoutParams(0,-2,2));card.addView(actions);list.addView(card);gap(list,12);
         }
         page.addView(button("Close",dialog::dismiss));dialog.setContentView(page);dialog.show();Window w=dialog.getWindow();if(w!=null){w.setBackgroundDrawableResource(android.R.color.transparent);w.setLayout(-1,-1);}
     }
