@@ -163,3 +163,31 @@ operates under the original global pending fence: it is not a continuous
 post-activation credential bridge. Do not use this to force mass password
 resets or ask users to disclose credentials. A separately reviewed native
 recovery or per-account authority handoff is needed for staggered cutover.
+
+
+## Operator-observed conversation inventory (2026-11-25)
+
+The newer store contains 40 personal conversations and 306 display messages
+(153 user and 153 assistant), belonging to five known users, with zero
+authority conflicts and zero noncanonical conversation IDs. Its two
+workspace conversations and 12 messages remain in Operly. The separate
+tenant-owned legacy agent store has 124 conversations and 1,894 messages.
+The principal store has 35 active human-principal conversations (647 messages)
+and one active user-principal conversation (4 messages); all 36 are linked
+to user IDs. Linked principal ownership alone is not proof of personal scope
+or non-overlap. Compare provider/channel, external conversation identifier,
+owner and workspace references before any legacy archive import. Ten
+conversation-artifact rows and five channel state rows also remain in Operly.
+There are zero federated mapping rows.
+
+The reviewed personal-only archive transfer is implemented in
+`agent_platform.personal_history_import` with scoped source views, an
+insert-only destination role, encrypted package, independently verified
+owner inventory and full-field readback. Both CI workflows passed at
+7979d4ae (108 identity contract tests passed, 10 skipped; 39 real PostgreSQL
+integration tests passed). The separate read-only archive endpoints are
+feature-gated and require active first-party identity plus production approval;
+they are not a live chat history merge or graph replay. Browser integration,
+runtime archive SELECT grants, legacy deduplication and attachment access
+must be verified before user-facing cutover. No production transcript export,
+import or graph mutation has been performed.
