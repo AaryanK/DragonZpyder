@@ -23,7 +23,8 @@ final class DragonApi {
         if(!(enabled instanceof Boolean))throw new IOException("Runtime mode was not confirmed by DragonZpyder");
         boolean nativeMode=(Boolean)enabled;
         if(!modeKnown||nativeMode!=firstParty){cookies.clear();cookies=new SessionCookies(nativeMode);authenticated=false;bootstrapCsrf="";googleState="";firstParty=nativeMode;}
-        requestLedger=nativeMode&&route.optBoolean("request_ledger_enabled",false);
+        requestLedger=false;
+        if(nativeMode){try{JSONObject capabilities=(JSONObject)request("/dz/v2/personal/status","GET",null,true);requestLedger=capabilities.optBoolean("request_ledger_enabled",false);}catch(Exception unavailable){/* Keep first-party mode; never downgrade identity. */}}
         modeKnown=true;
     }
     private void ensureMode() throws Exception {if(!modeKnown)discoverMode();}
