@@ -12,7 +12,7 @@ final class ApiRoutePolicy {
         "/dz/identity/v1/provider/google/complete",
         "/dz/identity/v1/provider/google/signup"));
     private static final Set<String> FIRST_PARTY_ROUTES=new HashSet<>(Arrays.asList(
-        "/dz/v2/personal/session", "/dz/v2/personal/chat", "/dz/v2/personal/conversations",
+        "/dz/v2/personal/session", "/dz/v2/personal/files", "/dz/v2/personal/chat", "/dz/v2/personal/conversations",
         "/dz/identity/v1/me", "/dz/identity/v1/logout",
         "/dz/internal/mcp/connections", "/dz/internal/mcp/providers", "/dz/v2/personal/goals", "/dz/v2/personal/voice/start", "/dz/internal/mcp/connections/native/complete"));
     private ApiRoutePolicy(){}
