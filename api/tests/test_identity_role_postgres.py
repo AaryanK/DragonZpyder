@@ -25,10 +25,12 @@ async def test_least_privileged_identity_role_disposable_pg():
             text = (base / sql).read_text("utf-8")
             # Remove the outer transaction, not nested DO block statements.
             text = text.replace("BEGIN;\nSET LOCAL", "SET LOCAL", 1).removesuffix("COMMIT;\n")
-            if sql == "schema_bootstrap_manual.sql":
-                # Other integration cases share the disposable database.
-                # Isolate by rolling back a schema replacement in this test.
-                await conn.execute("DROP SCHEMA public CASCADE; CREATE SCHEMA public")
+            if sql == "schema_bootstrap_manual.sql" and await conn.fetchval(
+                "SELECT to_regclass('public.identity_accounts') IS NOT NULL"
+            ):
+                # The preceding disposable bootstrap test already installed
+                # the reviewed schema. Never DROP a schema to run this test.
+                continue
             await conn.execute(text)
         await conn.execute("""INSERT INTO identity_accounts
             (subject,source_operly_user_id,email,display_name,source_active)
