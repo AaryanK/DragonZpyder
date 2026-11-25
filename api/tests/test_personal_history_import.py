@@ -59,3 +59,18 @@ async def test_archive_read_requires_owner_no_runtime(monkeypatch):
     monkeypatch.setattr(chat,"_conversation_db",foreign)
     with pytest.raises(HTTPException) as exc: await chat.messages(ident,SimpleNamespace())
     assert exc.value.status_code==404
+
+@pytest.mark.asyncio
+async def test_archive_cannot_fall_through_to_checkpoint_when_disabled(monkeypatch):
+    monkeypatch.delenv("DRAGONZPYDER_PERSONAL_HISTORY_ARCHIVE_ENABLED",raising=False)
+    monkeypatch.setattr(chat,"_owner",AsyncMock(return_value="owner"))
+    class DB:
+        async def fetchrow(self,query,*args):
+            assert "archived_import" in query
+            return {"id":args[0],"archived_import":True}
+    @asynccontextmanager
+    async def db(): yield DB()
+    monkeypatch.setattr(chat,"_conversation_db",db)
+    with pytest.raises(HTTPException) as exc:
+        await chat.messages(uuid4(),SimpleNamespace())
+    assert exc.value.status_code==503
