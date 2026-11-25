@@ -91,6 +91,7 @@ async def status():
                and os.getenv("DRAGONZPYDER_IDENTITY_HTTP_ENABLED") == "1"
                and os.getenv("DRAGONZPYDER_AGENTS_ENABLED") == "1")
     return {"native_chat_enabled": enabled,
+            "voice_enabled": enabled and os.getenv("DRAGONZPYDER_NATIVE_VOICE_ENABLED") == "1" and bool(os.getenv("DRAGONZPYDER_NATIVE_VOICE_API_KEY")),
             "request_ledger_enabled": enabled and os.getenv("DRAGONZPYDER_FIRST_PARTY_REQUEST_LEDGER_ENABLED") == "1",
             "agent_stream_enabled": enabled and os.getenv("DRAGONZPYDER_FIRST_PARTY_REQUEST_LEDGER_ENABLED") == "1" and os.getenv("DRAGONZPYDER_FIRST_PARTY_STREAM_ENABLED") == "1",
             "goal_management_enabled": enabled and os.getenv("DRAGONZPYDER_FIRST_PARTY_GOAL_MANAGEMENT_ENABLED") == "1",
