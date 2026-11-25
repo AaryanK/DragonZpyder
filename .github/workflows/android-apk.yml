@@ -1,0 +1,88 @@
+name: Android APK
+on:
+  push:
+    branches: [develop, feat/android-apk]
+    paths: ["android/**", ".github/workflows/android-apk.yml"]
+  pull_request:
+    paths: ["android/**", ".github/workflows/android-apk.yml"]
+  workflow_dispatch:
+concurrency:
+  group: android-apk-${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools'
+      - name: Android SDK
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+      - name: Verify session cookie contract
+        run: |
+          mkdir -p /tmp/dz-cookie-test
+          javac -d /tmp/dz-cookie-test android/app/src/main/java/xyz/dragonzpyder/android/SessionCookies.java android/tests/SessionCookiesTest.java
+          java -cp /tmp/dz-cookie-test xyz.dragonzpyder.android.SessionCookiesTest
+          javac -d /tmp/dz-cookie-test android/app/src/main/java/xyz/dragonzpyder/android/ApiRoutePolicy.java android/tests/ApiRoutePolicyTest.java
+          java -cp /tmp/dz-cookie-test xyz.dragonzpyder.android.ApiRoutePolicyTest
+      - name: Package official brand assets
+        run: bash android/prepare-brand.sh
+      - name: Build and lint
+        working-directory: android
+        run: gradle --no-daemon :app:assembleDebug :app:lintDebug
+      - name: Run Markdown parser unit tests
+        working-directory: android
+        run: gradle --no-daemon :app:testDebugUnitTest
+      - name: Compile Android instrumentation tests
+        working-directory: android
+        run: gradle --no-daemon :app:assembleDebugAndroidTest
+      - name: Enable emulator hardware acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Run credential UI regression on Android emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          arch: x86_64
+          target: google_apis
+          script: cd android && gradle --no-daemon :app:connectedDebugAndroidTest
+      - name: Run Android regression on minimum supported API 26
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 26
+          arch: x86_64
+          target: google_apis
+          script: cd android && gradle --no-daemon :app:connectedDebugAndroidTest
+      - name: Upload Android test and lint reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: DragonZpyder-Android-test-reports
+          path: |
+            android/app/build/reports/lint-results-debug.*
+            android/app/build/reports/tests/
+            android/app/build/reports/androidTests/
+            android/app/build/outputs/androidTest-results/
+          if-no-files-found: warn
+      - name: Verify APK alignment for 16 KB pages
+        run: '"$ANDROID_HOME/build-tools/36.0.0/zipalign" -c -P 16 -v 4 android/app/build/outputs/apk/debug/app-debug.apk'
+      - name: Verify APK signature
+        run: '"$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs android/app/build/outputs/apk/debug/app-debug.apk'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DragonZpyder-Android-debug
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
