@@ -154,7 +154,7 @@ class NativeChatView(context: Context, private val dark: Boolean, private val ac
     }
     @Composable private fun Welcome() {
         Column(Modifier.fillMaxWidth().padding(horizontal=10.dp,vertical=22.dp),horizontalAlignment=Alignment.CenterHorizontally) {
-            if(dark){Image(painterResource(R.drawable.brand_icon),"DragonZpyder",Modifier.size(56.dp));Spacer(Modifier.height(22.dp))}
+            Image(painterResource(R.drawable.brand_icon),"DragonZpyder",Modifier.size(56.dp));Spacer(Modifier.height(22.dp))
             Text("What shall we work on?",color=ink,fontSize=34.sp,lineHeight=39.sp,fontWeight=FontWeight.Bold,letterSpacing=(-1.5).sp,textAlign=TextAlign.Center)
             Spacer(Modifier.height(12.dp))
             Text(if(modeLabel=="Agent") "From a quick question to a big idea. Start anywhere. We’ll find the way forward." else modelLabel,color=muted,fontSize=14.sp,lineHeight=22.sp,textAlign=TextAlign.Center,modifier=Modifier.widthIn(max=470.dp))
@@ -177,7 +177,7 @@ class NativeChatView(context: Context, private val dark: Boolean, private val ac
                     modifier=Modifier.widthIn(max=620.dp)
                 ) {
                     Box(Modifier.padding(horizontal=16.dp,vertical=13.dp)) {
-                        SelectionContainer { MarkdownBody(message.content,dark,actions::copy) }
+                        SelectionContainer { Text(message.content,color=ink,fontSize=16.sp,lineHeight=24.sp,softWrap=true) }
                     }
                 }
             } else {
@@ -196,14 +196,15 @@ class NativeChatView(context: Context, private val dark: Boolean, private val ac
     @Composable private fun Composer() {
         Surface(modifier=Modifier.widthIn(max=810.dp).fillMaxWidth(),shape=RoundedCornerShape(22.dp),color=panel,border=BorderStroke(1.dp,line),shadowElevation=0.dp) {
             Column(Modifier.padding(horizontal=9.dp,vertical=6.dp)) {
-                BasicTextField(value=draft,onValueChange={draft=it.take(12000)},modifier=Modifier.fillMaxWidth().padding(horizontal=8.dp,vertical=9.dp).semantics { contentDescription="Message input"; testTag="message_input" },minLines=1,maxLines=5,textStyle=TextStyle(color=ink,fontSize=16.sp,lineHeight=23.sp),cursorBrush=SolidColor(accent),decorationBox={inner->Box{if(draft.isEmpty())Text("Ask anything, or give DragonZpyder a task…",color=muted,fontSize=14.sp,lineHeight=23.sp);inner()}})
+                BasicTextField(value=draft,onValueChange={draft=it},modifier=Modifier.fillMaxWidth().padding(horizontal=8.dp,vertical=9.dp).semantics { contentDescription="Message input"; testTag="message_input" },minLines=1,maxLines=5,textStyle=TextStyle(color=ink,fontSize=16.sp,lineHeight=23.sp),cursorBrush=SolidColor(accent),decorationBox={inner->Box{if(draft.isEmpty())Text("Ask anything, or give DragonZpyder a task…",color=muted,fontSize=14.sp,lineHeight=23.sp);inner()}})
+                if(draft.length>(if(modeLabel=="AI Mesh") 5000 else 12000)) Text("Message exceeds this mode’s input limit. Shorten it before sending.",color=MaterialTheme.colorScheme.error,fontSize=12.sp,modifier=Modifier.padding(horizontal=8.dp))
                 if(attachmentLabel.isNotBlank()) TextButton(onClick=actions::removeAttachment,enabled=!busy){Text("×  "+attachmentLabel)}
                 Row(verticalAlignment=Alignment.CenterVertically,modifier=Modifier.fillMaxWidth()) {
                     ToolButton("plus","Attach",actions::add)
                     TextButton(onClick=actions::mode,enabled=!busy){Text("✦ "+modeLabel,color=ink)}
                     Spacer(Modifier.weight(1f))
                     ToolButton("mic","Dictate",actions::dictate)
-                    Button(onClick={if(streaming)actions.stop() else actions.send()},enabled=streaming||(!busy&&draft.isNotBlank()),shape=RoundedCornerShape(50),contentPadding=PaddingValues(0.dp),modifier=Modifier.size(44.dp).semantics{contentDescription=if(streaming)"Stop response" else "Send message"},colors=ButtonDefaults.buttonColors(containerColor=Color(0xFFB94A21),contentColor=Color.White,disabledContainerColor=line.copy(alpha=.35f),disabledContentColor=muted)) { Text(if(streaming)"■" else "↑",fontSize=23.sp) }
+                    Button(onClick={if(streaming)actions.stop() else actions.send()},enabled=streaming||(!busy&&draft.isNotBlank()&&draft.length<=(if(modeLabel=="AI Mesh") 5000 else 12000)),shape=RoundedCornerShape(50),contentPadding=PaddingValues(0.dp),modifier=Modifier.size(48.dp).semantics{contentDescription=if(streaming)"Stop response" else "Send message"},colors=ButtonDefaults.buttonColors(containerColor=Color(0xFFB94A21),contentColor=Color.White,disabledContainerColor=line.copy(alpha=.35f),disabledContentColor=muted)) { Text(if(streaming)"■" else "↑",fontSize=23.sp) }
                 }
             }
         }
