@@ -191,7 +191,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         String ticket=uri.getQueryParameter("ticket");
         String state=uri.getQueryParameter("state");
         if(ticket==null||state==null||!ticket.matches("[A-Za-z0-9_-]{40,120}")){
-            mobileOAuth.clear();setStatus("Discord sign-in returned an invalid response.");return;
+            setStatus("Discord sign-in returned an invalid response.");return;
         }
         String[] proof=mobileOAuth.take(state);
         if(proof==null){setStatus("Discord device verification expired. Please start again.");return;}
@@ -501,7 +501,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             alert().setTitle("Transcription").setMessage(text).setPositiveButton("Add to draft",(dialog,j)->{if(chatUi!=null){String draft=chatUi.getDraft();chatUi.setDraft(draft+(draft.isEmpty()?"":" ")+text);}}).setNegativeButton("Close",null).show();
         },true)).show(),true);
     }
-    private void showModes(){alert().setTitle("Choose your intelligence").setItems(new String[]{"DragonZpyder Agent — tasks and tools","AI Mesh — choose a model"},(d,i)->{if(i==0){meshMode=false;newChat();}else chooseModel();}).show();}
+    private void showModes(){alert().setTitle("Choose your intelligence").setItems(new String[]{"DragonZpyder Agent — tasks and tools","AI Mesh — choose a model"},(d,i)->{if(i==0){if(meshMode)switchMode(false,"",false);}else chooseModel();}).show();}
     private void append(String role,String content){transcript.add(new String[]{role,content});if(chatUi!=null)chatUi.append(role,content);}
     private void hideKeyboard(View v){((InputMethodManager)getSystemService(Context.INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(v.getWindowToken(),0);}
     private void submit(String label,Work work,Done done,boolean report){
@@ -518,11 +518,16 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                     done.accept(value);
                 }catch(Exception e){
                     if(e instanceof DragonApi.ApiError && ((DragonApi.ApiError)e).status==401 && signedIn){api.clear();clearAccountView();loginScreen("Session expired. Sign in again.");}
-                    else if(report){boolean hadPartial=chatUi!=null&&!chatUi.getPartialReply().isEmpty();if(hadPartial){append("assistant",chatUi.getPartialReply()+"\n\n[Reply incomplete]");chatUi.setPartialReply("");}if(!pendingPrompt.isEmpty()&&chatUi!=null){if(meshMode&&!hadPartial&&chatUi.getDraft().isEmpty()){chatUi.setDraft(pendingPrompt);if(!transcript.isEmpty()&&"user".equals(transcript.get(transcript.size()-1)[0])){transcript.remove(transcript.size()-1);chatUi.clearMessages();for(String[] item:transcript)chatUi.append(item[0],item[1]);}}append("system","Request did not return a confirmed completion. Check server history or tasks before resending an agent action.");pendingPrompt="";}if(restorePending)applyRestoredDraft();setStatus(e.getMessage()==null?"Request failed":e.getMessage());}
+                    else if(report){boolean hadPartial=chatUi!=null&&!chatUi.getPartialReply().isEmpty();if(hadPartial){append("assistant",chatUi.getPartialReply()+"\n\n[Reply incomplete]");chatUi.setPartialReply("");}if(!pendingPrompt.isEmpty()&&chatUi!=null){if(meshMode&&!hadPartial&&chatUi.getDraft().isEmpty()){if(!"[Attachment]".equals(pendingPrompt))chatUi.setDraft(pendingPrompt);if(!transcript.isEmpty()&&"user".equals(transcript.get(transcript.size()-1)[0])){transcript.remove(transcript.size()-1);chatUi.clearMessages();for(String[] item:transcript)chatUi.append(item[0],item[1]);}}append("system","Request did not return a confirmed completion. Check server history or tasks before resending an agent action.");pendingPrompt="";}if(restorePending)applyRestoredDraft();setStatus(e.getMessage()==null?"Request failed":e.getMessage());}
                 }
                 if(!busy&&queuedOAuthIntent!=null){Intent oauth=queuedOAuthIntent;queuedOAuthIntent=null;processOAuthIntent(oauth);}
             });
         });
+    }
+    private void switchMode(boolean mesh,String nextModel,boolean acceptsImages){
+        String draft=chatUi==null?"":chatUi.getDraft();
+        Runnable change=()->{meshMode=mesh;model=nextModel;modelAcceptsImages=acceptsImages;newChat();if(chatUi!=null)chatUi.setDraft(draft);};
+        if(!transcript.isEmpty()||attachment!=null)alert().setTitle("Start a new conversation?").setMessage("Switching modes starts a new conversation. Your draft text is retained, but any attachment and the current local context are cleared.").setNegativeButton("Cancel",null).setPositiveButton("Switch",(d,i)->change.run()).show();else change.run();
     }
     private void newChat(){
         if(busy)return;restorePending=false;restoredDraft="";restoredConversation="";transcript.clear();pendingPrompt="";attachment=null;attachmentName="";conversation="";meshMessages=new JSONArray();lastAnswer="";
@@ -614,7 +619,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         submit("Loading models…",()->api.call("/mesh/models",null),r->{
             JSONArray models=((JSONObject)r).optJSONArray("chat");if(models==null||models.length()==0)throw new Exception("No chat models available.");
             String[] names=new String[models.length()];for(int i=0;i<names.length;i++)names[i]=models.getJSONObject(i).optString("name");
-            alert().setTitle("AI Mesh models").setItems(names,(d,i)->{JSONObject selected=models.optJSONObject(i);if(selected==null||selected.optString("id").isEmpty()){setStatus("Invalid model selection.");return;}model=selected.optString("id");modelAcceptsImages=false;JSONArray inputs=selected.optJSONArray("inputs");if(inputs!=null)for(int j=0;j<inputs.length();j++)if("image".equals(inputs.optString(j)))modelAcceptsImages=true;meshMode=true;newChat();}).setNegativeButton("Close",null).show();
+            alert().setTitle("AI Mesh models").setItems(names,(d,i)->{JSONObject selected=models.optJSONObject(i);if(selected==null||selected.optString("id").isEmpty()){setStatus("Invalid model selection.");return;}String nextModel=selected.optString("id");boolean acceptsImages=false;JSONArray inputs=selected.optJSONArray("inputs");if(inputs!=null)for(int j=0;j<inputs.length();j++)if("image".equals(inputs.optString(j)))acceptsImages=true;if(!meshMode||!nextModel.equals(model))switchMode(true,nextModel,acceptsImages);}).setNegativeButton("Close",null).show();
         },true);
     }
     private void approvals(){
