@@ -12,8 +12,9 @@ final class DragonApi {
     private SessionCookies cookies = new SessionCookies();
     private volatile boolean firstParty;
     private volatile boolean modeKnown;
-    private volatile boolean requestLedger;
+    private volatile boolean requestLedger,agentStream;
     boolean supportsRequestLedger(){return firstParty&&requestLedger;}
+    boolean supportsAgentStream(){return supportsRequestLedger()&&agentStream;}
     private String googleState="";
     boolean isFirstParty(){return firstParty;}
     boolean isModeKnown(){return modeKnown;}
@@ -23,8 +24,8 @@ final class DragonApi {
         if(!(enabled instanceof Boolean))throw new IOException("Runtime mode was not confirmed by DragonZpyder");
         boolean nativeMode=(Boolean)enabled;
         if(!modeKnown||nativeMode!=firstParty){cookies.clear();cookies=new SessionCookies(nativeMode);authenticated=false;bootstrapCsrf="";googleState="";firstParty=nativeMode;}
-        requestLedger=false;
-        if(nativeMode){try{JSONObject capabilities=(JSONObject)request("/dz/v2/personal/status","GET",null,true);requestLedger=capabilities.optBoolean("request_ledger_enabled",false);}catch(Exception unavailable){/* Keep first-party mode; never downgrade identity. */}}
+        requestLedger=false;agentStream=false;
+        if(nativeMode){try{JSONObject capabilities=(JSONObject)request("/dz/v2/personal/status","GET",null,true);requestLedger=capabilities.optBoolean("request_ledger_enabled",false);agentStream=capabilities.optBoolean("agent_stream_enabled",false);}catch(Exception unavailable){/* Keep first-party mode; never downgrade identity. */}}
         modeKnown=true;
     }
     private void ensureMode() throws Exception {if(!modeKnown)discoverMode();}
@@ -246,6 +247,69 @@ final class DragonApi {
         if(!challenge.isEmpty())body.put("challenge_id",challenge);
         try{preauth("verify-email",body);ensurePersonal();}
         catch(Exception failure){clear();throw failure;}
+    }
+    interface AgentProgress { void accept(String type,String value); }
+    private static final class CancelContext {
+        final String id,cookie,csrf;
+        CancelContext(String id,String cookie,String csrf){this.id=id;this.cookie=cookie;this.csrf=csrf;}
+    }
+    private volatile CancelContext cancelContext;
+    synchronized JSONObject streamAgent(JSONObject body,AgentProgress progress) throws Exception {
+        if(!supportsAgentStream())throw unsupported();
+        String id=UUID.fromString(body.getString("request_id")).toString();
+        String token=csrf(ORIGIN),cookie=cookies.header();
+        if(token.isEmpty()||cookie.isEmpty())throw new ApiError(401,"Secure session missing");
+        HttpURLConnection c=(HttpURLConnection)ORIGIN.resolve("/dz/v2/personal/chat/stream").toURL().openConnection();
+        c.setInstanceFollowRedirects(false);c.setConnectTimeout(15000);c.setReadTimeout(35000);
+        c.setRequestMethod("POST");c.setDoOutput(true);
+        c.setRequestProperty("Content-Type","application/json");c.setRequestProperty("Accept","text/event-stream");
+        c.setRequestProperty("Origin",ORIGIN.toString());c.setRequestProperty("X-DZ-CSRF",token);c.setRequestProperty("Cookie",cookie);
+        c.setRequestProperty("Cache-Control","no-store");cancelContext=new CancelContext(id,cookie,token);
+        try{
+            try(OutputStream out=c.getOutputStream()){out.write(body.toString().getBytes(StandardCharsets.UTF_8));}
+            int status=c.getResponseCode();cookies.receive(c.getHeaderFields());
+            if(status==401){clear();throw new ApiError(401,"Session expired");}
+            if(status!=200)throw new ApiError(status,"Agent stream request failed ("+status+")");
+            persist();
+            if(c.getContentType()==null||!c.getContentType().toLowerCase(Locale.ROOT).startsWith("text/event-stream"))throw new IOException("Invalid agent stream response");
+            try(BufferedReader reader=new BufferedReader(new InputStreamReader(c.getInputStream(),StandardCharsets.UTF_8))){
+                String line;
+                while((line=reader.readLine())!=null){
+                    if(!line.startsWith("data:"))continue;
+                    if(line.length()>512*1024)throw new IOException("Agent stream event exceeds limit");
+                    JSONObject event=new JSONObject(line.substring(5).trim());String type=event.optString("type");
+                    if("phase".equals(type))progress.accept(type,event.optString("message"));
+                    else if("reset".equals(type))progress.accept(type,"");
+                    else if("delta".equals(type))progress.accept(type,event.optString("text"));
+                    else if("error".equals(type))throw new ApiError(event.optInt("status",503),event.optString("message","Agent execution unconfirmed"));
+                    else if("done".equals(type)){
+                        JSONObject result=event.optJSONObject("response");
+                        if(result==null||!id.equals(result.optString("request_id")))throw new IOException("Agent response identity mismatch");
+                        return result;
+                    }
+                }
+            }
+            throw new IOException("Agent stream ended without confirmed completion");
+        }finally{cancelContext=null;c.disconnect();}
+    }
+    /** Separate HTTP connection: never wait for the synchronized streaming call. */
+    JSONObject cancelAgent(String id) throws Exception {
+        CancelContext context=cancelContext;
+        if(context==null||!context.id.equals(id))throw new IOException("Agent stream is not active; check request status");
+        HttpURLConnection c=(HttpURLConnection)ORIGIN.resolve("/dz/v2/personal/requests/"+UUID.fromString(id)+"/cancel").toURL().openConnection();
+        c.setInstanceFollowRedirects(false);c.setConnectTimeout(10000);c.setReadTimeout(15000);
+        c.setRequestMethod("POST");c.setDoOutput(true);
+        c.setRequestProperty("Content-Type","application/json");c.setRequestProperty("Accept","application/json");c.setRequestProperty("Origin",ORIGIN.toString());
+        c.setRequestProperty("Cookie",context.cookie);c.setRequestProperty("X-DZ-CSRF",context.csrf);
+        try{
+            try(OutputStream out=c.getOutputStream()){out.write("{}".getBytes(StandardCharsets.UTF_8));}
+            int status=c.getResponseCode();if(status!=200)throw new ApiError(status,"Cancellation request not confirmed");
+            ByteArrayOutputStream out=new ByteArrayOutputStream();
+            try(InputStream in=c.getInputStream()){byte[] bytes=new byte[4096];int count;while((count=in.read(bytes))!=-1){if(out.size()+count>256*1024)throw new IOException("Cancellation response exceeds limit");out.write(bytes,0,count);}}
+            JSONObject result=new JSONObject(new String(out.toByteArray(),StandardCharsets.UTF_8));
+            if(!id.equals(result.optString("request_id")))throw new IOException("Cancellation response identity mismatch");
+            return result;
+        }finally{c.disconnect();}
     }
     synchronized JSONObject requestStatus(String id) throws Exception {
         if(!supportsRequestLedger())throw new IOException("Request recovery is unavailable on this server.");
