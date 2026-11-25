@@ -177,7 +177,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         if(busy||googleSignInPending)return;
         submit("Checking Discord sign-in…",()->api.discordMobileAvailable(),enabled->{
             if(!Boolean.TRUE.equals(enabled)){
-                setStatus("Discord sign-in requires the secure mobile OAuth backend to be enabled.");
+                setStatus(api.isFirstParty()?"Discord sign-in: first-party mobile OAuth is not available yet.":"Discord sign-in: the server does not advertise the required mobile OAuth endpoint.");
                 return;
             }
             try{
@@ -1047,6 +1047,9 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             public void end(){closeVoice();}
         });
         voiceDialog=dialog;
+        androidx.lifecycle.ViewTreeLifecycleOwner.set(screen.getView(),this);
+        androidx.lifecycle.ViewTreeViewModelStoreOwner.set(screen.getView(),this);
+        androidx.savedstate.ViewTreeSavedStateRegistryOwner.set(screen.getView(),this);
         dialog.setContentView(screen.getView());
         dialog.setOnDismissListener(d->{if(voiceDialog==dialog)closeVoice();});
         dialog.show();
