@@ -7,11 +7,13 @@ from __future__ import annotations
 
 import os
 import re
+from urllib.parse import parse_qs, urlsplit
 from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel, ConfigDict, Field
 
-from .mcp_connections import ConnectionDenied, require_gate, reviewed_providers, callback_url
+from .mcp_connections import (ConnectionDenied, NativeCallbackPending, native_mcp_enabled,
+                              require_gate, reviewed_providers, callback_url)
 from identity.http_bridge import _identity_db
 from identity.sessions import SessionDenied, resolve_browser_session
 
@@ -21,6 +23,21 @@ router = APIRouter(prefix="/internal/mcp", include_in_schema=False)
 class BeginConnection(BaseModel):
     model_config = ConfigDict(extra="forbid")
     label: str = Field(default="", max_length=80)
+
+
+class BeginNativeConnection(BeginConnection):
+    code_challenge: str = Field(pattern=r"^[A-Za-z0-9_-]{43}$")
+
+
+class CompleteNativeConnection(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    state: str = Field(pattern=r"^[A-Za-z0-9_-]{43,128}$")
+    verifier: str = Field(pattern=r"^[A-Za-z0-9_-]{43,128}$")
+
+
+def _native_enabled():
+    if not native_mcp_enabled():
+        raise HTTPException(404, "Not found")
 
 
 def _enabled() -> None:
@@ -81,6 +98,45 @@ async def start(provider_id: str, payload: BeginConnection, request: Request):
         raise HTTPException(403, "Connection request denied") from None
 
 
+@router.post("/connections/{provider_id}/native/start")
+async def native_start(provider_id: str, payload: BeginNativeConnection, request: Request):
+    _enabled()
+    _native_enabled()
+    owner, session = await _session(request, changing=True)
+    try:
+        url = await _manager(request).begin(owner=owner, session_secret=session,
+                                           provider_id=provider_id, label=payload.label,
+                                           native_challenge=payload.code_challenge)
+        states = parse_qs(urlsplit(url).query).get("state", [])
+        if len(states)!=1 or not re.fullmatch(r"[A-Za-z0-9_-]{43,128}",states[0]):
+            raise ConnectionDenied("Authorization state unavailable")
+        return {"authorization_url":url,"state":states[0],"expires_in":600}
+    except ConnectionDenied:
+        raise HTTPException(403,"Native connection request denied") from None
+
+
+@router.post("/connections/native/complete")
+async def native_complete(payload: CompleteNativeConnection, request: Request):
+    _enabled()
+    _native_enabled()
+    owner, session = await _session(request, changing=True)
+    try:
+        return await _manager(request).finish_native(owner=owner,session_secret=session,
+                                                       state=payload.state,verifier=payload.verifier)
+    except NativeCallbackPending:
+        raise HTTPException(409,detail={"code":"NATIVE_OAUTH_PENDING","message":"Complete provider authorization in your browser"}) from None
+    except ConnectionDenied:
+        raise HTTPException(403,"Native OAuth proof rejected") from None
+
+
+@router.get("/native/return", response_class=HTMLResponse)
+async def native_return():
+    _enabled()
+    _native_enabled()
+    return HTMLResponse("<h1>Return to DragonZpyder</h1><p>Open the Android app and tap Complete connection. No account is authorized until that step succeeds.</p>",
+                        headers={"Cache-Control":"no-store","Referrer-Policy":"no-referrer"})
+
+
 @router.get("/oauth/callback", response_class=HTMLResponse)
 async def callback(request: Request, state: str = "", code: str = "",
                    iss: str | None = None, error: str | None = None):
@@ -88,6 +144,14 @@ async def callback(request: Request, state: str = "", code: str = "",
     if error:
         return HTMLResponse("<h1>Connection not completed</h1>", status_code=400,
                             headers={"Cache-Control": "no-store"})
+    if native_mcp_enabled():
+        try:
+            if await _manager(request).stage_native_callback(state=state,code=code,issuer_response=iss):
+                redirect = "/dz/internal/mcp/native/return" if callback_url().endswith("/dz/internal/mcp/oauth/callback") else "/internal/mcp/native/return"
+                return RedirectResponse(redirect,status_code=303,
+                                        headers={"Cache-Control":"no-store","Referrer-Policy":"no-referrer"})
+        except ConnectionDenied:
+            raise HTTPException(403,"Native OAuth callback rejected") from None
     owner, session = await _session(request, changing=False)
     try:
         await _manager(request).finish(

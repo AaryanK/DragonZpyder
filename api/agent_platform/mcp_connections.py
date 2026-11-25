@@ -33,6 +33,14 @@ class ConnectionDenied(PermissionError):
     pass
 
 
+class NativeCallbackPending(ConnectionDenied):
+    pass
+
+
+def native_mcp_enabled() -> bool:
+    return os.getenv("DRAGONZPYDER_NATIVE_MCP_OAUTH_ENABLED") == "1"
+
+
 def _digest(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
@@ -350,8 +358,10 @@ class OAuthConnectionManager:
                 return info
 
     async def begin(self, *, owner: str, session_secret: str, provider_id: str,
-                    label: str = "") -> str:
+                    label: str = "", native_challenge: str | None = None) -> str:
         require_gate()
+        if native_challenge is not None and (not native_mcp_enabled() or not re.fullmatch(r"[A-Za-z0-9_-]{43}",native_challenge)):
+            raise ConnectionDenied("Invalid native proof challenge")
         provider = reviewed_providers().get(provider_id)
         if not provider or not owner or len(session_secret) < 20 or len(label) > 80:
             raise ConnectionDenied("Invalid connection request")
@@ -378,14 +388,18 @@ class OAuthConnectionManager:
                        "token_url": meta["token_endpoint"], "client": info,
                        "label": label or provider.provider_id}
             async with self.pool.acquire() as db:
-                await db.execute(
-                    """INSERT INTO dz_mcp_oauth_attempts
-                       (state_hash, owner_id, session_hash, provider_id, encrypted_flow, expires_at)
-                       VALUES($1,$2,$3,$4,$5,$6)""",
-                    _digest(state), owner, _digest(session_secret), provider_id,
-                    self.cipher.seal(owner, _digest(state), details),
-                    _NOW() + timedelta(minutes=10),
-                )
+                values = (_digest(state), owner, _digest(session_secret), provider_id,
+                          self.cipher.seal(owner, _digest(state), details), _NOW() + timedelta(minutes=10))
+                if native_challenge is not None:
+                    await db.execute(
+                        """INSERT INTO dz_mcp_oauth_attempts
+                           (state_hash, owner_id, session_hash, provider_id, encrypted_flow, expires_at, native_challenge)
+                           VALUES($1,$2,$3,$4,$5,$6,$7)""", *values, native_challenge)
+                else:
+                    await db.execute(
+                        """INSERT INTO dz_mcp_oauth_attempts
+                           (state_hash, owner_id, session_hash, provider_id, encrypted_flow, expires_at)
+                           VALUES($1,$2,$3,$4,$5,$6)""", *values)
             return url
         finally:
             if own:
@@ -400,16 +414,74 @@ class OAuthConnectionManager:
             raise ConnectionDenied("Invalid OAuth authorization code")
         state_hash = _digest(state)
         async with self.pool.acquire() as db:
-            # Atomic consume. Replays cannot exchange another authorization code.
+            # Invalid or cross-account callbacks must not consume valid state.
+            native_filter = " AND native_challenge IS NULL" if native_mcp_enabled() else ""
             row = await db.fetchrow(
                 """DELETE FROM dz_mcp_oauth_attempts WHERE state_hash=$1
-                   RETURNING owner_id, session_hash, provider_id, encrypted_flow, expires_at""",
-                state_hash,
-            )
+                   AND owner_id=$2 AND session_hash=$3 AND expires_at>now()""" + native_filter +
+                " RETURNING owner_id, session_hash, provider_id, encrypted_flow, expires_at",
+                state_hash, owner, _digest(session_secret))
         if (not row or row["owner_id"] != owner or
                 not secrets.compare_digest(row["session_hash"], _digest(session_secret)) or
                 row["expires_at"] <= _NOW()):
             raise ConnectionDenied("OAuth callback expired or session mismatched")
+        return await self._exchange_callback(owner, state_hash, row, code, issuer_response)
+
+    async def stage_native_callback(self, *, state: str, code: str, issuer_response: str | None) -> bool:
+        """Browser may stage an encrypted result, but cannot authorize an account."""
+        require_gate()
+        if not native_mcp_enabled() or not re.fullmatch(r"[A-Za-z0-9_-]{43,128}",state):
+            return False
+        if not isinstance(code,str) or not 1 <= len(code) <= 4096:
+            raise ConnectionDenied("Invalid OAuth authorization code")
+        state_hash = _digest(state)
+        async with self.pool.acquire() as db:
+            async with db.transaction():
+                row = await db.fetchrow(
+                    """SELECT owner_id, provider_id, native_callback FROM dz_mcp_oauth_attempts
+                       WHERE state_hash=$1 AND native_challenge IS NOT NULL AND expires_at>now() FOR UPDATE""",
+                    state_hash)
+                if row is None:
+                    return False
+                provider=reviewed_providers().get(row["provider_id"])
+                if not provider or (issuer_response and issuer_response!=provider.issuer):
+                    raise ConnectionDenied("OAuth issuer rejected")
+                if row["native_callback"] is not None:
+                    raise ConnectionDenied("OAuth callback already staged")
+                staged=self.cipher.seal(row["owner_id"],state_hash+":native",
+                                        {"code":code,"issuer":issuer_response})
+                await db.execute("UPDATE dz_mcp_oauth_attempts SET native_callback=$2 WHERE state_hash=$1",
+                                 state_hash,staged)
+        return True
+
+    async def finish_native(self, *, owner: str, session_secret: str, state: str, verifier: str) -> dict:
+        require_gate()
+        if (not native_mcp_enabled() or not owner or not 20<=len(session_secret)<=128
+                or not re.fullmatch(r"[A-Za-z0-9_-]{43,128}",state)
+                or not re.fullmatch(r"[A-Za-z0-9_-]{43,128}",verifier)):
+            raise ConnectionDenied("Invalid native OAuth proof")
+        challenge=base64.urlsafe_b64encode(hashlib.sha256(verifier.encode("ascii")).digest()).decode().rstrip("=")
+        state_hash=_digest(state)
+        async with self.pool.acquire() as db:
+            row=await db.fetchrow(
+                """DELETE FROM dz_mcp_oauth_attempts WHERE state_hash=$1
+                   AND owner_id=$2 AND session_hash=$3 AND native_challenge=$4
+                   AND expires_at>now() AND native_callback IS NOT NULL
+                   RETURNING owner_id, session_hash, provider_id, encrypted_flow, expires_at, native_callback""",
+                state_hash,owner,_digest(session_secret),challenge)
+            if row is None:
+                pending=await db.fetchval(
+                    """SELECT EXISTS(SELECT 1 FROM dz_mcp_oauth_attempts WHERE state_hash=$1
+                       AND owner_id=$2 AND session_hash=$3 AND native_challenge=$4
+                       AND expires_at>now() AND native_callback IS NULL)""",
+                    state_hash,owner,_digest(session_secret),challenge)
+                if pending:
+                    raise NativeCallbackPending("Complete provider authorization in your browser")
+                raise ConnectionDenied("Native OAuth proof expired or rejected")
+        callback=self.cipher.open(owner,state_hash+":native",row["native_callback"])
+        return await self._exchange_callback(owner,state_hash,row,callback["code"],callback.get("issuer"))
+
+    async def _exchange_callback(self, owner, state_hash, row, code, issuer_response):
         provider = reviewed_providers().get(row["provider_id"])
         if not provider:
             raise ConnectionDenied("Provider no longer reviewed")

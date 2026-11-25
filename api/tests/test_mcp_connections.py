@@ -69,8 +69,11 @@ class FakeConn:
             self.pool.attempts[args[0]] = {
                 "owner_id": args[1], "session_hash": args[2],
                 "provider_id": args[3], "encrypted_flow": args[4],
-                "expires_at": args[5],
+                "expires_at": args[5], "native_challenge": args[6] if len(args)>6 else None,
+                "native_callback": None,
             }
+        if "UPDATE dz_mcp_oauth_attempts SET native_callback" in query:
+            self.pool.attempts[args[0]]["native_callback"]=args[1]
         if "INSERT INTO dz_mcp_connections" in query:
             self.pool.connections[args[1]] = {
                 "id": args[0], "public_alias": args[1], "owner_id": args[2],
@@ -91,7 +94,17 @@ class FakeConn:
 
     async def fetchrow(self, query, *args):
         if "DELETE FROM dz_mcp_oauth_attempts" in query:
-            return self.pool.attempts.pop(args[0], None)
+            row=self.pool.attempts.get(args[0])
+            if not row or row["owner_id"]!=args[1] or row["session_hash"]!=args[2] or row["expires_at"]<=m._NOW():
+                return None
+            if len(args)==4 and (row["native_challenge"]!=args[3] or row["native_callback"] is None):
+                return None
+            if "native_challenge IS NULL" in query and row["native_challenge"] is not None:
+                return None
+            return self.pool.attempts.pop(args[0])
+        if "SELECT owner_id, provider_id, native_callback FROM dz_mcp_oauth_attempts" in query:
+            row=self.pool.attempts.get(args[0])
+            return row if row and row["native_challenge"] and row["expires_at"]>m._NOW() else None
         if "SELECT provider_id, encrypted_tokens" in query:
             r = self.pool.connections.get(args[1])
             return r if r and r["owner_id"] == args[0] and r["status"] == "active" else None
@@ -99,6 +112,12 @@ class FakeConn:
             r = self.pool.connections.get(args[1])
             return r if r and r["owner_id"] == args[0] else None
         return None
+
+    async def fetchval(self,query,*args):
+        row=self.pool.attempts.get(args[0])
+        return bool(row and row["owner_id"]==args[1] and row["session_hash"]==args[2]
+                    and row["native_challenge"]==args[3] and row["native_callback"] is None
+                    and row["expires_at"]>m._NOW())
 
     async def fetch(self, query, *args):
         return [r for r in self.pool.connections.values() if r["owner_id"] == args[0]]
@@ -234,9 +253,10 @@ def test_pkce_csrf_single_use_issuer_and_no_browser_token(manager):
         with pytest.raises(m.ConnectionDenied, match="mismatched"):
             await service.finish(owner="mallory", session_secret="a" * 40,
                                  state=state, code="code")
+        assert state and len(db.attempts)==1
+        await service.finish(owner="alice", session_secret="a" * 40, state=state, code="code")
         with pytest.raises(m.ConnectionDenied):
-            await service.finish(owner="alice", session_secret="a" * 40,
-                                 state=state, code="code")
+            await service.finish(owner="alice", session_secret="a" * 40, state=state, code="code")
         url = await service.begin(owner="alice", session_secret="a" * 40,
                                   provider_id="archive")
         state = parse_qs(urlsplit(url).query)["state"][0]
@@ -570,3 +590,35 @@ def test_operly_is_optional_oauth_provider_and_never_global_authority(monkeypatc
                        "https://attacker.example/steal")
     with pytest.raises(m.ConnectionDenied, match="redirect URI"):
         m.callback_url()
+
+
+def test_native_browser_stage_requires_original_device_and_session(manager, monkeypatch):
+    import base64
+    import hashlib
+    service, db = manager
+    monkeypatch.setenv("DRAGONZPYDER_NATIVE_MCP_OAUTH_ENABLED", "1")
+    verifier = "v" * 43
+    challenge=base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip("=")
+    async def run():
+        url=await service.begin(owner="alice",session_secret="a"*40,provider_id="archive",
+                                native_challenge=challenge)
+        state=parse_qs(urlsplit(url).query)["state"][0]
+        with pytest.raises(m.NativeCallbackPending):
+            await service.finish_native(owner="alice",session_secret="a"*40,state=state,verifier=verifier)
+        assert await service.stage_native_callback(state=state,code="provider-code",issuer_response="https://login.example.com")
+        assert len(FakeOAuth.exchanges)==0
+        blob=next(iter(db.attempts.values()))["native_callback"]
+        assert b"provider-code" not in blob
+        with pytest.raises(m.ConnectionDenied):
+            await service.finish_native(owner="mallory",session_secret="a"*40,state=state,verifier=verifier)
+        with pytest.raises(m.ConnectionDenied):
+            await service.finish_native(owner="alice",session_secret="b"*40,state=state,verifier=verifier)
+        with pytest.raises(m.ConnectionDenied):
+            await service.finish_native(owner="alice",session_secret="a"*40,state=state,verifier="x"*43)
+        with pytest.raises(m.ConnectionDenied):
+            await service.finish(owner="alice",session_secret="a"*40,state=state,code="provider-code")
+        account=await service.finish_native(owner="alice",session_secret="a"*40,state=state,verifier=verifier)
+        assert account["status"]=="active" and len(FakeOAuth.exchanges)==1
+        with pytest.raises(m.ConnectionDenied):
+            await service.finish_native(owner="alice",session_secret="a"*40,state=state,verifier=verifier)
+    asyncio.run(run())
