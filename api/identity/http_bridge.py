@@ -89,8 +89,15 @@ async def _restricted_identity_role(conn):
                      OR has_table_privilege(current_user,c.oid,'DELETE,TRUNCATE')))
           AND NOT EXISTS (
               SELECT 1 FROM pg_proc p
-              WHERE p.oid=to_regprocedure('public.approve_imported_identity(text,uuid,text,timestamptz)')
+              WHERE p.oid=to_regprocedure('public.approve_imported_identity(text,uuid)')
                 AND has_function_privilege(current_user,p.oid,'EXECUTE'))
+          AND NOT EXISTS (
+              SELECT 1 FROM pg_class c
+              WHERE c.oid=to_regclass('public.identity_import_proofs')
+                AND (has_any_column_privilege(current_user,c.oid,'UPDATE')
+                     OR has_table_privilege(current_user,c.oid,'DELETE,TRUNCATE')
+                     OR has_column_privilege(current_user,c.oid,'proved_at','INSERT')
+                     OR NOT c.relrowsecurity))
           AND (SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
                WHERE n.nspname='public' AND c.relname IN ('identity_accounts','identity_provider_links')
                  AND c.relrowsecurity)=2
