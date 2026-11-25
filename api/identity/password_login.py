@@ -23,13 +23,7 @@ class LoginDenied(PermissionError):
 MAX_ATTEMPTS = 8
 
 
-async def password_login(conn, *, email: str, password: str) -> BrowserSession:
-    if not isinstance(password, str) or not password or len(password.encode("utf-8")) > 1024:
-        raise LoginDenied("Invalid credentials")
-    try:
-        normalized = normalize_email(email)
-    except EmailAddressError as error:
-        raise LoginDenied("Invalid credentials") from error
+async def consume_password_attempt(conn, *, normalized: str) -> None:
     digest = _secret_digest("login:" + normalized)
     # SQL upsert serializes attempts for a given account even across replicas.
     # Every attempt counts; returning success never resets the window, so
@@ -49,6 +43,16 @@ async def password_login(conn, *, email: str, password: str) -> BrowserSession:
     )
     if not isinstance(count, int) or count > MAX_ATTEMPTS:
         raise LoginDenied("Invalid credentials")
+
+
+async def password_login(conn, *, email: str, password: str) -> BrowserSession:
+    if not isinstance(password, str) or not password or len(password.encode("utf-8")) > 1024:
+        raise LoginDenied("Invalid credentials")
+    try:
+        normalized = normalize_email(email)
+    except EmailAddressError as error:
+        raise LoginDenied("Invalid credentials") from error
+    await consume_password_attempt(conn, normalized=normalized)
     row = await conn.fetchrow(
         """SELECT subject, password_hash FROM identity_accounts
            WHERE email=$1 AND source_active=TRUE AND status='active'""",
