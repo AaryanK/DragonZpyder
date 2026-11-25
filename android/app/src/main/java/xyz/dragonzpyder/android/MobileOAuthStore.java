@@ -48,10 +48,9 @@ final class MobileOAuthStore {
         String encoded=Base64.encodeToString(c.getIV(),Base64.NO_WRAP)+":"+Base64.encodeToString(cipher,Base64.NO_WRAP);
         if(!prefs.edit().putString("pending",encoded).commit())throw new IllegalStateException("Unable to store device proof");
     }
-    String[] take(String returnedState){
+    synchronized String[] take(String returnedState){
         String saved=prefs.getString("pending","");
-        clear();
-        if(saved.isEmpty()||!returnedState.matches("[A-Za-z0-9_-]{43,128}"))return null;
+        if(saved.isEmpty()||returnedState==null||!returnedState.matches("[A-Za-z0-9_-]{43,128}"))return null;
         try {
             String[] parts=saved.split(":",-1);
             if(parts.length!=2||saved.length()>2048)return null;
@@ -60,11 +59,13 @@ final class MobileOAuthStore {
             Cipher c=Cipher.getInstance("AES/GCM/NoPadding");
             c.init(Cipher.DECRYPT_MODE,key(),new GCMParameterSpec(128,iv));c.updateAAD(AAD);
             String[] decoded=new String(c.doFinal(Base64.decode(parts[1],Base64.NO_WRAP)),StandardCharsets.UTF_8).split("\n",-1);
-            if(decoded.length!=3||!decoded[0].equals(returnedState))return null;
+            if(decoded.length!=3){clear();return null;}
+            if(!MessageDigest.isEqual(decoded[0].getBytes(StandardCharsets.US_ASCII),returnedState.getBytes(StandardCharsets.US_ASCII)))return null;
             long until=Long.parseLong(decoded[2]);long now=System.currentTimeMillis();
-            if(until<=now||until>now+10*60*1000L)return null;
+            if(until<=now||until>now+10*60*1000L){clear();return null;}
+            if(!prefs.edit().remove("pending").commit())return null;
             return new String[]{decoded[0],decoded[1]};
-        }catch(Exception e){return null;}
+        }catch(Exception e){clear();return null;}
     }
     void clear(){prefs.edit().remove("pending").commit();}
 }
