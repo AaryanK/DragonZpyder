@@ -38,6 +38,9 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private AgentRequestViewModel agentRequests;
     private String activeRequestId="";
     private static final DragonApi api=new DragonApi();
+    private NativeVoiceSession nativeVoice;
+    private android.app.AlertDialog voiceDialog;
+    private boolean voicePermissionPending;
     private final ExecutorService worker=Executors.newSingleThreadExecutor();
     private LinearLayout root;
     private TextView status;
@@ -122,6 +125,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private boolean strong(String p){if(p.length()<12){setStatus("Use at least 12 characters for your password.");return false;}return true;}
     private boolean six(String code){if(!code.matches("[0-9]{6}")){setStatus("Enter the six-digit code.");return false;}return true;}
     private void clearAccountView(){
+        closeVoice();
         activeRequestId="";if(agentRequests!=null)agentRequests.reset();
         conversation="";pendingPrompt="";attachment=null;attachmentName="";transcript.clear();
         meshMode=false;model="";modelAcceptsImages=false;restoredMesh=false;restoredModel="";restoredModelAcceptsImages=false;lastAnswer="";meshMessages=new JSONArray();history=new JSONArray();
@@ -368,9 +372,9 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         page.addView(text("Find an action in your Personal workspace.",13,MUTED));gap(page,10);
         EditText search=field("Search commands",false);search.setSingleLine(true);page.addView(search);gap(page,8);
         ScrollView scroller=new ScrollView(this);LinearLayout list=column();scroller.addView(list);page.addView(scroller,new LinearLayout.LayoutParams(-1,0,1));
-        String[] names={"New chat","Find conversations","Switch mode","Approvals","Dictate a message","Toggle appearance","Connections & tools","Personal tasks","AI Mesh media","Account & security","Your tools"};
-        String[] icons={"＋","⌕","✦","◇","◉","☾","⌘","◷","▧","◎","▦"};
-        Runnable[] actions={this::newChat,this::showMenu,this::showModes,this::approvals,this::dictate,this::toggleTheme,this::showConnections,this::showTasks,this::showMedia,this::showAccount,this::showTools};
+        String[] names={"New chat","Find conversations","Switch mode","Approvals","Dictate a message","Live voice","Toggle appearance","Connections & tools","Personal tasks","AI Mesh media","Account & security","Your tools"};
+        String[] icons={"＋","⌕","✦","◇","◉","♪","☾","⌘","◷","▧","◎","▦"};
+        Runnable[] actions={this::newChat,this::showMenu,this::showModes,this::approvals,this::dictate,this::showVoice,this::toggleTheme,this::showConnections,this::showTasks,this::showMedia,this::showAccount,this::showTools};
         Runnable filter=()->{list.removeAllViews();String q=value(search).toLowerCase(Locale.ROOT);int count=0;for(int k=0;k<names.length;k++){final int n=k;if(names[k].toLowerCase(Locale.ROOT).contains(q)){list.addView(navRow(icons[k],names[k],false,()->{sheet.dismiss();actions[n].run();}));count++;}}if(count==0)list.addView(text("No matching commands.",14,MUTED));};
         search.addTextChangedListener(new android.text.TextWatcher(){public void beforeTextChanged(CharSequence s,int a,int c,int f){}public void onTextChanged(CharSequence s,int a,int b,int c){filter.run();}public void afterTextChanged(android.text.Editable e){}});
         filter.run();page.setFocusableInTouchMode(true);page.requestFocus();
@@ -936,6 +940,40 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             alert().setTitle("Personal tasks").setMessage(content.toString()).setPositiveButton("Close",null).show();
         },true);
     }
+    private void showVoice(){
+        if(!signedIn||busy||!api.supportsVoice()){setStatus("Live voice is unavailable for this session.");return;}
+        new android.app.AlertDialog.Builder(this).setTitle("Live voice")
+            .setMessage("Microphone audio is sent to the realtime voice provider. This session is audio-only, has no external tool access, and closes when you leave the app.")
+            .setNegativeButton("Cancel",null).setPositiveButton("Start",(d,w)->{
+                if(checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)!=android.content.pm.PackageManager.PERMISSION_GRANTED){
+                    voicePermissionPending=true;requestPermissions(new String[]{android.Manifest.permission.RECORD_AUDIO},79);
+                }else startVoice();
+            }).show();
+    }
+    @Override public void onRequestPermissionsResult(int code,String[] permissions,int[] grants){
+        super.onRequestPermissionsResult(code,permissions,grants);
+        if(code==79&&voicePermissionPending){voicePermissionPending=false;if(grants.length>0&&grants[0]==android.content.pm.PackageManager.PERMISSION_GRANTED&&getLifecycle().getCurrentState().isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED))startVoice();else setStatus("Microphone permission not granted or app not active.");}
+    }
+    private void startVoice(){
+        if(!signedIn||busy||!api.supportsVoice()||nativeVoice!=null)return;
+        voiceDialog=new android.app.AlertDialog.Builder(this).setTitle("Live voice").setMessage("Connecting…").setPositiveButton("End",null).setNeutralButton("Mute",null).create();
+        voiceDialog.setOnDismissListener(d->{closeVoice();});
+        voiceDialog.show();
+        final android.app.AlertDialog dialog=voiceDialog;
+        nativeVoice=new NativeVoiceSession(this,api,value->{if(!isDestroyed()&&voiceDialog==dialog)dialog.setMessage(value);});
+        dialog.getButton(android.app.AlertDialog.BUTTON_NEUTRAL).setOnClickListener(new View.OnClickListener(){
+            boolean muted=false;
+            public void onClick(View view){muted=!muted;if(nativeVoice!=null)nativeVoice.mute(muted);dialog.getButton(android.app.AlertDialog.BUTTON_NEUTRAL).setText(muted?"Unmute":"Mute");}
+        });
+        nativeVoice.start();
+    }
+    private void closeVoice(){
+        NativeVoiceSession session=nativeVoice;nativeVoice=null;
+        if(session!=null)session.close();
+        android.app.AlertDialog dialog=voiceDialog;voiceDialog=null;
+        if(dialog!=null&&dialog.isShowing())dialog.dismiss();
+    }
+    @Override protected void onStop(){closeVoice();super.onStop();}
     private void dictate(){
         Intent intent=new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
         intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
@@ -946,5 +984,5 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(request==45){if(signedIn&&meshMode&&result==RESULT_OK)attachCameraCapture();else discardCamera();return;}if(request==44){if(signedIn&&result==RESULT_OK&&data!=null&&data.getData()!=null)transcribeAudio(data.getData());else transcriptionModel="";return;}if(request==43&&signedIn&&meshMode&&result==RESULT_OK&&data!=null&&data.getData()!=null){readAttachment(data.getData());return;}if(request==42&&signedIn&&result==RESULT_OK&&data!=null&&chatUi!=null){ArrayList<String> words=data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);if(words!=null&&!words.isEmpty()){String draft=chatUi.getDraft();chatUi.setDraft(draft+(draft.isEmpty()?"":" ")+words.get(0));}}}
     @Override public void onBackPressed(){if(busy)return;if(accountOpen){accountOpen=false;chatScreen();}else if(!signedIn&&!"login".equals(authMode))authScreen("login","");else super.onBackPressed();}
     private void signOut(){submit("Signing out…",()->{try{api.logout();return Boolean.TRUE;}catch(Exception failure){api.clear();return Boolean.FALSE;}},r->{clearAccountView();loginScreen(Boolean.TRUE.equals(r)?"":"Signed out locally. Server sign-out could not be confirmed; revoke this session from another device if needed.");},true);}
-    @Override protected void onDestroy(){discardCamera();stopMedia();api.cancelStream();worker.shutdownNow();if(tts!=null)tts.shutdown();super.onDestroy();}
+    @Override protected void onDestroy(){closeVoice();discardCamera();stopMedia();api.cancelStream();worker.shutdownNow();if(tts!=null)tts.shutdown();super.onDestroy();}
 }
