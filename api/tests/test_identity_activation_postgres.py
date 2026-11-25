@@ -39,12 +39,14 @@ async def test_activation_receipt_fence():
             assert await conn.fetchval("SELECT count(*) FROM public.identity_accounts WHERE status='active'") == 0
             with pytest.raises(asyncpg.CheckViolationError):
                 await conn.execute("UPDATE public.identity_accounts SET status='active' WHERE subject=$1", a)
-            for subject, method in [(b,"password"), (c,"password"), (b,"google"), (b,"legacy_reauth")]:
+            for subject in (a,b,c):
                 with pytest.raises(asyncpg.RaiseError):
-                    await conn.execute("SELECT public.approve_imported_identity($1,$2,$3,now())",subject,uuid4(),method)
+                    await conn.execute("SELECT public.approve_imported_identity($1,$2)",subject,uuid4())
+            expired = uuid4()
+            await conn.execute("INSERT INTO public.identity_import_proofs(proof_id,subject,proof_method,proved_at) VALUES($1,$2,'password',now()-interval '16 minutes')",expired,a)
             with pytest.raises(asyncpg.RaiseError):
-                await conn.execute("SELECT public.approve_imported_identity($1,$2,'password',now()-interval '16 minutes')",a,uuid4())
-            assert not await conn.fetchval("SELECT has_function_privilege('dz_identity_api','public.approve_imported_identity(text,uuid,text,timestamptz)','EXECUTE')")
+                await conn.execute("SELECT public.approve_imported_identity($1,$2)",a,expired)
+            assert not await conn.fetchval("SELECT has_function_privilege('dz_identity_api','public.approve_imported_identity(text,uuid)','EXECUTE')")
             assert not await conn.fetchval("SELECT has_column_privilege('dz_identity_api','public.identity_accounts','import_activation_receipt_id','UPDATE')")
             assert not await conn.fetchval("SELECT has_table_privilege('dz_identity_api','public.identity_import_activation_receipts','INSERT')")
             from fastapi import HTTPException
@@ -65,19 +67,30 @@ async def test_activation_receipt_fence():
                 await conn.execute("RESET SESSION AUTHORIZATION")
             await conn.execute("REVOKE UPDATE (import_activation_receipt_id) ON public.identity_accounts FROM dz_identity_api")
             receipt = uuid4()
-            await conn.execute("SELECT public.approve_imported_identity($1,$2,'password',now())",a,receipt)
+            await conn.execute("SET SESSION AUTHORIZATION dz_identity_api")
+            try:
+                await conn.execute("INSERT INTO public.identity_import_proofs(proof_id,subject,proof_method) VALUES($1,$2,'password')",receipt,a)
+                with pytest.raises(asyncpg.InsufficientPrivilegeError):
+                    await conn.execute("INSERT INTO public.identity_import_proofs(proof_id,subject,proof_method) VALUES($1,$2,'password')",uuid4(),c)
+                with pytest.raises(asyncpg.InsufficientPrivilegeError):
+                    await conn.execute("UPDATE public.identity_import_proofs SET proved_at=now()")
+            finally:
+                await conn.execute("RESET SESSION AUTHORIZATION")
+            with pytest.raises(asyncpg.RaiseError):
+                await conn.execute("SELECT public.approve_imported_identity($1,$2)",b,receipt)
+            await conn.execute("SELECT public.approve_imported_identity($1,$2)",a,receipt)
             assert await conn.fetchval("SELECT status FROM public.identity_accounts WHERE subject=$1",a) == "active"
             assert await conn.fetchval("SELECT import_activation_receipt_id FROM public.identity_accounts WHERE subject=$1",a) == receipt
             with pytest.raises(asyncpg.ForeignKeyViolationError):
                 await conn.execute("UPDATE public.identity_accounts SET status='active',import_activation_receipt_id=$1 WHERE subject=$2",receipt,b)
             with pytest.raises(asyncpg.RaiseError):
-                await conn.execute("SELECT public.approve_imported_identity($1,$2,'password',now())",a,uuid4())
+                await conn.execute("SELECT public.approve_imported_identity($1,$2)",a,receipt)
             assert await conn.fetchval("SELECT count(*) FROM public.identity_import_activation_receipts") == 1
             assert await conn.fetchval("SELECT count(*) FROM public.identity_accounts WHERE status='pending'") == 2
         finally:
             await conn.execute("""
-                DROP FUNCTION IF EXISTS public.approve_imported_identity(text,uuid,text,timestamptz);
-                DROP TABLE IF EXISTS public.identity_import_activation_receipts,
+                DROP FUNCTION IF EXISTS public.approve_imported_identity(text,uuid);
+                DROP TABLE IF EXISTS public.identity_import_activation_receipts, public.identity_import_proofs,
                   public.identity_authorization_interactions, public.identity_provider_challenges,
                   public.identity_login_rate_limits, public.identity_refresh_grants,
                   public.identity_authorization_codes, public.identity_browser_sessions,
