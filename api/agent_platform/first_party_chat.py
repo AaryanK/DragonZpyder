@@ -70,14 +70,22 @@ async def _conversation_db():
         await conn.close()
 
 
+def _archives_enabled():
+    return os.getenv("DRAGONZPYDER_PERSONAL_HISTORY_ARCHIVE_ENABLED") == "1"
+
+
 async def _require_conversation(db, *, user: str, conversation_id: UUID):
+    # Legacy schema has no archived_import column. JSON field lookup gives
+    # false there, without making disabling the display flag permit writes.
     row = await db.fetchrow(
-        "SELECT id FROM dz_first_party_conversations WHERE id=$1 AND owner_id=$2",
+        "SELECT id, COALESCE((to_jsonb(c)->>\'archived_import\')::boolean,false) AS archived_import "
+        "FROM dz_first_party_conversations c WHERE id=$1 AND owner_id=$2",
         conversation_id, user,
     )
     if row is None:
         # Deliberately indistinguishable: unknown and other-user IDs.
         raise HTTPException(404, "Conversation not found")
+    return row
 
 
 @router.get("/status")
@@ -101,13 +109,15 @@ async def session(request: Request):
 async def conversations(request: Request):
     user = await _owner(request, changing=False)
     async with _conversation_db() as db:
+        columns = "id, title, updated_at, archived_import" if _archives_enabled() else "id, title, updated_at"
         rows = await db.fetch(
-            """SELECT id, title, updated_at FROM dz_first_party_conversations
-               WHERE owner_id=$1 ORDER BY updated_at DESC LIMIT 100""", user,
+            "SELECT " + columns + " FROM dz_first_party_conversations"
+            " WHERE owner_id=$1 ORDER BY updated_at DESC LIMIT 100", user,
         )
     return {"conversations": [
         {"id": str(row["id"]), "title": row["title"],
-         "updated_at": row["updated_at"].isoformat()} for row in rows
+         "updated_at": row["updated_at"].isoformat(),
+         **({"archived_import": row["archived_import"]} if _archives_enabled() else {})} for row in rows
     ]}
 
 
@@ -115,7 +125,18 @@ async def conversations(request: Request):
 async def messages(conversation_id: UUID, request: Request):
     user = await _owner(request, changing=False)
     async with _conversation_db() as db:
-        await _require_conversation(db, user=user, conversation_id=conversation_id)
+        row = await _require_conversation(db, user=user, conversation_id=conversation_id)
+        if row["archived_import"]:
+            if not _archives_enabled():
+                raise HTTPException(503, "Imported history temporarily unavailable")
+            archived = await db.fetch(
+                """SELECT m.role,m.content FROM public.dz_imported_personal_messages m
+                   JOIN public.dz_first_party_conversations c ON c.id=m.conversation_id
+                   WHERE c.id=$1 AND c.owner_id=$2 AND c.archived_import ORDER BY m.ordinal""",
+                conversation_id, user,
+            )
+            return {"messages": [{"role": m["role"], "content": m["content"]} for m in archived],
+                    "archived_import": True}
     runtime = getattr(request.app.state, "agent_runtime", None)
     if runtime is None or runtime._checkpointer is None:
         raise HTTPException(503, "Agent checkpoints unavailable")
@@ -177,7 +198,9 @@ async def chat(payload: ChatInput, request: Request):
     conversation_id = payload.conversation_id or uuid4()
     async with _conversation_db() as db:
         if payload.conversation_id is not None:
-            await _require_conversation(db, user=user, conversation_id=conversation_id)
+            row = await _require_conversation(db, user=user, conversation_id=conversation_id)
+            if row["archived_import"]:
+                raise HTTPException(409, "Imported history is read-only. Start a new conversation.")
         # Atomic per-user daily reservation BEFORE paid inference. Unknown
         # provider outcomes still consume a request slot; the metered gateway
         # independently enforces provider/organization spending constraints.
