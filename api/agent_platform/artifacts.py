@@ -156,4 +156,24 @@ def native_tools(db_factory, *, owner, allowed_ids, run_id):
                 raise RuntimeError("Artifact readback mismatch")
         return json.dumps(info)
 
-    return [inspect_attachment,create_text_artifact]
+    @tool
+    async def create_document_artifact(name: str, kind: str, specification: dict) -> str:
+        """Create a real PDF, DOCX, XLSX or PPTX. For PDF/DOCX use title and paragraphs;
+        XLSX uses rows of scalar cells; PPTX uses slides with title and bullets.
+        Output is deterministic, bounded and format-checked before delivery."""
+        import asyncio
+        from .artifact_formats import MIME, render_document
+        if kind not in MIME or not name.lower().endswith("."+kind):
+            return "Filename must match the supported format (pdf/docx/xlsx/pptx)."
+        try:
+            data=await asyncio.to_thread(render_document,kind,specification)
+        except (ValueError, TypeError, UnicodeError, OverflowError):
+            return "Invalid or unsupported document specification."
+        async with db_factory() as db:
+            info=await put(db,owner=owner,name=name,mime=MIME[kind],data=data,direction="generated",run_id=run_id)
+            _,readback=await get(db,owner=owner,file_id=UUID(info["id"]))
+            if readback!=data:
+                raise RuntimeError("Artifact readback mismatch")
+        return json.dumps(info)
+
+    return [inspect_attachment,create_text_artifact,create_document_artifact]
