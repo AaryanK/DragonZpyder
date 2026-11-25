@@ -186,3 +186,82 @@ async def import_history(conn, bundle, *, approved_owners, operator_approved=Fal
         if check!=bundle:
             raise HistoryConflict("Archive readback mismatch")
     return {"conversations":len(bundle["conversations"]),"messages":len(bundle["messages"])}
+
+
+async def read_approved_owners(conn, *, expected_accounts):
+    from identity.http_bridge import _restricted_identity_role
+    await _restricted_identity_role(conn)
+    async with conn.transaction(isolation="repeatable_read",readonly=True):
+        if await conn.fetchval("""
+            SELECT to_regclass('public.app_users') IS NULL
+              AND EXISTS (SELECT 1 FROM pg_constraint
+                WHERE conrelid=to_regclass('public.identity_accounts')
+                AND conname='identity_import_not_automatically_active' AND convalidated)
+              AND NOT EXISTS (SELECT 1 FROM public.identity_accounts
+                WHERE identity_origin<>'operly_import' OR source_operly_user_id IS DISTINCT FROM subject OR status<>'pending')
+              AND NOT EXISTS(SELECT 1 FROM public.identity_oauth_clients WHERE enabled)
+        """) is not True:
+            raise HistoryConflict("Identity owner inventory is not fenced")
+        rows=await conn.fetch("SELECT subject FROM public.identity_accounts")
+        owners={_uuid(row["subject"]) for row in rows}
+        if len(owners)!=expected_accounts or len(rows)!=expected_accounts:
+            raise HistoryConflict("Identity owner count mismatch")
+        return owners
+
+
+async def run(args,key):
+    import os
+    import asyncpg
+    from identity.offline_transfer import _read_private, _write_private
+    if args.mode=="export":
+        conn=await asyncpg.connect(os.environ["OPERLY_PERSONAL_HISTORY_EXPORT_DSN"],timeout=10,command_timeout=30)
+        try:
+            bundle=await read_history_source(conn,expected_conversations=args.expected_conversations,
+                                              expected_messages=args.expected_messages)
+        finally:
+            await conn.close()
+        token=seal_history(bundle,key)
+        _write_private(args.package,token)
+        return {"conversations":len(bundle["conversations"]),"messages":len(bundle["messages"]),
+                "package_sha256":hashlib.sha256(token).hexdigest()}
+    bundle=open_history(_read_private(args.package),key,args.expected_sha256,
+        expected_conversations=args.expected_conversations,expected_messages=args.expected_messages)
+    identity=await asyncpg.connect(os.environ["DRAGONZPYDER_IDENTITY_DATABASE_URL"],timeout=10,command_timeout=30)
+    try:
+        owners=await read_approved_owners(identity,expected_accounts=args.expected_accounts)
+    finally:
+        await identity.close()
+    conn=await asyncpg.connect(os.environ["DRAGONZPYDER_HISTORY_IMPORT_DSN"],timeout=10,command_timeout=60)
+    try:
+        return await import_history(conn,bundle,approved_owners=owners,operator_approved=True)
+    finally:
+        await conn.close()
+
+
+def main():
+    import argparse
+    import asyncio
+    from identity.offline_transfer import _key
+    parser=argparse.ArgumentParser(description="Isolated personal transcript archive transfer")
+    sub=parser.add_subparsers(dest="mode",required=True)
+    for mode in ("export","import"):
+        p=sub.add_parser(mode)
+        p.add_argument("--package",required=True)
+        p.add_argument("--expected-conversations",type=int,required=True)
+        p.add_argument("--expected-messages",type=int,required=True)
+        p.add_argument("--approve-history-transfer",action="store_true",required=True)
+        if mode=="import":
+            p.add_argument("--expected-accounts",type=int,required=True)
+            p.add_argument("--expected-sha256",required=True)
+    args=parser.parse_args()
+    try:
+        result=asyncio.run(run(args,_key()))
+    except Exception:
+        print("PERSONAL_HISTORY_TRANSFER_FAILED")
+        raise SystemExit(1) from None
+    print(json.dumps(result,sort_keys=True))
+    print("PERSONAL_HISTORY_TRANSFER_COMPLETE")
+
+
+if __name__=="__main__":
+    main()
