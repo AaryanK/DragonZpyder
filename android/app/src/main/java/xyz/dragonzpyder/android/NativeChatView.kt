@@ -109,8 +109,8 @@ class NativeChatView(context: Context, private val dark: Boolean, private val ac
             val drawer=rememberDrawerState(DrawerValue.Closed)
             val drawerScope=rememberCoroutineScope()
             LaunchedEffect(drawerRequest){if(drawerRequest>0)drawer.open()}
-            ModalNavigationDrawer(drawerState=drawer,gesturesEnabled=false,drawerContent={
-                ModalDrawerSheet(modifier=Modifier.widthIn(max=320.dp).fillMaxWidth(.88f),drawerContainerColor=bg,drawerContentColor=ink){
+            ModalNavigationDrawer(drawerState=drawer,gesturesEnabled=!busy,drawerContent={
+                ModalDrawerSheet(drawerState=drawer,modifier=Modifier.widthIn(max=320.dp).fillMaxWidth(.88f),drawerContainerColor=bg,drawerContentColor=ink){
                     NavigationDrawerContent(close={drawerScope.launch{drawer.close()}},select={action->drawerScope.launch{drawer.close();action()}})
                 }
             }){
@@ -203,10 +203,15 @@ class NativeChatView(context: Context, private val dark: Boolean, private val ac
                 items(filtered,key={it.id}){item->
                     NavigationDrawerItem(label={Text(item.title,maxLines=2,overflow=TextOverflow.Ellipsis,fontSize=14.sp,lineHeight=19.sp)},selected=item.id==selectedConversation,onClick={if(!busy)select{actions.openConversation(item.id)}},shape=RoundedCornerShape(10.dp),modifier=Modifier.heightIn(min=48.dp),colors=NavigationDrawerItemDefaults.colors(selectedContainerColor=userBubble,unselectedContainerColor=Color.Transparent,selectedTextColor=ink,unselectedTextColor=ink))
                 }
-                item{DrawerSection("Preferences")}
-                item{DrawerRow("account","Account & security",false){select(actions::account)}}
-                item{DrawerRow(if(dark)"sun" else "moon",if(dark)"Light appearance" else "Dark appearance",false){select(actions::theme)}}
-                item{DrawerRow("more","All commands",false){select(actions::commands)}}
+
+            }
+            HorizontalDivider(color=line.copy(alpha=.55f))
+            Row(Modifier.fillMaxWidth().heightIn(min=52.dp),verticalAlignment=Alignment.CenterVertically){
+                TextButton(onClick={select(actions::account)},enabled=!busy,modifier=Modifier.weight(1f).heightIn(min=48.dp)){
+                    NavigationGlyph("account",ink);Spacer(Modifier.width(8.dp));Text("Account",color=ink,maxLines=1,overflow=TextOverflow.Ellipsis)
+                }
+                IconButton(onClick={select(actions::theme)},enabled=!busy,modifier=Modifier.size(48.dp).semantics{contentDescription="Switch appearance"}){NavigationGlyph(if(dark)"sun" else "moon",ink)}
+                IconButton(onClick={select(actions::commands)},enabled=!busy,modifier=Modifier.size(48.dp).semantics{contentDescription="All commands"}){NavigationGlyph("more",ink)}
             }
         }
     }
