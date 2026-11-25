@@ -51,7 +51,7 @@ async def consume_provider_challenge(conn, *, provider: str, state: str,
             or not 40 <= len(binding) <= 128):
         raise ProviderProofDenied("Login challenge missing")
     digest = _challenge_digest("state", state, purpose)
-    bound = _secret_digest("binding:" + binding)
+    bound = _challenge_digest("binding", binding, purpose)
     # Atomic UPDATE is concurrency-safe: only one request can consume it.
     row = await conn.fetchrow(
         """UPDATE identity_provider_challenges SET consumed_at=now()
