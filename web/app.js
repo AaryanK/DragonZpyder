@@ -4,6 +4,8 @@ const state = {
   firstParty: false,
   selectedMcpConnections: [],
   conversationId: null,
+  archiveSelected: false,
+  selectionVersion: 0,
   conversations: [],
   approvals: [],
   sending: false,
@@ -443,13 +445,24 @@ window.addEventListener("resize", syncComposerClearance);
 requestAnimationFrame(syncComposerClearance);
 
 function clearConversationSelection() {
+  state.selectionVersion++;
   state.conversationId = null;
+  setArchiveMode(false);
   for (const button of conversationList.querySelectorAll(".conversation-button")) button.classList.remove("active");
   showEmptyState();
   if(window.dragonzpyderMesh?.isActive())window.dragonzpyderMesh.clear();
   messageInput.focus();
   sidebar.classList.remove("open");
 }
+
+function setArchiveMode(active) {
+  state.archiveSelected = active;
+  messageInput.disabled = active || state.sending;
+  sendButton.disabled = active || state.sending;
+  messageInput.placeholder = active ? "Archived history · start a new chat to continue" : (messageInput.dataset.originalPlaceholder || "Message DragonZpyder");
+  syncComposerAction();
+}
+messageInput.dataset.originalPlaceholder = messageInput.placeholder;
 
 function renderConversations() {
   conversationList.replaceChildren();
@@ -492,10 +505,10 @@ function renderConversations() {
     }
     const button = document.createElement("button");
     button.type = "button";
-    button.className = `conversation-button${item.id === state.conversationId ? " active" : ""}`;
-    button.textContent = item.title || "Conversation";
-    button.title = item.title || "Conversation";
-    button.addEventListener("click", () => openConversation(item.id));
+    button.className = `conversation-button${item.id === state.conversationId && Boolean(item.archived) === state.archiveSelected ? " active" : ""}`;
+    button.textContent = (item.archived ? "Archive · " : "") + (item.title || "Conversation");
+    button.title = button.textContent;
+    button.addEventListener("click", () => openConversation(item.id, { archived: Boolean(item.archived) }));
     conversationList.appendChild(button);
   }
 }
@@ -507,12 +520,34 @@ async function loadConversations({ restoreLatest = false } = {}) {
     state.conversations = state.firstParty
       ? (Array.isArray(rows.conversations) ? rows.conversations : [])
       : (Array.isArray(rows) ? rows : []);
+    if (state.firstParty) {
+      const live = state.conversations;
+      try {
+        const archived = [];
+        let offset = 0;
+        // Bound the work and reject non-advancing pagination.
+        for (let page = 0; page < 101; page++) {
+          const result = await api("/dz/v2/personal/archive/conversations?offset=" + offset, { csrf: false });
+          if (!Array.isArray(result.conversations)) throw Error("Invalid archive response");
+          archived.push(...result.conversations.map(item => ({ ...item, archived: true })));
+          if (result.next_offset == null) break;
+          if (result.next_offset !== offset + 100 || page === 100) throw Error("Archive page limit reached");
+          offset = result.next_offset;
+        }
+        if (!state.session) return;
+        state.conversations = [...live, ...archived];
+      } catch (error) {
+        if (!state.session) return;
+        if (error.status === 401) return showAuth();
+        if (error.status !== 404) showToast("Archived history unavailable. Live chats are unaffected.", 5000);
+      }
+    }
     renderConversations();
     // Initial authentication populates the sidebar but otherwise leaves a
     // blank message pane. Restore the newest authorized Personal conversation.
     // Ordinary post-send refreshes must not change the current selection.
     if (restoreLatest && !state.conversationId && state.conversations.length) {
-      await openConversation(state.conversations[0].id);
+      await openConversation(state.conversations[0].id, { archived: Boolean(state.conversations[0].archived) });
     }
   } catch (error) {
     if (error instanceof ApiError && error.status === 401) return showAuth();
@@ -520,8 +555,10 @@ async function loadConversations({ restoreLatest = false } = {}) {
   }
 }
 
-async function openConversation(id) {
-  if (!id || state.sending) return;
+async function openConversation(id, { archived = false } = {}) {
+  if (!id || state.sending || (archived && !state.firstParty)) return;
+  const version = ++state.selectionVersion;
+  setArchiveMode(archived);
   if(window.dragonzpyderMesh?.isActive())window.dragonzpyderMesh.disable();
   state.conversationId = id;
   renderConversations();
@@ -530,9 +567,34 @@ async function openConversation(id) {
   messages.replaceChildren();
   const pending = appendMessage("assistant", "", { pending: true });
   try {
+    if (archived) {
+      const notice = document.createElement("p");
+      notice.className = "message-meta";
+      notice.textContent = "Read-only Operly archive. Start a new chat to use DragonZpyder.";
+      messages.replaceChildren(notice);
+      let offset = 0;
+      for (let page = 0; page < 1000; page++) {
+        const rows = await api(`/dz/v2/personal/archive/conversations/${encodeURIComponent(id)}/messages?offset=${offset}`, { csrf: false });
+        if (version !== state.selectionVersion || !state.session) return;
+        if (!Array.isArray(rows.messages) || rows.archived !== true) throw Error("Invalid archive response");
+        for (const row of rows.messages) {
+          if (!["user", "assistant"].includes(row.role)) continue;
+          // Archived content is text only, not executable or interpreted markup.
+          const node = messageNode(row.role, "", { restoring: true });
+          node.value.textContent = row.content || "";
+          node.value.style.whiteSpace = "pre-wrap";
+          messages.appendChild(node.wrap);
+        }
+        if (rows.next_offset == null) { scrollToBottom(true); return; }
+        if (rows.next_offset !== offset + 10) throw Error("Invalid archive pagination");
+        offset = rows.next_offset;
+      }
+      throw Error("Archive display limit reached");
+    }
     const rows = await api(state.firstParty
       ? `/dz/v2/personal/conversations/${encodeURIComponent(id)}/messages`
       : `/api/personal-agent/conversations/${encodeURIComponent(id)}/messages`, { csrf: false });
+    if (version !== state.selectionVersion || !state.session) return;
     messages.replaceChildren();
     const history = state.firstParty ? rows.messages : rows;
     for (const row of Array.isArray(history) ? history : []) {
@@ -542,8 +604,15 @@ async function openConversation(id) {
     renderConversations();
     scrollToBottom(true);
   } catch (error) {
-    pending.value.textContent = error.message;
-    pending.value.classList.add("error");
+    if (version !== state.selectionVersion || !state.session) return;
+    if (archived) {
+      const warning = document.createElement("p");
+      warning.textContent = "Archive could not be fully loaded.";
+      messages.appendChild(warning);
+    } else {
+      pending.value.textContent = error.message;
+      pending.value.classList.add("error");
+    }
   }
 }
 
@@ -568,6 +637,7 @@ async function submitViaClientAdapter(message, requestId) {
 }
 
 async function sendMessage(message, { companion = false, fromComposer = false } = {}) {
+  if (state.archiveSelected) { showToast("Start a new chat to continue.", 4000); return; }
   const clean = String(message || "").trim();
   if (!clean || state.sending) { if (companion) throw Error("Personal agent is busy"); return; }
   if (!state.session) { showAuth(); if (companion) throw Error("Sign in first"); return; }
@@ -955,7 +1025,9 @@ async function logout() {
   }
   window.dispatchEvent(new Event("dragonzpyder:logout"));
   setSession(null);
+  state.selectionVersion++;
   state.conversationId = null;
+  setArchiveMode(false);
   state.conversations = [];
   state.approvals = [];
   renderConversations();
@@ -974,7 +1046,7 @@ function syncComposerAction() {
   const voice = $("companion-open");
   voice.hidden = state.firstParty || pending;
   voice.disabled = state.sending || Boolean(window.dragonzpyderMesh?.isBusy?.());
-  sendButton.hidden = !pending;
+  sendButton.hidden = state.archiveSelected || !pending;
 }
 window.dragonzpyderComposerSync = syncComposerAction;
 window.addEventListener("dragonzpyder:mcp-selection", (event) => {
@@ -1054,4 +1126,4 @@ window.addEventListener("offline", () => setRuntimeStatus("error", "Offline"));
 autoSizeInput();
 bootstrapAuth();
 
-window.addEventListener("dragonzpyder:mesh-disabled",()=>{ if(state.conversationId)openConversation(state.conversationId);else showEmptyState(); });
+window.addEventListener("dragonzpyder:mesh-disabled",()=>{ if(state.conversationId)openConversation(state.conversationId, { archived: state.archiveSelected });else showEmptyState(); });
