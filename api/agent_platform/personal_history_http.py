@@ -4,8 +4,9 @@ from __future__ import annotations
 import os
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Response
 
+from identity.http_bridge import _enabled as _identity_enabled
 from .first_party_chat import _conversation_db, _owner
 
 router = APIRouter(prefix="/v2/personal/archive", tags=["personal-history"])
@@ -14,11 +15,13 @@ router = APIRouter(prefix="/v2/personal/archive", tags=["personal-history"])
 def _archive_enabled():
     if os.getenv("DRAGONZPYDER_PERSONAL_HISTORY_ARCHIVE_ENABLED") != "1":
         raise HTTPException(404, "Not found")
+    _identity_enabled()
 
 
 @router.get("/conversations")
-async def archive_conversations(request: Request, offset: int = 0):
+async def archive_conversations(request: Request, response: Response, offset: int = 0):
     _archive_enabled()
+    response.headers["Cache-Control"] = "no-store"
     owner = await _owner(request, changing=False)
     if not 0 <= offset <= 10000:
         raise HTTPException(400, "Invalid page")
