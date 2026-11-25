@@ -291,7 +291,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             public void mode(){showModes();}
             public void dictate(){MainActivity.this.dictate();}
             public void send(){MainActivity.this.send();}
-            public void stop(){api.cancelStream();setStatus("Stopping reply…");}
+            public void stop(){if(!activeRequestId.isEmpty())cancelActiveAgent();else{api.cancelStream();setStatus("Stopping reply…");}}
             public void removeAttachment(){if(!busy){attachment=null;attachmentName="";chatUi.setAttachmentLabel("");}}
             public void copy(String value){android.content.ClipboardManager cb=(android.content.ClipboardManager)getSystemService(Context.CLIPBOARD_SERVICE);cb.setPrimaryClip(android.content.ClipData.newPlainText("DragonZpyder",value));}
             public void speak(String value){if(speechReady)tts.speak(value,TextToSpeech.QUEUE_FLUSH,null,"response");else setStatus("Speech engine unavailable");}
@@ -602,7 +602,8 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                 final JSONObject body=DragonApi.object("message",prompt);if(!id.isEmpty())body.put("conversation_id",id);
                 if(!selectedMcpConnections.isEmpty())body.put("mcp_connection_ids",new JSONArray(selectedMcpConnections));
                 activeRequestId=UUID.randomUUID().toString();body.put("request_id",activeRequestId);
-                agentRequests.start(activeRequestId,()->(JSONObject)api.call("/api/personal-agent/chat",body));
+                if(api.supportsAgentStream())agentRequests.startStreaming(activeRequestId,progress->api.streamAgent(body,progress));
+                else agentRequests.start(activeRequestId,()->(JSONObject)api.call("/api/personal-agent/chat",body));
             }catch(Exception failure){activeRequestId="";pendingPrompt="";setStatus("Could not start request. Check conversation history before resending.");}
             return;
         }
@@ -617,8 +618,8 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     }
     private void handleAgentOutcome(AgentRequestViewModel.Outcome outcome){
         if(outcome==null||activeRequestId.isEmpty()||!activeRequestId.equals(outcome.id)||isDestroyed())return;
-        busy=outcome.running;if(chatUi!=null)chatUi.setBusy(busy);
-        if(outcome.running){setStatus("Working…");return;}
+        busy=outcome.running;if(chatUi!=null){chatUi.setBusy(busy);chatUi.setStreaming(outcome.running&&outcome.streaming&&!outcome.phase.isEmpty());chatUi.setPartialReply(outcome.running?outcome.partial:"");}
+        if(outcome.running){setStatus(outcome.phase.isEmpty()?"Working…":outcome.phase+(outcome.partial.isEmpty()?"":" · provisional draft"));return;}
         agentRequests.reset();
         if(outcome.failure!=null){
             if(outcome.failure instanceof DragonApi.ApiError&&((DragonApi.ApiError)outcome.failure).status==401){api.clear();clearAccountView();loginScreen("Session expired. Sign in again.");return;}
@@ -634,6 +635,23 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         String completedConversation=answer.optString("conversation_id");
         if(restorePending){interruptedRequest=false;open(completedConversation);return;}
         conversation=completedConversation;lastAnswer=answer.optString("message");append("assistant",lastAnswer);setStatus("Personal agent");
+    }
+    private boolean cancelAgentInFlight;
+    private void cancelActiveAgent(){
+        if(cancelAgentInFlight||activeRequestId.isEmpty())return;
+        final String id=activeRequestId;
+        cancelAgentInFlight=true;setStatus("Requesting server cancellation…");
+        worker.execute(()->{
+            JSONObject result=null;Exception failure=null;
+            try{result=api.cancelAgent(id);}catch(Exception error){failure=error;}
+            final JSONObject value=result;final Exception error=failure;
+            runOnUiThread(()->{
+                cancelAgentInFlight=false;
+                if(isDestroyed()||!id.equals(activeRequestId))return;
+                if(error!=null){setStatus("Cancellation not confirmed. Check request status.");return;}
+                setStatus(value.optBoolean("cancel_requested")?"Cancellation requested; earlier effects may remain.":"Server status: "+value.optString("status","unknown"));
+            });
+        });
     }
     private void showUnresolvedAgentRequest(){
         alert().setTitle("Previous request is unresolved").setMessage("The previous agent action may have run. Check its server status before sending again. Dismissing this warning does not cancel server work.")
