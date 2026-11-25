@@ -41,6 +41,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private TextView status;
     private JSONObject attachment;
     private String attachmentName="";
+    private java.io.File cameraCapture;
     private String conversation="", lastAnswer="", pendingPrompt="";
     // Non-sensitive Activity recreation state; never persist auth tokens or replay a request.
     private String restoredConversation="", restoredDraft="";
@@ -120,7 +121,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         meshMode=false;model="";modelAcceptsImages=false;restoredMesh=false;restoredModel="";restoredModelAcceptsImages=false;lastAnswer="";meshMessages=new JSONArray();history=new JSONArray();
         profileInitial="D";authEmail="";challengeId="";restoredDraft="";restoredConversation="";selectedMcpConnections.clear();
         restorePending=false;interruptedRequest=false;transcriptionModel="";queuedOAuthIntent=null;googleSignInPending=false;googleAttempt++;
-        if(mobileOAuth!=null)mobileOAuth.clear();stopMedia();if(tts!=null)tts.stop();chatUi=null;
+        if(mobileOAuth!=null)mobileOAuth.clear();discardCamera();stopMedia();if(tts!=null)tts.stop();chatUi=null;
     }
     private void authSuccess(){clearAccountView();signedIn=true;accountOpen=false;chatScreen();loadHistory(true);}
     private MobileOAuthStore mobileOAuth;
@@ -375,23 +376,53 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         alert().setTitle("Add to your message").setItems(new String[]{"Attach a file or photo","Take a photo"},(d,i)->{
             if(i==1){
                 if(!modelAcceptsImages){setStatus("The selected model does not advertise image support. Choose a vision model.");return;}
-                Intent camera=new Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE);
-                try{startActivityForResult(camera,45);}catch(android.content.ActivityNotFoundException e){setStatus("Camera app unavailable.");}
-                return;
+                launchCamera();return;
             }
             Intent picker=new Intent(Intent.ACTION_OPEN_DOCUMENT);picker.setType("*/*");picker.addCategory(Intent.CATEGORY_OPENABLE);picker.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
             try{startActivityForResult(picker,43);}catch(android.content.ActivityNotFoundException e){setStatus("No file picker available.");}
         }).setNegativeButton("Close",null).show();
     }
-    private void attachCameraPreview(Intent data){
-        Bundle extras=data.getExtras();if(extras==null){setStatus("Camera returned no image.");return;}
-        Object image=extras.get("data");if(!(image instanceof android.graphics.Bitmap)){setStatus("Camera returned no preview.");return;}
-        android.graphics.Bitmap bitmap=(android.graphics.Bitmap)image;
-        submit("Preparing photo…",()->{
-            java.io.ByteArrayOutputStream out=new java.io.ByteArrayOutputStream();
-            if(!bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG,90,out)||out.size()==0||out.size()>2500000)throw new Exception("Camera image could not be encoded");
-            return new JSONObject().put("type","image_url").put("image_url",new JSONObject().put("url","data:image/jpeg;base64,"+android.util.Base64.encodeToString(out.toByteArray(),android.util.Base64.NO_WRAP)));
-        },r->{attachment=(JSONObject)r;attachmentName="Camera photo";if(chatUi!=null)chatUi.setAttachmentLabel(attachmentName);},true);
+    private void discardCamera(){
+        if(cameraCapture!=null){
+            try{android.net.Uri uri=androidx.core.content.FileProvider.getUriForFile(this,getPackageName()+".camera",cameraCapture);revokeUriPermission(uri,Intent.FLAG_GRANT_READ_URI_PERMISSION|Intent.FLAG_GRANT_WRITE_URI_PERMISSION);}catch(Exception ignored){}
+            cameraCapture.delete();cameraCapture=null;
+        }
+    }
+    private void launchCamera(){
+        discardCamera();
+        try{
+            java.io.File directory=new java.io.File(getCacheDir(),"camera");
+            if(!directory.exists()&&!directory.mkdirs())throw new java.io.IOException("Camera cache unavailable");
+            cameraCapture=java.io.File.createTempFile("capture-",".jpg",directory);
+            android.net.Uri uri=androidx.core.content.FileProvider.getUriForFile(this,getPackageName()+".camera",cameraCapture);
+            Intent camera=new Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE);
+            camera.putExtra(android.provider.MediaStore.EXTRA_OUTPUT,uri);
+            camera.setClipData(android.content.ClipData.newRawUri("Photo",uri));
+            camera.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION|Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+            startActivityForResult(camera,45);
+        }catch(Exception failure){discardCamera();setStatus("Camera app or capture storage unavailable.");}
+    }
+    private void attachCameraCapture(){
+        final java.io.File capture=cameraCapture;
+        if(capture==null||!capture.isFile()||capture.length()==0){discardCamera();setStatus("Camera returned no photo.");return;}
+        if(busy){discardCamera();setStatus("Camera result could not be processed while another request was active.");return;}
+        submit("Preparing full-resolution photo…",()->{
+            try{
+                if(capture.length()>32L*1024*1024)throw new Exception("Camera file exceeds 32 MB");
+                android.graphics.BitmapFactory.Options options=new android.graphics.BitmapFactory.Options();options.inJustDecodeBounds=true;
+                android.graphics.BitmapFactory.decodeFile(capture.getAbsolutePath(),options);
+                if(options.outWidth<1||options.outHeight<1||options.outWidth>16000||options.outHeight>16000)throw new Exception("Unsupported photo dimensions");
+                options.inJustDecodeBounds=false;options.inSampleSize=1;while(Math.max(options.outWidth,options.outHeight)/options.inSampleSize>2048)options.inSampleSize*=2;
+                android.graphics.Bitmap bitmap=android.graphics.BitmapFactory.decodeFile(capture.getAbsolutePath(),options);
+                if(bitmap==null)throw new Exception("Camera photo could not be decoded");
+                try{
+                    java.io.ByteArrayOutputStream out=new java.io.ByteArrayOutputStream();
+                    for(int quality:new int[]{92,82,72,60}){out.reset();if(bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG,quality,out)&&out.size()>0&&out.size()<=2500000)break;}
+                    if(out.size()==0||out.size()>2500000)throw new Exception("Camera photo exceeds upload limit");
+                    return new JSONObject().put("type","image_url").put("image_url",new JSONObject().put("url","data:image/jpeg;base64,"+android.util.Base64.encodeToString(out.toByteArray(),android.util.Base64.NO_WRAP)));
+                }finally{bitmap.recycle();}
+            }finally{capture.delete();}
+        },r->{discardCamera();attachment=(JSONObject)r;attachmentName="Camera photo";if(chatUi!=null)chatUi.setAttachmentLabel(attachmentName);},true);
     }
     private void readAttachment(android.net.Uri uri){
         submit("Preparing attachment…",()->{
@@ -767,8 +798,8 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         try{startActivityForResult(intent,42);}
         catch(android.content.ActivityNotFoundException e){setStatus("No speech recognition service available.");}
     }
-    @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(request==45){if(signedIn&&meshMode&&result==RESULT_OK&&data!=null)attachCameraPreview(data);return;}if(request==44){if(signedIn&&result==RESULT_OK&&data!=null&&data.getData()!=null)transcribeAudio(data.getData());else transcriptionModel="";return;}if(request==43&&signedIn&&meshMode&&result==RESULT_OK&&data!=null&&data.getData()!=null){readAttachment(data.getData());return;}if(request==42&&signedIn&&result==RESULT_OK&&data!=null&&chatUi!=null){ArrayList<String> words=data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);if(words!=null&&!words.isEmpty()){String draft=chatUi.getDraft();chatUi.setDraft(draft+(draft.isEmpty()?"":" ")+words.get(0));}}}
+    @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(request==45){if(signedIn&&meshMode&&result==RESULT_OK)attachCameraCapture();else discardCamera();return;}if(request==44){if(signedIn&&result==RESULT_OK&&data!=null&&data.getData()!=null)transcribeAudio(data.getData());else transcriptionModel="";return;}if(request==43&&signedIn&&meshMode&&result==RESULT_OK&&data!=null&&data.getData()!=null){readAttachment(data.getData());return;}if(request==42&&signedIn&&result==RESULT_OK&&data!=null&&chatUi!=null){ArrayList<String> words=data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);if(words!=null&&!words.isEmpty()){String draft=chatUi.getDraft();chatUi.setDraft(draft+(draft.isEmpty()?"":" ")+words.get(0));}}}
     @Override public void onBackPressed(){if(busy)return;if(accountOpen){accountOpen=false;chatScreen();}else if(!signedIn&&!"login".equals(authMode))authScreen("login","");else super.onBackPressed();}
     private void signOut(){submit("Signing out…",()->{try{api.logout();return Boolean.TRUE;}catch(Exception failure){api.clear();return Boolean.FALSE;}},r->{clearAccountView();loginScreen(Boolean.TRUE.equals(r)?"":"Signed out locally. Server sign-out could not be confirmed; revoke this session from another device if needed.");},true);}
-    @Override protected void onDestroy(){stopMedia();api.cancelStream();worker.shutdownNow();if(tts!=null)tts.shutdown();super.onDestroy();}
+    @Override protected void onDestroy(){discardCamera();stopMedia();api.cancelStream();worker.shutdownNow();if(tts!=null)tts.shutdown();super.onDestroy();}
 }
