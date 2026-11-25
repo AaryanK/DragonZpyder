@@ -79,3 +79,73 @@ def compare_receipts(source: str, destination: str) -> None:
         raise IdentityMigrationConflict("Invalid reconciliation receipt")
     if not hmac.compare_digest(source, destination):
         raise IdentityMigrationConflict("Imported identity fields differ; cutover must remain blocked")
+
+
+async def generate_receipt(mode: str, approved: ApprovedInventory, key: bytes) -> str:
+    """Use the existing scoped roles; never require administrator credentials."""
+    import os
+    import asyncpg
+    from .offline_transfer import _require_migration_role
+    from .production_import import read_source_snapshot
+    from .http_bridge import _restricted_identity_role
+
+    if mode == "source":
+        dsn = os.environ["OPERLY_IDENTITY_EXPORT_DSN"]
+    elif mode == "target":
+        dsn = os.environ["DRAGONZPYDER_IDENTITY_DATABASE_URL"]
+    else:
+        raise ValueError("Unknown reconciliation mode")
+    conn = await asyncpg.connect(dsn=dsn, timeout=10, command_timeout=30)
+    try:
+        if mode == "source":
+            await _require_migration_role(conn, "dz_identity_export")
+            bundle = await read_source_snapshot(conn, approved, expected_unsupported_passwords=0)
+        else:
+            await _restricted_identity_role(conn)
+            bundle = await read_pending_target(conn, approved)
+        return snapshot_receipt(bundle, approved, key)
+    finally:
+        await conn.close()
+
+
+def main():
+    """Operator CLI: aggregate receipts only, never print individual records."""
+    import argparse
+    import asyncio
+    import getpass
+    import re
+    import warnings
+
+    parser = argparse.ArgumentParser(description="Read-only pending identity reconciliation")
+    sub = parser.add_subparsers(dest="mode", required=True)
+    for mode in ("source", "target"):
+        p = sub.add_parser(mode)
+        p.add_argument("--expected-accounts", type=int, required=True)
+        p.add_argument("--expected-google-links", type=int, required=True)
+        p.add_argument("--approve-read-only", action="store_true", required=True)
+    p = sub.add_parser("compare")
+    p.add_argument("source_receipt")
+    p.add_argument("target_receipt")
+    args = parser.parse_args()
+    try:
+        if args.mode == "compare":
+            compare_receipts(args.source_receipt, args.target_receipt)
+            print("IDENTITY_RECONCILIATION_MATCH")
+            return
+        approved = ApprovedInventory(args.expected_accounts, args.expected_google_links)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", getpass.GetPassWarning)
+            key_text = getpass.getpass("Independent reconciliation key (64 hex characters): ")
+        if not re.fullmatch(r"[0-9a-fA-F]{64}", key_text):
+            raise ValueError("Invalid key format")
+        receipt = asyncio.run(generate_receipt(args.mode, approved, bytes.fromhex(key_text)))
+        print("IDENTITY_RECONCILIATION_RECEIPT:", receipt)
+        print("IDENTITY_RECONCILIATION_READ_COMPLETE")
+    except Exception:
+        # Database errors, connection details and row values are never printed.
+        print("IDENTITY_RECONCILIATION_FAILED")
+        raise SystemExit(1) from None
+
+
+if __name__ == "__main__":
+    main()
