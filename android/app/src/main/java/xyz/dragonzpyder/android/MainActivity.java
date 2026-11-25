@@ -109,7 +109,14 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private boolean emailValid(String email){if(!android.util.Patterns.EMAIL_ADDRESS.matcher(email).matches()){setStatus("Enter a valid email address.");return false;}return true;}
     private boolean strong(String p){if(p.length()<12){setStatus("Use at least 12 characters for your password.");return false;}return true;}
     private boolean six(String code){if(!code.matches("[0-9]{6}")){setStatus("Enter the six-digit code.");return false;}return true;}
-    private void authSuccess(){restorePending=false;restoredDraft="";restoredConversation="";authEmail="";challengeId="";signedIn=true;accountOpen=false;chatScreen();loadHistory(true);}
+    private void clearAccountView(){
+        conversation="";pendingPrompt="";attachment=null;attachmentName="";transcript.clear();
+        meshMode=false;model="";lastAnswer="";meshMessages=new JSONArray();history=new JSONArray();
+        profileInitial="D";authEmail="";challengeId="";restoredDraft="";restoredConversation="";
+        restorePending=false;interruptedRequest=false;transcriptionModel="";queuedOAuthIntent=null;
+        if(mobileOAuth!=null)mobileOAuth.clear();stopMedia();if(tts!=null)tts.stop();chatUi=null;
+    }
+    private void authSuccess(){clearAccountView();signedIn=true;accountOpen=false;chatScreen();loadHistory(true);}
     private MobileOAuthStore mobileOAuth;
     private Intent queuedOAuthIntent;
     private LinearLayout providerButton(String symbol,String title,int identityColor,Runnable action){
@@ -165,7 +172,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         },true);
     }
     private void processOAuthIntent(Intent intent){
-        if(intent==null||intent.getData()==null)return;
+        if(intent==null||intent.getData()==null||signedIn||isDestroyed())return;
         android.net.Uri uri=intent.getData();
         if(!"dragonzpyder".equals(uri.getScheme())||!"auth".equals(uri.getHost())||
             !"/discord".equals(uri.getPath()))return;
@@ -491,8 +498,8 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                     setStatus(signedIn&&!accountOpen?(meshMode?"AI Mesh · "+model:"Personal agent"):"");
                     done.accept(value);
                 }catch(Exception e){
-                    if(e instanceof DragonApi.ApiError && ((DragonApi.ApiError)e).status==401 && signedIn){api.clear();pendingPrompt="";attachment=null;attachmentName="";transcript.clear();conversation="";meshMessages=new JSONArray();meshMode=false;loginScreen("Session expired. Sign in again.");}
-                    else if(report){boolean hadPartial=chatUi!=null&&!chatUi.getPartialReply().isEmpty();if(hadPartial){append("assistant",chatUi.getPartialReply()+"\n\n[Reply incomplete]");chatUi.setPartialReply("");}if(!pendingPrompt.isEmpty()&&chatUi!=null){if(chatUi.getDraft().isEmpty()&&!hadPartial)chatUi.setDraft(pendingPrompt);append("system","Request did not return a confirmed completion. Check server history or tasks before resending an agent action.");pendingPrompt="";}if(restorePending)applyRestoredDraft();setStatus(e.getMessage()==null?"Request failed":e.getMessage());}
+                    if(e instanceof DragonApi.ApiError && ((DragonApi.ApiError)e).status==401 && signedIn){api.clear();clearAccountView();loginScreen("Session expired. Sign in again.");}
+                    else if(report){boolean hadPartial=chatUi!=null&&!chatUi.getPartialReply().isEmpty();if(hadPartial){append("assistant",chatUi.getPartialReply()+"\n\n[Reply incomplete]");chatUi.setPartialReply("");}if(!pendingPrompt.isEmpty()&&chatUi!=null){if(meshMode&&!hadPartial&&chatUi.getDraft().isEmpty()){chatUi.setDraft(pendingPrompt);if(!transcript.isEmpty()&&"user".equals(transcript.get(transcript.size()-1)[0])){transcript.remove(transcript.size()-1);chatUi.clearMessages();for(String[] item:transcript)chatUi.append(item[0],item[1]);}}append("system","Request did not return a confirmed completion. Check server history or tasks before resending an agent action.");pendingPrompt="";}if(restorePending)applyRestoredDraft();setStatus(e.getMessage()==null?"Request failed":e.getMessage());}
                 }
                 if(!busy&&queuedOAuthIntent!=null){Intent oauth=queuedOAuthIntent;queuedOAuthIntent=null;processOAuthIntent(oauth);}
             });
@@ -540,12 +547,12 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                     if(item!=null&&restoredConversation.equals(item.optString("id"))){selected=restoredConversation;break;}
                 }
             }
-            if(selected.isEmpty()&&history.length()>0){
+            if(!restorePending&&selected.isEmpty()&&history.length()>0){
                 JSONObject first=history.optJSONObject(0);
                 if(first!=null)selected=first.optString("id");
             }
             if(!selected.isEmpty())open(selected);
-            else applyRestoredDraft();
+            else {boolean missing=restorePending&&!restoredConversation.isEmpty();applyRestoredDraft();if(missing)setStatus("Previous conversation unavailable. Draft retained in a new chat.");}
         },true);
     }
     private void applyRestoredDraft(){
@@ -595,7 +602,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                 String prefix=source.equals("kernel")?"/api/kernel/personal/approvals":"/api/personal-tools/approvals";
                 JSONObject payload=(JSONObject)api.call(prefix+"?status=pending",null);
                 JSONArray rows=payload.optJSONArray("approvals");
-                if(rows!=null)for(int i=0;i<rows.length();i++){JSONObject item=rows.optJSONObject(i);if(item!=null&&!item.optString("id").isEmpty()){item.put("native_source",source);all.put(item.optString("id"),item);}}
+                if(rows!=null)for(int i=0;i<rows.length();i++){JSONObject item=rows.optJSONObject(i);if(item!=null&&!item.optString("id").isEmpty()){item.put("native_source",source);all.put(source+":"+item.optString("id"),item);}}
             }return new JSONArray(all.values());
         },r->renderApprovals((JSONArray)r),true);
     }
@@ -619,15 +626,17 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         alert().setTitle(approved?"Approve exact action?":"Reject this action?").setMessage(item.optString("capability_id","Personal action")+"\n\n"+item.optString("arguments","{}")).setNegativeButton("Cancel",null).setPositiveButton(approved?"Approve and execute":"Reject",(d,i)->{
             dialog.dismiss();submit(approved?"Executing approved action…":"Rejecting action…",()->{
                 String id=DragonApi.segment(item.getString("id"));boolean kernel="kernel".equals(item.optString("native_source"));
+                if(approved&&!kernel&&(item.optString("capability_id").isEmpty()||item.optString("request_id").isEmpty()||item.optJSONObject("arguments")==null))throw new Exception("Approval is missing its original execution contract. Refresh and review again.");
                 String root=kernel?"/api/kernel/personal/approvals/":"/api/personal-tools/approvals/";
                 Object decision=api.call(root+id+"/decision",DragonApi.object("approved",approved));
                 if(!approved)return DragonApi.object("decision","rejected");
                 if(kernel)return api.call(root+id+"/execute",new JSONObject());
                 JSONObject contract=decision instanceof JSONObject?(JSONObject)decision:item;
-                String capability=contract.optString("capability_id",item.optString("capability_id"));if(capability.isEmpty())throw new Exception("Approved action missing capability contract; check execution status.");
-                JSONObject arguments=contract.optJSONObject("arguments");if(arguments==null)arguments=item.optJSONObject("arguments");if(arguments==null)arguments=new JSONObject();
-                JSONObject body=new JSONObject().put("goal","").put("arguments",arguments).put("request_id",contract.optString("request_id",item.optString("request_id",UUID.randomUUID().toString()))).put("approval_id",contract.optString("id",item.getString("id")));
-                String conversation=contract.optString("conversation_id",item.optString("conversation_id"));if(!conversation.isEmpty())body.put("conversation_id",conversation);
+                String capability=item.getString("capability_id");
+                if(!capability.equals(contract.optString("capability_id",capability))||!item.getString("request_id").equals(contract.optString("request_id",item.getString("request_id")))||!item.getString("id").equals(contract.optString("id",item.getString("id"))))throw new Exception("Approval contract changed; review server status before continuing.");
+                JSONObject arguments=item.getJSONObject("arguments");
+                JSONObject body=new JSONObject().put("goal","").put("arguments",arguments).put("request_id",item.getString("request_id")).put("approval_id",item.getString("id"));
+                String conversation=item.optString("conversation_id");if(!conversation.isEmpty())body.put("conversation_id",conversation);
                 return api.call("/api/personal-tools/"+DragonApi.segment(capability)+"/execute",body);
             },result->{
                 JSONObject value=result instanceof JSONObject?(JSONObject)result:new JSONObject();
@@ -672,8 +681,8 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     }
     private JSONObject workflowRead(String id) throws Exception {
         JSONObject result=(JSONObject)api.call("/api/personal-tools/"+DragonApi.segment(id)+"/execute",new JSONObject().put("arguments",DragonApi.object("limit",100)).put("goal","View my Personal workflow activity"));
-        if(!result.optBoolean("done",true)||"failed".equals(result.optString("status")))throw new Exception("Unable to read workflow record.");
-        JSONObject payload=result.optJSONObject("result");if(payload==null)return new JSONObject();JSONObject value=payload.optJSONObject("value");return value==null?payload:value;
+        if(!result.optBoolean("done",false)||"failed".equals(result.optString("status")))throw new Exception("Unable to read workflow record.");
+        JSONObject payload=result.optJSONObject("result");if(payload==null)throw new Exception("Workflow response was incomplete.");JSONObject value=payload.optJSONObject("value");return value==null?payload:value;
     }
     private void showTasks(){
         submit("Loading Personal workflows…",()->{
@@ -683,9 +692,9 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             JSONObject definitions=workflowRead("workflow.list");JSONObject activity=ids.contains("workflow.run.list")?workflowRead("workflow.run.list"):new JSONObject();
             return new JSONObject().put("definitions",definitions).put("activity",activity);
         },r->{JSONObject data=(JSONObject)r;JSONArray workflows=data.getJSONObject("definitions").optJSONArray("workflows");JSONArray runs=data.getJSONObject("activity").optJSONArray("runs");
-            StringBuilder content=new StringBuilder("WORKFLOWS\n");if(workflows==null||workflows.length()==0)content.append("No workflows returned.\n");
+            StringBuilder content=new StringBuilder("WORKFLOWS\n");if(workflows==null)content.append("Workflow records unavailable.\n");else if(workflows.length()==0)content.append("No workflows returned.\n");
             else for(int i=0;i<workflows.length();i++){JSONObject w=workflows.optJSONObject(i);if(w!=null)content.append(w.optString("name",w.optString("id"))).append(" · ").append(w.optString("status",w.optBoolean("enabled")?"Enabled":"Unknown")).append("\n");}
-            content.append("\nRECENT RUNS\n");if(runs==null||runs.length()==0)content.append("No runs returned.");else for(int i=0;i<runs.length();i++){JSONObject run=runs.optJSONObject(i);if(run!=null)content.append(run.optString("workflow_name",run.optString("workflow_id","Run"))).append(" · ").append(run.optString("status","Unknown")).append("\n");}
+            content.append("\nRECENT RUNS\n");if(runs==null)content.append("Run records unavailable.");else if(runs.length()==0)content.append("No runs returned.");else for(int i=0;i<runs.length();i++){JSONObject run=runs.optJSONObject(i);if(run!=null)content.append(run.optString("workflow_name",run.optString("workflow_id","Run"))).append(" · ").append(run.optString("status","Unknown")).append("\n");}
             alert().setTitle("Personal tasks").setMessage(content.toString()).setPositiveButton("Close",null).show();
         },true);
     }
@@ -698,6 +707,6 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     }
     @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(request==45){if(signedIn&&meshMode&&result==RESULT_OK&&data!=null)attachCameraPreview(data);return;}if(request==44){if(signedIn&&result==RESULT_OK&&data!=null&&data.getData()!=null)transcribeAudio(data.getData());else transcriptionModel="";return;}if(request==43&&signedIn&&meshMode&&result==RESULT_OK&&data!=null&&data.getData()!=null){readAttachment(data.getData());return;}if(request==42&&signedIn&&result==RESULT_OK&&data!=null&&chatUi!=null){ArrayList<String> words=data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);if(words!=null&&!words.isEmpty()){String draft=chatUi.getDraft();chatUi.setDraft(draft+(draft.isEmpty()?"":" ")+words.get(0));}}}
     @Override public void onBackPressed(){if(busy)return;if(accountOpen){accountOpen=false;chatScreen();}else if(!signedIn&&!"login".equals(authMode))authScreen("login","");else super.onBackPressed();}
-    private void signOut(){submit("Signing out…",()->{api.logout();return null;},r->{conversation="";pendingPrompt="";attachment=null;attachmentName="";transcript.clear();meshMode=false;lastAnswer="";meshMessages=new JSONArray();history=new JSONArray();profileInitial="D";authEmail="";challengeId="";stopMedia();transcriptionModel="";if(tts!=null)tts.stop();chatUi=null;loginScreen("");},true);}
+    private void signOut(){submit("Signing out…",()->{try{api.logout();return Boolean.TRUE;}catch(Exception failure){api.clear();return Boolean.FALSE;}},r->{clearAccountView();loginScreen(Boolean.TRUE.equals(r)?"":"Signed out locally. Server sign-out could not be confirmed; revoke this session from another device if needed.");},true);}
     @Override protected void onDestroy(){stopMedia();api.cancelStream();worker.shutdownNow();if(tts!=null)tts.shutdown();super.onDestroy();}
 }
