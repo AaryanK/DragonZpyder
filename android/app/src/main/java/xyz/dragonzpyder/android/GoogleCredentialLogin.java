@@ -10,7 +10,11 @@ import androidx.credentials.CustomCredential;
 import androidx.credentials.GetCredentialRequest;
 import androidx.credentials.GetCredentialResponse;
 import androidx.credentials.exceptions.GetCredentialException;
-import com.google.android.libraries.identity.googleid.GetGoogleIdOption;
+import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption;
+import androidx.credentials.exceptions.GetCredentialCancellationException;
+import androidx.credentials.exceptions.GetCredentialProviderConfigurationException;
+import androidx.credentials.exceptions.NoCredentialException;
+import androidx.credentials.exceptions.GetCredentialUnsupportedException;
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential;
 import java.util.concurrent.Executor;
 import java.util.function.Consumer;
@@ -24,9 +28,7 @@ final class GoogleCredentialLogin {
             error.accept("Google login is not configured.");return;
         }
         try{
-            GetGoogleIdOption option=new GetGoogleIdOption.Builder()
-                .setFilterByAuthorizedAccounts(false)
-                .setServerClientId(webClientId)
+            GetSignInWithGoogleOption option=new GetSignInWithGoogleOption.Builder(webClientId)
                 .setNonce(nonce)
                 .build();
             GetCredentialRequest request=new GetCredentialRequest.Builder()
@@ -50,7 +52,11 @@ final class GoogleCredentialLogin {
                         }
                     }
                     @Override public void onError(@NonNull GetCredentialException exception){
-                        error.accept("Google sign-in was cancelled or is unavailable on this device.");
+                        if(exception instanceof GetCredentialCancellationException)error.accept("Google sign-in cancelled.");
+                        else if(exception instanceof NoCredentialException)error.accept("No eligible Google account found. A school or managed account may have administrator restrictions.");
+                        else if(exception instanceof GetCredentialProviderConfigurationException)error.accept("Google credential provider is not configured. Check Google Play services and the Android OAuth client registration.");
+                        else if(exception instanceof GetCredentialUnsupportedException)error.accept("This device does not support the configured Google credential provider.");
+                        else error.accept("Google OAuth sign-in failed. Verify the registered package, signing certificate and account policy. No account was changed.");
                     }
                 }
             );
