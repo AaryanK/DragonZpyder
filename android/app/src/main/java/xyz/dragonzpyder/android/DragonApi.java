@@ -24,7 +24,7 @@ final class DragonApi {
         Object enabled=route.opt("web_cutover_enabled");
         if(!(enabled instanceof Boolean))throw new IOException("Runtime mode was not confirmed by DragonZpyder");
         boolean nativeMode=(Boolean)enabled;
-        if(!modeKnown||nativeMode!=firstParty){cookies.clear();cookies=new SessionCookies(nativeMode);authenticated=false;bootstrapCsrf="";googleState="";firstParty=nativeMode;}
+        if(!modeKnown||nativeMode!=firstParty){cookies.clear();cookies=new SessionCookies(nativeMode);authenticated=false;requestBinding="";bootstrapCsrf="";googleState="";firstParty=nativeMode;}
         requestLedger=false;agentStream=false;voiceEnabled=false;
         if(nativeMode){try{JSONObject capabilities=(JSONObject)request("/dz/v2/personal/status","GET",null,true);requestLedger=capabilities.optBoolean("request_ledger_enabled",false);agentStream=capabilities.optBoolean("agent_stream_enabled",false);voiceEnabled=capabilities.optBoolean("voice_enabled",false);}catch(Exception unavailable){/* Keep first-party mode; never downgrade identity. */}}
         modeKnown=true;
@@ -42,7 +42,24 @@ final class DragonApi {
         try{if(firstParty){if(!((JSONObject)call("/dz/v2/personal/session",null)).optBoolean("authenticated")){clear();return false;}}else{JSONArray sessions=(JSONArray)call("/api/auth/sessions",null);if(!personal(sessions)){clear();return false;}}authenticated=true;persist();return true;}
         catch(ApiError failure){if(failure.status==401||failure.status==403){clear();return false;}throw failure;}
     }
-    private void persist(){if(authenticated&&store!=null)store.save(cookies.snapshot());}
+    private volatile String requestBinding="";
+    String pendingRequestBinding(){return requestBinding;}
+    private void persist(){
+        if(!authenticated)return;
+        requestBinding="";
+        if(firstParty){
+            String session=cookies.value("__Host-dz_identity");
+            if(!session.isEmpty()){
+                try{
+                    byte[] digest=java.security.MessageDigest.getInstance("SHA-256").digest(("dz-native-request-v1:"+session).getBytes(StandardCharsets.UTF_8));
+                    StringBuilder hex=new StringBuilder(64);
+                    for(byte value:digest)hex.append(String.format(Locale.ROOT,"%02x",value&255));
+                    requestBinding=hex.toString();
+                }catch(java.security.NoSuchAlgorithmException impossible){throw new IllegalStateException("SHA-256 unavailable",impossible);}
+            }
+        }
+        if(store!=null)store.save(cookies.snapshot());
+    }
     static final class ApiError extends IOException {
         final int status; final String code;
         ApiError(int status, String message) { this(status,"HTTP_"+status,message); }
@@ -323,5 +340,5 @@ final class DragonApi {
         ensureMode();call(firstParty?"/dz/identity/v1/logout":"/api/auth/logout", new JSONObject());
         clear();
     }
-    synchronized void clear() { authenticated=false;cookies.clear();bootstrapCsrf="";googleState="";if(store!=null)store.clear(); }
+    synchronized void clear() { authenticated=false;requestBinding="";cookies.clear();bootstrapCsrf="";googleState="";if(store!=null)store.clear(); }
 }
