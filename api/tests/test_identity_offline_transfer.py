@@ -154,3 +154,96 @@ async def test_encrypted_package_to_pending_disposable_postgres(monkeypatch):
     finally:
         await tx.rollback()
         await conn.close()
+
+
+def _manual_sql(name):
+    sql = (Path(__file__).resolve().parents[1] / "identity" / name).read_text("utf-8")
+    return sql.replace("BEGIN;\nSET LOCAL", "SET LOCAL", 1).removesuffix("COMMIT;\n")
+
+
+@pytest.mark.asyncio
+async def test_offline_roles_on_disposable_postgres(monkeypatch):
+    import asyncpg
+    from urllib.parse import urlsplit
+    from identity.offline_transfer import _require_migration_role
+    from identity.production_import import import_pending_production
+
+    dsn = os.getenv("DRAGONZPYDER_IDENTITY_TEST_DSN", "")
+    if not dsn:
+        pytest.skip("No disposable identity_test PostgreSQL")
+    if urlsplit(dsn).path != "/identity_test":
+        raise RuntimeError("Never run against non-disposable database")
+    conn = await asyncpg.connect(dsn)
+    users, links = sample()
+    inventory = ApprovedInventory(1, 1)
+    uid = users[0]["id"]
+    tx = conn.transaction()
+    await tx.start()
+    try:
+        await conn.execute("""
+            CREATE TABLE public.app_users (
+                id text PRIMARY KEY, email text, password_hash text, display_name text,
+                email_verified_at timestamptz, active boolean, unrelated_secret text
+            );
+            CREATE TABLE public.auth_identities (
+                user_id text, provider text, provider_subject text
+            );
+            CREATE TABLE public.unrelated_data (value text);
+        """)
+        await conn.execute("""
+            INSERT INTO public.app_users VALUES ($1,'synthetic@example.test',NULL,
+                'Synthetic',$2,TRUE,'must-not-export')
+        """, uid, users[0]["email_verified_at"])
+        await conn.execute("INSERT INTO public.auth_identities VALUES ($1,'google','synthetic-subject')", uid)
+        await conn.execute(_manual_sql("schema_export_role_manual.sql"))
+        await conn.execute("SET SESSION AUTHORIZATION dz_identity_export")
+        await _require_migration_role(conn, "dz_identity_export")
+        # read_source_snapshot starts its own repeatable-read read-only transaction;
+        # here the enclosing transaction is for DDL rollback, so test the exact
+        # column grants directly, and use separate synthetic source tests for that reader.
+        assert await conn.fetchval("SELECT id FROM public.app_users") == uid
+        for sql in ("SELECT unrelated_secret FROM public.app_users",
+                    "SELECT value FROM public.unrelated_data",
+                    "UPDATE public.app_users SET active=FALSE"):
+            with pytest.raises(asyncpg.InsufficientPrivilegeError):
+                async with conn.transaction():
+                    await conn.execute(sql)
+        await conn.execute("RESET SESSION AUTHORIZATION")
+    finally:
+        await conn.execute("RESET SESSION AUTHORIZATION")
+        await tx.rollback()
+
+    tx = conn.transaction()
+    await tx.start()
+    try:
+        await conn.execute(_manual_sql("schema_bootstrap_manual.sql"))
+        await conn.execute(_manual_sql("schema_role_manual.sql"))
+        await conn.execute(_manual_sql("schema_migration_role_manual.sql"))
+        with pytest.raises(PermissionError):
+            await _require_migration_role(conn, "dz_identity_migration")
+        await conn.execute("SET SESSION AUTHORIZATION dz_identity_migration")
+        await _require_migration_role(conn, "dz_identity_migration")
+        monkeypatch.setenv("DRAGONZPYDER_IDENTITY_PRODUCTION_IMPORT", "1")
+        bundle = prepare_snapshot(users, links, [])
+        result = await import_pending_production(conn, bundle, inventory, operator_approved=True)
+        assert result == {"accounts": 1, "provider_links": 1, "active_accounts": 0}
+        for sql in ("SELECT password_hash FROM public.identity_accounts",
+                    "UPDATE public.identity_accounts SET status='active'",
+                    "DELETE FROM public.identity_accounts",
+                    "UPDATE public.identity_oauth_clients SET enabled=TRUE"):
+            with pytest.raises(asyncpg.InsufficientPrivilegeError):
+                async with conn.transaction():
+                    await conn.execute(sql)
+        with pytest.raises(asyncpg.InsufficientPrivilegeError):
+            async with conn.transaction():
+                await conn.execute("""
+                    INSERT INTO public.identity_accounts
+                        (subject,source_operly_user_id,identity_origin,email,display_name,source_active,status)
+                    VALUES ('bad',NULL,'native_google','bad@example.test','Bad',TRUE,'active')
+                """)
+        await conn.execute("RESET SESSION AUTHORIZATION")
+        assert await conn.fetchval("SELECT subject FROM public.identity_accounts") == uid
+    finally:
+        await conn.execute("RESET SESSION AUTHORIZATION")
+        await tx.rollback()
+        await conn.close()
