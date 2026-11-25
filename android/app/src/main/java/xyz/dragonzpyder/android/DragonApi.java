@@ -12,7 +12,8 @@ final class DragonApi {
     private SessionCookies cookies = new SessionCookies();
     private volatile boolean firstParty;
     private volatile boolean modeKnown;
-    private volatile boolean requestLedger,agentStream;
+    private volatile boolean requestLedger,agentStream,voiceEnabled;
+    boolean supportsVoice(){return firstParty&&voiceEnabled;}
     boolean supportsRequestLedger(){return firstParty&&requestLedger;}
     boolean supportsAgentStream(){return supportsRequestLedger()&&agentStream;}
     private String googleState="";
@@ -24,8 +25,8 @@ final class DragonApi {
         if(!(enabled instanceof Boolean))throw new IOException("Runtime mode was not confirmed by DragonZpyder");
         boolean nativeMode=(Boolean)enabled;
         if(!modeKnown||nativeMode!=firstParty){cookies.clear();cookies=new SessionCookies(nativeMode);authenticated=false;bootstrapCsrf="";googleState="";firstParty=nativeMode;}
-        requestLedger=false;agentStream=false;
-        if(nativeMode){try{JSONObject capabilities=(JSONObject)request("/dz/v2/personal/status","GET",null,true);requestLedger=capabilities.optBoolean("request_ledger_enabled",false);agentStream=capabilities.optBoolean("agent_stream_enabled",false);}catch(Exception unavailable){/* Keep first-party mode; never downgrade identity. */}}
+        requestLedger=false;agentStream=false;voiceEnabled=false;
+        if(nativeMode){try{JSONObject capabilities=(JSONObject)request("/dz/v2/personal/status","GET",null,true);requestLedger=capabilities.optBoolean("request_ledger_enabled",false);agentStream=capabilities.optBoolean("agent_stream_enabled",false);voiceEnabled=capabilities.optBoolean("voice_enabled",false);}catch(Exception unavailable){/* Keep first-party mode; never downgrade identity. */}}
         modeKnown=true;
     }
     private void ensureMode() throws Exception {if(!modeKnown)discoverMode();}
