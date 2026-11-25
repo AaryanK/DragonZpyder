@@ -52,7 +52,12 @@ def _check_inventory(bundle: ImportBundle, approved: ApprovedInventory):
     for account in bundle.accounts:
         _canonical_uuid(account.subject)
 
-async def read_source_snapshot(connection, approved: ApprovedInventory) -> ImportBundle:
+async def read_source_snapshot(connection, approved: ApprovedInventory, *,
+                               expected_unsupported_passwords: int = 0) -> ImportBundle:
+    # Explicit count approval is required before omitting incompatible hashes.
+    # Affected accounts remain pending; activation requires separate recovery proof.
+    if not 0 <= expected_unsupported_passwords <= approved.accounts:
+        raise IdentityMigrationConflict("Invalid unsupported password inventory")
     # A read-only transaction forbids writes even if an operator supplied a
     # credential with more privileges. Use a read-only export role nonetheless.
     async with connection.transaction(isolation="repeatable_read", readonly=True):
@@ -73,11 +78,21 @@ async def read_source_snapshot(connection, approved: ApprovedInventory) -> Impor
             ORDER BY user_id,provider_subject
         """)
         users = []
+        unsupported = 0
         for row in source_users:
             user = dict(row)
             _canonical_uuid(user["id"])
             user["email_verified_at"] = _utc(user["email_verified_at"])
+            password_hash = user.get("password_hash")
+            if password_hash is not None:
+                if not isinstance(password_hash, str) or not 1 <= len(password_hash) <= 2048:
+                    raise IdentityMigrationConflict("Malformed source password hash")
+                if not password_hash.startswith(("$argon2id$", "pbkdf2_sha256$")):
+                    unsupported += 1
+                    user["password_hash"] = None
             users.append(user)
+        if unsupported != expected_unsupported_passwords:
+            raise IdentityMigrationConflict("Unsupported password inventory changed; review recovery before export")
         # External identities are channel bindings, not first-party login
         # credentials. Discord login links are also deliberately deferred.
         bundle = prepare_snapshot(users, [dict(r) for r in auth], [])
