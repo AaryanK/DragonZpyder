@@ -35,6 +35,7 @@ class LedgerDB:
 
 @pytest.fixture
 def ledger(monkeypatch):
+    monkeypatch.setenv("DRAGONZPYDER_FIRST_PARTY_REQUEST_LEDGER_ENABLED", "1")
     db = LedgerDB()
     @asynccontextmanager
     async def connection():
