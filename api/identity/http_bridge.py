@@ -76,6 +76,21 @@ async def _restricted_identity_role(conn):
           AND NOT has_table_privilege(current_user,'public.identity_accounts','DELETE,TRUNCATE')
           AND NOT has_table_privilege(current_user,'public.identity_provider_links','DELETE,TRUNCATE')
           AND NOT has_any_column_privilege(current_user,'public.identity_provider_links','UPDATE')
+          AND NOT EXISTS (
+              SELECT 1 FROM pg_attribute a
+              WHERE a.attrelid=to_regclass('public.identity_accounts')
+                AND a.attname='import_activation_receipt_id' AND NOT a.attisdropped
+                AND (has_column_privilege(current_user,a.attrelid,a.attnum,'UPDATE')
+                     OR has_column_privilege(current_user,a.attrelid,a.attnum,'INSERT')))
+          AND NOT EXISTS (
+              SELECT 1 FROM pg_class c
+              WHERE c.oid=to_regclass('public.identity_import_activation_receipts')
+                AND (has_any_column_privilege(current_user,c.oid,'INSERT,UPDATE')
+                     OR has_table_privilege(current_user,c.oid,'DELETE,TRUNCATE')))
+          AND NOT EXISTS (
+              SELECT 1 FROM pg_proc p
+              WHERE p.oid=to_regprocedure('public.approve_imported_identity(text,uuid,text,timestamptz)')
+                AND has_function_privilege(current_user,p.oid,'EXECUTE'))
           AND (SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
                WHERE n.nspname='public' AND c.relname IN ('identity_accounts','identity_provider_links')
                  AND c.relrowsecurity)=2
