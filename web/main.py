@@ -82,7 +82,15 @@ async def proxy(request: Request, destination: str, rewrite_origin=False, upstre
     if rewrite_origin:
         headers["origin"] = destination
         headers["referer"] = destination + "/"
-    body = await request.body()
+    if upstream_path == "/v2/personal/files" and request.method == "POST":
+        body = bytearray()
+        async for chunk in request.stream():
+            if len(body)+len(chunk)>10*1024*1024:
+                return JSONResponse({"detail":"Attachment exceeds 10 MiB"},status_code=413)
+            body.extend(chunk)
+        body=bytes(body)
+    else:
+        body = await request.body()
     if upstream_path == "/v2/personal/chat/stream":
         client = request.app.state.http
         try:
