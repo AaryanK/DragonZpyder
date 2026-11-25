@@ -9,6 +9,12 @@ background job, login flag, or application-level migration privilege is needed.
 - Review the source schema, read-only export role and fresh aggregate counts (all accounts,
   explicit Google auth rows, incompatible non-null password hashes). Review duplicate/orphan
   provider subjects, invalid emails/UUIDs and unsupported credential recovery before approval.
+- Use the reviewed manual role scripts in the respective databases:
+  `api/identity/schema_export_role_manual.sql` (Operly, role `dz_identity_export`)
+  and `api/identity/schema_migration_role_manual.sql` (DragonZpyder, role `dz_identity_migration`).
+  These start NOLOGIN; an operator sets distinct SCRAM passwords privately and enables LOGIN
+  only for the migration window. The CLI rejects admin, application roles and unexpected
+  effective grants. Do not change global Operly permissions to make the check pass.
 - Use a dedicated operator process in each respective private network, at the same reviewed
   commit. Do not install privileged DSNs in long-lived web API/worker environment variables.
   Source DSN is OPERLY_IDENTITY_EXPORT_DSN; destination DSN is
@@ -52,6 +58,9 @@ DRAGONZPYDER_IDENTITY_PRODUCTION_IMPORT=1 python -m identity.offline_transfer im
 The CLI refuses mismatched digest, wrong key, expired package, changed inventory and
 nonempty destination. It reuses the existing atomic pending-only import. Expect exactly
 A accounts, G links, zero active accounts. Existing source records remain intact.
+Immediately disable LOGIN for both temporary roles and terminate any remaining sessions
+using the verified role names. Review role dependencies and revoke the temporary grants/policies
+before dropping either role; never use a broad DROP OWNED against an unverified database.
 Remove transfer files and retire the one-use transfer key according to your security policy
 after retaining the required protected backup and aggregate audit receipt.
 
