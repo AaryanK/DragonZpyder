@@ -1,11 +1,11 @@
 const $ = (id) => document.getElementById(id);
-const panels = ["login","signup","verify","forgot","reset","profile","migration"];
+const panels = ["login","signup","verify","forgot","reset","profile","migration","migration-recovery"];
 let mode = "login", bootstrap = null, challenge = null, processing = false, initializedGoogle = false;
 let nativeMode = false, googleRenderedMode = null, nativeGoogleState = null;
-let migrationEnabled = false;
+let migrationEnabled = false, recoveryEnabled = false, recoveryEmail = null;
 const messageBox = $("account-message");
 function report(message,isError=false){messageBox.textContent=String(message||"");messageBox.classList.toggle("error",isError);messageBox.hidden=!message;}
-function show(next){if(!panels.includes(next))next="login";if(next==="migration"&&!migrationEnabled)next="login";if(nativeMode&&!["login","signup","profile","migration"].includes(next))next="login";mode=next;report("");panels.forEach(name=>{$(name+"-panel").hidden=name!==next});$("mode-tabs").hidden=!["login","signup"].includes(next);document.querySelectorAll("[data-mode]").forEach(el=>el.classList.toggle("selected",el.dataset.mode===next));if(next==="login"||(nativeMode&&next==="signup")||next==="migration")loadGoogle().catch(()=>{});}
+function show(next){if(!panels.includes(next))next="login";if(next==="migration"&&!migrationEnabled)next="login";if(next==="migration-recovery"&&!recoveryEnabled)next="login";if(nativeMode&&!["login","signup","profile","migration","migration-recovery"].includes(next))next="login";mode=next;report("");panels.forEach(name=>{$(name+"-panel").hidden=name!==next});$("mode-tabs").hidden=!["login","signup"].includes(next);document.querySelectorAll("[data-mode]").forEach(el=>el.classList.toggle("selected",el.dataset.mode===next));if(next==="login"||(nativeMode&&next==="signup")||next==="migration")loadGoogle().catch(()=>{});}
 function cookie(name){const part=document.cookie.split(";").map(v=>v.trim()).find(v=>v.startsWith(name+"="));return part?decodeURIComponent(part.slice(name.length+1)):"";}
 function csrf(){return nativeMode?cookie("__Host-dz_csrf"):(cookie("__Host-operly_csrf")||cookie("operly_csrf")||bootstrap?.csrf_token||"");}
 async function loadBootstrap(){
@@ -102,6 +102,22 @@ function renderGoogle(clientId,nonce,hostId){
  const script=document.createElement("script");script.src="https://accounts.google.com/gsi/client";script.async=true;script.defer=true;script.onload=render;script.onerror=()=>report("Google sign-in could not load; use email to continue.",true);document.head.append(script);
 }
 document.querySelectorAll("[data-mode]").forEach(el=>el.addEventListener("click",()=>show(el.dataset.mode)));
+$("migration-recovery-start").addEventListener("submit",e=>{e.preventDefault();if(mode!=="migration-recovery"||!recoveryEnabled)return;submitAction(e.currentTarget,async()=>{
+ const email=$("migration-recovery-email").value.trim();
+ const result=await request("/dz/identity/v1/import-proof/recovery/start",{method:"POST",body:{email}});
+ if(result.status!=="if_eligible_sent")throw Error("Recovery is unavailable.");
+ recoveryEmail=email;
+ $("migration-recovery-complete").hidden=false;
+ report("If this account is eligible, a one-time code has been sent. Check your email.");
+})});
+$("migration-recovery-complete").addEventListener("submit",e=>{e.preventDefault();if(mode!=="migration-recovery"||!recoveryEnabled||!recoveryEmail)return;submitAction(e.currentTarget,async()=>{
+ const p=$("migration-recovery-password"), c=$("migration-recovery-confirm"), code=$("migration-recovery-code");
+ if(p.value!==c.value)throw Error("Passwords do not match.");
+ const body={email:recoveryEmail,code:code.value.trim(),password:p.value};
+ p.value="";c.value="";code.value="";
+ const result=await request("/dz/identity/v1/import-proof/recovery/complete",{method:"POST",body});
+ reportProof(result);$("migration-recovery-complete").hidden=true;recoveryEmail=null;
+})});
 $("migration-form").addEventListener("submit",e=>{e.preventDefault();if(mode!=="migration"||!migrationEnabled)return;submitAction(e.currentTarget,async()=>{
  const passwordInput=$("migration-password");
  const password=passwordInput.value;passwordInput.value="";
@@ -150,12 +166,18 @@ async function profile(){
 }
 (async()=>{
  const params=new URLSearchParams(location.search);
- if(params.get("mode")==="migration"){
+ if(["migration","migration-recovery"].includes(params.get("mode"))){
   // A separate opt-in pilot, never a fallback from failed login and never
   // an Operly session or account creation path.
   const gate=await request("/dz/import-proof/status").catch(()=>({enabled:false}));
   migrationEnabled=gate.enabled===true;
-  if(migrationEnabled){show("migration");return;}
+  if(migrationEnabled){
+   const recovery=await request("/dz/import-proof/recovery/status").catch(()=>({enabled:false}));
+   recoveryEnabled=recovery.enabled===true;
+   $("migration-recovery-link").hidden=!recoveryEnabled;
+   if(params.get("mode")==="migration"){show("migration");return;}
+   if(recoveryEnabled){show("migration-recovery");return;}
+  }
   panels.forEach(name=>{$(name+"-panel").hidden=true});
   $("mode-tabs").hidden=true;
   report("Account migration verification is not available. Return to /account for regular access.",true);
