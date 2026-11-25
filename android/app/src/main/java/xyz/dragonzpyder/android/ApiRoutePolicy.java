@@ -25,6 +25,7 @@ final class ApiRoutePolicy {
             value="/dz/v2/personal/"+value.substring("/api/personal-agent/".length());
         if(FIRST_PARTY_ROUTES.contains(value)||FIRST_PARTY_PREAUTH.contains(value))return value;
         if(value.matches("/dz/v2/personal/conversations/[0-9a-fA-F-]{36}/messages"))return value;
+        if(value.matches("/dz/v2/personal/requests/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"))return value;
         return null;
     }
     static boolean nativePreauth(boolean firstParty,String path){return firstParty&&FIRST_PARTY_PREAUTH.contains(path);}
