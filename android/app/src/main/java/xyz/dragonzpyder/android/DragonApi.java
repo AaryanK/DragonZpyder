@@ -53,11 +53,8 @@ final class DragonApi {
     synchronized Object call(String path, JSONObject body) throws Exception { return call(path,body==null?"GET":"POST",body); }
     synchronized Object call(String path, String method, JSONObject body) throws Exception {
         ensureMode();
-        if(firstParty){
-            if(path.equals("/api/personal-agent/chat"))path="/dz/v2/personal/chat";
-            else if(path.equals("/api/personal-agent/conversations")||path.startsWith("/api/personal-agent/conversations/"))path="/dz/v2/personal/"+path.substring("/api/personal-agent/".length());
-            if(!path.startsWith("/dz/"))throw unsupported();
-        }else if(!path.startsWith("/api/")&&!path.startsWith("/mesh/"))throw new IOException("Unsupported compatibility API route");
+        path=ApiRoutePolicy.route(firstParty,path);
+        if(path==null){if(firstParty)throw unsupported();throw new IOException("Unsupported compatibility API route");}
         Object result=request(path,method,body,false);
         if(firstParty&&path.equals("/dz/v2/personal/conversations")){if(!(result instanceof JSONObject)||((JSONObject)result).optJSONArray("conversations")==null)throw new IOException("Invalid conversation list");return ((JSONObject)result).getJSONArray("conversations");}
         if(firstParty&&path.startsWith("/dz/v2/personal/conversations/")&&path.endsWith("/messages")){if(!(result instanceof JSONObject)||((JSONObject)result).optJSONArray("messages")==null)throw new IOException("Invalid conversation history");return ((JSONObject)result).getJSONArray("messages");}
@@ -81,11 +78,11 @@ final class DragonApi {
             boolean changing=!"GET".equals(method)&&!"HEAD".equals(method)&&!"OPTIONS".equals(method);
             if(changing){
                 connection.setRequestProperty("Origin",ORIGIN.toString());
-                boolean nativePreauth=firstParty&&(path.equals("/dz/identity/v1/password/login")||path.startsWith("/dz/identity/v1/provider/google/"));
+                boolean nativePreauth=ApiRoutePolicy.nativePreauth(firstParty,path);
                 if(!nativePreauth){
                     String token=csrf(uri);
                     if(token.isEmpty())throw new ApiError(401,"Secure session missing. Sign in again.");
-                    connection.setRequestProperty(firstParty?"X-DZ-CSRF":"X-CSRF-Token",token);
+                    connection.setRequestProperty(ApiRoutePolicy.csrfHeader(firstParty),token);
                 }
             }
             if (body != null) {
