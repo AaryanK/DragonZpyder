@@ -4,7 +4,7 @@ from __future__ import annotations
 import asyncio
 from uuid import uuid4
 
-from .password_login import LoginDenied, consume_password_attempt
+from .password_login import LoginDenied, consume_password_attempt, DUMMY_PASSWORD_HASH
 from .passwords import normalize_email, verify_and_update_password, EmailAddressError
 from .providers import ProviderProof, ProviderProofDenied
 
@@ -24,8 +24,8 @@ async def prove_pending_password(conn, *, email: str, password: str):
           AND identity_origin='operly_import' AND source_operly_user_id=subject
     """, normalized)
     stored = row["password_hash"] if row else None
-    result = await asyncio.to_thread(verify_and_update_password, password, stored)
-    if not result.valid or not row:
+    result = await asyncio.to_thread(verify_and_update_password, password, stored or DUMMY_PASSWORD_HASH)
+    if not result.valid or not row or not stored:
         raise LoginDenied("Invalid credentials")
     proof_id = uuid4()
     # Recheck the exact hash and pending state at insertion, not an earlier
