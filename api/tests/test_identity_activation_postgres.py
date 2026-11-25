@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1] / "identity"
 sys.path.insert(0, str(ROOT.parent))
 
 
-async def test_activation_receipt_fence():
+async def test_activation_receipt_fence(monkeypatch):
     import asyncpg
     if urlsplit(DSN).path != "/identity_test":
         raise RuntimeError("Never run against non-disposable database")
@@ -24,9 +24,16 @@ async def test_activation_receipt_fence():
         await conn.execute((ROOT / "schema_bootstrap_manual.sql").read_text())
         await conn.execute((ROOT / "schema_role_manual.sql").read_text())
         try:
+            from identity.passwords import hash_password
+            from identity.pending_proofs import prove_pending_password, prove_pending_google
+            from identity.password_login import LoginDenied
+            from identity.providers import ProviderProof, ProviderProofDenied
+            from identity.provider_challenges import create_provider_challenge, consume_provider_challenge
+            monkeypatch.setenv("DRAGONZPYDER_IDENTITY_GRANT_HASH_KEY", "synthetic-test-pepper-0123456789abcdef")
+            sample_password = "synthetic-password-123"
             a, b, c = [str(uuid4()) for _ in range(3)]
             for subject, email, password, active in [
-                (a, "a@example.test", "pbkdf2_sha256$synthetic", True),
+                (a, "a@example.test", hash_password(sample_password), True),
                 (b, "b@example.test", None, True),
                 (c, "c@example.test", "pbkdf2_sha256$synthetic", False),
             ]:
@@ -35,6 +42,7 @@ async def test_activation_receipt_fence():
                     (subject,source_operly_user_id,email,display_name,password_hash,source_active,status)
                     VALUES($1,$1,$2,'Synthetic',$3,$4,'pending')
                 """, subject, email, password, active)
+            await conn.execute("INSERT INTO public.identity_provider_links(subject,provider,provider_subject,source,login_eligible) VALUES($1,'google','synthetic-google','auth',TRUE)",b)
             await conn.execute((ROOT / "schema_import_activation_review.sql").read_text())
             assert await conn.fetchval("SELECT count(*) FROM public.identity_accounts WHERE status='active'") == 0
             with pytest.raises(asyncpg.CheckViolationError):
@@ -66,10 +74,25 @@ async def test_activation_receipt_fence():
             finally:
                 await conn.execute("RESET SESSION AUTHORIZATION")
             await conn.execute("REVOKE UPDATE (import_activation_receipt_id) ON public.identity_accounts FROM dz_identity_api")
-            receipt = uuid4()
             await conn.execute("SET SESSION AUTHORIZATION dz_identity_api")
             try:
-                await conn.execute("INSERT INTO public.identity_import_proofs(proof_id,subject,proof_method) VALUES($1,$2,'password')",receipt,a)
+                with pytest.raises(LoginDenied):
+                    await prove_pending_password(conn,email="a@example.test",password="wrong")
+                with pytest.raises(LoginDenied):
+                    await prove_pending_password(conn,email="b@example.test",password=sample_password)
+                with pytest.raises(ProviderProofDenied):
+                    await prove_pending_google(conn, ProviderProof("google","unknown","b@example.test"))
+                with pytest.raises(ProviderProofDenied):
+                    await prove_pending_google(conn, ProviderProof("discord","synthetic-google"))
+                challenge = await create_provider_challenge(conn,provider="google",purpose="pending_import")
+                with pytest.raises(ProviderProofDenied):
+                    await consume_provider_challenge(conn,provider="google",state=challenge.state,binding=challenge.binding)
+                await consume_provider_challenge(conn,provider="google",state=challenge.state,binding=challenge.binding,purpose="pending_import")
+                with pytest.raises(ProviderProofDenied):
+                    await consume_provider_challenge(conn,provider="google",state=challenge.state,binding=challenge.binding,purpose="pending_import")
+                receipt = await prove_pending_password(conn,email="a@example.test",password=sample_password)
+                google_receipt = await prove_pending_google(conn,ProviderProof("google","synthetic-google","a@example.test"))
+                assert receipt != google_receipt
                 with pytest.raises(asyncpg.InsufficientPrivilegeError):
                     await conn.execute("INSERT INTO public.identity_import_proofs(proof_id,subject,proof_method) VALUES($1,$2,'password')",uuid4(),c)
                 with pytest.raises(asyncpg.InsufficientPrivilegeError):
@@ -78,6 +101,8 @@ async def test_activation_receipt_fence():
                 await conn.execute("RESET SESSION AUTHORIZATION")
             with pytest.raises(asyncpg.RaiseError):
                 await conn.execute("SELECT public.approve_imported_identity($1,$2)",b,receipt)
+            assert await conn.fetchval("SELECT count(*) FROM public.identity_import_proofs WHERE subject=$1",b) == 1
+            assert await conn.fetchval("SELECT count(*) FROM public.identity_browser_sessions") == 0
             await conn.execute("SELECT public.approve_imported_identity($1,$2)",a,receipt)
             assert await conn.fetchval("SELECT status FROM public.identity_accounts WHERE subject=$1",a) == "active"
             assert await conn.fetchval("SELECT import_activation_receipt_id FROM public.identity_accounts WHERE subject=$1",a) == receipt
