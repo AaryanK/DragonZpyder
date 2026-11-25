@@ -20,11 +20,11 @@ jobs:
           java-version: '17'
       - uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.9'
+          gradle-version: '8.11.1'
       - uses: android-actions/setup-android@v4
         with:
           packages: 'platform-tools'
-      - run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
       - run: bash android/prepare-brand.sh
       - name: Verify and build production APK and AAB
         working-directory: android
@@ -46,7 +46,8 @@ jobs:
           apk=app/build/outputs/apk/release/app-release.apk
           aab=app/build/outputs/bundle/release/app-release.aab
           test -s "$apk" && test -s "$aab"
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs "$apk" | tee "$RUNNER_TEMP/apk-cert.txt"
+          "$ANDROID_HOME/build-tools/36.0.0/zipalign" -c -P 16 -v 4 "$apk"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$apk" | tee "$RUNNER_TEMP/apk-cert.txt"
           actual=$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$RUNNER_TEMP/apk-cert.txt")
           expected=$(printf '%s' "$EXPECTED_SIGNER_SHA256" | tr -d ':' | tr '[:upper:]' '[:lower:]')
           test "$actual" = "$expected"
