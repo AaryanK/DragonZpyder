@@ -58,7 +58,8 @@ public final class SecurePasswordFieldTest {
         collect(app.getWindow().getDecorView(),fields);
         assertEquals(count,fields.size());
         for(EditText field:fields)verify(field);
-        assertTrue((app.getWindow().getAttributes().flags & WindowManager.LayoutParams.FLAG_SECURE)!=0);
+        // Screenshot support is intentional; masking and disabled password state saving still apply.
+        assertEquals(0,app.getWindow().getAttributes().flags & WindowManager.LayoutParams.FLAG_SECURE);
     }
     @Test public void genericSingleLineCannotOverrideMask(){
         try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)){
