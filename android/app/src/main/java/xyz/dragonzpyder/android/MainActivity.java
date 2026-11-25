@@ -35,6 +35,8 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         if(signedIn){if(accountOpen)showAccount();else chatScreen();}else authScreen(authMode,"");
     }
     private NativeChatView chatUi;
+    private AgentRequestViewModel agentRequests;
+    private String activeRequestId="";
     private static final DragonApi api=new DragonApi();
     private final ExecutorService worker=Executors.newSingleThreadExecutor();
     private LinearLayout root;
@@ -63,21 +65,24 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
 
     @Override public void onCreate(Bundle b) {
         super.onCreate(b);
+        agentRequests=new androidx.lifecycle.ViewModelProvider(this).get(AgentRequestViewModel.class);
         mobileOAuth=new MobileOAuthStore(getApplicationContext());
         if(b!=null){
             restoredConversation=b.getString("dz.conversation","");
             restoredDraft=b.getString("dz.draft","");
             restorePending=true;
             interruptedRequest=b.getBoolean("dz.request_in_flight",false);
+            activeRequestId=b.getString("dz.request_id","");
             restoredMesh=b.getBoolean("dz.mesh",false);restoredModel=b.getString("dz.model","");restoredModelAcceptsImages=b.getBoolean("dz.model_images",false);
         }
         dark=getPreferences(MODE_PRIVATE).getBoolean("dark",false);palette();
         getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         tts=new TextToSpeech(this, code -> speechReady=code==TextToSpeech.SUCCESS);
         loginScreen("");
+        agentRequests.outcomes().observe(this,outcome->{if(signedIn)handleAgentOutcome(outcome);});
         submit("Checking secure session…",()->api.restore(getApplicationContext()),result->{
-            if(Boolean.TRUE.equals(result)){signedIn=true;if(!api.isFirstParty()&&restorePending&&restoredMesh&&!restoredModel.isEmpty()){meshMode=true;model=restoredModel;modelAcceptsImages=restoredModelAcceptsImages;chatScreen();applyRestoredDraft();append("system","Android recreated this screen. Previous AI Mesh context and attachments were not saved; this is a new model conversation.");loadHistory(false);}else{chatScreen();if(restorePending&&chatUi!=null)chatUi.setDraft(restoredDraft);loadHistory(true);}}
-            else {loginScreen("");processOAuthIntent(getIntent());}
+            if(Boolean.TRUE.equals(result)){signedIn=true;if(!api.isFirstParty()&&restorePending&&restoredMesh&&!restoredModel.isEmpty()){meshMode=true;model=restoredModel;modelAcceptsImages=restoredModelAcceptsImages;chatScreen();applyRestoredDraft();append("system","Android recreated this screen. Previous AI Mesh context and attachments were not saved; this is a new model conversation.");loadHistory(false);}else{chatScreen();if(restorePending&&chatUi!=null)chatUi.setDraft(restoredDraft);if(!activeRequestId.isEmpty()){AgentRequestViewModel.Outcome retained=agentRequests.current();if(retained!=null&&activeRequestId.equals(retained.id))handleAgentOutcome(retained);else checkAgentRequest();}else loadHistory(true);}}
+            else {activeRequestId="";agentRequests.reset();loginScreen("");processOAuthIntent(getIntent());}
         },true);
     }
     private int dp(float n){return Math.round(n*getResources().getDisplayMetrics().density);}
@@ -117,6 +122,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private boolean strong(String p){if(p.length()<12){setStatus("Use at least 12 characters for your password.");return false;}return true;}
     private boolean six(String code){if(!code.matches("[0-9]{6}")){setStatus("Enter the six-digit code.");return false;}return true;}
     private void clearAccountView(){
+        activeRequestId="";if(agentRequests!=null)agentRequests.reset();
         conversation="";pendingPrompt="";attachment=null;attachmentName="";transcript.clear();
         meshMode=false;model="";modelAcceptsImages=false;restoredMesh=false;restoredModel="";restoredModelAcceptsImages=false;lastAnswer="";meshMessages=new JSONArray();history=new JSONArray();
         profileInitial="D";authEmail="";challengeId="";restoredDraft="";restoredConversation="";selectedMcpConnections.clear();
@@ -573,6 +579,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     }
     private void send(){
         if(busy||!signedIn||chatUi==null)return;
+        if(!activeRequestId.isEmpty()){showUnresolvedAgentRequest();return;}
         String prompt=chatUi.getDraft().trim();if(prompt.isEmpty()&&!(meshMode&&attachment!=null))return;
         if(prompt.length()>(meshMode?5000:12000)){setStatus("Message is too long for this mode.");return;}
         View focused=getCurrentFocus();if(focused!=null)hideKeyboard(focused);chatUi.setDraft("");pendingPrompt=prompt.isEmpty()?"[Attachment]":prompt;
@@ -590,6 +597,15 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         }
         append("user",prompt);
         final String id=conversation;
+        if(api.supportsRequestLedger()){
+            try{
+                final JSONObject body=DragonApi.object("message",prompt);if(!id.isEmpty())body.put("conversation_id",id);
+                if(!selectedMcpConnections.isEmpty())body.put("mcp_connection_ids",new JSONArray(selectedMcpConnections));
+                activeRequestId=UUID.randomUUID().toString();body.put("request_id",activeRequestId);
+                agentRequests.start(activeRequestId,()->(JSONObject)api.call("/api/personal-agent/chat",body));
+            }catch(Exception failure){activeRequestId="";pendingPrompt="";setStatus("Could not start request. Check conversation history before resending.");}
+            return;
+        }
         submit("Working…",()->{JSONObject body=DragonApi.object("message",prompt);if(!id.isEmpty())body.put("conversation_id",id);if(api.isFirstParty()&&!selectedMcpConnections.isEmpty())body.put("mcp_connection_ids",new JSONArray(selectedMcpConnections));return api.call("/api/personal-agent/chat",body);},r->{
             JSONObject answer=(JSONObject)r;conversation=answer.optString("conversation_id",id);
             String value=answer.optString("message",answer.optString("output",""));
@@ -597,6 +613,45 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             if(value.isEmpty())throw new Exception("Agent did not return a message.");
             pendingPrompt="";lastAnswer=value;append("assistant",value);
             if(answer.has("error_code")&&!answer.optString("error_code").isEmpty())setStatus(answer.optString("error_code"));
+        },true);
+    }
+    private void handleAgentOutcome(AgentRequestViewModel.Outcome outcome){
+        if(outcome==null||activeRequestId.isEmpty()||!activeRequestId.equals(outcome.id)||isDestroyed())return;
+        busy=outcome.running;if(chatUi!=null)chatUi.setBusy(busy);
+        if(outcome.running){setStatus("Working…");return;}
+        agentRequests.reset();
+        if(outcome.failure!=null){
+            if(outcome.failure instanceof DragonApi.ApiError&&((DragonApi.ApiError)outcome.failure).status==401){api.clear();clearAccountView();loginScreen("Session expired. Sign in again.");return;}
+            pendingPrompt="";if(restorePending)applyRestoredDraft();
+            append("system","Request outcome is unconfirmed. Use Check request status before sending another agent action.");
+            setStatus("Request status unconfirmed");return;
+        }
+        JSONObject answer=outcome.response;
+        if(answer==null||!activeRequestId.equals(answer.optString("request_id"))||answer.optString("conversation_id").isEmpty()||answer.optString("message").isEmpty()){
+            pendingPrompt="";if(restorePending)applyRestoredDraft();setStatus("Response incomplete. Check request status.");return;
+        }
+        activeRequestId="";pendingPrompt="";
+        String completedConversation=answer.optString("conversation_id");
+        if(restorePending){interruptedRequest=false;open(completedConversation);return;}
+        conversation=completedConversation;lastAnswer=answer.optString("message");append("assistant",lastAnswer);setStatus("Personal agent");
+    }
+    private void showUnresolvedAgentRequest(){
+        alert().setTitle("Previous request is unresolved").setMessage("The previous agent action may have run. Check its server status before sending again. Dismissing this warning does not cancel server work.")
+            .setPositiveButton("Check status",(d,i)->checkAgentRequest())
+            .setNegativeButton("Keep waiting",null)
+            .setNeutralButton("Dismiss warning",(d,i)->alert().setTitle("Dismiss request tracking?").setMessage("This does not undo actions or stop execution. Do not resend an action unless you verify its outcome independently.").setNegativeButton("Cancel",null).setPositiveButton("Dismiss",(dd,j)->{activeRequestId="";agentRequests.reset();setStatus("Request tracking dismissed");}).show()).show();
+    }
+    private void checkAgentRequest(){
+        if(activeRequestId.isEmpty()){setStatus("No unresolved agent request.");return;}
+        final String id=activeRequestId;
+        submit("Checking request status…",()->api.requestStatus(id),r->{
+            JSONObject record=(JSONObject)r;
+            if(!id.equals(record.optString("request_id")))throw new Exception("Request status mismatch.");
+            if("completed".equals(record.optString("status"))){
+                JSONObject answer=record.optJSONObject("response");
+                if(answer==null||!id.equals(answer.optString("request_id"))||answer.optString("conversation_id").isEmpty())throw new Exception("Completed response unavailable.");
+                activeRequestId="";pendingPrompt="";interruptedRequest=false;agentRequests.reset();open(answer.optString("conversation_id"));
+            }else{if(restorePending)applyRestoredDraft();setStatus("Server request: "+record.optString("status","unknown")+" — do not replay.");}
         },true);
     }
     private void loadHistory(boolean restore){
@@ -631,10 +686,11 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     @Override protected void onSaveInstanceState(Bundle out){
         // The draft is user-authored; never store passwords, credentials, or request payloads.
         out.putString("dz.conversation",conversation);
+        out.putString("dz.request_id",activeRequestId);
         out.putBoolean("dz.mesh",meshMode);out.putString("dz.model",model);out.putBoolean("dz.model_images",modelAcceptsImages);
         out.putString("dz.draft",chatUi!=null?chatUi.getDraft():restoredDraft);
         // Marker only, never the prompt or credentials. Prevent implied completion or automatic replay.
-        out.putBoolean("dz.request_in_flight",busy&&!pendingPrompt.isEmpty());
+        out.putBoolean("dz.request_in_flight",(busy&&!pendingPrompt.isEmpty())||!activeRequestId.isEmpty());
         super.onSaveInstanceState(out);
     }
     private void showHistory(){
