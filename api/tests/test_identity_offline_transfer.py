@@ -182,26 +182,32 @@ async def test_offline_roles_on_disposable_postgres(monkeypatch):
     try:
         await conn.execute("""
             CREATE TABLE public.app_users (
-                id text PRIMARY KEY, email text, password_hash text, display_name text,
+                id uuid PRIMARY KEY, email text, password_hash text, display_name text,
                 email_verified_at timestamptz, active boolean, unrelated_secret text
             );
             CREATE TABLE public.auth_identities (
-                user_id text, provider text, provider_subject text
+                user_id uuid, provider text, provider_subject text
             );
             CREATE TABLE public.unrelated_data (value text);
         """)
         await conn.execute("""
-            INSERT INTO public.app_users VALUES ($1,'synthetic@example.test',NULL,
+            INSERT INTO public.app_users VALUES ($1::text::uuid,'synthetic@example.test',NULL,
                 'Synthetic',$2,TRUE,'must-not-export')
         """, uid, users[0]["email_verified_at"])
-        await conn.execute("INSERT INTO public.auth_identities VALUES ($1,'google','synthetic-subject')", uid)
+        await conn.execute("INSERT INTO public.auth_identities VALUES ($1::text::uuid,'google','synthetic-subject')", uid)
         await conn.execute(_manual_sql("schema_export_role_manual.sql"))
         await conn.execute("SET SESSION AUTHORIZATION dz_identity_export")
         await _require_migration_role(conn, "dz_identity_export")
         # read_source_snapshot starts its own repeatable-read read-only transaction;
         # here the enclosing transaction is for DDL rollback, so test the exact
         # column grants directly, and use separate synthetic source tests for that reader.
-        assert await conn.fetchval("SELECT id FROM public.app_users") == uid
+        assert await conn.fetchval("SELECT id::text FROM public.app_users") == uid
+        inventory_sql = (Path(__file__).resolve().parents[1] / "identity" / "source_inventory_manual.sql").read_text("utf-8")
+        query = inventory_sql[inventory_sql.index("WITH users AS"):].split(";\nROLLBACK;", 1)[0]
+        summary = await conn.fetchrow(query)
+        assert summary["accounts"] == 1 and summary["google_links"] == 1
+        assert summary["accounts_without_candidate_login"] == 0
+        assert summary["invalid_uuid"] == 0
         for sql in ("SELECT unrelated_secret FROM public.app_users",
                     "SELECT value FROM public.unrelated_data",
                     "UPDATE public.app_users SET active=FALSE"):
