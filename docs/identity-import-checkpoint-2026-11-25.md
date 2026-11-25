@@ -209,3 +209,42 @@ packages according to approved retention, and retain protected backups.
 Legacy principal history remains at source. No ID overlap was observed, but
 workspace references and possible content duplication still require audit;
 use operly_legacy_history_inventory_manual.sql before any further export.
+
+
+## Authentication pilot without global web cutover
+
+- Use `/account?mode=migration` only after the source/target keyed
+  reconciliation matches, backup/rollback review and activation schema review.
+  The UI and exact three proof proxy routes require
+  `DRAGONZPYDER_IMPORT_PROOF_WEB_ENABLED=1` on Web; the API independently
+  requires `DRAGONZPYDER_IMPORT_PROOF_ENABLED=1` and, in production,
+  `DRAGONZPYDER_IMPORT_PROOF_ALLOW_PRODUCTION=1`. Keep
+  `DRAGONZPYDER_FIRST_PARTY_WEB_CUTOVER_ENABLED` off. The pilot returns a
+  review reference, not a login session. No legacy login fallback or
+  account creation is performed by the pilot.
+- Approve exactly the independently verified subject/proof pair within its
+  15-minute window via the reviewed operator function. Never activate an
+  account merely from a submitted email or proof-reference string.
+- For federated Google-only users, the issuer authorization page can link
+  to an isolated Google sign-in tab when
+  `DRAGONZPYDER_IDENTITY_ISSUER_GOOGLE_ENABLED=1` and a Google client ID is
+  configured. The separate page rejects query parameters and does not
+  include the OIDC request, consent ticket, or relying-party redirect.
+  Return to the authorization tab and refresh after signing in.
+  This is a pilot path, not proof of seamless cross-domain single sign-on.
+  The issuer and Web proxy cookies are host-only; a Web login does not
+  itself establish an issuer-host session. Do not share parent-domain
+  cookies to bypass this boundary.
+- Native recovery of the 51 verified-email candidates after activation
+  is still a separate dependency. The existing pre-activation null-to-hash
+  synchronization cannot be used once the global pending fence is removed.
+  Do not globally retire Operly recovery or sign-in before a tested recovery
+  handoff exists.
+- The latest legacy inventory contains 33 web candidates (232 messages)
+  and three workspace-referenced conversations (419 messages). Preserve
+  all at source pending positive scope proof; do not block the pilot on
+  this archive backlog. Do not infer duplication from 39 content matches.
+
+No production gates were enabled by these commits. Browser and integration
+CI must be green for the exact deployment revision, and live two-account
+tests are still required.
