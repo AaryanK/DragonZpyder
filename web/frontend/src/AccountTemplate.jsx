@@ -26,7 +26,22 @@ export function AccountTemplate() {
 <label htmlFor="migration-email">Email address</label><input id="migration-email" type="email" required maxLength="320" autoComplete="username"/>
 <label htmlFor="migration-password">Existing password</label><input id="migration-password" type="password" required maxLength="1024" autoComplete="current-password"/>
 <button className="submit" type="submit">Verify existing account</button>
-</form><p className="links"><a href="/account">Return to regular account access</a></p>
+</form><p className="links"><a id="migration-recovery-link" href="/account?mode=migration-recovery" hidden>Recover access using verified email</a><a href="/account">Return to regular account access</a></p>
+</section>
+<section id="migration-recovery-panel" className="account-panel" hidden>
+<h2>Recover your existing account.</h2>
+<p className="muted">For eligible existing accounts that do not have a password. We send a one-time code to the verified email already on file. Completing recovery does not activate your account.</p>
+<form id="migration-recovery-start">
+<label htmlFor="migration-recovery-email">Email address</label><input id="migration-recovery-email" type="email" required maxLength="320" autoComplete="username"/>
+<button className="submit" type="submit">Request recovery code</button>
+</form>
+<form id="migration-recovery-complete" hidden>
+<label htmlFor="migration-recovery-code">Recovery code</label><input id="migration-recovery-code" required minLength="43" maxLength="43" autoComplete="one-time-code"/>
+<label htmlFor="migration-recovery-password">New password (at least 12 characters)</label><input id="migration-recovery-password" type="password" required minLength="12" maxLength="1024" autoComplete="new-password"/>
+<label htmlFor="migration-recovery-confirm">Confirm new password</label><input id="migration-recovery-confirm" type="password" required minLength="12" maxLength="1024" autoComplete="new-password"/>
+<button className="submit" type="submit">Establish password</button>
+</form>
+<p className="links"><a href="/account?mode=migration">Return to account verification</a></p>
 </section>
 <section id="signup-panel" className="account-panel" hidden><h2>Create your account.</h2><p className="muted">Start personal. Connect workspaces when you choose.</p><div id="google-provider-signup" className="google-provider" aria-label="Google signup" hidden></div><form id="signup-form">
 <label htmlFor="signup-name">Your name</label><input id="signup-name" required maxLength="200" autoComplete="name"/>
