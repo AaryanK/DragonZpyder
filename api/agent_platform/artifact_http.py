@@ -10,6 +10,16 @@ from .first_party_chat import _owner, _conversation_db
 router=APIRouter(prefix="/v2/personal/files",tags=["agent-artifacts"])
 
 
+@router.get("")
+async def list_files(request: Request):
+    owner=await _owner(request,changing=False)
+    artifacts.cipher()
+    async with _conversation_db() as db:
+        rows=await db.fetch("""SELECT id,filename,content_type,byte_count,sha256,direction
+            FROM dz_agent_artifacts WHERE owner_id=$1 ORDER BY created_at DESC LIMIT 100""",owner)
+    return {"files":[artifacts.metadata(row) for row in rows]}
+
+
 @router.post("")
 async def upload(request: Request, filename: str):
     owner=await _owner(request,changing=True)
