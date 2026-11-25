@@ -5,11 +5,17 @@ import java.util.*;
 /** Only the explicitly known cookies for a fixed HTTPS origin are retained.
  * Never serialize Java's legacy RFC2965 $Version or quoted Cookie format. */
 final class SessionCookies {
-    private static final Set<String> NAMES = new HashSet<>(Arrays.asList(
-        "__Host-operly_session", "__Host-operly_csrf", "operly_preauth_csrf", "operly_google_nonce"));
+    private final Set<String> names;
+    private final String[] session;
     private final Map<String,HttpCookie> jar=new LinkedHashMap<>();
     private final Map<String,Long> expiry=new HashMap<>();
-    private static final String[] SESSION={"__Host-operly_session","__Host-operly_csrf"};
+    SessionCookies(){this(false);}
+    SessionCookies(boolean firstParty){
+        session=firstParty?new String[]{"__Host-dz_identity","__Host-dz_csrf"}:new String[]{"__Host-operly_session","__Host-operly_csrf"};
+        names=new LinkedHashSet<>(Arrays.asList(session));
+        if(firstParty)names.add("__Host-dz_provider");
+        else names.addAll(Arrays.asList("operly_preauth_csrf","operly_google_nonce"));
+    }
     void receive(Map<String,List<String>> headers) {
         for (Map.Entry<String,List<String>> header:headers.entrySet()) {
             if (!"Set-Cookie".equalsIgnoreCase(header.getKey())) continue;
@@ -17,7 +23,7 @@ final class SessionCookies {
                 try {
                     for (HttpCookie c:HttpCookie.parse(raw)) {
                         String name=c.getName();
-                        if(!NAMES.contains(name) || c.getDomain()!=null || !"/".equals(c.getPath())) continue;
+                        if(!names.contains(name) || c.getDomain()!=null || !"/".equals(c.getPath())) continue;
                         if(c.getMaxAge()==0 || c.getValue().isEmpty()) {jar.remove(name);expiry.remove(name);continue;}
                         if(!c.getSecure() || c.getValue()==null || !c.getValue().matches("[A-Za-z0-9._~%+/=-]+")) continue;
                         jar.put(name,c);
@@ -35,19 +41,19 @@ final class SessionCookies {
     }
     String header() {
         StringJoiner join=new StringJoiner("; ");
-        for(String name:NAMES){String value=value(name);if(!value.isEmpty())join.add(name+"="+value);}
+        for(String name:names){String value=value(name);if(!value.isEmpty())join.add(name+"="+value);}
         return join.toString();
     }
     Properties snapshot(){
         Properties p=new Properties();
-        for(String name:SESSION){String token=value(name);long until=expiry.getOrDefault(name,0L);if(token.isEmpty()||until<=System.currentTimeMillis())return new Properties();p.setProperty(name,token);p.setProperty(name+".expiry",Long.toString(until));}
+        for(String name:session){String token=value(name);long until=expiry.getOrDefault(name,0L);if(token.isEmpty()||until<=System.currentTimeMillis())return new Properties();p.setProperty(name,token);p.setProperty(name+".expiry",Long.toString(until));}
         return p;
     }
     void restore(Properties p){
         clear();
         try{
             long now=System.currentTimeMillis();
-            for(String name:SESSION){String token=p.getProperty(name,"");long until=Long.parseLong(p.getProperty(name+".expiry","0"));if(!token.matches("[A-Za-z0-9._~%+/=-]+")||until<=now||until>now+604800000L){clear();return;}
+            for(String name:session){String token=p.getProperty(name,"");long until=Long.parseLong(p.getProperty(name+".expiry","0"));if(!token.matches("[A-Za-z0-9._~%+/=-]+")||until<=now||until>now+604800000L){clear();return;}
                 HttpCookie c=new HttpCookie(name,token);c.setPath("/");c.setSecure(true);c.setMaxAge((until-now+999)/1000);jar.put(name,c);expiry.put(name,until);}
         }catch(RuntimeException e){clear();}
     }
