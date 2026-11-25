@@ -27,6 +27,10 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.viewinterop.AndroidView
+import io.ratex.RaTeXView
 import org.commonmark.ext.gfm.strikethrough.Strikethrough
 import org.commonmark.ext.gfm.tables.TableBlock
 import org.commonmark.ext.gfm.tables.TableBody
@@ -44,15 +48,16 @@ internal fun MarkdownBody(
     onCopy: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val doc = remember(source) { MarkdownDocument.parse(source) }
-    val palette = remember(dark) { MarkdownColors(dark) }
+    val math = remember(source) { MathMarkup.extract(source) }
+    val doc = remember(math.source) { MarkdownDocument.parse(math.source) }
+    val palette = remember(dark,math) { MarkdownColors(dark,math.formulas) }
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         MarkdownDocument.children(doc).forEachIndexed { i, block ->
             androidx.compose.runtime.key(i) { MarkdownBlock(block, palette, onCopy, 0) }
         }
     }
 }
-private class MarkdownColors(dark: Boolean) {
+private class MarkdownColors(dark: Boolean,val formulas:Map<String,MathMarkup.Formula>) {
     val ink = if(dark) Color(0xFFF6F4F1) else Color(0xFF24221F)
     val muted = if(dark) Color(0xFFBFB6AE) else Color(0xFF675F58)
     val panel = if(dark) Color(0xFF242124) else Color(0xFFF6F3EF)
@@ -68,14 +73,11 @@ private fun MarkdownBlock(node: Node, c: MarkdownColors, copy: (String) -> Unit,
         return
     }
     when(node) {
-        is Paragraph -> Text(
-            inline(node,c), color=c.ink, fontSize=16.sp, lineHeight=25.sp,
-            softWrap=true, overflow=TextOverflow.Clip, modifier=Modifier.fillMaxWidth()
-        )
+        is Paragraph -> MathParagraph(inline(node,c),c)
         is Heading -> {
             val font = when(node.level) {1->26.sp;2->22.sp;3->19.sp;else->17.sp}
             Text(
-                inline(node,c), color=c.ink, fontSize=font, lineHeight=font * 1.26f,
+                restoreMath(inline(node,c),c), color=c.ink, fontSize=font, lineHeight=font * 1.26f,
                 fontWeight=FontWeight.SemiBold, softWrap=true,
                 modifier=Modifier.fillMaxWidth().padding(top=if(node.level <= 2) 8.dp else 3.dp)
             )
@@ -191,7 +193,7 @@ private fun MarkdownTable(table:TableBlock,c:MarkdownColors) {
                                 contentAlignment=Alignment.CenterStart
                             ) {
                                 Text(
-                                    if(cell!=null)inline(cell,c) else AnnotatedString(""),
+                                    if(cell!=null)restoreMath(inline(cell,c),c) else AnnotatedString(""),
                                     color=c.ink,fontSize=13.sp,lineHeight=19.sp,
                                     fontWeight=if(row.header)FontWeight.SemiBold else FontWeight.Normal,
                                     softWrap=true,overflow=TextOverflow.Clip
@@ -204,6 +206,65 @@ private fun MarkdownTable(table:TableBlock,c:MarkdownColors) {
         }
         if(rows.size==200)Text("Table truncated to 200 rows for device performance",fontSize=11.sp,color=c.muted)
     }
+}
+
+private val formulaToken=Regex("DZMATHTOKEN[0-9]+END")
+private fun restoreMath(value:AnnotatedString,c:MarkdownColors):AnnotatedString {
+    if(c.formulas.isEmpty()||!formulaToken.containsMatchIn(value.text))return value
+    return buildAnnotatedString {
+        var offset=0
+        for(match in formulaToken.findAll(value.text)){
+            append(value.subSequence(offset,match.range.first))
+            append(c.formulas[match.value]?.raw?:match.value)
+            offset=match.range.last+1
+        }
+        append(value.subSequence(offset,value.length))
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable private fun MathParagraph(value:AnnotatedString,c:MarkdownColors){
+    val matches=remember(value,c.formulas){formulaToken.findAll(value.text).filter{it.value in c.formulas}.toList()}
+    if(matches.isEmpty()){
+        Text(value,color=c.ink,fontSize=16.sp,lineHeight=25.sp,softWrap=true,modifier=Modifier.fillMaxWidth());return
+    }
+    val scale=LocalDensity.current.fontScale.coerceIn(1f,3f)
+    Column(Modifier.fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(4.dp)){
+        var cursor=0
+        // Each display expression gets its own scrollable line. Inline math is
+        // placed in a wrapping row with the surrounding styled text.
+        val group=mutableListOf<Any>()
+        @Composable fun Group(parts:List<Any>){
+            FlowRow(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.Start,verticalArrangement=Arrangement.Center){
+                parts.forEach { part ->
+                    when(part){
+                        is AnnotatedString -> Text(part,color=c.ink,fontSize=16.sp,lineHeight=25.sp,softWrap=true)
+                        is MathMarkup.Formula -> FormulaView(part,c,scale)
+                    }
+                }
+            }
+        }
+        for(match in matches){
+            if(match.range.first>cursor)group.add(value.subSequence(cursor,match.range.first))
+            val formula=c.formulas.getValue(match.value)
+            if(formula.display){
+                if(group.isNotEmpty()){Group(group.toList());group.clear()}
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.Center){FormulaView(formula,c,scale)}
+            }else group.add(formula)
+            cursor=match.range.last+1
+        }
+        if(cursor<value.length)group.add(value.subSequence(cursor,value.length))
+        if(group.isNotEmpty())Group(group.toList())
+    }
+}
+@Composable private fun FormulaView(formula:MathMarkup.Formula,c:MarkdownColors,scale:Float){
+    AndroidView(factory={context->RaTeXView(context)},update={view->
+        view.fontSize=(if(formula.display)22f else 16f)*scale
+        view.color=c.ink.toArgb()
+        view.displayMode=formula.display
+        view.contentDescription="Equation: "+formula.latex
+        view.latex=formula.latex
+    })
 }
 
 private fun inline(parent:Node,c:MarkdownColors):AnnotatedString=buildAnnotatedString {
