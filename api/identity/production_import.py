@@ -69,11 +69,11 @@ async def read_source_snapshot(connection, approved: ApprovedInventory, *,
         """):
             raise IdentityMigrationConflict("Unexpected source database")
         source_users = await connection.fetch("""
-            SELECT id,email,password_hash,display_name,email_verified_at,active
+            SELECT id::text AS id,email,password_hash,display_name,email_verified_at,active
             FROM public.app_users ORDER BY id
         """)
         auth = await connection.fetch("""
-            SELECT user_id,provider,provider_subject
+            SELECT user_id::text AS user_id,provider,provider_subject
             FROM public.auth_identities WHERE provider='google'
             ORDER BY user_id,provider_subject
         """)
