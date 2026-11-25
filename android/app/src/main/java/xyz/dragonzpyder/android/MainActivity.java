@@ -54,6 +54,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private String restoredModel="";
     private boolean restoredModelAcceptsImages;
     private JSONArray meshMessages=new JSONArray();
+    private final LinkedHashSet<String> selectedMcpConnections=new LinkedHashSet<>();
     private TextToSpeech tts;
     private boolean speechReady;
     interface Work { Object run() throws Exception; }
@@ -74,8 +75,8 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         tts=new TextToSpeech(this, code -> speechReady=code==TextToSpeech.SUCCESS);
         loginScreen("");
         submit("Checking secure session…",()->api.restore(getApplicationContext()),result->{
-            if(Boolean.TRUE.equals(result)){signedIn=true;if(restorePending&&restoredMesh&&!restoredModel.isEmpty()){meshMode=true;model=restoredModel;modelAcceptsImages=restoredModelAcceptsImages;chatScreen();applyRestoredDraft();append("system","Android recreated this screen. Previous AI Mesh context and attachments were not saved; this is a new model conversation.");loadHistory(false);}else{chatScreen();if(restorePending&&chatUi!=null)chatUi.setDraft(restoredDraft);loadHistory(true);}}
-            else processOAuthIntent(getIntent());
+            if(Boolean.TRUE.equals(result)){signedIn=true;if(!api.isFirstParty()&&restorePending&&restoredMesh&&!restoredModel.isEmpty()){meshMode=true;model=restoredModel;modelAcceptsImages=restoredModelAcceptsImages;chatScreen();applyRestoredDraft();append("system","Android recreated this screen. Previous AI Mesh context and attachments were not saved; this is a new model conversation.");loadHistory(false);}else{chatScreen();if(restorePending&&chatUi!=null)chatUi.setDraft(restoredDraft);loadHistory(true);}}
+            else {loginScreen("");processOAuthIntent(getIntent());}
         },true);
     }
     private int dp(float n){return Math.round(n*getResources().getDisplayMetrics().density);}
@@ -117,7 +118,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private void clearAccountView(){
         conversation="";pendingPrompt="";attachment=null;attachmentName="";transcript.clear();
         meshMode=false;model="";modelAcceptsImages=false;restoredMesh=false;restoredModel="";restoredModelAcceptsImages=false;lastAnswer="";meshMessages=new JSONArray();history=new JSONArray();
-        profileInitial="D";authEmail="";challengeId="";restoredDraft="";restoredConversation="";
+        profileInitial="D";authEmail="";challengeId="";restoredDraft="";restoredConversation="";selectedMcpConnections.clear();
         restorePending=false;interruptedRequest=false;transcriptionModel="";queuedOAuthIntent=null;googleSignInPending=false;googleAttempt++;
         if(mobileOAuth!=null)mobileOAuth.clear();stopMedia();if(tts!=null)tts.stop();chatUi=null;
     }
@@ -144,6 +145,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private void startGoogleSignIn(){
         if(mobileOAuth!=null&&!busy)mobileOAuth.clear();
         if(busy||googleSignInPending)return;
+        final boolean signup="signup".equals(authMode);
         submit("Preparing Google sign-in…",()->api.googleBootstrap(),data->{
             JSONObject info=(JSONObject)data;
             final long attempt=++googleAttempt;googleSignInPending=true;busy=true;setStatus("Choose your Google account…");
@@ -151,7 +153,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                 info.optString("client_id"),info.optString("nonce"),
                 runnable->runOnUiThread(runnable),
                 token->{if(isDestroyed()||attempt!=googleAttempt||!googleSignInPending)return;googleSignInPending=false;busy=false;submit("Verifying Google account…",()->{
-                    api.loginWithGoogle(token);return Boolean.TRUE;
+                    api.loginWithGoogle(token,signup);return Boolean.TRUE;
                 },result->authSuccess(),true);},
                 reason->{if(isDestroyed()||attempt!=googleAttempt||!googleSignInPending)return;googleSignInPending=false;busy=false;setStatus(reason);});
         },true);
@@ -181,7 +183,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         },true);
     }
     private void processOAuthIntent(Intent intent){
-        if(intent==null||intent.getData()==null||signedIn||isDestroyed()||googleSignInPending)return;
+        if(intent==null||intent.getData()==null||signedIn||isDestroyed()||googleSignInPending||api.isFirstParty())return;
         android.net.Uri uri=intent.getData();
         if(!"dragonzpyder".equals(uri.getScheme())||!"auth".equals(uri.getHost())||
             !"/discord".equals(uri.getPath()))return;
@@ -225,7 +227,9 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         if(mode.equals("login")||mode.equals("signup")){
             card.addView(providerButton("G","Continue with Google",0xff4285f4,this::startGoogleSignIn));
             gap(card,10);
-            card.addView(providerButton("◈","Continue with Discord",0xff5865f2,this::startDiscordSignIn));
+            if(!api.isFirstParty())card.addView(providerButton("◈","Continue with Discord",0xff5865f2,this::startDiscordSignIn));
+            else card.addView(text("Discord mobile sign-in is not yet available for first-party identity.",13,MUTED));
+            if(api.isFirstParty()&&mode.equals("signup")){gap(card,12);card.addView(text("Create a DragonZpyder account with Google verification.",14,TEXT));return;}
             gap(card,18);
             LinearLayout separator=row();View left=new View(this);left.setBackgroundColor(LINE);
             separator.addView(left,new LinearLayout.LayoutParams(0,dp(1),1));
@@ -263,7 +267,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             }
             if(password!=null)password.setText("");if(confirm!=null)confirm.setText("");
         }));
-        if(mode.equals("login")){card.addView(button("Forgot password?",()->{authEmail=value(email);authScreen("forgot","");}));card.addView(button("Already have a verification code?",()->{authEmail=value(email);challengeId="";authScreen("verify","");}));}
+        if(mode.equals("login")&&!api.isFirstParty()){card.addView(button("Forgot password?",()->{authEmail=value(email);authScreen("forgot","");}));card.addView(button("Already have a verification code?",()->{authEmail=value(email);challengeId="";authScreen("verify","");}));}
         if(mode.equals("verify"))card.addView(button("Resend code",()->{String e=value(email);if(!emailValid(e))return;submit("Requesting code…",()->api.preauth("resend-verification",DragonApi.object("email",e)),r->setStatus("If verification is pending, another code is on its way."),true);}));
         if(mode.equals("forgot"))card.addView(button("I have a reset code",()->{authEmail=value(email);authScreen("reset","");}));
         if(!mode.equals("login")&&!mode.equals("signup"))card.addView(button("Back to sign in",()->authScreen("login","")));
@@ -328,7 +332,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     }
     private void showAccount(){
         submit("Loading account…",()->{
-            JSONObject p=api.profile();p.put("native_sessions",api.call("/api/auth/sessions",null));
+            JSONObject p=api.profile();if(api.isFirstParty()){p.put("workspaces_unavailable",true);return p;}p.put("native_sessions",api.call("/api/auth/sessions",null));
             try{p.put("native_workspaces",api.call("/api/auth/workspaces",null));}catch(Exception failure){if(failure instanceof DragonApi.ApiError&&((DragonApi.ApiError)failure).status==401)throw failure;p.put("workspaces_unavailable",true);}
             return p;
         },r->renderAccount((JSONObject)r),true);
@@ -342,9 +346,9 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         status=text("",13,MUTED);profile.addView(status);profile.addView(primary("Save changes",()->{String n=value(name);if(n.isEmpty()||n.length()>200){setStatus("Enter a display name up to 200 characters.");return;}submit("Saving…",()->{api.updateName(n);return api.profile();},result->{JSONObject saved=(JSONObject)result;p.put("display_name",saved.optString("display_name",n));renderAccount(p);setStatus("Your account has been updated.");},true);}));
         gap(accountPage,14);LinearLayout identity=accountCard();sectionLabel(identity,"02 / ACCESS");identity.addView(heading("Sign-in methods",21));gap(identity,8);
         JSONArray ids=p.optJSONArray("auth_identities");if(ids!=null)for(int i=0;i<ids.length();i++){JSONObject item=ids.optJSONObject(i);if(item!=null){identity.addView(text(item.optString("provider")+(item.optString("account").isEmpty()?"":" · "+item.optString("account")),14,TEXT));gap(identity,8);}}
-        if(ids==null||ids.length()==0)identity.addView(text("No sign-in methods returned.",13,MUTED));gap(identity,10);identity.addView(text("Connected tools require their own authorization. Signing in does not grant Gmail or Calendar access.",12,MUTED));
+        if(ids==null||ids.length()==0)identity.addView(text(api.isFirstParty()?p.optString("identity_origin","DragonZpyder"):"No sign-in methods returned.",13,MUTED));gap(identity,10);identity.addView(text("Connected tools require their own authorization. Signing in does not grant Gmail or Calendar access.",12,MUTED));
         gap(accountPage,14);LinearLayout sessions=accountCard();sectionLabel(sessions,"03 / SECURITY");sessions.addView(heading("Active sessions",21));gap(sessions,12);
-        JSONArray list=p.optJSONArray("native_sessions");if(list!=null)for(int i=0;i<list.length();i++){JSONObject item=list.optJSONObject(i);if(item==null)continue;sessions.addView(text(item.optString("device","Session")+(item.optBoolean("current")?" · This device":""),14,TEXT));sessions.addView(text(item.optString("scope",""),12,MUTED));gap(sessions,12);}
+        if(api.isFirstParty())sessions.addView(text("This device has a verified Personal session. Full session inventory is not yet exposed.",13,MUTED));JSONArray list=p.optJSONArray("native_sessions");if(list!=null)for(int i=0;i<list.length();i++){JSONObject item=list.optJSONObject(i);if(item==null)continue;sessions.addView(text(item.optString("device","Session")+(item.optBoolean("current")?" · This device":""),14,TEXT));sessions.addView(text(item.optString("scope",""),12,MUTED));gap(sessions,12);}
         gap(accountPage,14);LinearLayout spaces=accountCard();sectionLabel(spaces,"04 / SCOPE");spaces.addView(heading("Your workspaces",21));gap(spaces,8);
         JSONArray work=p.optJSONArray("native_workspaces");if(p.optBoolean("workspaces_unavailable"))spaces.addView(text("Workspace information is unavailable.",13,MUTED));else if(work==null||work.length()==0)spaces.addView(text("No business workspaces attached to this account.",13,MUTED));else for(int i=0;i<work.length();i++){JSONObject w=work.optJSONObject(i);if(w!=null){spaces.addView(text(w.optString("name")+" · "+w.optString("role"),14,TEXT));gap(spaces,8);}}
         gap(accountPage,14);accountPage.addView(button("Manage connections & tools",this::showConnections));gap(accountPage,14);Button out=button("Sign out",this::confirmSignOut);out.setTextColor(dark?0xffffa59a:0xffb6382b);accountPage.addView(out);gap(accountPage,10);accountPage.addView(text("Signs out this device and clears its local conversation view. Your server conversations are retained.",12,MUTED));
@@ -366,6 +370,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         sheet.setContentView(page);sheet.show();Window w=sheet.getWindow();if(w!=null){w.setBackgroundDrawableResource(android.R.color.transparent);w.setGravity(Gravity.BOTTOM|Gravity.CENTER_HORIZONTAL);w.setLayout(Math.min(getResources().getDisplayMetrics().widthPixels-dp(16),dp(520)),Math.min(dp(570),(int)(getResources().getDisplayMetrics().heightPixels*.78)));w.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE|WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN);}
     }
     private void showAdd(){
+        if(api.isFirstParty()){setStatus("Attachments are not yet supported by the first-party Agent API.");return;}
         if(!meshMode){setStatus("Choose a compatible AI Mesh model before attaching media.");chooseModel();return;}
         alert().setTitle("Add to your message").setItems(new String[]{"Attach a file or photo","Take a photo"},(d,i)->{
             if(i==1){
@@ -423,6 +428,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         if(mediaFile!=null){mediaFile.delete();mediaFile=null;}
     }
     private void showMedia(){
+        if(api.isFirstParty()){setStatus("AI Mesh media is not yet authorized for first-party identity.");return;}
         submit("Loading media models…",()->api.call("/mesh/models",null),result->{
             JSONObject catalog=(JSONObject)result;
             ArrayList<String> labels=new ArrayList<>(),kinds=new ArrayList<>();
@@ -501,7 +507,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             alert().setTitle("Transcription").setMessage(text).setPositiveButton("Add to draft",(dialog,j)->{if(chatUi!=null){String draft=chatUi.getDraft();chatUi.setDraft(draft+(draft.isEmpty()?"":" ")+text);}}).setNegativeButton("Close",null).show();
         },true)).show(),true);
     }
-    private void showModes(){alert().setTitle("Choose your intelligence").setItems(new String[]{"DragonZpyder Agent — tasks and tools","AI Mesh — choose a model"},(d,i)->{if(i==0){if(meshMode)switchMode(false,"",false);}else chooseModel();}).show();}
+    private void showModes(){if(api.isFirstParty()){setStatus("DragonZpyder Agent · AI Mesh is not yet authorized for this identity.");return;}alert().setTitle("Choose your intelligence").setItems(new String[]{"DragonZpyder Agent — tasks and tools","AI Mesh — choose a model"},(d,i)->{if(i==0){if(meshMode)switchMode(false,"",false);}else chooseModel();}).show();}
     private void append(String role,String content){transcript.add(new String[]{role,content});if(chatUi!=null)chatUi.append(role,content);}
     private void hideKeyboard(View v){((InputMethodManager)getSystemService(Context.INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(v.getWindowToken(),0);}
     private void submit(String label,Work work,Done done,boolean report){
@@ -553,7 +559,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         }
         append("user",prompt);
         final String id=conversation;
-        submit("Working…",()->{JSONObject body=DragonApi.object("message",prompt);if(!id.isEmpty())body.put("conversation_id",id);return api.call("/api/personal-agent/chat",body);},r->{
+        submit("Working…",()->{JSONObject body=DragonApi.object("message",prompt);if(!id.isEmpty())body.put("conversation_id",id);if(api.isFirstParty()&&!selectedMcpConnections.isEmpty())body.put("mcp_connection_ids",new JSONArray(selectedMcpConnections));return api.call("/api/personal-agent/chat",body);},r->{
             JSONObject answer=(JSONObject)r;conversation=answer.optString("conversation_id",id);
             String value=answer.optString("message",answer.optString("output",""));
             JSONObject nested=answer.optJSONObject("result");if(value.isEmpty()&&nested!=null)value=nested.optString("message");
@@ -623,6 +629,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         },true);
     }
     private void approvals(){
+        if(api.isFirstParty()){setStatus("Approval center is not yet exposed by the first-party API.");return;}
         submit("Loading approvals…",()->{
             LinkedHashMap<String,JSONObject> all=new LinkedHashMap<>();
             for(String source:new String[]{"legacy","kernel"}){
@@ -673,6 +680,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         }).show();
     }
     private void showConnections(){
+        if(api.isFirstParty()){showFirstPartyConnections();return;}
         submit("Checking connections…",()->api.call("/api/personal-connectors",null),result->{
             JSONArray rows=result instanceof JSONArray?(JSONArray)result:result instanceof JSONObject?((JSONObject)result).optJSONArray("connectors"):null;
             if(rows==null)throw new Exception("Connection catalog unavailable.");
@@ -696,7 +704,30 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             page.addView(button("Browse available tools",()->{dialog.dismiss();showTools();}));page.addView(button("Close",dialog::dismiss));dialog.setContentView(page);dialog.show();Window w=dialog.getWindow();if(w!=null){w.setBackgroundDrawableResource(android.R.color.transparent);w.setLayout(-1,-1);}
         },true);
     }
+    private void showFirstPartyConnections(){
+        submit("Loading authorized MCP accounts…",()->api.call("/dz/internal/mcp/connections",null),result->{
+            if(!(result instanceof JSONObject))throw new Exception("Invalid connection catalog");
+            JSONArray rows=((JSONObject)result).optJSONArray("connections");
+            if(rows==null)throw new Exception("Connection catalog unavailable");
+            LinkedHashSet<String> active=new LinkedHashSet<>();
+            ArrayList<String> aliases=new ArrayList<>(),labels=new ArrayList<>();
+            for(int i=0;i<rows.length();i++){JSONObject item=rows.optJSONObject(i);if(item==null||!"active".equals(item.optString("status")))continue;String alias=item.optString("connection_id");if(alias.isEmpty()||!active.add(alias))continue;aliases.add(alias);labels.add(item.optString("label",item.optString("provider_id","Connection")));}
+            selectedMcpConnections.retainAll(active);
+            boolean[] checked=new boolean[aliases.size()];for(int i=0;i<checked.length;i++)checked[i]=selectedMcpConnections.contains(aliases.get(i));
+            AlertDialog.Builder picker=alert().setTitle("MCP accounts for this session");
+            if(aliases.isEmpty())picker.setMessage("No active accounts returned. Connect a provider in the website using the same DragonZpyder account, then refresh here.");
+            else picker.setMultiChoiceItems(labels.toArray(new String[0]),checked,(dialog,i,on)->checked[i]=on);
+            picker.setPositiveButton("Apply",(dialog,i)->{
+                int count=0;for(boolean on:checked)if(on)count++;
+                if(count>10){setStatus("Select at most ten accounts.");return;}
+                selectedMcpConnections.clear();for(int j=0;j<checked.length;j++)if(checked[j])selectedMcpConnections.add(aliases.get(j));setStatus(selectedMcpConnections.size()+" MCP accounts selected");
+            }).setNeutralButton("Manage on website",(dialog,i)->{
+                try{startActivity(new Intent(Intent.ACTION_VIEW,android.net.Uri.parse("https://dragonzpyder.xyz/app")));}catch(Exception unavailable){setStatus("Browser unavailable.");}
+            }).setNegativeButton("Cancel",null).show();
+        },true);
+    }
     private void showTools(){
+        if(api.isFirstParty()){showConnections();return;}
         submit("Discovering tools…",()->api.call("/api/personal-tools",null),r->{
             JSONArray tools=((JSONObject)r).optJSONArray("tools");if(tools==null)throw new Exception("Capability catalog unavailable.");
             String[] labels=new String[tools.length()];for(int i=0;i<labels.length;i++){JSONObject item=tools.getJSONObject(i);labels[i]=item.optString("name",item.optString("id","Capability"));}
@@ -712,6 +743,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         JSONObject payload=result.optJSONObject("result");if(payload==null)throw new Exception("Workflow response was incomplete.");JSONObject value=payload.optJSONObject("value");return value==null?payload:value;
     }
     private void showTasks(){
+        if(api.isFirstParty()){setStatus("Task management is not yet exposed by the first-party API.");return;}
         submit("Loading Personal workflows…",()->{
             JSONObject catalog=(JSONObject)api.call("/api/personal-tools?query=workflow&limit=100",null);
             JSONArray rows=catalog.optJSONArray("tools");HashSet<String> ids=new HashSet<>();if(rows!=null)for(int i=0;i<rows.length();i++){JSONObject t=rows.optJSONObject(i);if(t!=null)ids.add(t.optString("id"));}
