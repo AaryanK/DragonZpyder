@@ -44,33 +44,39 @@ async def read_pending_target(connection, approved: ApprovedInventory):
     source snapshot reading in its own private network.
     """
     async with connection.transaction(isolation="repeatable_read", readonly=True):
-        if await connection.fetchval("""
-            SELECT current_setting('transaction_read_only')='on'
-              AND to_regclass('public.app_users') IS NULL
-              AND to_regclass('public.identity_accounts') IS NOT NULL
-              AND EXISTS (SELECT 1 FROM pg_constraint
-                   WHERE conname='identity_import_not_automatically_active'
-                     AND conrelid=to_regclass('public.identity_accounts') AND convalidated)
-              AND NOT EXISTS (SELECT 1 FROM public.identity_oauth_clients WHERE enabled)
-              AND NOT EXISTS (SELECT 1 FROM public.identity_accounts
-                   WHERE status<>'pending' OR identity_origin<>'operly_import'
-                     OR source_operly_user_id IS DISTINCT FROM subject)
-              AND NOT EXISTS (SELECT 1 FROM public.identity_provider_links
-                   WHERE provider<>'google' OR source<>'auth' OR NOT login_eligible)
-        """) is not True:
-            raise IdentityMigrationConflict("Destination is no longer a fenced pending import")
-        users = await connection.fetch("""
-            SELECT subject AS id,email,password_hash,display_name,email_verified_at,
-                   source_active AS active
-            FROM public.identity_accounts ORDER BY subject
-        """)
-        links = await connection.fetch("""
-            SELECT subject AS user_id,provider,provider_subject
-            FROM public.identity_provider_links ORDER BY subject,provider,provider_subject
-        """)
-        bundle = prepare_snapshot([dict(u) for u in users], [dict(l) for l in links], [])
-        _check_inventory(bundle, approved)
-        return bundle
+        return await read_pending_target_in_transaction(connection, approved)
+
+
+async def read_pending_target_in_transaction(connection, approved: ApprovedInventory):
+    """Internal reader for an already isolated operator transaction."""
+    if not connection.is_in_transaction():
+        raise IdentityMigrationConflict("Isolated transaction required")
+    if await connection.fetchval("""
+        SELECT to_regclass('public.app_users') IS NULL
+          AND to_regclass('public.identity_accounts') IS NOT NULL
+          AND EXISTS (SELECT 1 FROM pg_constraint
+               WHERE conname='identity_import_not_automatically_active'
+                 AND conrelid=to_regclass('public.identity_accounts') AND convalidated)
+          AND NOT EXISTS (SELECT 1 FROM public.identity_oauth_clients WHERE enabled)
+          AND NOT EXISTS (SELECT 1 FROM public.identity_accounts
+               WHERE status<>'pending' OR identity_origin<>'operly_import'
+                 OR source_operly_user_id IS DISTINCT FROM subject)
+          AND NOT EXISTS (SELECT 1 FROM public.identity_provider_links
+               WHERE provider<>'google' OR source<>'auth' OR NOT login_eligible)
+    """) is not True:
+        raise IdentityMigrationConflict("Destination is no longer a fenced pending import")
+    users = await connection.fetch("""
+        SELECT subject AS id,email,password_hash,display_name,email_verified_at,
+               source_active AS active
+        FROM public.identity_accounts ORDER BY subject
+    """)
+    links = await connection.fetch("""
+        SELECT subject AS user_id,provider,provider_subject
+        FROM public.identity_provider_links ORDER BY subject,provider,provider_subject
+    """)
+    bundle = prepare_snapshot([dict(u) for u in users], [dict(l) for l in links], [])
+    _check_inventory(bundle, approved)
+    return bundle
 
 
 def compare_receipts(source: str, destination: str) -> None:
