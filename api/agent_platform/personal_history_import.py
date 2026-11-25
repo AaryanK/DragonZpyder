@@ -35,7 +35,7 @@ def _utc(value):
             raise HistoryConflict("Missing timestamp timezone")
     if not isinstance(value, datetime):
         raise HistoryConflict("Invalid timestamp")
-    return value.replace(tzinfo=timezone.utc).astimezone(timezone.utc).isoformat()
+    return (value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)).isoformat()
 
 
 def _text(value, limit, *, empty=False):
