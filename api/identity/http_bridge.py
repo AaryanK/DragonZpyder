@@ -51,6 +51,40 @@ def _issuer() -> str:
         raise HTTPException(503, "Identity issuer unavailable") from None
 
 
+async def _restricted_identity_role(conn):
+    # A username is not proof of privileges. Check effective server role,
+    # memberships (including SET ROLE), ownership, and protected mutations.
+    allowed = await conn.fetchval("""
+        SELECT current_user = 'dz_identity_api' AND session_user = current_user
+          AND NOT (r.rolsuper OR r.rolcreaterole OR r.rolcreatedb
+                   OR r.rolreplication OR r.rolbypassrls OR r.rolinherit)
+          AND NOT EXISTS (SELECT 1 FROM pg_auth_members m WHERE m.member=r.oid)
+          AND NOT EXISTS (SELECT 1 FROM pg_database d WHERE d.datname=current_database() AND d.datdba=r.oid)
+          AND NOT EXISTS (SELECT 1 FROM pg_namespace n WHERE n.nspname='public' AND n.nspowner=r.oid)
+          AND NOT EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+                          WHERE n.nspname='public' AND c.relowner=r.oid)
+          AND NOT has_database_privilege(current_user,current_database(),'CREATE')
+          AND NOT has_database_privilege(current_user,current_database(),'TEMPORARY')
+          AND NOT has_schema_privilege(current_user,'public','CREATE')
+          AND NOT has_column_privilege(current_user,'public.identity_accounts','status','UPDATE')
+          AND NOT has_column_privilege(current_user,'public.identity_accounts','source_active','UPDATE')
+          AND NOT has_column_privilege(current_user,'public.identity_accounts','identity_origin','UPDATE')
+          AND NOT has_column_privilege(current_user,'public.identity_accounts','source_operly_user_id','UPDATE')
+          AND NOT has_column_privilege(current_user,'public.identity_accounts','email','UPDATE')
+          AND NOT has_any_column_privilege(current_user,'public.identity_oauth_clients','UPDATE')
+          AND NOT has_any_column_privilege(current_user,'public.identity_oauth_clients','INSERT')
+          AND NOT has_table_privilege(current_user,'public.identity_accounts','DELETE,TRUNCATE')
+          AND NOT has_table_privilege(current_user,'public.identity_provider_links','DELETE,TRUNCATE')
+          AND NOT has_any_column_privilege(current_user,'public.identity_provider_links','UPDATE')
+          AND (SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+               WHERE n.nspname='public' AND c.relname IN ('identity_accounts','identity_provider_links')
+                 AND c.relrowsecurity)=2
+        FROM pg_roles r WHERE r.rolname=current_user
+    """)
+    if allowed is not True:
+        raise HTTPException(503, "Restricted identity database role required")
+
+
 @asynccontextmanager
 async def _identity_db():
     dsn = os.getenv("DRAGONZPYDER_IDENTITY_DATABASE_URL", "")
@@ -64,7 +98,7 @@ async def _identity_db():
             user = urlsplit(dsn).username
         except ValueError:
             raise HTTPException(503, "Invalid identity database URL") from None
-        if not user or user.lower() in {"postgres", "root", "railway"}:
+        if user != "dz_identity_api":
             raise HTTPException(503, "Restricted identity database role required")
     # Dedicated identity DB role; never reuse the model gateway DB credentials.
     try:
@@ -72,6 +106,11 @@ async def _identity_db():
     except (OSError, asyncpg.PostgresError, TimeoutError):
         raise HTTPException(503, "Identity database unavailable") from None
     try:
+        if os.getenv("RAILWAY_ENVIRONMENT_NAME", "").lower() == "production":
+            try:
+                await _restricted_identity_role(conn)
+            except (OSError, asyncpg.PostgresError, TimeoutError):
+                raise HTTPException(503, "Restricted identity database role required") from None
         yield conn
     finally:
         await conn.close()

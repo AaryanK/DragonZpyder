@@ -161,7 +161,7 @@ def test_refresh_grant_routes_only_to_rotating_refresh_handler(monkeypatch):
 async def test_production_identity_database_refuses_template_superuser(monkeypatch):
     from fastapi import HTTPException
     monkeypatch.setenv("RAILWAY_ENVIRONMENT_NAME", "production")
-    for user in ("postgres", "root", "railway"):
+    for user in ("postgres", "root", "railway", "arbitrary_admin"):
         monkeypatch.setenv(
             "DRAGONZPYDER_IDENTITY_DATABASE_URL",
             f"postgresql://{user}:redacted@identity-db.railway.internal/railway")
@@ -175,6 +175,9 @@ async def test_production_identity_database_refuses_template_superuser(monkeypat
                        "postgresql://dz_identity_api:dummy@identity-db.railway.internal/railway")
     connected = []
     class SyntheticDB:
+        async def fetchval(self, query):
+            assert "rolsuper" in query and "pg_auth_members" in query
+            return True
         async def close(self):
             connected.append("closed")
     async def fake_connect(*, dsn, **kwargs):
@@ -184,3 +187,25 @@ async def test_production_identity_database_refuses_template_superuser(monkeypat
     async with bridge._identity_db() as db:
         assert isinstance(db, SyntheticDB)
     assert connected == ["closed"]
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("allowed", [False, None])
+async def test_production_identity_role_catalog_rejection_closes_connection(monkeypatch, allowed):
+    from fastapi import HTTPException
+    monkeypatch.setenv("RAILWAY_ENVIRONMENT_NAME", "production")
+    monkeypatch.setenv("DRAGONZPYDER_IDENTITY_DATABASE_URL",
+        "postgresql://dz_identity_api:dummy@identity-db.railway.internal/railway")
+    closed = []
+    class SyntheticDB:
+        async def fetchval(self, query):
+            return allowed
+        async def close(self):
+            closed.append(True)
+    async def connect(**kwargs):
+        return SyntheticDB()
+    monkeypatch.setattr(bridge.asyncpg, "connect", connect)
+    with pytest.raises(HTTPException) as exc:
+        async with bridge._identity_db():
+            raise AssertionError("Unsafe role accepted")
+    assert exc.value.status_code == 503
+    assert closed == [True]
