@@ -1,6 +1,7 @@
 const launch=document.getElementById("companion-open"),panel=document.getElementById("companion-panel"),end=document.getElementById("companion-end"),mute=document.getElementById("companion-mute"),audio=document.getElementById("companion-audio");
 let peer=null,channel=null,mic=null,controller=null,live=false,starting=false,silent=false,version=0;
 const calls=new Set();
+let nativeVoiceId=null;
 // This is transcription only: browser speech recognition must not trigger agent calls.
 const SpeechApi=window.SpeechRecognition||window.webkitSpeechRecognition;
 let browserMode=false,recognition=null,recognitionRun=0,restartTimer=null;
@@ -88,7 +89,7 @@ function setStatus(message,kind="idle"){
   panel.dataset.state=kind;
   window.dispatchEvent(new CustomEvent("dragonzpyder:voice-state",{detail:{kind,message}}));
 }
-function csrf(){for(const k of ["__Host-operly_csrf","operly_csrf"]){const c=document.cookie.split(";").map(s=>s.trim()).find(s=>s.startsWith(k+"="));if(c)return decodeURIComponent(c.slice(k.length+1))}return ""}
+function csrf(){for(const k of (window.dragonzpyderNativeMode?["__Host-dz_csrf"]:["__Host-operly_csrf","operly_csrf"])){const c=document.cookie.split(";").map(s=>s.trim()).find(s=>s.startsWith(k+"="));if(c)return decodeURIComponent(c.slice(k.length+1))}return ""}
 function row(id,label,value,append=false){
   if(!value)return;
   window.dispatchEvent(new CustomEvent("dragonzpyder:voice-transcript",{
@@ -97,6 +98,8 @@ function row(id,label,value,append=false){
 }
 function send(event){if(channel?.readyState==="open")channel.send(JSON.stringify(event))}
 function cleanup(){
+  const closing=nativeVoiceId;nativeVoiceId=null;
+  if(closing){const token=csrf();if(token)fetch('/dz/v2/personal/voice/'+closing+'/end',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-DZ-CSRF':token},body:'{}',keepalive:true}).catch(()=>{});}
   version++;controller?.abort();controller=null;
   browserMode=false;stopRecognition();
   browserEvent("voice-mode",{mode:"realtime"});
@@ -110,7 +113,7 @@ function cleanup(){
 }
 function close(){cleanup();panel.hidden=true;setStatus("Ended");launch.focus()}
 async function handleTool(item,v){
-  if(!item.call_id||calls.has(item.call_id))return;
+  if(window.dragonzpyderNativeMode||!item.call_id||calls.has(item.call_id))return;
   calls.add(item.call_id);
   let output;
   try{
@@ -139,6 +142,8 @@ function onEvent(text,v){
 }
 async function start(){
   if(live||starting||browserMode)return;
+  const native=window.dragonzpyderNativeMode===true;
+  if(native&&window.dragonzpyderNativeCapabilities?.voice_enabled!==true){setStatus('First-party live voice is unavailable','error');return;}
   window.dispatchEvent(new Event("dragonzpyder:live-start"));
   panel.hidden=false;launch.setAttribute("aria-expanded","true");
   window.dispatchEvent(new Event("dragonzpyder:voice-open"));
@@ -161,16 +166,20 @@ async function start(){
     channel=peer.createDataChannel("oai-events");channel.onmessage=e=>onEvent(e.data,v);
     channel.onclose=()=>{if(v===version&&live)close()};
     const offer=await peer.createOffer();await peer.setLocalDescription(offer);setStatus("Connecting live voice…","connecting");
-    const r=await fetch("/companion/realtime",{method:"POST",credentials:"same-origin",headers:{"content-type":"application/sdp","x-csrf-token":csrf()},body:peer.localDescription.sdp,signal:controller.signal});
+    if(native)nativeVoiceId=crypto.randomUUID();
+    const id=nativeVoiceId;
+    const r=await fetch(native?"/dz/v2/personal/voice/start":"/companion/realtime",{method:"POST",credentials:"same-origin",headers:native?{"content-type":"application/json","X-DZ-CSRF":csrf()}:{"content-type":"application/sdp","x-csrf-token":csrf()},body:native?JSON.stringify({session_id:id,sdp:peer.localDescription.sdp}):peer.localDescription.sdp,signal:controller.signal});
     if(!r.ok){
       const data=await r.json().catch(()=>({}));
       if(v!==version)return;
       // Only provider availability failures can fall back; never bypass an
       // authentication error, CSRF rejection, or the provider rate limit.
-      if((r.status===502||r.status===503)&&beginBrowserFallback())return;
+      if(!native&&(r.status===502||r.status===503)&&beginBrowserFallback())return;
       throw Error(data.detail?.message||"Connection failed: "+r.status);
     }
-    const answer=await r.text();if(v!==version)return;
+    let answer;
+    if(native){const data=await r.json();if(data.session_id!==id||typeof data.sdp!=="string")throw Error("Voice session receipt invalid");answer=data.sdp;}else answer=await r.text();
+    if(v!==version)return;
     await peer.setRemoteDescription({type:"answer",sdp:answer});live=true;starting=false;
     window.dispatchEvent(new CustomEvent("dragonzpyder:voice-session",{detail:{connected:true}}));
     setStatus("Listening — speak naturally","listening");
