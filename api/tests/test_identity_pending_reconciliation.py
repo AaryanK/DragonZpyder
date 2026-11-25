@@ -60,3 +60,46 @@ def test_receipt_order_independent():
     reverse = replace(combined, accounts=combined.accounts[::-1], links=combined.links[::-1])
     approved = ApprovedInventory(2, 2)
     assert snapshot_receipt(combined, approved, b"x"*32) == snapshot_receipt(reverse, approved, b"x"*32)
+
+
+@pytest.mark.asyncio
+async def test_pending_receipt_real_postgres(monkeypatch):
+    import os
+    import asyncpg
+    from urllib.parse import urlsplit
+    from identity.pending_reconciliation import read_pending_target
+    from identity.production_import import import_pending_production
+
+    dsn = os.getenv("DRAGONZPYDER_IDENTITY_TEST_DSN", "")
+    if not dsn:
+        pytest.skip("No disposable identity_test PostgreSQL")
+    if urlsplit(dsn).path != "/identity_test":
+        raise RuntimeError("Never run against non-disposable database")
+    bundle, approved, key = sample(), ApprovedInventory(1, 1), b"x"*32
+    conn = await asyncpg.connect(dsn)
+    try:
+        assert not await conn.fetchval("SELECT to_regclass('public.identity_accounts') IS NOT NULL")
+        sql = (Path(__file__).resolve().parents[1] / "identity" / "schema_bootstrap_manual.sql").read_text("utf-8")
+        await conn.execute(sql)
+        try:
+            monkeypatch.setenv("DRAGONZPYDER_IDENTITY_PRODUCTION_IMPORT", "1")
+            await import_pending_production(conn, bundle, approved, operator_approved=True)
+            target = await read_pending_target(conn, approved)
+            compare_receipts(snapshot_receipt(bundle, approved, key), snapshot_receipt(target, approved, key))
+            await conn.execute("UPDATE public.identity_accounts SET display_name='Changed'")
+            target = await read_pending_target(conn, approved)
+            with pytest.raises(IdentityMigrationConflict):
+                compare_receipts(snapshot_receipt(bundle, approved, key), snapshot_receipt(target, approved, key))
+            await conn.execute("UPDATE public.identity_oauth_clients SET enabled=TRUE")
+            with pytest.raises(IdentityMigrationConflict):
+                await read_pending_target(conn, approved)
+        finally:
+            await conn.execute("""
+                DROP TABLE public.identity_authorization_interactions,
+                public.identity_provider_challenges, public.identity_login_rate_limits,
+                public.identity_refresh_grants, public.identity_authorization_codes,
+                public.identity_browser_sessions, public.identity_provider_links,
+                public.identity_oauth_clients, public.identity_accounts
+            """)
+    finally:
+        await conn.close()
