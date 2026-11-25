@@ -230,7 +230,13 @@ async function bootstrapAuth() {
     // never fall back to Operly when the DragonZpyder API is unavailable.
     const routing = await api("/dz/status", { csrf: false });
     state.firstParty = routing.web_cutover_enabled === true;
-    state.nativeCapabilities = state.firstParty ? await api('/dz/v2/personal/status', {csrf:false}) : {};
+    state.nativeCapabilities = {};
+    if(state.firstParty){
+      // Capability discovery failure must not break an authenticated Agent
+      // session or route a first-party user to a legacy service.
+      try{state.nativeCapabilities=await api('/dz/v2/personal/status',{csrf:false});}
+      catch{state.nativeCapabilities={};}
+    }
     window.dragonzpyderNativeCapabilities = state.nativeCapabilities;
     window.dragonzpyderNativeMode = state.firstParty;
     window.dispatchEvent(new CustomEvent("dragonzpyder:runtime-mode", { detail: { firstParty: state.firstParty } }));
