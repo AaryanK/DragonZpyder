@@ -49,6 +49,10 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private JSONArray history=new JSONArray();
     private boolean busy, signedIn, meshMode;
     private String model="";
+    private boolean modelAcceptsImages;
+    private boolean restoredMesh;
+    private String restoredModel="";
+    private boolean restoredModelAcceptsImages;
     private JSONArray meshMessages=new JSONArray();
     private TextToSpeech tts;
     private boolean speechReady;
@@ -63,13 +67,14 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             restoredDraft=b.getString("dz.draft","");
             restorePending=true;
             interruptedRequest=b.getBoolean("dz.request_in_flight",false);
+            restoredMesh=b.getBoolean("dz.mesh",false);restoredModel=b.getString("dz.model","");restoredModelAcceptsImages=b.getBoolean("dz.model_images",false);
         }
         dark=getPreferences(MODE_PRIVATE).getBoolean("dark",false);palette();
         getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         tts=new TextToSpeech(this, code -> speechReady=code==TextToSpeech.SUCCESS);
         loginScreen("");
         submit("Checking secure session…",()->api.restore(getApplicationContext()),result->{
-            if(Boolean.TRUE.equals(result)){signedIn=true;chatScreen();if(restorePending&&chatUi!=null)chatUi.setDraft(restoredDraft);loadHistory(true);}
+            if(Boolean.TRUE.equals(result)){signedIn=true;if(restorePending&&restoredMesh&&!restoredModel.isEmpty()){meshMode=true;model=restoredModel;modelAcceptsImages=restoredModelAcceptsImages;chatScreen();applyRestoredDraft();append("system","Android recreated this screen. Previous AI Mesh context and attachments were not saved; this is a new model conversation.");loadHistory(false);}else{chatScreen();if(restorePending&&chatUi!=null)chatUi.setDraft(restoredDraft);loadHistory(true);}}
             else processOAuthIntent(getIntent());
         },true);
     }
@@ -111,7 +116,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private boolean six(String code){if(!code.matches("[0-9]{6}")){setStatus("Enter the six-digit code.");return false;}return true;}
     private void clearAccountView(){
         conversation="";pendingPrompt="";attachment=null;attachmentName="";transcript.clear();
-        meshMode=false;model="";lastAnswer="";meshMessages=new JSONArray();history=new JSONArray();
+        meshMode=false;model="";modelAcceptsImages=false;restoredMesh=false;restoredModel="";restoredModelAcceptsImages=false;lastAnswer="";meshMessages=new JSONArray();history=new JSONArray();
         profileInitial="D";authEmail="";challengeId="";restoredDraft="";restoredConversation="";
         restorePending=false;interruptedRequest=false;transcriptionModel="";queuedOAuthIntent=null;googleSignInPending=false;googleAttempt++;
         if(mobileOAuth!=null)mobileOAuth.clear();stopMedia();if(tts!=null)tts.stop();chatUi=null;
@@ -364,6 +369,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         if(!meshMode){setStatus("Choose a compatible AI Mesh model before attaching media.");chooseModel();return;}
         alert().setTitle("Add to your message").setItems(new String[]{"Attach a file or photo","Take a photo"},(d,i)->{
             if(i==1){
+                if(!modelAcceptsImages){setStatus("The selected model does not advertise image support. Choose a vision model.");return;}
                 Intent camera=new Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE);
                 try{startActivityForResult(camera,45);}catch(android.content.ActivityNotFoundException e){setStatus("Camera app unavailable.");}
                 return;
@@ -389,12 +395,21 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             if(name==null||name.isEmpty()||name.length()>120)throw new Exception("Unsupported filename");
             if(mime==null)mime="application/octet-stream";
             boolean image=Arrays.asList("image/jpeg","image/png","image/webp").contains(mime);
+            if(image&&!modelAcceptsImages)throw new Exception("Choose a model that supports image inputs.");
             String extension=name.toLowerCase(Locale.ROOT);
             if(!image&&!extension.matches(".*\\.(pdf|docx|txt|md|csv|json|py|log)$"))throw new Exception("Unsupported file format");
+            if(!image&&extension.endsWith(".pdf"))mime="application/pdf";
+            else if(!image&&extension.endsWith(".docx"))mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+            else if(!image)mime="text/plain";
             int limit=extension.endsWith(".docx")?1000000:extension.matches(".*\\.(txt|md|csv|json|py|log)$")?250000:3*1024*1024;
             java.io.ByteArrayOutputStream out=new java.io.ByteArrayOutputStream();
             try(java.io.InputStream in=getContentResolver().openInputStream(uri)){if(in==null)throw new Exception("Cannot read attachment");byte[] buffer=new byte[8192];int n;while((n=in.read(buffer))!=-1){if(out.size()+n>limit)throw new Exception("Attachment exceeds size limit");out.write(buffer,0,n);}}
             if(out.size()==0)throw new Exception("Empty file");
+            byte[] bytes=out.toByteArray();
+            if(image){android.graphics.BitmapFactory.Options bounds=new android.graphics.BitmapFactory.Options();bounds.inJustDecodeBounds=true;android.graphics.BitmapFactory.decodeByteArray(bytes,0,bytes.length,bounds);if(bounds.outWidth<1||bounds.outHeight<1||bounds.outWidth>8192||bounds.outHeight>8192||!mime.equals(bounds.outMimeType))throw new Exception("Invalid image or unsupported dimensions");}
+            else if(extension.endsWith(".pdf")&&(bytes.length<5||!new String(bytes,0,5,java.nio.charset.StandardCharsets.US_ASCII).equals("%PDF-")))throw new Exception("Invalid PDF");
+            else if(extension.endsWith(".docx")&&(bytes.length<4||bytes[0]!=80||bytes[1]!=75))throw new Exception("Invalid DOCX");
+            else if(!extension.endsWith(".pdf")&&!extension.endsWith(".docx"))java.nio.charset.StandardCharsets.UTF_8.newDecoder().decode(java.nio.ByteBuffer.wrap(bytes));
             String encoded="data:"+mime+";base64,"+android.util.Base64.encodeToString(out.toByteArray(),android.util.Base64.NO_WRAP);
             JSONObject part=image?new JSONObject().put("type","image_url").put("image_url",new JSONObject().put("url",encoded)):new JSONObject().put("type","file").put("file",new JSONObject().put("filename",name).put("file_data",encoded));
             return new JSONObject().put("name",name).put("part",part);
@@ -516,20 +531,22 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     }
     private void send(){
         if(busy||!signedIn||chatUi==null)return;
-        String prompt=chatUi.getDraft().trim();if(prompt.isEmpty())return;
+        String prompt=chatUi.getDraft().trim();if(prompt.isEmpty()&&!(meshMode&&attachment!=null))return;
         if(prompt.length()>(meshMode?5000:12000)){setStatus("Message is too long for this mode.");return;}
-        View focused=getCurrentFocus();if(focused!=null)hideKeyboard(focused);chatUi.setDraft("");pendingPrompt=prompt;append("user",prompt);
+        View focused=getCurrentFocus();if(focused!=null)hideKeyboard(focused);chatUi.setDraft("");pendingPrompt=prompt.isEmpty()?"[Attachment]":prompt;
         if(meshMode){
             final JSONArray next=new JSONArray();
-            try{for(int i=Math.max(0,meshMessages.length()-10);i<meshMessages.length();i++)next.put(meshMessages.get(i));Object content=attachment==null?prompt:new JSONArray().put(new JSONObject().put("type","text").put("text",prompt)).put(attachment);next.put(new JSONObject().put("role","user").put("content",content));}
+            try{int budget=14000-prompt.length()-(attachment!=null&&"file".equals(attachment.optString("type"))?8000:0);int start=meshMessages.length();for(int i=meshMessages.length()-2;i>=0&&meshMessages.length()-i<=10;i-=2){JSONObject user=meshMessages.getJSONObject(i),assistant=meshMessages.getJSONObject(i+1);int chars=user.optString("content").length()+assistant.optString("content").length();if(chars>budget)break;budget-=chars;start=i;}for(int i=start;i<meshMessages.length();i++)next.put(meshMessages.get(i));if(start>0)append("system","Older AI Mesh messages were omitted to fit the server context limit.");Object content=attachment==null?prompt:new JSONArray().put(new JSONObject().put("type","text").put("text",prompt)).put(attachment);next.put(new JSONObject().put("role","user").put("content",content));}
             catch(JSONException e){chatUi.setDraft(prompt);pendingPrompt="";setStatus("Message error");return;}
+            append("user",prompt+(attachmentName.isEmpty()?"":"\n[Attachment: "+attachmentName+"]"));
             final NativeChatView target=chatUi;
             target.setPartialReply("");target.setStreaming(true);api.prepareStream();
             submit("Generating…",()->api.streamChat(new JSONObject().put("model",model).put("messages",next),delta->runOnUiThread(()->{if(!isDestroyed()&&chatUi==target)target.setPartialReply(target.getPartialReply()+delta);})),r->{
                 String value=(String)r;if(value.isEmpty())throw new Exception("Model did not return text.");
-                pendingPrompt="";target.setPartialReply("");attachment=null;attachmentName="";if(chatUi!=null)chatUi.setAttachmentLabel("");meshMessages=next;meshMessages.put(new JSONObject().put("role","assistant").put("content",value));lastAnswer=value;append("assistant",value);
+                pendingPrompt="";target.setPartialReply("");String previousAttachment=attachmentName;attachment=null;attachmentName="";if(chatUi!=null)chatUi.setAttachmentLabel("");meshMessages=next;meshMessages.put(meshMessages.length()-1,new JSONObject().put("role","user").put("content",prompt+(previousAttachment.isEmpty()?"":" [Prior attachment omitted; reattach to inspect it again.]")));if(!previousAttachment.isEmpty())append("system","Attachment was sent for this turn only. Reattach it if a later question needs its original contents.");meshMessages.put(new JSONObject().put("role","assistant").put("content",value.length()>5000?value.substring(0,5000):value));lastAnswer=value;append("assistant",value);
             },true);return;
         }
+        append("user",prompt);
         final String id=conversation;
         submit("Working…",()->{JSONObject body=DragonApi.object("message",prompt);if(!id.isEmpty())body.put("conversation_id",id);return api.call("/api/personal-agent/chat",body);},r->{
             JSONObject answer=(JSONObject)r;conversation=answer.optString("conversation_id",id);
@@ -572,6 +589,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     @Override protected void onSaveInstanceState(Bundle out){
         // The draft is user-authored; never store passwords, credentials, or request payloads.
         out.putString("dz.conversation",conversation);
+        out.putBoolean("dz.mesh",meshMode);out.putString("dz.model",model);out.putBoolean("dz.model_images",modelAcceptsImages);
         out.putString("dz.draft",chatUi!=null?chatUi.getDraft():restoredDraft);
         // Marker only, never the prompt or credentials. Prevent implied completion or automatic replay.
         out.putBoolean("dz.request_in_flight",busy&&!pendingPrompt.isEmpty());
@@ -587,7 +605,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private void open(String id){
         if(busy||id.isEmpty())return;
         submit("Loading chat…",()->api.call("/api/personal-agent/conversations/"+DragonApi.segment(id)+"/messages",null),r->{
-            meshMode=false;attachment=null;attachmentName="";conversation=id;transcript.clear();if(chatUi!=null){chatUi.clearMessages();chatUi.setModeLabel("Agent");chatUi.setAttachmentLabel("");chatUi.setDraft("");}JSONArray rows=(JSONArray)r;
+            meshMode=false;model="";modelAcceptsImages=false;attachment=null;attachmentName="";conversation=id;transcript.clear();if(chatUi!=null){chatUi.clearMessages();chatUi.setModeLabel("Agent");chatUi.setAttachmentLabel("");chatUi.setDraft("");}JSONArray rows=(JSONArray)r;
             for(int i=0;i<rows.length();i++){JSONObject item=rows.optJSONObject(i);if(item!=null&&Arrays.asList("user","assistant").contains(item.optString("role")))append(item.optString("role"),item.optString("content"));}
             applyRestoredDraft();
         },true);
@@ -596,7 +614,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         submit("Loading models…",()->api.call("/mesh/models",null),r->{
             JSONArray models=((JSONObject)r).optJSONArray("chat");if(models==null||models.length()==0)throw new Exception("No chat models available.");
             String[] names=new String[models.length()];for(int i=0;i<names.length;i++)names[i]=models.getJSONObject(i).optString("name");
-            alert().setTitle("AI Mesh models").setItems(names,(d,i)->{model=models.optJSONObject(i).optString("id");meshMode=true;newChat();}).setNegativeButton("Close",null).show();
+            alert().setTitle("AI Mesh models").setItems(names,(d,i)->{JSONObject selected=models.optJSONObject(i);if(selected==null||selected.optString("id").isEmpty()){setStatus("Invalid model selection.");return;}model=selected.optString("id");modelAcceptsImages=false;JSONArray inputs=selected.optJSONArray("inputs");if(inputs!=null)for(int j=0;j<inputs.length();j++)if("image".equals(inputs.optString(j)))modelAcceptsImages=true;meshMode=true;newChat();}).setNegativeButton("Close",null).show();
         },true);
     }
     private void approvals(){
