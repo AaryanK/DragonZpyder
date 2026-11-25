@@ -209,6 +209,7 @@ async function asDataUrl(file,mime){
 async function setFiles(files){
  if(loading)return;
  const offered=Array.from(files||[]).filter(Boolean);if(!offered.length)return;
+ if(window.dragonzpyderQueueAgentFiles?.(offered)){upload.value="";return;}
  const incoming=[];let bytes=assets.reduce((total,a)=>total+a.bytes,0);
  for(const file of offered){
   if(assets.length+incoming.length>=3){note("Attach at most three items.",true);break;}
@@ -397,5 +398,6 @@ composer.addEventListener("drop",event=>{
 fileLabel.addEventListener("keydown",event=>{
  if(event.key==="Enter"||event.key===" "){event.preventDefault();upload.click();}
 });
+window.addEventListener("dragonzpyder:runtime-mode",e=>{if(e.detail?.firstParty)upload.removeAttribute("accept")});
 window.dragonzpyderMesh={isActive:()=>enabled,isBusy:()=>loading,hasAttachments:()=>assets.length>0,submit,clear,disable:()=>setActive(false)};
 window.dragonzpyderComposerSync?.();
