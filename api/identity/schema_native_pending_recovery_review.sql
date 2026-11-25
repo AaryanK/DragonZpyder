@@ -56,7 +56,7 @@ BEGIN
  VALUES(p_digest,a.subject,clock_timestamp()+interval '20 minutes');
  RETURN a.email;
 END $fn$;
-CREATE FUNCTION public.redeem_pending_recovery(p_digest text,p_hash text,p_proof uuid)
+CREATE FUNCTION public.redeem_pending_recovery(p_email text,p_digest text,p_hash text,p_proof uuid)
 RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $fn$
 DECLARE sid text;
 BEGIN
@@ -67,7 +67,7 @@ BEGIN
  IF NOT FOUND THEN RETURN FALSE; END IF;
  -- Same lock order as issuance, then recheck token and authority.
  PERFORM 1 FROM public.identity_accounts a JOIN public.identity_recovery_authority g
- ON a.subject=g.subject WHERE a.subject=sid AND a.email=g.email AND a.email_verified_at IS NOT NULL
+ ON a.subject=g.subject WHERE a.subject=sid AND a.email=p_email AND a.email=g.email AND a.email_verified_at IS NOT NULL
  AND a.status='pending' AND a.source_active AND a.identity_origin='operly_import'
  AND a.subject=a.source_operly_user_id AND a.password_hash IS NULL
  AND g.revoked_at IS NULL AND g.expires_at>clock_timestamp() FOR UPDATE OF a,g;
@@ -84,7 +84,7 @@ BEGIN
  RETURN TRUE;
 END $fn$;
 REVOKE ALL ON FUNCTION public.issue_pending_recovery(text,text),
- public.redeem_pending_recovery(text,text,uuid) FROM PUBLIC;
+ public.redeem_pending_recovery(text,text,text,uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.issue_pending_recovery(text,text),
- public.redeem_pending_recovery(text,text,uuid) TO dz_identity_api;
+ public.redeem_pending_recovery(text,text,text,uuid) TO dz_identity_api;
 COMMIT;
