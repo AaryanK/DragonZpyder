@@ -74,3 +74,29 @@ python -m identity.pending_reconciliation compare SOURCE_RECEIPT TARGET_RECEIPT
 A match is evidence that the captured snapshots agree on imported fields. It
 is not proof of a write freeze, of successful authentication, or of recovery
 eligibility. Confirm source freshness at cutover; a mismatch is a stop condition.
+
+
+## Individual activation schema (review only)
+
+The revised `schema_import_activation_review.sql` replaces the blanket
+pending-only fence with a per-subject foreign-key-backed approval receipt.
+Installing it alone activates zero accounts. The operator-only
+`approve_imported_identity` function checks the immutable source subject,
+pending/active-source state, a 15-minute proof window and an existing password
+or Google credential candidate, records the operator and atomically activates
+that single subject. The API must not have EXECUTE or receipt mutation rights;
+its production role check rejects such privileges.
+
+**This primitive is not a proof verifier.** Do not call it based on an email,
+an imported hash alone, a linked Discord channel, a model assertion or a
+user-supplied subject. A trusted self-service proof-collection protocol with
+real password or provider verification and separately reviewed operator
+authorization is still required. Do not ask users to give an operator their
+password or provider token. Legacy source reauthentication is explicitly
+rejected by this function until a separately reviewed protocol exists.
+The 51 recovery candidates remain pending; no recovery has been performed.
+
+The migration must not be installed in production before reconciliation,
+proof integration, real two-account isolation tests and rollback approval.
+Current production still has the original pending-only constraint and native
+HTTP auth disabled.
