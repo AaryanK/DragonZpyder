@@ -113,3 +113,37 @@ def test_migration_proof_proxy_is_separately_gated_and_exact(monkeypatch):
             assert calls==[("POST","https://api.dragonzpyder.xyz/identity/v1/import-proof/password","https://api.dragonzpyder.xyz")]
         finally:
             client.app.state.http=original
+
+
+def test_proof_proxy_never_relays_legacy_or_native_session_credentials(monkeypatch):
+    calls=[]
+    def handler(request):
+        calls.append((request.headers.get("cookie"),request.headers.get("authorization"),
+                      request.headers.get("x-csrf-token")))
+        return httpx.Response(202,json={"status":"awaiting_review"},headers=[
+            ("set-cookie","__Host-dz_import_proof="+"p"*48+"; Secure; Path=/; HttpOnly"),
+            ("set-cookie","__Host-dz_identity=must-not-relay; Secure; Path=/; HttpOnly"),
+        ])
+    monkeypatch.setenv("DRAGONZPYDER_IMPORT_PROOF_WEB_ENABLED","1")
+    with TestClient(app,base_url="https://www.dragonzpyder.xyz") as client:
+        original=client.app.state.http
+        client.app.state.http=httpx.AsyncClient(transport=httpx.MockTransport(handler),
+                                                cookies=original.cookies)
+        try:
+            path="/dz/identity/v1/import-proof/google/complete"
+            origin={"origin":"https://www.dragonzpyder.xyz"}
+            assert client.post(path+"?secret=x",headers=origin).status_code==400
+            assert client.post(path,headers=origin,content=b"x"*12289).status_code==413
+            response=client.post(path,headers={**origin,
+                "cookie":"__Host-operly_session=legacy; __Host-dz_identity=native; __Host-dz_import_proof="+"a"*48,
+                "authorization":"Bearer unwanted","x-csrf-token":"legacy-csrf"},json={})
+            assert response.status_code==202
+            assert calls==[("__Host-dz_import_proof="+"a"*48,None,None)]
+            assert len(response.headers.get_list("set-cookie"))==1
+            assert response.headers["set-cookie"].startswith("__Host-dz_import_proof=")
+            assert list(client.app.state.http.cookies.jar)==[]
+            client.cookies.clear()
+            assert client.post(path,headers=origin,json={}).status_code==202
+            assert calls[-1]==("",None,None)
+        finally:
+            client.app.state.http=original
