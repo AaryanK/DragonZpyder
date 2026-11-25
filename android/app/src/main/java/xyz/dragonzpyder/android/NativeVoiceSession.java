@@ -27,7 +27,7 @@ final class NativeVoiceSession {
     private DataChannel channel;
     private AudioManager audio;
     private int previousMode;
-    private boolean audioChanged,closed,offered;
+    private boolean audioChanged,closed,offered,muted,connected;
     private volatile boolean startAttempted;
     NativeVoiceSession(Context context,DragonApi api,Listener listener){
         this.context=context.getApplicationContext();this.api=api;this.listener=listener;
@@ -48,7 +48,7 @@ final class NativeVoiceSession {
                 public void onSignalingChange(PeerConnection.SignalingState state){}
                 public void onIceConnectionChange(PeerConnection.IceConnectionState state){main.post(()->{
                     if(closed)return;
-                    if(state==PeerConnection.IceConnectionState.CONNECTED||state==PeerConnection.IceConnectionState.COMPLETED)status("Connected · microphone live");
+                    if(state==PeerConnection.IceConnectionState.CONNECTED||state==PeerConnection.IceConnectionState.COMPLETED){connected=true;status(muted?"Microphone muted":"Ready · microphone live");}
                     else if(state==PeerConnection.IceConnectionState.FAILED||state==PeerConnection.IceConnectionState.CLOSED){status("Voice connection ended.");close();}
                 });}
                 public void onIceConnectionReceivingChange(boolean receiving){}
@@ -65,6 +65,18 @@ final class NativeVoiceSession {
             track=factory.createAudioTrack("dragon-mic",source);
             peer.addTrack(track,Collections.singletonList("audio"));
             channel=peer.createDataChannel("oai-events",new DataChannel.Init());
+            if(channel!=null)channel.registerObserver(new DataChannel.Observer(){
+                public void onBufferedAmountChange(long previousAmount){}
+                public void onStateChange(){}
+                public void onMessage(DataChannel.Buffer buffer){
+                    if(buffer.binary||buffer.data.remaining()>65536)return;
+                    try{
+                        byte[] bytes=new byte[buffer.data.remaining()];buffer.data.get(bytes);
+                        String type=new JSONObject(new String(bytes,java.nio.charset.StandardCharsets.UTF_8)).optString("type");
+                        main.post(()->onProviderEvent(type));
+                    }catch(Exception malformed){/* Never log provider payloads. */}
+                }
+            });
             peer.createOffer(new Sdp(){
                 @Override public void onCreateSuccess(SessionDescription offer){main.post(()->{
                     if(!closed&&peer!=null)peer.setLocalDescription(new Sdp(){
@@ -100,11 +112,23 @@ final class NativeVoiceSession {
             }catch(Exception failure){main.post(()->{status("Voice setup failed or unconfirmed. No automatic retry.");close();});}
         });
     }
-    void mute(boolean value){if(!closed&&track!=null){track.setEnabled(!value);status(value?"Microphone muted":"Microphone live");}}
+    private void onProviderEvent(String type){
+        if(closed||!connected)return;
+        switch(type){
+            case "input_audio_buffer.speech_started":if(!muted)status("Listening…");break;
+            case "input_audio_buffer.speech_stopped":if(!muted)status("Thinking…");break;
+            case "output_audio_buffer.started":status("Speaking…");break;
+            case "output_audio_buffer.stopped":
+            case "output_audio_buffer.cleared":status(muted?"Microphone muted":"Ready · microphone live");break;
+            case "error":status("Voice provider reported an error.");break;
+            default:break;
+        }
+    }
+    void mute(boolean value){if(!closed&&track!=null){muted=value;track.setEnabled(!value);status(value?"Microphone muted":connected?"Ready · microphone live":"Connecting…");}}
     void close(){
         if(closed)return;closed=true;main.removeCallbacks(timeout);
         if(track!=null)track.setEnabled(false);
-        if(channel!=null){channel.close();channel.dispose();channel=null;}
+        if(channel!=null){channel.unregisterObserver();channel.close();channel.dispose();channel=null;}
         if(peer!=null){peer.close();peer.dispose();peer=null;}
         if(track!=null){track.dispose();track=null;}
         if(source!=null){source.dispose();source=null;}
