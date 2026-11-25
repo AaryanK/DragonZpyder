@@ -86,3 +86,36 @@ test("native archived transcripts are read-only and never submitted to the harne
   await page.locator("#composer").evaluate(form => form.requestSubmit());
   expect(calls).toEqual([]);
 });
+
+
+test("migration proof pilot does not sign in or call Operly", async ({page}) => {
+  const legacy=[], login=[], proofs=[];
+  const ref="00000000-0000-4000-8000-000000000023";
+  await page.route("**/api/**",route=>{legacy.push(route.request().url());return route.fulfill({status:410,body:"not allowed"});});
+  await page.route("**/dz/import-proof/status",route=>route.fulfill({json:{enabled:true}}));
+  await page.route("**/dz/identity/v1/import-proof/google/start",route=>route.fulfill({status:503,json:{detail:"not configured"}}));
+  await page.route("**/dz/identity/v1/password/login",route=>{login.push(route.request().url());return route.fulfill({status:500});});
+  await page.route("**/dz/identity/v1/import-proof/password",route=>{
+    proofs.push(route.request().postDataJSON());
+    return route.fulfill({status:202,json:{proof_reference:ref,status:"awaiting_review"}});
+  });
+  await page.goto("/account?mode=migration");
+  await expect(page.getByRole("heading",{name:"Verify your existing account."})).toBeVisible();
+  await page.locator("#migration-email").fill("synthetic@example.test");
+  await page.locator("#migration-password").fill("synthetic-test-password");
+  await page.getByRole("button",{name:"Verify existing account"}).click();
+  await expect(page.getByText("Verification recorded. No account has been activated. Review reference: "+ref)).toBeVisible();
+  await expect(page.locator("#migration-password")).toHaveValue("");
+  expect(proofs).toEqual([{email:"synthetic@example.test",password:"synthetic-test-password"}]);
+  expect(legacy).toEqual([]);
+  expect(login).toEqual([]);
+  expect(new URL(page.url()).pathname).toBe("/account");
+});
+
+test("migration proof pilot fails closed when disabled", async ({page})=>{
+  await page.route("**/dz/import-proof/status",route=>route.fulfill({json:{enabled:false}}));
+  await page.goto("/account?mode=migration");
+  await expect(page.getByText("Account migration verification is not available. Return to /account for regular access.")).toBeVisible();
+  await expect(page.locator("#migration-form")).toBeHidden();
+  await expect(page.locator("#login-form")).toBeHidden();
+});
