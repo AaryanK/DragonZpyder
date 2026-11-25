@@ -32,6 +32,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -72,7 +77,7 @@ class NativeChatView(context: Context, private val dark: Boolean, private val ac
     private val userBubble = if (dark) Color(0xFF222922) else Color(0xFFEEEBE6)
 
     val view = ComposeView(context).apply {
-        setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
+        setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
         setContent { Workspace() }
     }
     fun clearMessages() = rows.clear()
@@ -81,15 +86,26 @@ class NativeChatView(context: Context, private val dark: Boolean, private val ac
     @Composable private fun Workspace() {
         MaterialTheme(colorScheme = if (dark) darkColorScheme(primary=accent,background=bg,surface=panel,onSurface=ink,onBackground=ink) else lightColorScheme(primary=accent,background=bg,surface=panel,onSurface=ink,onBackground=ink)) {
             Column(Modifier.fillMaxSize().background(bg)) {
-                Row(Modifier.fillMaxWidth().heightIn(min=54.dp), verticalAlignment=Alignment.CenterVertically) {
+                BoxWithConstraints(Modifier.fillMaxWidth()) {
+                    val narrow=maxWidth<360.dp||LocalDensity.current.fontScale>1.4f
+                    Column {
+                    Row(Modifier.fillMaxWidth().heightIn(min=54.dp), verticalAlignment=Alignment.CenterVertically) {
                     ToolButton("menu", "Conversations", actions::menu)
                     Column(Modifier.weight(1f).padding(horizontal=6.dp)) {
-                        Text("Personal",color=ink,fontWeight=FontWeight.SemiBold,fontSize=15.sp)
-                        Text(statusText, color=muted,fontSize=11.sp,maxLines=2)
+                        Text("Personal",color=ink,fontWeight=FontWeight.SemiBold,fontSize=15.sp,modifier=Modifier.semantics{heading()})
+                        Text(statusText, color=muted,fontSize=11.sp,maxLines=2,overflow=TextOverflow.Ellipsis,modifier=Modifier.semantics{liveRegion=LiveRegionMode.Polite})
                     }
+                    if(narrow){ToolButton("command","Commands",actions::commands)}else{
                     ToolButton("command","Commands",actions::commands)
                     ToolButton(if(dark) "sun" else "moon","Switch appearance",actions::theme)
                     IconButton(onClick=actions::account,enabled=!busy,modifier=Modifier.size(48.dp).semantics { contentDescription="Account" }) { Surface(shape=RoundedCornerShape(50),color=panel,border=BorderStroke(1.dp,line),modifier=Modifier.size(32.dp)) { Box(contentAlignment=Alignment.Center){Text(profileInitial,color=ink,fontWeight=FontWeight.Medium,fontSize=14.sp)} } }
+                    }
+                    }
+                    if(narrow) Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.End,verticalAlignment=Alignment.CenterVertically){
+                        ToolButton(if(dark) "sun" else "moon","Switch appearance",actions::theme)
+                        TextButton(onClick=actions::account,enabled=!busy,modifier=Modifier.heightIn(min=48.dp)){Text("Account",color=ink)}
+                    }
+                    }
                 }
                 HorizontalDivider(color=line.copy(alpha=.55f))
                 Column(Modifier.weight(1f).fillMaxWidth(),horizontalAlignment=Alignment.CenterHorizontally) {
@@ -119,7 +135,7 @@ class NativeChatView(context: Context, private val dark: Boolean, private val ac
                                 Row(verticalAlignment=Alignment.CenterVertically){
                                     CircularProgressIndicator(Modifier.size(16.dp),strokeWidth=2.dp)
                                     Spacer(Modifier.width(10.dp))
-                                    Text(statusText,color=muted,fontSize=13.sp)
+                                    Text(statusText,color=muted,fontSize=13.sp,modifier=Modifier.semantics{liveRegion=LiveRegionMode.Polite})
                                 }
                             }
                         }
