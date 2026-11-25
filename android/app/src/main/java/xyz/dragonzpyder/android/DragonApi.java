@@ -46,13 +46,13 @@ final class DragonApi {
         connection.setReadTimeout(150000);
         connection.setRequestProperty("Accept", "application/json");
         connection.setRequestProperty("Cache-Control", "no-store");
+        connection.setRequestMethod(method);
         try {
             String cookieHeader = cookies.header();
             if (!cookieHeader.isEmpty()) connection.setRequestProperty("Cookie", cookieHeader);
             if (body != null) {
                 String token = csrf(uri);
                 if (token.isEmpty()) throw new ApiError(401, "Secure session missing. Sign in again.");
-                connection.setRequestMethod(method);
                 connection.setRequestProperty("Content-Type", "application/json");
                 connection.setRequestProperty("X-CSRF-Token", token);
                 connection.setDoOutput(true);
@@ -76,7 +76,7 @@ final class DragonApi {
             }
             String raw = new String(out.toByteArray(), StandardCharsets.UTF_8);
             Object payload;
-            try { payload = new JSONTokener(raw).nextValue(); } catch (JSONException bad) { payload = new JSONObject(); }
+            try { payload = raw.isEmpty()&&status==204 ? JSONObject.NULL : new JSONTokener(raw).nextValue(); } catch (JSONException bad) { if(status>=200&&status<300)throw new IOException("Server returned invalid JSON",bad);payload = new JSONObject(); }
             if (status >= 400) {
                 Object detail = payload instanceof JSONObject ? ((JSONObject)payload).opt("detail") : null;
                 String message = detail instanceof JSONObject ? ((JSONObject)detail).optString("message", "Request failed") :
@@ -105,14 +105,14 @@ final class DragonApi {
             int status=c.getResponseCode();cookies.receive(c.getHeaderFields());
             if(status==401)clear();else if(status>=200&&status<300)persist();
             if(status<200||status>=300)throw new ApiError(status,"Streaming request failed ("+status+")");
-            if(c.getContentType()==null||!c.getContentType().startsWith("text/event-stream"))throw new IOException("Unexpected streaming response");
+            if(c.getContentType()==null||!c.getContentType().toLowerCase(Locale.ROOT).startsWith("text/event-stream"))throw new IOException("Unexpected streaming response");
             StringBuilder answer=new StringBuilder();boolean done=false;
             try(BufferedReader reader=new BufferedReader(new InputStreamReader(c.getInputStream(),StandardCharsets.UTF_8))){
                 String line;while(!streamCancelled&&(line=reader.readLine())!=null){
                     if(!line.startsWith("data:"))continue;
                     if(line.length()>65536)throw new IOException("Stream event too large");
                     JSONObject event=new JSONObject(line.substring(5).trim());String type=event.optString("type");
-                    if("delta".equals(type)){String delta=event.optString("text");answer.append(delta);if(answer.length()>12500)throw new IOException("Reply too large");listener.accept(delta);}
+                    if("delta".equals(type)){String delta=event.optString("text");answer.append(delta);if(answer.length()>100_000)throw new IOException("Reply exceeds the native display limit; check the server response before retrying.");listener.accept(delta);}
                     else if("error".equals(type)||"notice".equals(type))throw new IOException(event.optString("message","Stream interrupted"));
                     else if("done".equals(type)){done=true;break;}
                 }
