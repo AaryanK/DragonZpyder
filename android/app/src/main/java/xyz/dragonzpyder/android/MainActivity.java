@@ -40,7 +40,8 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private PendingAgentRequestStore pendingAgentStore;
     private static final DragonApi api=new DragonApi();
     private NativeVoiceSession nativeVoice;
-    private android.app.AlertDialog voiceDialog;
+    private android.app.Dialog voiceDialog;
+    private boolean voiceStartOnResume;
     private boolean voicePermissionPending;
     private final ExecutorService worker=Executors.newSingleThreadExecutor();
     private LinearLayout root;
@@ -970,25 +971,38 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     }
     @Override public void onRequestPermissionsResult(int code,String[] permissions,int[] grants){
         super.onRequestPermissionsResult(code,permissions,grants);
-        if(code==79&&voicePermissionPending){voicePermissionPending=false;if(grants.length>0&&grants[0]==android.content.pm.PackageManager.PERMISSION_GRANTED&&getLifecycle().getCurrentState().isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED))startVoice();else setStatus("Microphone permission not granted or app not active.");}
+        if(code==79&&voicePermissionPending){
+            voicePermissionPending=false;
+            if(grants.length>0&&grants[0]==android.content.pm.PackageManager.PERMISSION_GRANTED){
+                if(getLifecycle().getCurrentState().isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED))startVoice();
+                else voiceStartOnResume=true;
+            }else setStatus("Microphone permission not granted.");
+        }
+    }
+    @Override protected void onPostResume(){
+        super.onPostResume();
+        if(voiceStartOnResume){voiceStartOnResume=false;startVoice();}
     }
     private void startVoice(){
-        if(!signedIn||busy||!api.supportsVoice()||nativeVoice!=null)return;
-        voiceDialog=new android.app.AlertDialog.Builder(this).setTitle("Live voice").setMessage("Connecting…").setPositiveButton("End",null).setNeutralButton("Mute",null).create();
-        voiceDialog.setOnDismissListener(d->{closeVoice();});
-        voiceDialog.show();
-        final android.app.AlertDialog dialog=voiceDialog;
-        nativeVoice=new NativeVoiceSession(this,api,value->{if(!isDestroyed()&&voiceDialog==dialog)dialog.setMessage(value);});
-        dialog.getButton(android.app.AlertDialog.BUTTON_NEUTRAL).setOnClickListener(new View.OnClickListener(){
-            boolean muted=false;
-            public void onClick(View view){muted=!muted;if(nativeVoice!=null)nativeVoice.mute(muted);dialog.getButton(android.app.AlertDialog.BUTTON_NEUTRAL).setText(muted?"Unmute":"Mute");}
+        if(!signedIn||busy||!api.supportsVoice()||nativeVoice!=null||isFinishing())return;
+        final android.app.Dialog dialog=new android.app.Dialog(this,android.R.style.Theme_Material_NoActionBar);
+        final NativeVoiceView screen=new NativeVoiceView(this,new NativeVoiceView.Actions(){
+            public void mute(boolean muted){if(nativeVoice!=null)nativeVoice.mute(muted);}
+            public void end(){closeVoice();}
         });
+        voiceDialog=dialog;
+        dialog.setContentView(screen.getView());
+        dialog.setOnDismissListener(d->{if(voiceDialog==dialog)closeVoice();});
+        dialog.show();
+        if(dialog.getWindow()!=null)dialog.getWindow().setLayout(-1,-1);
+        nativeVoice=new NativeVoiceSession(this,api,value->{if(!isDestroyed()&&voiceDialog==dialog)screen.setStatus(value);});
         nativeVoice.start();
     }
     private void closeVoice(){
+        voiceStartOnResume=false;
         NativeVoiceSession session=nativeVoice;nativeVoice=null;
         if(session!=null)session.close();
-        android.app.AlertDialog dialog=voiceDialog;voiceDialog=null;
+        android.app.Dialog dialog=voiceDialog;voiceDialog=null;
         if(dialog!=null&&dialog.isShowing())dialog.dismiss();
     }
     @Override protected void onStop(){closeVoice();super.onStop();}
