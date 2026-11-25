@@ -125,7 +125,9 @@ async def start(payload: VoiceOffer, request: Request):
 @router.post("/{session_id}/end")
 async def end(session_id: UUID, request: Request):
     owner=await _owner(request,changing=True)
-    key=_key()
+    key=os.getenv("DRAGONZPYDER_NATIVE_VOICE_API_KEY", "")
+    if not key:
+        raise HTTPException(503, "Voice hangup unavailable")
     async with _conversation_db() as db:
         async with db.transaction():
             row=await db.fetchrow("SELECT state,provider_call_id FROM dz_native_voice_sessions WHERE owner_id=$1 AND session_id=$2 FOR UPDATE",owner,session_id)
@@ -143,14 +145,14 @@ async def cleanup_expired_voice(client):
     """Reconcile expired calls from PostgreSQL on every API replica/start."""
     while True:
         try:
-            if voice_enabled():
+            if os.getenv("DRAGONZPYDER_NATIVE_VOICE_API_KEY"):
                 async with _conversation_db() as db:
                     async with db.transaction():
                         rows=await db.fetch("""SELECT owner_id,session_id,provider_call_id FROM dz_native_voice_sessions
                            WHERE state IN ('active','unknown') AND provider_call_id IS NOT NULL AND expires_at<=now()
                            ORDER BY expires_at LIMIT 5 FOR UPDATE SKIP LOCKED""")
                         for row in rows:
-                            if await _hangup(client,_key(),row["provider_call_id"]):
+                            if await _hangup(client,os.environ["DRAGONZPYDER_NATIVE_VOICE_API_KEY"],row["provider_call_id"]):
                                 await db.execute("UPDATE dz_native_voice_sessions SET state='closed',updated_at=now() WHERE owner_id=$1 AND session_id=$2",row["owner_id"],row["session_id"])
         except asyncio.CancelledError:
             raise
