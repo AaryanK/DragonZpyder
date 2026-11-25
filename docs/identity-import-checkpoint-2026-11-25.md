@@ -76,27 +76,67 @@ is not proof of a write freeze, of successful authentication, or of recovery
 eligibility. Confirm source freshness at cutover; a mismatch is a stop condition.
 
 
-## Individual activation schema (review only)
+## Individual activation and proof collection (review only)
 
 The revised `schema_import_activation_review.sql` replaces the blanket
 pending-only fence with a per-subject foreign-key-backed approval receipt.
-Installing it alone activates zero accounts. The operator-only
-`approve_imported_identity` function checks the immutable source subject,
-pending/active-source state, a 15-minute proof window and an existing password
-or Google credential candidate, records the operator and atomically activates
-that single subject. The API must not have EXECUTE or receipt mutation rights;
-its production role check rejects such privileges.
+Installing it alone activates zero accounts. Approval references a fresh
+stored proof, not a caller-supplied method or timestamp. The API can insert
+proof records after credential verification but cannot set the database
+proof time, update/delete proof records, create approval receipts or execute
+the approval function. This trusts the identity verifier process; it is
+not protection against a compromised verifier with its database credentials.
+No agent/MCP tool may invoke these proof paths.
 
-**This primitive is not a proof verifier.** Do not call it based on an email,
-an imported hash alone, a linked Discord channel, a model assertion or a
-user-supplied subject. A trusted self-service proof-collection protocol with
-real password or provider verification and separately reviewed operator
-authorization is still required. Do not ask users to give an operator their
-password or provider token. Legacy source reauthentication is explicitly
-rejected by this function until a separately reviewed protocol exists.
-The 51 recovery candidates remain pending; no recovery has been performed.
+`pending_proof_http.py` adds origin-checked, independently gated proof
+collection routes. Both `DRAGONZPYDER_IMPORT_PROOF_ENABLED` and, in production,
+`DRAGONZPYDER_IMPORT_PROOF_ALLOW_PRODUCTION` default off. The endpoints never
+create sessions, grant access or activate accounts. Password proof uses
+the same persistent attempt budget as login and requires the source's
+verified-email condition. Google proof uses the prelinked exact subject
+and a distinct one-time browser-bound nonce challenge. A proof reference
+is not a bearer credential or an activation grant.
 
-The migration must not be installed in production before reconciliation,
-proof integration, real two-account isolation tests and rollback approval.
-Current production still has the original pending-only constraint and native
-HTTP auth disabled.
+The operator-only `approve_imported_identity(subject, proof_id)` function
+checks source-active status, immutable subject, pending state, credential
+candidate and the 15-minute DB-generated proof window. It records the
+same proof method/time and operator identity atomically with activation.
+No legacy-session or Discord-channel proof is currently accepted.
+Installing the schema or enabling proof collection in production is NOT
+authorized by this document. Before enabling, require fresh source
+reconciliation, independent review, network-level abuse controls,
+a real browser UI, operator approval and two-account live isolation tests.
+
+## Recovery of credentialless accounts
+
+Operly's existing `/api/auth/forgot-password` checks that the account is
+active and its email has been verified; it can issue a recovery challenge
+even when no password hash is present. Its reset handler verifies the
+challenge, installs a new hash and revokes existing sessions. Reuse this
+source-owned recovery path while Operly remains the authentication owner.
+A reset changes the source snapshot, so a controlled pending-only delta
+reconciliation is required before that account can use the imported
+password proof. Do not copy plaintext passwords or auto-link by email.
+Accounts lacking verified email require an independently verified source
+credential or a separately reviewed recovery process. Preserve their IDs
+and data while pending. The previous count of 51 is based on absent
+password/Google links, not a verified recovery-method inventory.
+
+Run `source_recovery_inventory_manual.sql` on the source to identify the
+verified/unverified email split and explicit Discord login bindings.
+Only aggregate counts are returned. An actual source write freeze or
+approved delta protocol is required before activating any imported account.
+
+## Conversation migration boundary
+
+Operly's agent_chat_conversations model distinguishes personal ownership
+(owner_user_id, no workspace_id) from workspace ownership (workspace_id,
+no owner_user_id). Only personal rows may be migrated to DragonZpyder's
+first-party conversation index. Never export business/workspace histories
+under a personal account. Both delegated Personal and first-party chat
+use DragonZpyder's existing personal_thread(user_id, conversation_id)
+checkpoint key. Audit the existing checkpoint before importing/replaying
+messages: do not duplicate the history or import tool leases, pending
+approvals, attachments, or connector secrets into another authority.
+Conversation export/import and legacy-only history recovery remain separate
+engineering work; no live conversation migration has been executed.
