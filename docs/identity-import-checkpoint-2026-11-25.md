@@ -191,3 +191,21 @@ they are not a live chat history merge or graph replay. Browser integration,
 runtime archive SELECT grants, legacy deduplication and attachment access
 must be verified before user-facing cutover. No production transcript export,
 import or graph mutation has been performed.
+
+
+## Production personal transcript archive completed
+
+Operator output confirms successful encrypted export and transactional import
+of 40 conversations and 306 messages. Independent PostgreSQL readback
+returned five distinct owners, 153 user messages, 153 assistant messages and
+zero ownership conflicts. Both temporary history transfer roles have been
+disabled and their passwords cleared; no active transfer sessions remained.
+The verified destination is DragonZpyder's agent database, not the identity
+database. Existing checkpoint and native conversation tables were preserved.
+Archive access is not enabled in production. The read-only native web archive
+viewer has been committed with browser regression tests; latest CI and actual
+browser acceptance are required before enabling it. Remove temporary encrypted
+packages according to approved retention, and retain protected backups.
+Legacy principal history remains at source. No ID overlap was observed, but
+workspace references and possible content duplication still require audit;
+use operly_legacy_history_inventory_manual.sql before any further export.
