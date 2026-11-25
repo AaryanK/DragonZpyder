@@ -220,7 +220,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         processOAuthIntent(intent);
     }
     private void authScreen(String mode,String message){
-        signedIn=false;accountOpen=false;chatUi=null;authMode=mode;getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);accountLayout();
+        signedIn=false;accountOpen=false;chatUi=null;authMode=mode;getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SECURE);accountLayout();
         LinearLayout hero=column();hero.setPadding(dp(20),dp(20),dp(20),dp(22));
         GradientDrawable shine=new GradientDrawable(GradientDrawable.Orientation.TL_BR,
             dark?new int[]{0xff37231f,0xff1e1919,0xff141416}:new int[]{0xffffe5d3,0xfffff2e8,0xfffffaf5});
@@ -290,6 +290,12 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         String draft=chatUi==null?"":chatUi.getDraft();accountOpen=false;getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SECURE);reset();status=null;
         chatUi=new NativeChatView(this,dark,new NativeChatView.Actions(){
             public void menu(){showMenu();}
+            public void newChat(){MainActivity.this.newChat();}
+            public void connections(){showConnections();}
+            public void tasks(){showTasks();}
+            public void approvals(){MainActivity.this.approvals();}
+            public void openConversation(String id){open(id);}
+            public void voice(){showVoice();}
             public void commands(){showCommands();}
             public void theme(){toggleTheme();}
             public void account(){showAccount();}
@@ -302,7 +308,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             public void copy(String value){android.content.ClipboardManager cb=(android.content.ClipboardManager)getSystemService(Context.CLIPBOARD_SERVICE);cb.setPrimaryClip(android.content.ClipData.newPlainText("DragonZpyder",value));}
             public void speak(String value){if(speechReady)tts.speak(value,TextToSpeech.QUEUE_FLUSH,null,"response");else setStatus("Speech engine unavailable");}
         });
-        chatUi.setDraft(draft);chatUi.setModeLabel(meshMode?"AI Mesh":"Agent");chatUi.setModelLabel(model);chatUi.setAttachmentLabel(attachmentName);chatUi.setProfileInitial(profileInitial);chatUi.setBusy(busy);
+        chatUi.setDraft(draft);chatUi.setModeLabel(meshMode?"AI Mesh":"Agent");chatUi.setModelLabel(model);chatUi.setAttachmentLabel(attachmentName);chatUi.setProfileInitial(profileInitial);chatUi.setBusy(busy);chatUi.setVoiceAvailable(api.supportsVoice());
         for(String[] item:transcript)chatUi.append(item[0],item[1]);
         root.addView(chatUi.getView(),new LinearLayout.LayoutParams(-1,0,1));
     }
@@ -315,33 +321,20 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         v.setOnClickListener(w->{if(!busy)action.run();});v.setFocusable(true);v.setContentDescription(label);return v;
     }
     private void showMenu(){
-        if(busy)return;
-        Dialog drawer=new Dialog(this);LinearLayout sidebar=column();
-        sidebar.setPadding(dp(12),dp(12),dp(12),dp(8));sidebar.setBackgroundColor(SIDEBAR);
-        LinearLayout brand=row();brand.addView(logo(29));TextView title=heading("DragonZpyder",18);LinearLayout.LayoutParams tp=new LinearLayout.LayoutParams(0,-2,1);tp.setMargins(dp(9),0,0,0);brand.addView(title,tp);
-        Button close=button("×",drawer::dismiss);close.setContentDescription("Close sidebar");brand.addView(close,new LinearLayout.LayoutParams(dp(48),dp(48)));sidebar.addView(brand);gap(sidebar,12);
-        Button newChat=primary("＋ New chat",()->{drawer.dismiss();newChat();});sidebar.addView(newChat);gap(sidebar,8);
-        sidebar.addView(navRow("⌘","Connections & tools",false,()->{drawer.dismiss();showConnections();}));
-        sidebar.addView(navRow("◎","Account & security",false,()->{drawer.dismiss();showAccount();}));
-        gap(sidebar,10);EditText search=field("Find conversations",false);search.setSingleLine(true);search.setContentDescription("Find conversations");sidebar.addView(search);gap(sidebar,14);
-        TextView label=text("YOUR CONVERSATIONS",10,MUTED);label.setLetterSpacing(.10f);label.setPadding(dp(10),0,0,dp(6));sidebar.addView(label);
-        ScrollView listScroll=new ScrollView(this);listScroll.setFillViewport(false);listScroll.setClipToPadding(false);listScroll.setPadding(0,0,0,dp(22));listScroll.setVerticalScrollBarEnabled(true);LinearLayout list=column();listScroll.addView(list);sidebar.addView(listScroll,new LinearLayout.LayoutParams(-1,0,1));
-        Runnable filter=()->{
-            list.removeAllViews();String query=search.getText().toString().toLowerCase(Locale.ROOT);int count=0;
-            for(int i=0;i<history.length();i++){JSONObject c=history.optJSONObject(i);if(c==null)continue;
-                String name=c.optString("title","Conversation");if(!name.toLowerCase(Locale.ROOT).contains(query))continue;String id=c.optString("id");
-                TextView entry=navRow("",name,id.equals(conversation),()->{drawer.dismiss();open(id);});entry.setText(name);entry.setMaxLines(2);list.addView(entry);count++;
+        if(busy||chatUi==null||!signedIn)return;
+        final NativeChatView target=chatUi;
+        target.setConversationHistory(history,conversation);target.openDrawer();
+        worker.execute(()->{
+            try{
+                JSONArray refreshed=(JSONArray)api.call("/api/personal-agent/conversations",null);
+                runOnUiThread(()->{if(!isDestroyed()&&signedIn&&chatUi==target){history=refreshed;target.setConversationHistory(history,conversation);}});
+            }catch(Exception e){
+                runOnUiThread(()->{if(!isDestroyed()&&signedIn&&chatUi==target){
+                    if(e instanceof DragonApi.ApiError&&((DragonApi.ApiError)e).status==401&&!busy){api.clear();clearAccountView();loginScreen("Session expired. Sign in again.");}
+                    else target.markHistoryError();
+                }});
             }
-            if(count==0){TextView empty=text(query.isEmpty()?"No conversations to show.":"No matching conversations.",13,MUTED);empty.setPadding(dp(10),dp(10),dp(10),dp(10));list.addView(empty);}
-        };
-        search.addTextChangedListener(new android.text.TextWatcher(){public void beforeTextChanged(CharSequence s,int start,int count,int after){}public void onTextChanged(CharSequence s,int start,int before,int count){filter.run();}public void afterTextChanged(android.text.Editable e){}});
-        filter.run();
-        View rule=new View(this);rule.setBackgroundColor(LINE);LinearLayout.LayoutParams footerRule=new LinearLayout.LayoutParams(-1,dp(1));footerRule.topMargin=dp(5);footerRule.bottomMargin=dp(5);sidebar.addView(rule,footerRule);
-        LinearLayout footer=row();footer.addView(navRow("◷","Tasks",false,()->{drawer.dismiss();showTasks();}),new LinearLayout.LayoutParams(0,dp(48),1));
-        footer.addView(navRow("◇","Approvals",false,()->{drawer.dismiss();approvals();}),new LinearLayout.LayoutParams(0,dp(48),1));sidebar.addView(footer);
-        sidebar.addView(navRow("▦","More commands",false,()->{drawer.dismiss();showCommands();}));
-        drawer.setContentView(sidebar);drawer.show();Window w=drawer.getWindow();if(w!=null){w.setBackgroundDrawableResource(android.R.color.transparent);w.setGravity(Gravity.START|Gravity.TOP);w.setLayout(Math.min(dp(320),(int)(getResources().getDisplayMetrics().widthPixels*.88)), -1);w.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE|WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN);}
-        worker.execute(()->{try{JSONArray refreshed=(JSONArray)api.call("/api/personal-agent/conversations",null);runOnUiThread(()->{if(!isDestroyed()&&signedIn){history=refreshed;if(drawer.isShowing())filter.run();}});}catch(Exception e){runOnUiThread(()->{if(!isDestroyed()&&signedIn&&e instanceof DragonApi.ApiError&&((DragonApi.ApiError)e).status==401&&!busy){drawer.dismiss();api.clear();clearAccountView();loginScreen("Session expired. Sign in again.");}else if(!isDestroyed()&&drawer.isShowing())label.setText("CONVERSATIONS · REFRESH FAILED");});}});
+        });
     }
     private void showAccount(){
         submit("Loading account…",()->{
@@ -351,7 +344,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         },r->renderAccount((JSONObject)r),true);
     }
     private void renderAccount(JSONObject p){
-        accountOpen=true;getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);accountLayout();
+        accountOpen=true;getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SECURE);accountLayout();
         accountPage.addView(button("‹ Back to Personal AI",()->{accountOpen=false;chatScreen();}));gap(accountPage,20);
         sectionLabel(accountPage,"YOUR DRAGONZPYDER");accountPage.addView(heading("Account & connections.",30));gap(accountPage,8);accountPage.addView(text("One identity, with clear boundaries around every connected service and workspace.",14,MUTED));gap(accountPage,20);
         LinearLayout profile=accountCard();sectionLabel(profile,"01 / IDENTITY");profile.addView(heading("Your profile",21));gap(profile,8);profile.addView(text(p.optString("email"),14,MUTED));gap(profile,16);
