@@ -60,3 +60,29 @@ test("native Agent mode never calls the Operly proxy and scopes MCP aliases", as
   expect(chats[0].mcp_connection_ids).toEqual([alias]);
   expect(oldRoutes).toEqual([]);
 });
+
+
+test("native archived transcripts are read-only and never submitted to the harness", async ({ page }) => {
+  const cid = "00000000-0000-4000-8000-000000000012";
+  const calls = [];
+  await page.route("**/api/**", route => route.fulfill({status:410,body:"legacy disabled"}));
+  await page.route("**/dz/status", route => route.fulfill({json:{web_cutover_enabled:true}}));
+  await page.route("**/dz/v2/personal/session", route => route.fulfill({json:{authenticated:true,runtime:"dragonzpyder"}}));
+  await page.route("**/dz/v2/personal/conversations", route => route.fulfill({json:{conversations:[]}}));
+  await page.route("**/dz/v2/personal/archive/conversations?*", route => route.fulfill({
+    json:{conversations:[{id:cid,title:"Imported conversation",archived:true}],next_offset:null}
+  }));
+  await page.route("**/dz/v2/personal/archive/conversations/*/messages?*", route => {
+    const offset = new URL(route.request().url()).searchParams.get("offset");
+    return route.fulfill({json:{archived:true,messages:[{role:"user",content:offset==="0"?"<img src=x onerror=alert(1)>":"Second page"}],next_offset:offset==="0"?10:null}});
+  });
+  await page.route("**/dz/v2/personal/chat", route => { calls.push(route.request().postDataJSON()); return route.fulfill({json:{conversation_id:cid,message:"Unexpected send"}}); });
+  await page.goto("/app");
+  await expect(page.getByRole("button",{name:"Archive · Imported conversation"})).toBeVisible();
+  await expect(page.getByText("Read-only Operly archive. Start a new chat to use DragonZpyder.")).toBeVisible();
+  await expect(page.getByText("<img src=x onerror=alert(1)>",{exact:true})).toBeVisible();
+  await expect(page.getByText("Second page",{exact:true})).toBeVisible();
+  await expect(page.locator("#message-input")).toBeDisabled();
+  await page.locator("#composer").evaluate(form => form.requestSubmit());
+  expect(calls).toEqual([]);
+});
