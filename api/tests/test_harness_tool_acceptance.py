@@ -488,3 +488,75 @@ def test_computer_run_never_replays_uncertain_allocation_and_cleans_known_sessio
         assert not await run.close()
         assert (lost.creates,lost.calls,lost.destroys)==(1,0,0)
     asyncio.run(scenario())
+
+
+def test_computer_acceptance_requires_actual_export_publication_checkpoint_and_cleanup(monkeypatch):
+    import base64
+    import hashlib
+    import pytest
+    from agent_platform import computer_acceptance as acceptance
+    from agent_platform.computer import ComputerScope
+    from agent_platform.computer_run import ComputerRun, ComputerRunGrant
+    from langgraph.checkpoint.memory import InMemorySaver
+
+    monkeypatch.setattr(acceptance,"fixture",lambda:("[2,3]",b"13\n"))
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_WEB_SEARCH_ENABLED","0")
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_QUICKJS_ENABLED","0")
+    scope=ComputerScope("personal","acceptance-owner","acceptance-session")
+
+    class Runner:
+        def __init__(self,bad_export=False,bad_cleanup=False):
+            self.files={}
+            self.calls=[]
+            self.bad_export=bad_export
+            self.bad_cleanup=bad_cleanup
+        async def create(self,**kwargs):
+            self.calls.append("create")
+            assert kwargs["scope"]==scope
+            return {"id":"sandbox-acceptance"}
+        async def execute_authorized(self,*,sandbox_id,scope,tool_id,args):
+            self.calls.append(tool_id)
+            if tool_id=="files.write":
+                self.files[args["path"]]=args["content"]
+                return {"ok":True}
+            if tool_id=="python.exec":
+                assert self.files["input.json"]=="[2,3]"
+                self.files["result.txt"]="13\n"
+                return {"ok":True,"exit_code":0,"stdout":"13"}
+            if tool_id=="files.read":
+                return {"ok":True,"content":self.files[args["path"]]}
+            if tool_id=="artifact.export":
+                data=b"14\n" if self.bad_export else self.files["result.txt"].encode()
+                return {"ok":True,"path":args["path"],"size_bytes":len(data),
+                        "sha256":hashlib.sha256(data).hexdigest(),
+                        "content_base64":base64.b64encode(data).decode()}
+            raise AssertionError(tool_id)
+        async def destroy_authorized(self,*args,**kwargs):
+            self.calls.append("destroy")
+            return {"destroyed":not self.bad_cleanup}
+
+    async def scenario(bad_export=False,bad_publication=False,bad_cleanup=False,bad_answer=False):
+        runner=Runner(bad_export,bad_cleanup)
+        run=ComputerRun(runner,ComputerRunGrant(scope,max_calls=4))
+        model=ToolScript(responses=[
+            scripted_call("computer_write_file",{"path":"input.json","content":"[2,3]"}),
+            scripted_call("computer_python",{"code":"compute"}),
+            scripted_call("computer_read_file",{"path":"result.txt"}),
+            AIMessage(content="The integer is "+("14" if bad_answer else "13")),
+        ])
+        published={}
+        async def publish(case_id,name,data):
+            published[case_id]=bytes(data)
+            return case_id,b"wrong" if bad_publication else published[case_id]
+        score=await acceptance.verify_computer_objective(
+            model=model,checkpointer=InMemorySaver(),run=run,publish_and_readback=publish)
+        assert runner.calls[-1]=="destroy"
+        return score,published
+
+    good,stored=asyncio.run(scenario())
+    assert good["objective_verified"] and good["status"]=="verified_slice"
+    assert stored[good["case_id"]]==b"13\n"
+    for kwargs in ({"bad_export":True},{"bad_publication":True},
+                   {"bad_cleanup":True},{"bad_answer":True}):
+        score,_=asyncio.run(scenario(**kwargs))
+        assert score["status"]=="incomplete" and not score["objective_verified"]
