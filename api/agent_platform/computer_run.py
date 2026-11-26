@@ -31,11 +31,12 @@ class ComputerRunGrant:
 
 
 def _path(value: str) -> str:
+    from langchain_core.tools import ToolException
     if not isinstance(value, str) or not value or len(value) > 1024 or "\x00" in value:
-        raise ValueError("Invalid workspace path")
+        raise ToolException("Invalid workspace path")
     path = PurePosixPath(value)
     if path.is_absolute() or ".." in path.parts:
-        raise ValueError("Workspace-relative paths only")
+        raise ToolException("Workspace-relative paths only")
     return str(path)
 
 
