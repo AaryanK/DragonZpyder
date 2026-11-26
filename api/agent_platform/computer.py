@@ -5,6 +5,7 @@ delegate, current principal authorization, budget and approval enforcement.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 import hashlib
 import hmac
 import json
@@ -50,7 +51,8 @@ class ComputerTransport:
     def _signature(self, value: bytes) -> str:
         return hmac.new(self.signing_key, value, hashlib.sha256).hexdigest()
 
-    async def _call(self, method: str, path: str, payload: dict | None = None) -> dict:
+    async def _call(self, method: str, path: str, payload: dict | None = None,
+                    *, timeout: int = 30) -> dict:
         raw = (json.dumps(payload, separators=(",", ":")).encode()
                if payload is not None else b"")
         timestamp = str(int(time.time() * 1000))
@@ -65,12 +67,14 @@ class ComputerTransport:
             "Content-Type": "application/json",
         }
         async with httpx.AsyncClient(
-            timeout=30, follow_redirects=False, trust_env=False
+            timeout=timeout, follow_redirects=False, trust_env=False
         ) as http:
             response = await http.request(
                 method, self.origin + path, headers=headers, content=raw
             )
-        expected = self._signature(response.content)
+        signed_body = (f"{nonce}\n{response.status_code}\n".encode() + response.content
+                       if path.startswith("/v2/computer/") else response.content)
+        expected = self._signature(signed_body)
         actual = response.headers.get("X-Operly-Signature", "")
         if not hmac.compare_digest(expected, actual):
             raise RuntimeError("Runner response failed signature verification")
@@ -116,10 +120,90 @@ class ComputerTransport:
         if not isinstance(args, dict):
             raise ValueError("Tool args must be an object")
         return await self._call(
-            "POST", f"/v1/computer/sessions/{sandbox_id}/tools/{tool_id}", args
+            "POST", f"/v1/computer/sessions/{sandbox_id}/tools/{tool_id}", {"arguments": args}
         )
 
     async def destroy_authorized(self, sandbox_id: str) -> dict:
         if not _SAFE_ID.fullmatch(sandbox_id):
             raise ValueError("Invalid sandbox ID")
         return await self._call("DELETE", f"/v1/computer/sessions/{sandbox_id}")
+
+
+SCOPED_TOOLS = frozenset({
+    "terminal.exec", "python.exec", "files.list", "files.read", "files.write",
+    "files.mkdir", "files.search", "git.status", "git.diff", "artifact.import",
+    "artifact.export", "environment.info",
+})
+
+
+@dataclass(frozen=True)
+class ComputerScope:
+    """Construct only from trusted authenticated request/run state."""
+    kind: str
+    principal_id: str
+    client_session_id: str
+    workspace_id: str | None = None
+
+    def __post_init__(self):
+        def valid(value):
+            return isinstance(value, str) and len(value) >= 4 and _SAFE_ID.fullmatch(value)
+        if (self.kind not in {"personal", "workspace"}
+                or not valid(self.principal_id) or not valid(self.client_session_id)
+                or (self.kind == "personal" and self.workspace_id is not None)
+                or (self.kind == "workspace" and not valid(self.workspace_id))):
+            raise ValueError("Invalid scoped computer identity")
+
+    def wire(self):
+        return {"scopeKind": self.kind, "principalId": self.principal_id,
+                "clientSessionId": self.client_session_id, "workspaceId": self.workspace_id}
+
+
+class ScopedComputerTransport(ComputerTransport):
+    """DragonZpyder v2 runner protocol, with nonce-bound signed responses.
+
+    This is a control-plane transport, NOT a model tool or authorization
+    service. Every operation requires the same trusted scope, including cleanup.
+    """
+
+    async def create(self, *, scope: ComputerScope, profile: str = "general",
+                     ttl_seconds: int = 900) -> dict:
+        if (not isinstance(scope, ComputerScope)
+                or profile not in {"general", "coding", "data"}
+                or type(ttl_seconds) is not int or not 60 <= ttl_seconds <= 1800):
+            raise ValueError("Invalid scoped computer allocation")
+        result = await self._call("POST", "/v2/computer/sessions",
+            {"scope": scope.wire(), "profile": profile, "networkPolicy": "off",
+             "ttlSeconds": ttl_seconds}, timeout=120)
+        if (not isinstance(result.get("id"), str) or not _SAFE_ID.fullmatch(result["id"])
+                or result.get("state") != "active" or result.get("private_network") is not False
+                or result.get("network_policy") != "off"):
+            raise RuntimeError("Scoped computer allocation not confirmed")
+        return result
+
+    @staticmethod
+    def _session(sandbox_id, scope):
+        if (not isinstance(sandbox_id, str) or not _SAFE_ID.fullmatch(sandbox_id)
+                or not isinstance(scope, ComputerScope)):
+            raise ValueError("Invalid scoped computer session")
+
+    async def status(self, sandbox_id: str, *, scope: ComputerScope) -> dict:
+        self._session(sandbox_id, scope)
+        return await self._call("POST", f"/v2/computer/sessions/{sandbox_id}/status",
+                                {"scope": scope.wire()})
+
+    async def execute_authorized(self, *, sandbox_id: str, scope: ComputerScope,
+                                 tool_id: str, args: dict) -> dict:
+        self._session(sandbox_id, scope)
+        if (tool_id not in SCOPED_TOOLS or type(args) is not dict
+                or "background" in args or "env" in args):
+            raise ValueError("Invalid scoped computer operation")
+        deadline = args.get("timeout_seconds", 30)
+        if type(deadline) is not int or not 1 <= deadline <= 60:
+            raise ValueError("Invalid computer tool deadline")
+        return await self._call("POST", f"/v2/computer/sessions/{sandbox_id}/tools/{tool_id}",
+                                {"scope": scope.wire(), "arguments": args}, timeout=90)
+
+    async def destroy_authorized(self, sandbox_id: str, *, scope: ComputerScope) -> dict:
+        self._session(sandbox_id, scope)
+        return await self._call("POST", f"/v2/computer/sessions/{sandbox_id}/destroy",
+                                {"scope": scope.wire()}, timeout=30)
