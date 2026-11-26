@@ -3,9 +3,10 @@ const panels = ["login","signup","verify","forgot","reset","profile","migration"
 let mode = "login", bootstrap = null, challenge = null, processing = false, initializedGoogle = false;
 let nativeMode = false, googleRenderedMode = null, nativeGoogleState = null;
 let migrationEnabled = false, recoveryEnabled = false, recoveryEmail = null;
+let activeRecoveryEnabled=false;
 const messageBox = $("account-message");
 function report(message,isError=false){messageBox.textContent=String(message||"");messageBox.classList.toggle("error",isError);messageBox.hidden=!message;}
-function show(next){if(!panels.includes(next))next="login";if(next==="migration"&&!migrationEnabled)next="login";if(next==="migration-recovery"&&!recoveryEnabled)next="login";if(nativeMode&&!["login","signup","profile","migration","migration-recovery"].includes(next))next="login";mode=next;report("");panels.forEach(name=>{$(name+"-panel").hidden=name!==next});$("mode-tabs").hidden=!["login","signup"].includes(next);document.querySelectorAll("[data-mode]").forEach(el=>el.classList.toggle("selected",el.dataset.mode===next));if(next==="login"||(nativeMode&&next==="signup")||next==="migration")loadGoogle().catch(()=>{});}
+function show(next){if(!panels.includes(next))next="login";if(next==="migration"&&!migrationEnabled)next="login";if(next==="migration-recovery"&&!recoveryEnabled)next="login";if(nativeMode&&!["login","signup","profile","migration","migration-recovery",...(activeRecoveryEnabled?["forgot","reset"]:[])].includes(next))next="login";mode=next;report("");panels.forEach(name=>{$(name+"-panel").hidden=name!==next});$("mode-tabs").hidden=!["login","signup"].includes(next);document.querySelectorAll("[data-mode]").forEach(el=>el.classList.toggle("selected",el.dataset.mode===next));if(next==="login"||(nativeMode&&next==="signup")||next==="migration")loadGoogle().catch(()=>{});}
 function cookie(name){const part=document.cookie.split(";").map(v=>v.trim()).find(v=>v.startsWith(name+"="));return part?decodeURIComponent(part.slice(name.length+1)):"";}
 function csrf(){return nativeMode?cookie("__Host-dz_csrf"):(cookie("__Host-operly_csrf")||cookie("operly_csrf")||bootstrap?.csrf_token||"");}
 async function loadBootstrap(){
@@ -143,11 +144,11 @@ $("verify-form").addEventListener("submit",e=>{e.preventDefault();submitAction(e
 })});
 $("resend").addEventListener("click",async()=>{try{await loadBootstrap();await request("/api/auth/resend-verification",{method:"POST",body:{email:$("verify-email").value.trim()}});report("If verification is pending, another code is on its way.");}catch(e){report(e.message,true)}});
 $("forgot-form").addEventListener("submit",e=>{e.preventDefault();submitAction(e.currentTarget,async()=>{
- await loadBootstrap();await request("/api/auth/forgot-password",{method:"POST",body:{email:$("forgot-email").value.trim()}});
+ await loadBootstrap();await request(nativeMode?"/dz/identity/v1/recovery/start":"/api/auth/forgot-password",{method:"POST",body:{email:$("forgot-email").value.trim()}});
  $("reset-email").value=$("forgot-email").value.trim();show("reset");report("If the account exists, password reset instructions were sent.");
 })});
 $("reset-form").addEventListener("submit",e=>{e.preventDefault();submitAction(e.currentTarget,async()=>{
- await loadBootstrap();await request("/api/auth/reset-password",{method:"POST",body:{email:$("reset-email").value.trim(),code:$("reset-code").value.trim(),password:$("reset-password").value}});
+ await loadBootstrap();const password=$("reset-password").value;const code=$("reset-code").value.trim();$("reset-password").value="";$("reset-code").value="";await request(nativeMode?"/dz/identity/v1/recovery/complete":"/api/auth/reset-password",{method:"POST",body:{email:$("reset-email").value.trim(),code,password}});
  show("login");report("Password updated. Sign in with your new password.");
 })});
 $("profile-form").addEventListener("submit",e=>{e.preventDefault();submitAction(e.currentTarget,async()=>{
@@ -186,7 +187,9 @@ async function profile(){
  try{const route=await request("/dz/status");nativeMode=route.web_cutover_enabled===true;}catch{nativeMode=false;}
  if(nativeMode){
   $("signup-form").hidden=true;
-  const forgotten=document.querySelector("[data-mode='forgot']");if(forgotten)forgotten.hidden=true;
+  activeRecoveryEnabled=(await request("/dz/recovery/status").catch(()=>({enabled:false}))).enabled===true;
+  const forgotten=document.querySelector("[data-mode='forgot']");if(forgotten)forgotten.hidden=!activeRecoveryEnabled;
+  if(activeRecoveryEnabled){const code=$("reset-code");code.minLength=43;code.maxLength=43;code.pattern="[A-Za-z0-9_-]{43}";code.inputMode="text";const label=document.querySelector("label[for='reset-code']");if(label)label.textContent="One-time recovery code";const copy=$("reset-panel").querySelector(".muted");if(copy)copy.textContent="Enter the one-time recovery code sent to your verified email.";}
  }
  if(params.get("discord_error"))report(params.get("discord_error"),true);
  try{
