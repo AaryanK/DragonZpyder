@@ -287,6 +287,12 @@ async def inference(prefix: str, request: Request):
     path = "/" + prefix
     # Admin accounting is a distinct service-to-service scope; the inference
     # token must NEVER confer admin privileges.
+    if path.startswith("/internal/agent/v1/media/"):
+        if (caller_identity(request)!="agent-runtime" or
+                os.getenv("DRAGONZPYDER_AGENT_MEDIA_ENABLED")!="1"):
+            return denied(403,"Agent media capability unavailable")
+        return await provider_request(request,path.removeprefix("/internal/agent/v1/media"),
+                                      app_id="agent-media",runtime=runtime,agent_media=True)
     if path.startswith("/internal/provider/"):
         app_id = caller_identity(request)
         if app_id is None:
