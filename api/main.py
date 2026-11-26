@@ -185,6 +185,14 @@ app.include_router(mcp_connection_router)
 
 @app.middleware("http")
 async def headers(request: Request, call_next):
+    # Direct native/bridge calls bypass the browser proxy. Bound the JSON body
+    # before FastAPI parses base64; require length framing for audio turns.
+    if request.method=="POST" and re.fullmatch(r"/v2/personal/voice/(?:sessions|openrouter)/[0-9a-f-]{36}/turn",request.url.path):
+        length=request.headers.get("content-length","")
+        if request.headers.get("transfer-encoding") or not re.fullmatch(r"[0-9]{1,8}",length):
+            return JSONResponse({"detail":"Voice turn requires bounded Content-Length"},status_code=411,headers={"cache-control":"no-store"})
+        if int(length)>7_700_000:
+            return JSONResponse({"detail":"Voice utterance exceeds bound"},status_code=413,headers={"cache-control":"no-store"})
     response = await call_next(request)
     response.headers["x-content-type-options"] = "nosniff"
     response.headers["referrer-policy"] = "no-referrer"

@@ -184,3 +184,55 @@ def test_postgres_voice_turn_and_speech_replay_fences(monkeypatch):
                 for table in ("dz_openrouter_voice_speech","dz_openrouter_voice_turns","dz_native_voice_sessions","dz_first_party_chat_requests"):
                     await db.execute("DELETE FROM "+table+" WHERE owner_id=$1",owner)
     asyncio.run(run())
+
+
+def test_transport_normalizes_native_and_phone_codecs():
+    import struct
+    for rate,channels in ((8000,1),(16000,1),(24000,2),(48000,2)):
+        frame=struct.pack("<h",1200)*channels
+        body=voice.Utterance(event_id=uuid4(),audio=base64.b64encode(frame*(rate//5)).decode(),
+            format="pcm_s16le",sample_rate=rate,channels=channels)
+        normalized=voice.normalize_audio(body)
+        with wave.open(io.BytesIO(normalized),"rb") as wav:
+            assert wav.getframerate()==16000 and wav.getnchannels()==1
+            assert wav.getnframes()==3200
+            assert wav.readframes(1)==struct.pack("<h",1200)
+    for codec,octet,expected in (("mulaw",255,0),("mulaw",0,-32124),("alaw",213,8),("alaw",85,-8)):
+        body=voice.Utterance(event_id=uuid4(),audio=base64.b64encode(bytes([octet])*1600).decode(),
+            format=codec,sample_rate=8000,channels=1)
+        with wave.open(io.BytesIO(voice.normalize_audio(body)),"rb") as wav:
+            assert wav.getnframes()==3200
+            assert wav.readframes(1)==struct.pack("<h",expected)
+    bad=voice.Utterance(event_id=uuid4(),audio=base64.b64encode(b"x"*1600).decode(),
+        format="mulaw",sample_rate=48000,channels=1)
+    with pytest.raises(ValueError):voice.normalize_audio(bad)
+    with pytest.raises(ValueError):voice.normalize_audio(bad.model_copy(update={"format":"pcm_s16le","sample_rate":16000,"channels":2,"audio":base64.b64encode(b"x"*1601).decode()}))
+
+def test_bridge_token_bound_to_session_and_original_authority(monkeypatch):
+    configured(monkeypatch)
+    sid=uuid4()
+    token="dzv_"+"x"*43
+    digest=voice.bridge_digest(token)
+    requests=[]
+    class DB:
+        async def fetchrow(self,sql,*args):
+            assert "expires_at>now()" in sql and "state='active'" in sql
+            return {"owner_id":"owner","bridge_token_sha256":digest} if args==(sid,digest) else None
+    @asynccontextmanager
+    async def db():yield DB()
+    async def authority(owner,session):
+        requests.append((owner,session))
+        assert owner=="owner" and session==sid
+    monkeypatch.setattr(voice,"_conversation_db",db)
+    monkeypatch.setattr(voice,"authority",authority)
+    async def run():
+        request=SimpleNamespace(headers={"authorization":"Bearer "+token})
+        assert await voice.voice_owner(request,sid)=="owner"
+        with pytest.raises(HTTPException) as wrong:
+            await voice.voice_owner(request,uuid4())
+        assert wrong.value.status_code==403
+        with pytest.raises(HTTPException) as invalid:
+            await voice.voice_owner(SimpleNamespace(headers={"authorization":"Bearer invalid"}),sid)
+        assert invalid.value.status_code==401
+    asyncio.run(run())
+    assert requests==[("owner",sid)]

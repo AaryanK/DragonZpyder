@@ -213,3 +213,13 @@ Removed the three Markdown guides from Android drawable, values and xml resource
 - `.github/workflows/dragonzpyder-api.yml`: Run OpenRouter-only voice tests with offline API contracts. Live provider and device qualification pending.
 - `api/tests/test_openrouter_voice.py`: Exercise actual PostgreSQL migration, duplicate utterance identity, no paid replay, segment claim, cross-owner denial and session closure with scripted gateway/harness.
 - `.github/workflows/dragonzpyder-api.yml`: Include OpenRouter voice PostgreSQL fixture in disposable database integration job.
+
+## Transport-independent voice session contract
+
+- `api/agent_platform/openrouter_voice.py`: Introduce provider-neutral session endpoints, explicit bridge delegation and PCM/G.711 normalization; reuse existing speech providers and canonical request ledger. Offline CI pending; no live transport proof.
+- `api/agent_platform/migrations/20261126_openrouter_voice.sql`: Persist source metadata and unique hashed session-bound bridge grants; revoke on closure. Offline CI pending; no live transport proof.
+- `api/main.py`: Require bounded length-framed direct voice input before JSON parsing. Offline CI pending; no live transport proof.
+- `web/main.py`: Bound provider-neutral and legacy utterance proxy bodies to accommodate 48 kHz stereo PCM. Offline CI pending; no live transport proof.
+- `web/companion.js`: Use neutral session admission and closure endpoints. Offline CI pending; no live transport proof.
+- `web/frontend/src/openrouter-voice.js`: Use shared neutral turn and speech endpoint. Offline CI pending; no live transport proof.
+- `api/tests/test_openrouter_voice.py`: Add native PCM/telephone codec fixtures and bridge grant ownership and authority tests. Offline CI pending; no live transport proof.
