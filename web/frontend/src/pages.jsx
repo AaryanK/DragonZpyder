@@ -3,6 +3,8 @@ import { HomeTemplate } from "./HomeTemplate.jsx";
 import { PersonalTemplate } from "./PersonalTemplate.jsx";
 import { AccountTemplate } from "./AccountTemplate.jsx";
 import { RuntimeContext } from "./runtime.jsx";
+import {applyUiPreferences,readUiPreferences} from "./ui-preferences.js";
+import "./design-tokens.css";
 
 // Each page's markup is real React JSX. The old standalone HTML templates
 // are no longer imported, parsed, or used by the browser.
@@ -35,6 +37,7 @@ function HomePage() {
 
 function CompatibilityAdapters({ page }) {
   useEffect(() => {
+    applyUiPreferences(readUiPreferences());
     // Auth, chat, approvals, voice and Mesh still have carefully permissioned
     // imperative controllers. Initialise only AFTER the JSX page has mounted,
     // then migrate each feature to dedicated hooks/components in later changes.

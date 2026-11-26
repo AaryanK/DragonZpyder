@@ -29,3 +29,7 @@ Baseline: [develop at d38aa819af86](https://github.com/AaryanK/DragonZpyder/tree
 ## Keeping this useful
 
 Every implementation change must update [path-specific change records](docs/codebase/CHANGES.md), file descriptions, and applicable directory/flow documentation in the same PR (see AGENTS.md). Regenerate the local symbol inventory after a checkout change. Prefer meaningful module docstrings and public interface documentation in future implementation PRs over comments that repeat obvious code. Record what is gated, what was tested and what is deployed separately. Never put credentials, personal data or live token values in docs.
+
+### Frontend V2 and Android
+
+See [web frontend V2](web/frontend/README.md) and [Android implementation and release requirements](android/README.md). The monogram source is [dz-mark.svg](web/frontend/src/dz-mark.svg); asset builders and the shell are described in the implementation guide. The Android source tree was added after the earlier documentation baseline; inventory reconciliation is path-based, not an assertion of behavioral review.

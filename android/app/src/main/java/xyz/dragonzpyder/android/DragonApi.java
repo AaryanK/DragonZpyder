@@ -405,6 +405,21 @@ final class DragonApi {
         UUID requestId=UUID.fromString(id);
         return (JSONObject)call("/dz/v2/personal/requests/"+requestId,null);
     }
+    /** Fixed owner-scoped image endpoint; no provider URL or external cookies. */
+    synchronized byte[] profileAvatar() throws Exception {
+        ensureMode();if(!firstParty||!authenticated)return null;
+        HttpURLConnection c=(HttpURLConnection)ORIGIN.resolve("/dz/identity/v1/avatar").toURL().openConnection();
+        try{
+            c.setInstanceFollowRedirects(false);c.setConnectTimeout(5000);c.setReadTimeout(7000);
+            c.setRequestMethod("GET");c.setRequestProperty("Accept","image/jpeg,image/png,image/webp");
+            c.setRequestProperty("Cache-Control","no-store");c.setUseCaches(false);
+            c.setRequestProperty("Cookie",cookies.header());
+            if(c.getResponseCode()!=200)return null;
+            String mime=c.getContentType();
+            if(mime==null||!Arrays.asList("image/jpeg","image/png","image/webp").contains(mime.split(";")[0]))return null;
+            return boundedBytes(c.getInputStream(),256*1024);
+        }finally{c.disconnect();}
+    }
     synchronized JSONObject profile() throws Exception { ensureMode();return (JSONObject)call(firstParty?"/dz/identity/v1/me":"/api/auth/me",null); }
     synchronized void updateName(String name) throws Exception { ensureMode();call(firstParty?"/dz/identity/v1/me":"/api/auth/me","PATCH",object("display_name",name)); }
     synchronized void logout() throws Exception {

@@ -68,3 +68,7 @@ Deployment truth is independent: inspect [workflows](../../.github/workflows/), 
 The file inventory now records source-inspected cross-cutting modules for artifact readback, budget reservations, provider pacing, MCP trust and authorization, memory, persistent monitoring, archive migration, and delegation. Read the named module and tests for the exact boundary; historical rollout wording in source docstrings may be stale.
 
 The checkout-specific generated directory contains an index, a page for every tracked file, folder indexes, and a flat symbol map. Static references and related tests are candidates, not exhaustive dynamic dependencies. Use human-maintained change records and curated summaries to explain actual behavior.
+
+## Frontend V2 foundation
+
+`web/frontend/src/dz-mark.svg` is the local brand master. `web/frontend/scripts/prepare-desktop.mjs` produces web/installation rasters; `android/prepare-brand.sh` produces the native vector. The Personal React shell uses `UiIcon.jsx` and V2 semantic shell tokens in `web/ui-v1.css`. The existing `web/app.js` adapter requests authenticated `/dz/identity/v1/me` for optional display name metadata and never uses it to grant authorization. Native chat capability remains backend-owned; unavailable chat retains drafts and disables send. No provider avatar claim, runtime flag changes or deployment implied.

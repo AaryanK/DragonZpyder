@@ -676,3 +676,117 @@ These paths are additional to the original 427 tracked files; the generated inde
 - [`web/frontend/src/README.md`](../../web/frontend/src/README.md) — Local directory guide.
 - [`web/frontend/tests/README.md`](../../web/frontend/tests/README.md) — Local directory guide.
 - [`web/tests/README.md`](../../web/tests/README.md) — Local directory guide.
+
+## Inventory synchronization — V2 and Android additions
+
+These entries reconcile paths added after the documented baseline; Indexed descriptions are navigation hints, not behavior certification.
+
+- [`.github/workflows/android-apk.yml`](../../.github/workflows/android-apk.yml) — Indexed; inspect source or directory guide.
+- [`.github/workflows/android-benchmark.yml`](../../.github/workflows/android-benchmark.yml) — Indexed; inspect source or directory guide.
+- [`.github/workflows/android-release.yml`](../../.github/workflows/android-release.yml) — Indexed; inspect source or directory guide.
+- [`android/.gitignore`](../../android/.gitignore) — Excludes generated Android vector asset, keeping SVG as versioned source.
+- [`android/AGENTS.md`](../../android/AGENTS.md) — Indexed; inspect source or directory guide.
+- [`android/QUALIFICATION.md`](../../android/QUALIFICATION.md) — Indexed; inspect source or directory guide.
+- [`android/README.md`](../../android/README.md) — Indexed; inspect source or directory guide.
+- [`android/RELEASE_GATES.md`](../../android/RELEASE_GATES.md) — Indexed; inspect source or directory guide.
+- [`android/app/CODE_MAP.md`](../../android/app/CODE_MAP.md) — Indexed; inspect source or directory guide.
+- [`android/app/build.gradle`](../../android/app/build.gradle) — Indexed; inspect source or directory guide.
+- [`android/app/src/CODE_MAP.md`](../../android/app/src/CODE_MAP.md) — Indexed; inspect source or directory guide.
+- [`android/app/src/androidTest/CODE_MAP.md`](../../android/app/src/androidTest/CODE_MAP.md) — Indexed; inspect source or directory guide.
+- [`android/app/src/androidTest/java/CODE_MAP.md`](../../android/app/src/androidTest/java/CODE_MAP.md) — Indexed; inspect source or directory guide.
+- [`android/app/src/androidTest/java/xyz/CODE_MAP.md`](../../android/app/src/androidTest/java/xyz/CODE_MAP.md) — Indexed; inspect source or directory guide.
+- [`android/app/src/androidTest/java/xyz/dragonzpyder/CODE_MAP.md`](../../android/app/src/androidTest/java/xyz/dragonzpyder/CODE_MAP.md) — Indexed; inspect source or directory guide.
+- [`android/app/src/androidTest/java/xyz/dragonzpyder/android/AccountIsolationTest.java`](../../android/app/src/androidTest/java/xyz/dragonzpyder/android/AccountIsolationTest.java) — Indexed; inspect source or directory guide.
+- [`android/app/src/androidTest/java/xyz/dragonzpyder/android/AgentRequestLifecycleTest.java`](../../android/app/src/androidTest/java/xyz/dragonzpyder/android/AgentRequestLifecycleTest.java) — Indexed; inspect source or directory guide.
+- [`android/app/src/androidTest/java/xyz/dragonzpyder/android/CODE_MAP.md`](../../android/app/src/androidTest/java/xyz/dragonzpyder/android/CODE_MAP.md) — Indexed; inspect source or directory guide.
+- [`android/app/src/androidTest/java/xyz/dragonzpyder/android/MarkdownRendererTest.kt`](../../android/app/src/androidTest/java/xyz/dragonzpyder/android/MarkdownRendererTest.kt) — Indexed; inspect source or directory guide.
+- [`android/app/src/androidTest/java/xyz/dragonzpyder/android/MediaPayloadTest.java`](../../android/app/src/androidTest/java/xyz/dragonzpyder/android/MediaPayloadTest.java) — Indexed; inspect source or directory guide.
+- [`android/app/src/androidTest/java/xyz/dragonzpyder/android/MobileOAuthStoreTest.java`](../../android/app/src/androidTest/java/xyz/dragonzpyder/android/MobileOAuthStoreTest.java) — Indexed; inspect source or directory guide.
+- [`android/app/src/androidTest/java/xyz/dragonzpyder/android/NativeChatStateTest.java`](../../android/app/src/androidTest/java/xyz/dragonzpyder/android/NativeChatStateTest.java) — Indexed; inspect source or directory guide.
+- [`android/app/src/androidTest/java/xyz/dragonzpyder/android/NativeNavigationDrawerTest.kt`](../../android/app/src/androidTest/java/xyz/dragonzpyder/android/NativeNavigationDrawerTest.kt) — Indexed; inspect source or directory guide.
+- [`android/app/src/androidTest/java/xyz/dragonzpyder/android/NavigationAccessibilityTest.kt`](../../android/app/src/androidTest/java/xyz/dragonzpyder/android/NavigationAccessibilityTest.kt) — Indexed; inspect source or directory guide.
+- [`android/app/src/androidTest/java/xyz/dragonzpyder/android/PendingAgentRequestStoreTest.java`](../../android/app/src/androidTest/java/xyz/dragonzpyder/android/PendingAgentRequestStoreTest.java) — Indexed; inspect source or directory guide.
+- [`android/app/src/androidTest/java/xyz/dragonzpyder/android/ProviderSignInUiTest.java`](../../android/app/src/androidTest/java/xyz/dragonzpyder/android/ProviderSignInUiTest.java) — Indexed; inspect source or directory guide.
+- [`android/app/src/androidTest/java/xyz/dragonzpyder/android/SecurePasswordFieldTest.java`](../../android/app/src/androidTest/java/xyz/dragonzpyder/android/SecurePasswordFieldTest.java) — Indexed; inspect source or directory guide.
+- [`android/app/src/androidTest/java/xyz/dragonzpyder/android/SecureSessionStoreTest.java`](../../android/app/src/androidTest/java/xyz/dragonzpyder/android/SecureSessionStoreTest.java) — Indexed; inspect source or directory guide.
+- [`android/app/src/benchmark/AndroidManifest.xml`](../../android/app/src/benchmark/AndroidManifest.xml) — Indexed; inspect source or directory guide.
+- [`android/app/src/benchmark/CODE_MAP.md`](../../android/app/src/benchmark/CODE_MAP.md) — Indexed; inspect source or directory guide.
+- [`android/app/src/benchmark/java/CODE_MAP.md`](../../android/app/src/benchmark/java/CODE_MAP.md) — Indexed; inspect source or directory guide.
+- [`android/app/src/benchmark/java/xyz/CODE_MAP.md`](../../android/app/src/benchmark/java/xyz/CODE_MAP.md) — Indexed; inspect source or directory guide.
+- [`android/app/src/benchmark/java/xyz/dragonzpyder/CODE_MAP.md`](../../android/app/src/benchmark/java/xyz/dragonzpyder/CODE_MAP.md) — Indexed; inspect source or directory guide.
+- [`android/app/src/benchmark/java/xyz/dragonzpyder/android/BenchmarkChatActivity.kt`](../../android/app/src/benchmark/java/xyz/dragonzpyder/android/BenchmarkChatActivity.kt) — Indexed; inspect source or directory guide.
+- [`android/app/src/benchmark/java/xyz/dragonzpyder/android/CODE_MAP.md`](../../android/app/src/benchmark/java/xyz/dragonzpyder/android/CODE_MAP.md) — Indexed; inspect source or directory guide.
+- [`android/app/src/main/AndroidManifest.xml`](../../android/app/src/main/AndroidManifest.xml) — Indexed; inspect source or directory guide.
+- [`android/app/src/main/CODE_MAP.md`](../../android/app/src/main/CODE_MAP.md) — Indexed; inspect source or directory guide.
+- [`android/app/src/main/java/CODE_MAP.md`](../../android/app/src/main/java/CODE_MAP.md) — Indexed; inspect source or directory guide.
+- [`android/app/src/main/java/xyz/CODE_MAP.md`](../../android/app/src/main/java/xyz/CODE_MAP.md) — Indexed; inspect source or directory guide.
+- [`android/app/src/main/java/xyz/dragonzpyder/CODE_MAP.md`](../../android/app/src/main/java/xyz/dragonzpyder/CODE_MAP.md) — Indexed; inspect source or directory guide.
+- [`android/app/src/main/java/xyz/dragonzpyder/android/AgentFileRepository.kt`](../../android/app/src/main/java/xyz/dragonzpyder/android/AgentFileRepository.kt) — Indexed; inspect source or directory guide.
+- [`android/app/src/main/java/xyz/dragonzpyder/android/AgentRequestViewModel.java`](../../android/app/src/main/java/xyz/dragonzpyder/android/AgentRequestViewModel.java) — Indexed; inspect source or directory guide.
+- [`android/app/src/main/java/xyz/dragonzpyder/android/ApiRoutePolicy.java`](../../android/app/src/main/java/xyz/dragonzpyder/android/ApiRoutePolicy.java) — Indexed; inspect source or directory guide.
+- [`android/app/src/main/java/xyz/dragonzpyder/android/CODE_MAP.md`](../../android/app/src/main/java/xyz/dragonzpyder/android/CODE_MAP.md) — Indexed; inspect source or directory guide.
+- [`android/app/src/main/java/xyz/dragonzpyder/android/ChatPresentationState.kt`](../../android/app/src/main/java/xyz/dragonzpyder/android/ChatPresentationState.kt) — Indexed; inspect source or directory guide.
+- [`android/app/src/main/java/xyz/dragonzpyder/android/DragonApi.java`](../../android/app/src/main/java/xyz/dragonzpyder/android/DragonApi.java) — Indexed; inspect source or directory guide.
+- [`android/app/src/main/java/xyz/dragonzpyder/android/DragonDesignTokens.kt`](../../android/app/src/main/java/xyz/dragonzpyder/android/DragonDesignTokens.kt) — Indexed; inspect source or directory guide.
+- [`android/app/src/main/java/xyz/dragonzpyder/android/DragonNavigationRow.kt`](../../android/app/src/main/java/xyz/dragonzpyder/android/DragonNavigationRow.kt) — Indexed; inspect source or directory guide.
+- [`android/app/src/main/java/xyz/dragonzpyder/android/GoogleCredentialLogin.java`](../../android/app/src/main/java/xyz/dragonzpyder/android/GoogleCredentialLogin.java) — Indexed; inspect source or directory guide.
+- [`android/app/src/main/java/xyz/dragonzpyder/android/MainActivity.java`](../../android/app/src/main/java/xyz/dragonzpyder/android/MainActivity.java) — Indexed; inspect source or directory guide.
+- [`android/app/src/main/java/xyz/dragonzpyder/android/MarkdownDocument.java`](../../android/app/src/main/java/xyz/dragonzpyder/android/MarkdownDocument.java) — Indexed; inspect source or directory guide.
+- [`android/app/src/main/java/xyz/dragonzpyder/android/MarkdownRenderer.kt`](../../android/app/src/main/java/xyz/dragonzpyder/android/MarkdownRenderer.kt) — Indexed; inspect source or directory guide.
+- [`android/app/src/main/java/xyz/dragonzpyder/android/MathMarkup.kt`](../../android/app/src/main/java/xyz/dragonzpyder/android/MathMarkup.kt) — Indexed; inspect source or directory guide.
+- [`android/app/src/main/java/xyz/dragonzpyder/android/MediaPayload.java`](../../android/app/src/main/java/xyz/dragonzpyder/android/MediaPayload.java) — Indexed; inspect source or directory guide.
+- [`android/app/src/main/java/xyz/dragonzpyder/android/MobileOAuthStore.java`](../../android/app/src/main/java/xyz/dragonzpyder/android/MobileOAuthStore.java) — Indexed; inspect source or directory guide.
+- [`android/app/src/main/java/xyz/dragonzpyder/android/NativeChatView.kt`](../../android/app/src/main/java/xyz/dragonzpyder/android/NativeChatView.kt) — Indexed; inspect source or directory guide.
+- [`android/app/src/main/java/xyz/dragonzpyder/android/NativeCommandPalette.kt`](../../android/app/src/main/java/xyz/dragonzpyder/android/NativeCommandPalette.kt) — Indexed; inspect source or directory guide.
+- [`android/app/src/main/java/xyz/dragonzpyder/android/NativeVoiceSession.java`](../../android/app/src/main/java/xyz/dragonzpyder/android/NativeVoiceSession.java) — Indexed; inspect source or directory guide.
+- [`android/app/src/main/java/xyz/dragonzpyder/android/NativeVoiceView.kt`](../../android/app/src/main/java/xyz/dragonzpyder/android/NativeVoiceView.kt) — Indexed; inspect source or directory guide.
+- [`android/app/src/main/java/xyz/dragonzpyder/android/NavigationGlyph.kt`](../../android/app/src/main/java/xyz/dragonzpyder/android/NavigationGlyph.kt) — Indexed; inspect source or directory guide.
+- [`android/app/src/main/java/xyz/dragonzpyder/android/PendingAgentRequestStore.java`](../../android/app/src/main/java/xyz/dragonzpyder/android/PendingAgentRequestStore.java) — Indexed; inspect source or directory guide.
+- [`android/app/src/main/java/xyz/dragonzpyder/android/SecurePasswordField.java`](../../android/app/src/main/java/xyz/dragonzpyder/android/SecurePasswordField.java) — Indexed; inspect source or directory guide.
+- [`android/app/src/main/java/xyz/dragonzpyder/android/SecureSessionStore.java`](../../android/app/src/main/java/xyz/dragonzpyder/android/SecureSessionStore.java) — Indexed; inspect source or directory guide.
+- [`android/app/src/main/java/xyz/dragonzpyder/android/SessionCookies.java`](../../android/app/src/main/java/xyz/dragonzpyder/android/SessionCookies.java) — Indexed; inspect source or directory guide.
+- [`android/app/src/main/res/CODE_MAP.md`](../../android/app/src/main/res/CODE_MAP.md) — Indexed; inspect source or directory guide.
+- [`android/app/src/main/res/drawable/ic_logo.xml`](../../android/app/src/main/res/drawable/ic_logo.xml) — Indexed; inspect source or directory guide.
+- [`android/app/src/main/res/values/dialog_themes.xml`](../../android/app/src/main/res/values/dialog_themes.xml) — Indexed; inspect source or directory guide.
+- [`android/app/src/main/res/xml/camera_paths.xml`](../../android/app/src/main/res/xml/camera_paths.xml) — Indexed; inspect source or directory guide.
+- [`android/app/src/test/CODE_MAP.md`](../../android/app/src/test/CODE_MAP.md) — Indexed; inspect source or directory guide.
+- [`android/app/src/test/java/CODE_MAP.md`](../../android/app/src/test/java/CODE_MAP.md) — Indexed; inspect source or directory guide.
+- [`android/app/src/test/java/xyz/CODE_MAP.md`](../../android/app/src/test/java/xyz/CODE_MAP.md) — Indexed; inspect source or directory guide.
+- [`android/app/src/test/java/xyz/dragonzpyder/CODE_MAP.md`](../../android/app/src/test/java/xyz/dragonzpyder/CODE_MAP.md) — Indexed; inspect source or directory guide.
+- [`android/app/src/test/java/xyz/dragonzpyder/android/CODE_MAP.md`](../../android/app/src/test/java/xyz/dragonzpyder/android/CODE_MAP.md) — Indexed; inspect source or directory guide.
+- [`android/app/src/test/java/xyz/dragonzpyder/android/DesignContractTest.kt`](../../android/app/src/test/java/xyz/dragonzpyder/android/DesignContractTest.kt) — Indexed; inspect source or directory guide.
+- [`android/app/src/test/java/xyz/dragonzpyder/android/MarkdownDocumentTest.java`](../../android/app/src/test/java/xyz/dragonzpyder/android/MarkdownDocumentTest.java) — Indexed; inspect source or directory guide.
+- [`android/app/src/test/java/xyz/dragonzpyder/android/MathMarkupTest.kt`](../../android/app/src/test/java/xyz/dragonzpyder/android/MathMarkupTest.kt) — Indexed; inspect source or directory guide.
+- [`android/benchmark/CODE_MAP.md`](../../android/benchmark/CODE_MAP.md) — Indexed; inspect source or directory guide.
+- [`android/benchmark/build.gradle`](../../android/benchmark/build.gradle) — Indexed; inspect source or directory guide.
+- [`android/benchmark/src/CODE_MAP.md`](../../android/benchmark/src/CODE_MAP.md) — Indexed; inspect source or directory guide.
+- [`android/benchmark/src/main/AndroidManifest.xml`](../../android/benchmark/src/main/AndroidManifest.xml) — Indexed; inspect source or directory guide.
+- [`android/benchmark/src/main/CODE_MAP.md`](../../android/benchmark/src/main/CODE_MAP.md) — Indexed; inspect source or directory guide.
+- [`android/benchmark/src/main/java/CODE_MAP.md`](../../android/benchmark/src/main/java/CODE_MAP.md) — Indexed; inspect source or directory guide.
+- [`android/benchmark/src/main/java/xyz/CODE_MAP.md`](../../android/benchmark/src/main/java/xyz/CODE_MAP.md) — Indexed; inspect source or directory guide.
+- [`android/benchmark/src/main/java/xyz/dragonzpyder/CODE_MAP.md`](../../android/benchmark/src/main/java/xyz/dragonzpyder/CODE_MAP.md) — Indexed; inspect source or directory guide.
+- [`android/benchmark/src/main/java/xyz/dragonzpyder/benchmark/CODE_MAP.md`](../../android/benchmark/src/main/java/xyz/dragonzpyder/benchmark/CODE_MAP.md) — Indexed; inspect source or directory guide.
+- [`android/benchmark/src/main/java/xyz/dragonzpyder/benchmark/ReleaseBenchmarks.kt`](../../android/benchmark/src/main/java/xyz/dragonzpyder/benchmark/ReleaseBenchmarks.kt) — Indexed; inspect source or directory guide.
+- [`android/build.gradle`](../../android/build.gradle) — Indexed; inspect source or directory guide.
+- [`android/gradle.properties`](../../android/gradle.properties) — Indexed; inspect source or directory guide.
+- [`android/prepare-brand.sh`](../../android/prepare-brand.sh) — Generates native Android VectorDrawable from canonical web SVG using Python stdlib; removes stale generated PNG, retains resource identifier.
+- [`android/qualify-device.sh`](../../android/qualify-device.sh) — Indexed; inspect source or directory guide.
+- [`android/run-benchmarks.sh`](../../android/run-benchmarks.sh) — Indexed; inspect source or directory guide.
+- [`android/settings.gradle`](../../android/settings.gradle) — Indexed; inspect source or directory guide.
+- [`android/tests/ApiRoutePolicyTest.java`](../../android/tests/ApiRoutePolicyTest.java) — Indexed; inspect source or directory guide.
+- [`android/tests/CODE_MAP.md`](../../android/tests/CODE_MAP.md) — Indexed; inspect source or directory guide.
+- [`android/tests/SessionCookiesTest.java`](../../android/tests/SessionCookiesTest.java) — Indexed; inspect source or directory guide.
+- [`android/tests/check_native_alignment.py`](../../android/tests/check_native_alignment.py) — Indexed; inspect source or directory guide.
+- [`android/tests/test_native_alignment.py`](../../android/tests/test_native_alignment.py) — Indexed; inspect source or directory guide.
+- [`web/frontend/src/UiIcon.jsx`](../../web/frontend/src/UiIcon.jsx) — Presentation-only 24-unit vector icon component; accessible names belong to controls; used by PersonalTemplate and WorkspaceControls.
+- [`web/frontend/src/dz-mark.svg`](../../web/frontend/src/dz-mark.svg) — Canonical flat DZ geometric monogram; two closed paths, even-odd D counter, transparent background, 64-unit viewBox; read by web and Android build scripts.
+
+- [`web/frontend/src/NativeGoals.jsx`](../../web/frontend/src/NativeGoals.jsx) — Owner-scoped native goal presentation and cancellation controls.
+
+- [`web/frontend/src/ui-preferences.js`](../../web/frontend/src/ui-preferences.js) — Versioned, allowlisted browser-local theme, density, text size and reduced motion configuration; rejects arbitrary CSS and authority fields, preserves existing theme key.
+- [`web/frontend/src/AppearanceSettings.jsx`](../../web/frontend/src/AppearanceSettings.jsx) — Account appearance controls apply validated local preferences immediately and expose storage failures; no account or agent permission mutation.
+- [`web/frontend/src/design-tokens.css`](../../web/frontend/src/design-tokens.css) — Shared neutral/accent semantic tokens and bounded motion override, imported by Personal, account and admin entrypoints.
+
+- [`api/identity/profile_avatar.py`](../../api/identity/profile_avatar.py) — Optional Google picture URL validation, verified-provider/owner-scoped storage and bounded same-origin image readback; no arbitrary URLs, redirects or user credentials sent upstream.
+- [`api/identity/schema_google_avatar_manual.sql`](../../api/identity/schema_google_avatar_manual.sql) — Operator-only nullable profile picture column and column-level update grant; no account activation or provider authority changes.
+- [`api/tests/test_identity_profile_avatar.py`](../../api/tests/test_identity_profile_avatar.py) — Offline tests for exact URL allowlist, no redirects, MIME/signature/byte bounds, flag and owner-link predicate.

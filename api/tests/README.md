@@ -111,3 +111,5 @@ Read [repository instructions](../../AGENTS.md) and [codebase navigation](../../
 | [`test_usage_audit.py`](test_usage_audit.py) | Test target: usage audit; inspect assertions and fixtures for the exact contract. | Indexed |
 | [`test_workflow_catalog_100.py`](test_workflow_catalog_100.py) | Test target: workflow catalog 100; inspect assertions and fixtures for the exact contract. | Indexed |
 | [`test_workspace_bridge.py`](test_workspace_bridge.py) | Test target: workspace bridge; inspect assertions and fixtures for the exact contract. | Indexed |
+
+`test_identity_profile_avatar.py`: offline verified-profile URL, bounded fetch and owner-linked persistence tests. No real Google requests.

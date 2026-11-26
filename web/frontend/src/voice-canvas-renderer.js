@@ -20,7 +20,12 @@ export function createVoiceOrbRenderer(canvas) {
     radius=Math.min(W*.28,H*.248,226);
     // Preserve the source preview's 70%-width orb on phones. Desktop-site
     // browser mode may report 980 CSS px in a narrow physical phone.
-    if(W<680){cy=H*.425;radius=Math.min(W*.35,H*.204,155)}
+    if(W<680){
+      // Short portrait screens need a higher center to leave enough space
+      // for live captions and full-size controls. Preserve the radius and
+      // original audio-driven motion; normal phone/desktop geometry is unchanged.
+      cy=H<=620?H*.37:H*.425;radius=Math.min(W*.35,H*.204,155)
+    }
     else if(H>W*1.16){
       cy=H*.425;radius=Math.min(W*.35,H*.204);
     }

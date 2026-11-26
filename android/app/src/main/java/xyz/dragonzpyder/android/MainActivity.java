@@ -105,7 +105,9 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private EditText field(String hint,boolean secret){EditText e=new EditText(this);e.setHint(hint);e.setHintTextColor(MUTED);e.setTextColor(TEXT);e.setTextSize(16);e.setPadding(dp(14),dp(12),dp(14),dp(12));GradientDrawable d=surface(PANEL,16);d.setStroke(dp(1),LINE);e.setBackground(d);if(secret)SecurePasswordField.configure(e);else e.setInputType(android.text.InputType.TYPE_CLASS_TEXT);return e;}
     private void gap(LinearLayout l,int height){l.addView(new View(this),new LinearLayout.LayoutParams(1,dp(height)));}
     private void reset(){root=column();root.setBackgroundColor(BG);root.setPadding(dp(12),dp(8),dp(12),dp(8));setContentView(root);root.setOnApplyWindowInsetsListener((v,insets)->{int left,top,right,bottom;if(android.os.Build.VERSION.SDK_INT>=30){android.graphics.Insets bars=insets.getInsets(WindowInsets.Type.systemBars()|WindowInsets.Type.displayCutout()|WindowInsets.Type.ime());left=bars.left;top=bars.top;right=bars.right;bottom=bars.bottom;}else{left=insets.getSystemWindowInsetLeft();top=insets.getSystemWindowInsetTop();right=insets.getSystemWindowInsetRight();bottom=insets.getSystemWindowInsetBottom();}v.setPadding(dp(12)+left,dp(8)+top,dp(12)+right,dp(8)+bottom);return insets;});root.requestApplyInsets();}
-    private String authMode="login", authEmail="", challengeId="", profileInitial="D";
+    private String authMode="login", authEmail="", challengeId="", profileInitial="?";
+    private String profileName="",profileLoadedFor="";
+    private android.graphics.Bitmap profilePhoto;
     private boolean accountOpen;
     private LinearLayout accountPage;
     private void loginScreen(String message){authMode="login";authScreen("login",message);}
@@ -133,7 +135,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         activeRequestId="";if(agentRequests!=null)agentRequests.reset();
         conversation="";pendingPrompt="";attachment=null;pendingFileDownload=null;attachmentName="";transcript.clear();
         meshMode=false;model="";modelAcceptsImages=false;restoredMesh=false;restoredModel="";restoredModelAcceptsImages=false;lastAnswer="";meshMessages=new JSONArray();history=new JSONArray();
-        profileInitial="D";authEmail="";challengeId="";restoredDraft="";restoredConversation="";selectedMcpConnections.clear();
+        profileInitial="?";profileName="";profileLoadedFor="";profilePhoto=null;authEmail="";challengeId="";restoredDraft="";restoredConversation="";selectedMcpConnections.clear();
         restorePending=false;interruptedRequest=false;transcriptionModel="";queuedOAuthIntent=null;googleSignInPending=false;googleAttempt++;
         if(mobileOAuth!=null)mobileOAuth.clear();if(mcpOAuth!=null)mcpOAuth.clear();discardCamera();stopMedia();if(tts!=null)tts.stop();chatUi=null;
     }
@@ -339,9 +341,33 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             public void copy(String value){android.content.ClipboardManager cb=(android.content.ClipboardManager)getSystemService(Context.CLIPBOARD_SERVICE);cb.setPrimaryClip(android.content.ClipData.newPlainText("DragonZpyder",value));}
             public void speak(String value){if(speechReady)tts.speak(value,TextToSpeech.QUEUE_FLUSH,null,"response");else setStatus("Speech engine unavailable");}
         });
-        chatUi.setDraft(draft);chatUi.setModeLabel(meshMode?"AI Mesh":"Agent");chatUi.setModelLabel(model);chatUi.setAttachmentLabel(attachmentName);chatUi.setProfileInitial(profileInitial);chatUi.setBusy(busy);chatUi.setVoiceAvailable(api.supportsVoice());chatUi.setFilesAvailable(api.supportsFiles());chatUi.setGoalsAvailable(!api.isFirstParty()||api.supportsGoals());chatUi.setLegacyActionsAvailable(!api.isFirstParty());
+        chatUi.setDraft(draft);chatUi.setModeLabel(meshMode?"AI Mesh":"Agent");chatUi.setModelLabel(model);chatUi.setAttachmentLabel(attachmentName);chatUi.setProfileInitial(profileInitial);chatUi.setProfileName(profileName);chatUi.setProfilePhoto(profilePhoto);chatUi.setBusy(busy);chatUi.setVoiceAvailable(api.supportsVoice());chatUi.setFilesAvailable(api.supportsFiles());chatUi.setGoalsAvailable(!api.isFirstParty()||api.supportsGoals());chatUi.setLegacyActionsAvailable(!api.isFirstParty());
         for(String[] item:transcript)chatUi.append(item[0],item[1]);
         root.addView(chatUi.getView(),new LinearLayout.LayoutParams(-1,0,1));
+        loadProfileIdentity();
+    }
+    private String profileInitials(String name){
+        StringBuilder out=new StringBuilder();int count=0;
+        for(String part:name.trim().split("\\s+")){if(!part.isEmpty()&&count++<2)out.appendCodePoint(part.codePointAt(0));}
+        return out.length()==0?"?":out.toString().toUpperCase(Locale.ROOT);
+    }
+    private void loadProfileIdentity(){
+        final String binding=api.pendingRequestBinding();
+        if(!signedIn||!api.isFirstParty()||binding.isEmpty()||binding.equals(profileLoadedFor))return;
+        profileLoadedFor=binding;
+        worker.execute(()->{
+            try{
+                JSONObject identity=api.profile();String name=identity.optString("display_name","");
+                android.graphics.Bitmap photo=null;
+                if(identity.optBoolean("avatar_available"))try{
+                    byte[] bytes=api.profileAvatar();
+                    if(bytes!=null){android.graphics.BitmapFactory.Options limits=new android.graphics.BitmapFactory.Options();limits.inJustDecodeBounds=true;android.graphics.BitmapFactory.decodeByteArray(bytes,0,bytes.length,limits);
+                        if(limits.outWidth>0&&limits.outHeight>0&&limits.outWidth<=1024&&limits.outHeight<=1024)photo=android.graphics.BitmapFactory.decodeByteArray(bytes,0,bytes.length);}
+                }catch(Exception ignored){/* Initials remain available. */}
+                final android.graphics.Bitmap ready=photo;
+                runOnUiThread(()->{if(isDestroyed()||!signedIn||!binding.equals(api.pendingRequestBinding()))return;profileName=name;profileInitial=profileInitials(name);profilePhoto=ready;if(chatUi!=null){chatUi.setProfileName(name);chatUi.setProfileInitial(profileInitial);chatUi.setProfilePhoto(ready);}});
+            }catch(Exception failure){runOnUiThread(()->{if(binding.equals(profileLoadedFor))profileLoadedFor="";});}
+        });
     }
     private void setStatus(String value){if(status!=null)status.setText(value);if(chatUi!=null&&signedIn&&!accountOpen)chatUi.setStatusText(value);}
     private AlertDialog.Builder alert(){return new AlertDialog.Builder(this,dark?R.style.DragonDialogDark:R.style.DragonDialogLight);}
@@ -379,7 +405,9 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         accountPage.addView(button("‹ Back to Personal AI",()->{accountOpen=false;chatScreen();}));gap(accountPage,20);
         sectionLabel(accountPage,"YOUR DRAGONZPYDER");accountPage.addView(heading("Account & connections.",30));gap(accountPage,8);accountPage.addView(text("One identity, with clear boundaries around every connected service and workspace.",14,MUTED));gap(accountPage,20);
         LinearLayout profile=accountCard();sectionLabel(profile,"01 / IDENTITY");profile.addView(heading("Your profile",21));gap(profile,8);profile.addView(text(p.optString("email"),14,MUTED));gap(profile,16);
-        String current=p.optString("display_name");if(!current.isEmpty())profileInitial=current.substring(0,1).toUpperCase(Locale.ROOT);EditText name=accountField(profile,"Display name",current,1,View.AUTOFILL_HINT_NAME);
+        String current=p.optString("display_name");profileName=current;profileInitial=profileInitials(current);
+        if(profilePhoto!=null){ImageView photo=new ImageView(this);photo.setImageBitmap(profilePhoto);photo.setScaleType(ImageView.ScaleType.CENTER_CROP);photo.setLayoutParams(new LinearLayout.LayoutParams(dp(56),dp(56)));photo.setBackground(surface(CHIP,28));photo.setClipToOutline(true);photo.setContentDescription("Profile photo");profile.addView(photo);gap(profile,12);}
+        EditText name=accountField(profile,"Display name",current,1,View.AUTOFILL_HINT_NAME);
         status=text("",13,MUTED);profile.addView(status);profile.addView(primary("Save changes",()->{String n=value(name);if(n.isEmpty()||n.length()>200){setStatus("Enter a display name up to 200 characters.");return;}submit("Saving…",()->{api.updateName(n);return api.profile();},result->{JSONObject saved=(JSONObject)result;p.put("display_name",saved.optString("display_name",n));renderAccount(p);setStatus("Your account has been updated.");},true);}));
         gap(accountPage,14);LinearLayout identity=accountCard();sectionLabel(identity,"02 / ACCESS");identity.addView(heading("Sign-in methods",21));gap(identity,8);
         JSONArray ids=p.optJSONArray("auth_identities");if(ids!=null)for(int i=0;i<ids.length();i++){JSONObject item=ids.optJSONObject(i);if(item!=null){identity.addView(text(item.optString("provider")+(item.optString("account").isEmpty()?"":" · "+item.optString("account")),14,TEXT));gap(identity,8);}}

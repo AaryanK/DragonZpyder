@@ -1,3 +1,4 @@
+import { PNG } from "pngjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -16,7 +17,8 @@ test("Windows browser-install assets are generated with valid PNG dimensions", (
   for(const brand of ["brand-icon.png","brand-logo.png","brand-operly.png"]) {
     const png=readFileSync(resolve(root,brand));
     assert.deepEqual(Array.from(png.subarray(0,8)),[137,80,78,71,13,10,26,10], brand+" is not PNG");
-    assert.ok(png.length>50000, brand+" missing authentic image bytes");
+    assert.ok(png.length>100, brand+" missing image bytes");
+    if (brand === "brand-operly.png") assert.ok(png.length>50000, "missing pinned Operly asset");
   }
   const expected = [192, 512];
   for (const size of expected) {
@@ -36,4 +38,17 @@ test("Personal app advertises the manifest without caching privileged chat", () 
   assert.match(app, /rel="manifest" href="\/app\.webmanifest"/);
   assert.match(app, /name="application-name" content="DragonZpyder"/);
   assert.doesNotMatch(app, /navigator\\.serviceWorker\\.register/);
+});
+
+test("local DZ vector produces transparent small rasters and opaque install icons", () => {
+  assert.match(readFileSync(resolve(root,"dz-mark.svg"),"utf8"), /viewBox="0 0 64 64"/);
+  for(const size of [16,32]){
+    const {width,height,data}=PNG.sync.read(readFileSync(resolve(root,"favicon-"+size+".png")));
+    assert.equal(width,size);assert.equal(height,size);assert.equal(data[3],0);
+    assert.ok(data.some((v,i)=>i%4===3&&v>200));
+  }
+  for(const size of [192,512]){
+    const {data}=PNG.sync.read(readFileSync(resolve(root,"app-icon-"+size+".png")));
+    assert.equal(data[3],255);assert.ok(data.some((v,i)=>i%4===0&&v>180));
+  }
 });

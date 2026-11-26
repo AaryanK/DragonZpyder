@@ -14,6 +14,7 @@ from .http_bridge import _enabled, _identity_db
 from .provider_http import _origin_check, _success
 from .grants import _secret_digest
 from .providers import ProviderProofDenied, exchange_discord_oauth_code, verify_google_identity_token, find_login_account
+from .profile_avatar import save_google_avatar
 from .native_signup import register_native_google_account
 from .sessions import create_browser_session, SessionDenied
 
@@ -127,6 +128,7 @@ async def callback(provider:str,request:Request,state:str="",code:str="",error:s
             proof=await google_proof(client,code,row["nonce"]) if provider=="google" else await exchange_discord_oauth_code(client,code=code,redirect_uri=redirect,mobile=True)
         async with _identity_db() as db:
             subject=await register_native_google_account(db,proof) if row["register"] else await find_login_account(db,proof)
+            await save_google_avatar(db, subject, proof)
             ticket=secrets.token_urlsafe(40)
             changed=await db.execute("""UPDATE identity_mobile_provider_attempts SET ticket_hash=$1,subject=$2,
                 expires_at=LEAST(expires_at,now()+interval '90 seconds')

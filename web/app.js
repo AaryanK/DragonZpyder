@@ -7,6 +7,7 @@ const state = {
   archiveSelected: false,
   selectionVersion: 0,
   conversations: [],
+  historyState: "loading",
   approvals: [],
   sending: false,
   preauthCsrf: null,
@@ -47,6 +48,7 @@ const approvalList = $("approval-list");
 const profileMenu = $("profile-menu");
 const sessionLabel = $("session-label");
 const profileInitial = $("profile-initial");
+const profileAvatar = $("profile-avatar");
 const sidebar = $("sidebar");
 const toast = $("toast");
 
@@ -57,7 +59,7 @@ function applyWorkspaceTheme(theme, { persist = true } = {}) {
   workspaceThemeToggle.setAttribute("aria-label", mode === "light" ? "Switch to dark appearance" : "Switch to light appearance");
   workspaceThemeToggle.setAttribute("aria-pressed", String(mode === "dark"));
   workspaceThemeToggle.title = mode === "light" ? "Dark mode" : "Light mode";
-  $("workspace-theme-icon").textContent = mode === "light" ? "☾" : "☀";
+  // Vector glyphs follow the root theme attribute.
   if (persist) {
     try { localStorage.setItem("dragonzpyder:workspace-theme", mode); } catch {}
   }
@@ -173,26 +175,46 @@ function hideAuth() {
 }
 
 function initials(value) {
-  const clean = String(value || "D").trim();
-  return (clean[0] || "D").toUpperCase();
+  const parts = String(value || "").trim().split(/\s+/).filter(Boolean);
+  return parts.length ? parts.slice(0, 2).map(part => Array.from(part)[0]).join("").toUpperCase() : "?";
 }
 
 function setSession(session) {
   state.session = session;
+  // Clear any previous account image before requesting the current owner\x27s.
+  profileAvatar.onload = null; profileAvatar.onerror = null;
+  profileAvatar.hidden = true; profileAvatar.removeAttribute("src");
+  profileInitial.hidden = false;
+  if (session?.avatarAvailable === true) {
+    profileAvatar.onload = () => { if (state.session === session) { profileAvatar.hidden=false; profileInitial.hidden=true; } };
+    profileAvatar.onerror = () => { if (state.session === session) { profileAvatar.hidden=true; profileInitial.hidden=false; } };
+    profileAvatar.src = "/dz/identity/v1/avatar";
+  }
   if (!session) {
     sessionLabel.textContent = "Personal session";
-    profileInitial.textContent = "D";
+    profileInitial.textContent = "?";
+    $("dz-runtime-notice").hidden = true;
+    setArchiveMode(state.archiveSelected);
     return;
   }
-  sessionLabel.textContent = session.device || "Personal session";
-  profileInitial.textContent = initials(session.device || "D");
+  sessionLabel.textContent = session.displayName || "Personal account";
+  profileInitial.textContent = initials(session.displayName);
+  $("dz-runtime-notice").hidden = session.nativeChatEnabled !== false;
+  setArchiveMode(state.archiveSelected);
 }
 
 async function ensurePersonalSession() {
   if (state.firstParty) {
     const result = await api("/dz/v2/personal/session", { csrf: false });
-    const session = { device: "DragonZpyder", scope: "personal", nativeChatEnabled: result.native_chat_enabled !== false };
+    const session = { device: "DragonZpyder", scope: "personal", nativeChatEnabled: result.native_chat_enabled !== false, voiceEnabled: result.voice_enabled === true };
     setSession(session);
+    // Optional identity presentation data; never use it to grant authority.
+    void api("/dz/identity/v1/me", { csrf: false }).then(profile => {
+      if (state.session !== session) return;
+      session.displayName = typeof profile.display_name === "string" ? profile.display_name : "";
+      session.avatarAvailable = profile.avatar_available === true;
+      setSession(session);
+    }).catch(() => {});
     return session;
   }
   const rows = await api("/api/auth/sessions", { csrf: false });
@@ -238,8 +260,8 @@ async function bootstrapAuth() {
     if (state.firstParty) {
       const obsolete = $("dragonzpyder-central-signin-modal");
       if (obsolete) obsolete.hidden = false;
-      // Voice/Mesh still use the legacy Operly session verifier. Until those
-      // routes receive first-party identity, never expose that old path.
+      // Mesh remains legacy-only; voice is independently capability-gated
+      // by the authenticated first-party session below.
       const mesh = $("mesh-switch");
       if (mesh) mesh.hidden = true;
       const voice = $("companion-open");
@@ -249,7 +271,8 @@ async function bootstrapAuth() {
     hideAuth();
     if (state.firstParty && state.session.nativeChatEnabled === false) {
       setRuntimeStatus("error", "Signed in · Agent runtime not enabled");
-      showToast("You are signed in. The native chat service is not enabled yet.", 7000);
+      state.historyState = "unavailable";
+      renderConversations();
       return;
     }
     setRuntimeStatus("online", "Personal runtime connected");
@@ -275,6 +298,8 @@ async function login(email, password) {
     hideAuth();
     if (state.session.nativeChatEnabled === false) {
       setRuntimeStatus("error", "Signed in · Agent runtime not enabled");
+      state.historyState = "unavailable";
+      renderConversations();
       return;
     }
     setRuntimeStatus("online", "DragonZpyder agent connected");
@@ -467,7 +492,9 @@ function clearConversationSelection() {
 function setArchiveMode(active) {
   state.archiveSelected = active;
   messageInput.disabled = active || state.sending;
-  sendButton.disabled = active || state.sending;
+  const unavailable = state.firstParty && state.session?.nativeChatEnabled === false;
+  sendButton.disabled = active || state.sending || unavailable;
+  for (const chip of document.querySelectorAll(".prompt-chip")) chip.disabled = unavailable;
   messageInput.placeholder = active ? "Archived history · start a new chat to continue" : (messageInput.dataset.originalPlaceholder || "Message DragonZpyder");
   syncComposerAction();
 }
@@ -477,8 +504,8 @@ function renderConversations() {
   conversationList.replaceChildren();
   if (!state.conversations.length) {
     const empty = document.createElement("div");
-    empty.className = "conversation-button";
-    empty.textContent = "No conversations yet";
+    empty.className = "conversation-empty";
+    empty.textContent = state.historyState === "unavailable" ? "Conversation history is unavailable while the runtime is offline." : state.historyState === "error" ? "Could not load conversations. Try refreshing." : state.historyState === "loading" ? "Loading conversations…" : "No conversations yet";
     empty.style.cursor = "default";
     conversationList.appendChild(empty);
     return;
@@ -523,9 +550,13 @@ function renderConversations() {
 }
 
 async function loadConversations({ restoreLatest = false } = {}) {
+  const session = state.session;
+  state.historyState = "loading";
+  renderConversations();
   try {
     const rows = await api(state.firstParty
       ? "/dz/v2/personal/conversations" : "/api/personal-agent/conversations", { csrf: false });
+    if (!session || state.session !== session) return;
     state.conversations = state.firstParty
       ? (Array.isArray(rows.conversations) ? rows.conversations : [])
       : (Array.isArray(rows) ? rows : []);
@@ -543,14 +574,16 @@ async function loadConversations({ restoreLatest = false } = {}) {
           if (result.next_offset !== offset + 100 || page === 100) throw Error("Archive page limit reached");
           offset = result.next_offset;
         }
-        if (!state.session) return;
+        if (state.session !== session) return;
         state.conversations = [...live, ...archived];
       } catch (error) {
-        if (!state.session) return;
+        if (state.session !== session) return;
         if (error.status === 401) return showAuth();
         if (error.status !== 404) showToast("Archived history unavailable. Live chats are unaffected.", 5000);
       }
     }
+    if (state.session !== session) return;
+    state.historyState = "ready";
     renderConversations();
     // Initial authentication populates the sidebar but otherwise leaves a
     // blank message pane. Restore the newest authorized Personal conversation.
@@ -560,6 +593,9 @@ async function loadConversations({ restoreLatest = false } = {}) {
     }
   } catch (error) {
     if (error instanceof ApiError && error.status === 401) return showAuth();
+    if (state.session !== session) return;
+    state.historyState = "error";
+    renderConversations();
     console.warn("Could not load conversations", error);
   }
 }
@@ -1042,6 +1078,7 @@ async function logout() {
   state.conversationId = null;
   setArchiveMode(false);
   state.conversations = [];
+  state.historyState = "loading";
   state.approvals = [];
   renderConversations();
   showEmptyState();
@@ -1058,11 +1095,16 @@ function syncComposerAction() {
   const pending = Boolean(messageInput.value.trim()) ||
     Boolean(window.dragonzpyderMesh?.hasAttachments?.());
   const voice = $("companion-open");
-  voice.hidden = state.firstParty || pending;
-  voice.disabled = state.sending || Boolean(window.dragonzpyderMesh?.isBusy?.());
+  const available = Boolean(state.session) && (!state.firstParty || state.session.voiceEnabled === true);
+  voice.hidden = !available || pending || state.archiveSelected;
+  voice.disabled = !available || state.archiveSelected || state.sending || Boolean(window.dragonzpyderMesh?.isBusy?.());
   sendButton.hidden = state.archiveSelected || !pending;
+  sendButton.disabled = state.archiveSelected || state.sending || (state.firstParty && state.session?.nativeChatEnabled === false);
 }
 window.dragonzpyderComposerSync = syncComposerAction;
+// UI visibility is advisory; native API independently verifies owner, CSRF,
+// provider allowance and feature gate. Keyboard shortcuts use the same check.
+window.dragonzpyderVoiceContext = () => ({native:state.firstParty,available:Boolean(state.session)&&!state.archiveSelected&&(!state.firstParty||state.session.voiceEnabled===true)&&!state.sending&&!window.dragonzpyderMesh?.isBusy?.()});
 window.addEventListener("dragonzpyder:mcp-selection", (event) => {
   const ids = event.detail?.ids;
   state.selectedMcpConnections = Array.isArray(ids)
@@ -1125,16 +1167,26 @@ $("approvals-button").addEventListener("click", openApprovals);
 $("approvals-top").addEventListener("click", openApprovals);
 $("close-approvals").addEventListener("click", closeApprovals);
 approvalsDrawer.addEventListener("click", (event) => { if (event.target === approvalsDrawer) closeApprovals(); });
-$("profile-button").addEventListener("click", () => { profileMenu.hidden = !profileMenu.hidden; });
+function setProfileMenu(open) {
+  profileMenu.hidden = !open;
+  $("profile-button").setAttribute("aria-expanded", String(open));
+}
+$("profile-button").addEventListener("click", () => setProfileMenu(profileMenu.hidden));
+document.addEventListener("keydown", event => {
+  if (event.key === "Escape" && !profileMenu.hidden) { setProfileMenu(false); $("profile-button").focus(); }
+});
 $("logout-button").addEventListener("click", logout);
 $("open-sidebar").addEventListener("click", () => sidebar.classList.add("open"));
 $("close-sidebar").addEventListener("click", () => sidebar.classList.remove("open"));
 
 document.addEventListener("click", (event) => {
-  if (!profileMenu.hidden && !profileMenu.contains(event.target) && !$("profile-button").contains(event.target)) profileMenu.hidden = true;
+  if (!profileMenu.hidden && !profileMenu.contains(event.target) && !$("profile-button").contains(event.target)) setProfileMenu(false);
 });
 
-window.addEventListener("online", () => setRuntimeStatus(state.session ? "online" : null, state.session ? "Personal runtime connected" : "Sign in required"));
+window.addEventListener("online", () => {
+  const unavailable=state.session?.nativeChatEnabled === false;
+  setRuntimeStatus(unavailable ? "error" : state.session ? "online" : null, unavailable ? "Signed in · Agent runtime not enabled" : state.session ? "Personal runtime connected" : "Sign in required");
+});
 window.addEventListener("offline", () => setRuntimeStatus("error", "Offline"));
 
 autoSizeInput();

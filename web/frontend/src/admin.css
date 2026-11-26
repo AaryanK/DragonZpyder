@@ -28,3 +28,9 @@ th{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.05
 .status,.error{padding:16px;border:1px solid var(--line);border-radius:10px}
 .error{border-color:#b66e6e;color:#ffbebe}
 @media(max-width:580px){.admin-layout{padding:22px 16px 60px}.admin-header{display:block}.account-link{display:inline-block;margin-top:16px}}
+
+:root{--bg:var(--dz-shell-bg);--panel:var(--dz-shell-surface);--line:var(--dz-shell-line);--text:var(--dz-shell-text);--muted:var(--dz-shell-muted);--accent:var(--dz-shell-accent)}
+.brand{display:inline-flex;align-items:center;gap:8px}
+button,select,input{min-height:44px}
+button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+@media(max-width:400px){.stats{grid-template-columns:minmax(0,1fr)}.toolbar label,.toolbar input{width:100%}}

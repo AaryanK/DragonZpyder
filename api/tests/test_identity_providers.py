@@ -50,6 +50,10 @@ def test_google_rejects_wrong_nonce_and_issuer_even_for_matching_email(monkeypat
     with pytest.raises(ProviderProofDenied):
         verify_google_identity_token("synthetic", expected_nonce="correct-nonce-" + "n" * 24)
     claims["iss"] = "https://accounts.google.com"
+    claims["picture"] = "https://lh3.googleusercontent.com/a/opaque=s96-c"
+    assert verify_google_identity_token("synthetic", expected_nonce="correct-nonce-" + "n" * 24).profile_picture == claims["picture"]
+    claims["picture"] = "https://evil.example/avatar"
+    assert verify_google_identity_token("synthetic", expected_nonce="correct-nonce-" + "n" * 24).profile_picture is None
     assert verify_google_identity_token("synthetic", expected_nonce="correct-nonce-" + "n" * 24).provider_subject == "google-sub"
 
 

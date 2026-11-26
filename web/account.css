@@ -48,3 +48,48 @@ body:has(#profile-panel:not([hidden])) #mode-tabs{display:none}
 @media(prefers-reduced-motion:reduce){.dz-account-shortcuts,.dz-account-group{scroll-behavior:auto}}
 
 .dz-account-resource-action{font:inherit;font-size:11px;white-space:nowrap;border:1px solid var(--line);background:transparent;color:#eac39f;border-radius:8px;padding:10px 12px;cursor:pointer}.dz-account-resource-action:hover{border-color:var(--copper)}@media(max-width:760px){.dz-account-resource-action{margin-left:52px}}
+
+/* Account V2 uses the same semantic palette as Personal. Preserve controller
+   form IDs, native Google button and validation paths. */
+html[data-workspace-theme]{--bg:var(--dz-shell-bg);--surface:var(--dz-shell-surface);--text:var(--dz-shell-text);--muted:var(--dz-shell-muted);--line:var(--dz-shell-line);--copper:var(--dz-shell-accent)}
+html[data-workspace-theme="light"]{color-scheme:light}
+html[data-workspace-theme="dark"]{color-scheme:dark}
+html[data-workspace-theme] a,html[data-workspace-theme] .links button{color:var(--copper)}
+html[data-workspace-theme] .top{min-height:60px;padding:12px 24px}
+html[data-workspace-theme] main{margin-top:48px;gap:32px}
+html[data-workspace-theme] .intro{padding-top:24px}
+html[data-workspace-theme] .intro h1{font-size:clamp(32px,5vw,56px);letter-spacing:-.045em;line-height:1.12;margin:14px 0}
+html[data-workspace-theme] .intro p{font-size:15px;line-height:1.65}
+html[data-workspace-theme] .account-card{border:1px solid var(--line);border-radius:var(--dz-radius-panel);box-shadow:none}
+html[data-workspace-theme] .account-panel h2{font-size:clamp(26px,4vw,36px);letter-spacing:-.035em}
+html[data-workspace-theme] .tabs button{color:var(--muted);min-height:44px}
+html[data-workspace-theme] .tabs button.selected{background:var(--dz-shell-selected);color:var(--text)}
+html[data-workspace-theme] .account-panel label{color:var(--text)}
+html[data-workspace-theme] .account-panel input:not([type=checkbox]),html[data-workspace-theme] .account-panel select{background:var(--surface);border:1px solid var(--line);color:var(--text);border-radius:8px;min-height:46px;font-size:16px;padding:10px 12px}
+html[data-workspace-theme] .submit{background:var(--copper);color:var(--dz-shell-on-accent);border-radius:8px}
+html[data-workspace-theme] .submit:hover{filter:brightness(.95)}
+html[data-workspace-theme] .dz-account-group{background:var(--surface);border:1px solid var(--line);border-radius:16px}
+html[data-workspace-theme] :is(.dz-account-symbol,.dz-account-resource-mark,.identity){background:var(--dz-shell-raised);border-color:var(--line);color:var(--text)}
+html[data-workspace-theme] :is(.dz-account-resource,.dz-account-shortcuts,.dz-account-footer,.dz-account-return){border-color:var(--line);color:var(--text)}
+html[data-workspace-theme] :is(.dz-account-resource small,.account-note p,.footnote,.divider,footer){color:var(--muted)}
+html[data-workspace-theme] :is(.dz-account-resource-action,.dz-account-footer button,.dz-account-shortcuts a){background:var(--surface);color:var(--text);border-color:var(--line);min-height:44px}
+html[data-workspace-theme] .dz-account-heading h2{font-size:clamp(28px,4vw,40px)}
+html[data-workspace-theme] .account-panel :is(button,input,select,a):focus-visible{outline:2px solid var(--copper);outline-offset:3px}
+.dz-preference-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.dz-preference-grid label{display:grid;gap:7px}
+.dz-preference-grid .dz-preference-checkbox{display:flex;align-items:center;gap:10px;min-height:44px}
+.dz-preference-checkbox input{width:20px;height:20px;accent-color:var(--copper)}
+.dz-preference-footer{display:flex;align-items:center;flex-wrap:wrap;gap:12px;margin-top:18px;font-size:13px;color:var(--muted)}
+@media(max-width:760px){
+ html[data-workspace-theme] main{margin-top:20px;padding:0 16px;gap:18px}
+ html[data-workspace-theme] .top{padding:10px 16px}
+ html[data-workspace-theme] .intro{padding-top:0}
+ html[data-workspace-theme] .intro h1{font-size:32px;margin:8px 0}
+ html[data-workspace-theme] .intro p{margin:8px 0}
+ html[data-workspace-theme] .account-card{padding:18px}
+ .dz-preference-grid{grid-template-columns:1fr}
+}
+
+html[data-workspace-theme] .dz-account-avatar{width:56px;height:56px;border-radius:50%;overflow:hidden;flex:none;padding:0;font-size:18px}
+#account-profile-avatar{width:100%;height:100%;object-fit:cover;border-radius:50%}
+#account-profile-avatar[hidden],#account-profile-fallback[hidden]{display:none!important}
