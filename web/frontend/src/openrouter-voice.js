@@ -142,7 +142,8 @@ export async function connectOpenRouterVoice({stream,sessionId,csrf,onData,onSta
       onData(data);
       // A single accepted agent turn is allowed at a time. Playback is
       // asynchronous: barge-in interrupts speech without replaying the turn.
-      void speak(data);
+      if(!detector.frames)void speak(data);
+      else onState("Answer is in chat — listening","listening");
     }catch(error){if(!closed)onState("Request outcome unconfirmed. Check your chat before repeating.","error");}
     finally{busy=false;}
   }

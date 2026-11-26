@@ -118,7 +118,14 @@ async def proxy(request: Request, destination: str, rewrite_origin=False, upstre
         origin = IDENTITY_PUBLIC_ORIGIN if upstream_path and destination == API else destination
         headers["origin"] = origin
         headers["referer"] = origin + "/"
-    if upstream_path == "/v2/personal/files" and request.method == "POST":
+    if upstream_path and re.fullmatch(r"/v2/personal/voice/openrouter/[0-9a-f-]{36}/turn",upstream_path) and request.method=="POST":
+        data=bytearray()
+        async for chunk in request.stream():
+            if len(data)+len(chunk)>1_300_000:
+                return JSONResponse({"detail":"Voice utterance exceeds bound"},status_code=413,headers={"Cache-Control":"no-store"})
+            data.extend(chunk)
+        body=bytes(data)
+    elif upstream_path == "/v2/personal/files" and request.method == "POST":
         data=bytearray()
         async for chunk in request.stream():
             if len(data)+len(chunk)>10*1024*1024:

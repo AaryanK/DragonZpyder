@@ -64,15 +64,19 @@ def segments(answer):
     # text from the client. Limit total speech; the complete answer stays in chat.
     remaining=" ".join(answer.split())
     out=[]
-    for _ in range(MAX_SEGMENTS):
+    for i in range(MAX_SEGMENTS):
         if not remaining:break
-        if len(remaining)<=MAX_CHARS:
-            out.append(remaining);break
-        cut=max(remaining.rfind(x,0,MAX_CHARS) for x in (". ","? ","! ","; "))
-        if cut<150:cut=remaining.rfind(" ",0,MAX_CHARS)
-        if cut<150:cut=MAX_CHARS-1
+        limit=300 if i==0 else MAX_CHARS
+        if len(remaining)<=limit:
+            out.append(remaining);remaining="";break
+        cut=max(remaining.rfind(x,0,limit) for x in (". ","? ","! ","; "))
+        if cut<40:cut=remaining.rfind(" ",0,limit)
+        if cut<1:cut=limit-1
         out.append(remaining[:cut+1].strip())
         remaining=remaining[cut+1:].strip()
+    if remaining and len(out)==MAX_SEGMENTS:
+        suffix=" The rest of the answer is in chat."
+        out[-1]=out[-1][:MAX_CHARS-len(suffix)].rstrip()+suffix
     return out
 
 def validate_voice_payload(path,body):
@@ -112,6 +116,11 @@ async def start(payload:Offer,request:Request):
     if not enabled():raise HTTPException(503,"OpenRouter voice unavailable")
     if len(set(payload.mcp_connection_ids))!=len(payload.mcp_connection_ids) or any(not re.fullmatch(r"c[a-f0-9]{30}",x) for x in payload.mcp_connection_ids):
         raise HTTPException(422,"Invalid voice account selection")
+    from .key_budget import verify_key_budget
+    from usage_ledger import ledger
+    budget=await verify_key_budget(request.app.state.http,os.environ["DRAGONZPYDER_AGENT_MEDIA_OPENROUTER_API_KEY"])
+    if budget.get("approved") is not True or not ledger.available:
+        raise HTTPException(503,"Capped OpenRouter speech budget or accounting unavailable")
     ref=session_reference(request)
     await verify_authority(owner,ref)
     async with _conversation_db() as db:

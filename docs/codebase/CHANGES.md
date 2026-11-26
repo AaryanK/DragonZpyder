@@ -195,3 +195,19 @@ Removed the three Markdown guides from Android drawable, values and xml resource
 - `api/tests/test_modular_voice.py`: Offline config, token restriction and authorization regression tests. No live rollout or paid audio qualification performed.
 - `.github/workflows/dragonzpyder-api.yml`: Run modular voice contracts and separate SDK import smoke checks without paid requests. No live rollout or paid audio qualification performed.
 - `api/agent_platform/first_party_voice.py`: Require an actual realtime provider call ID before admitting browser-submitted realtime transcripts; modular voice rooms exclusively use their dedicated worker authorization. Existing schema compatible; regression CI pending.
+
+## OpenRouter-only voice default candidate
+
+- `api/agent_platform/openrouter_voice.py`: Browser-owned session admission, bounded mono PCM utterances, canonical chat ledger handoff, exact committed answer segments and replay fences. OpenRouter Whisper Turbo and Kokoro are reviewed fixed defaults. Live provider and device qualification pending.
+- `api/agent_platform/migrations/20261126_openrouter_voice.sql`: Durable turn and per-segment attempt fences; no recordings or duplicated transcript storage. Live provider and device qualification pending.
+- `api/provider_gateway.py`: Trusted internal speech payloads use the existing separately capped OpenRouter media key, existing admission and redacted accounting, including generation IDs. Live provider and device qualification pending.
+- `api/main.py`: Register OpenRouter voice router and share existing provider runtime. Live provider and device qualification pending.
+- `api/agent_platform/first_party_chat.py`: Expose independent OpenRouter-only voice capability and session availability. Live provider and device qualification pending.
+- `web/main.py`: Limit utterance JSON body to 1.3 MB before native proxy buffers it. Live provider and device qualification pending.
+- `web/companion.js`: Prefer OpenRouter-only voice when enabled; preserve optional LiveKit/realtime transport and lifecycle. Live provider and device qualification pending.
+- `web/app.js`: Expose OpenRouter voice capability to existing voice UI. Live provider and device qualification pending.
+- `web/frontend/src/openrouter-voice.js`: Local AudioWorklet microphone capture, energy VAD with pre-roll, 16 kHz WAV resampling, bounded one-at-a-time turns, prefetch one committed speech segment and stop audio on interruption. Live provider and device qualification pending.
+- `api/tests/test_openrouter_voice.py`: Offline WAV, modality, session authority, capped key and redacted metering contracts. Live provider and device qualification pending.
+- `web/frontend/scripts/test-openrouter-voice.mjs`: Offline WAV encoding, silence/pause and short-noise detector checks. Live provider and device qualification pending.
+- `web/frontend/package.json`: Run local speech detector and WAV tests with frontend test suite. Live provider and device qualification pending.
+- `.github/workflows/dragonzpyder-api.yml`: Run OpenRouter-only voice tests with offline API contracts. Live provider and device qualification pending.
