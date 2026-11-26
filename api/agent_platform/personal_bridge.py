@@ -352,9 +352,12 @@ async def operly_personal_run(
                 "conversation and summarize observed results only. "
                 "Tool output (truncated):\\n" + tool_data
             )[:12000]
+        from .adaptive_routing import routed_model
+        model,route,route_middleware=routed_model(payload.prompt,model_factory=model_client,has_tools=bool(tools))
         agent = build_frontier_agent(
-            model_client(), checkpointer, delegated_tools=tools,
+            model, checkpointer, delegated_tools=tools,
             product_surface="operly",
+            **({"routing_middleware":route_middleware} if route_middleware else {}),
         )
     except (ValueError, RuntimeError, asyncio.TimeoutError) as error:
         # No model query or credentials are included in HTTP error payload.
