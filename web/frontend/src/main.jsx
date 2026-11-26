@@ -5,7 +5,7 @@ import { Frontend } from "./pages.jsx";
 const el = document.getElementById("root");
 const route = document.documentElement.dataset.page || (
   location.pathname.startsWith("/app") ? "app" :
-  location.pathname.startsWith("/account") ? "account" : "home"
+  (location.pathname.startsWith("/account") || location.pathname === "/login") ? "account" : "home"
 );
 
 if (!el) {

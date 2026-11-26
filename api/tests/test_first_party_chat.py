@@ -79,3 +79,19 @@ def test_conversation_owner_check_rejects_other_user_without_disclosure():
             DB(), user="current-user", conversation_id=uuid4()))
     assert err.value.status_code == 404
     assert err.value.detail == "Conversation not found"
+
+
+def test_identity_session_independent_of_native_chat_gate(monkeypatch):
+    monkeypatch.delenv("DRAGONZPYDER_FIRST_PARTY_CHAT_ENABLED", raising=False)
+    monkeypatch.setattr(native, "_identity_enabled", lambda: None)
+    @asynccontextmanager
+    async def identity_db():
+        yield object()
+    monkeypatch.setattr(native, "_identity_db", identity_db)
+    resolver = AsyncMock(return_value="active-identity")
+    monkeypatch.setattr(native, "resolve_browser_session", resolver)
+    request = SimpleNamespace(cookies={"__Host-dz_identity":"opaque"})
+    result = asyncio.run(native.session(request))
+    assert result["authenticated"] is True
+    assert result["native_chat_enabled"] is False
+    resolver.assert_awaited_once()
