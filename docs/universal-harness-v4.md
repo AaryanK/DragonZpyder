@@ -62,6 +62,8 @@ Land small PRs against current integrated branch; inspect concurrent migration P
 
 ## Definition of done and benchmarking
 
+The binding release gates, required live probes and evidence policy are in [Minimum harness release acceptance](harness-release-acceptance.md).
+
 Run representative real objectives: upload PDF and produce report; analyze spreadsheet and create charts; execute Python and verify output; modify repository and run tests; understand image; generate image; transcribe recording; generate playable speech; research and create presentation with grounded sources; resume after worker restart with artifacts intact. Negative cases: cross-user/scope access, malformed arguments, prompt injection from files/web/tools, path traversal and symlinks, malicious archive, secret leakage, unauthorized shell/egress, revoked grants, duplicate side effects, exhausted budgets and cancellation. Record actual artifact digests, parser/test results, tool receipts, costs and trace IDs. A checked planning list, mock, build, or HTTP success alone is not acceptance.
 
 Evaluate matched models/fixtures/budgets and report repetitions, failures and partial results. References include Terminal-Bench, SWE-bench Verified, OSWorld, WebArena, GAIA, AppWorld and custom multimodal/artifact/persistence tasks. Do not claim state-of-the-art without reproducible comparison.
