@@ -265,7 +265,7 @@ final class DragonApi {
     }
     synchronized void redeemBrowserProvider(String provider,String ticket,String verifier) throws Exception {
         ensureMode();
-        if(!firstParty||!Arrays.asList("google","discord").contains(provider))throw unsupported();
+        if(!firstParty||!"discord".equals(provider))throw unsupported();
         if(!ticket.matches("[A-Za-z0-9_-]{43,128}")||!verifier.matches("[A-Za-z0-9_-]{43,128}"))throw new IOException("Invalid device proof");
         try{clear();call("/dz/identity/v1/mobile/"+provider+"/redeem",new JSONObject().put("ticket",ticket).put("verifier",verifier));ensurePersonal();}
         catch(Exception failure){clear();throw failure;}
