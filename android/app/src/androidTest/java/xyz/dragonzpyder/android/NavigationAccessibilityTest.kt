@@ -43,6 +43,18 @@ class NavigationAccessibilityTest {
         compose.runOnIdle{assertEquals(1,taps)}
     }
 
+    @Test fun fileReceiptsRejectMalformedIdentifiersAndDigests(){
+        val receipt=org.json.JSONObject().put("id","12345678-1234-1234-1234-123456789abc")
+            .put("filename","Report.pdf").put("sha256","a".repeat(64))
+        org.junit.Assert.assertTrue(AgentFileRepository.validReceipt(receipt))
+        receipt.put("id","-".repeat(36))
+        org.junit.Assert.assertFalse(AgentFileRepository.validReceipt(receipt))
+        receipt.put("id","12345678-1234-1234-1234-123456789abc").put("sha256","x".repeat(64))
+        org.junit.Assert.assertFalse(AgentFileRepository.validReceipt(receipt))
+        receipt.put("sha256","a".repeat(64)).put("filename","../Report.pdf")
+        org.junit.Assert.assertFalse(AgentFileRepository.validReceipt(receipt))
+    }
+
     @Test fun contextualMenuSearchAndDismissHaveAccessibleActions(){
         var chosen=""
         var dismissed=false
