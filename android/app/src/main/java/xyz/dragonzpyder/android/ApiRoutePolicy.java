@@ -11,7 +11,7 @@ final class ApiRoutePolicy {
         "/dz/identity/v1/provider/google/start",
         "/dz/identity/v1/provider/google/complete",
         "/dz/identity/v1/provider/google/signup",
-        "/dz/identity/v1/mobile/google/redeem", "/dz/identity/v1/mobile/discord/redeem"));
+        "/dz/identity/v1/mobile/discord/redeem"));
     private static final Set<String> FIRST_PARTY_ROUTES=new HashSet<>(Arrays.asList(
         "/dz/identity/v1/mobile/capabilities", "/dz/v2/personal/session", "/dz/v2/personal/files", "/dz/v2/personal/chat", "/dz/v2/personal/conversations",
         "/dz/identity/v1/me", "/dz/identity/v1/logout",
