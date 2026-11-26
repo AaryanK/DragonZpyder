@@ -79,6 +79,17 @@ jobs:
           if-no-files-found: warn
       - name: Verify APK alignment for 16 KB pages
         run: '"$ANDROID_HOME/build-tools/36.0.0/zipalign" -c -P 16 -v 4 android/app/build/outputs/apk/debug/app-debug.apk'
+      - name: Test native ELF alignment checker
+        run: python -m unittest discover -s android/tests -p test_native_alignment.py
+      - name: Inspect native ELF segments for 16 KB support
+        run: python android/tests/check_native_alignment.py android/app/build/outputs/apk/debug/app-debug.apk --report android/native-alignment.json
+      - name: Upload native alignment evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: DragonZpyder-native-alignment
+          path: android/native-alignment.json
+          if-no-files-found: warn
       - name: Verify APK signature
         run: '"$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs android/app/build/outputs/apk/debug/app-debug.apk'
       - uses: actions/upload-artifact@v4
