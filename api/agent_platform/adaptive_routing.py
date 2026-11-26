@@ -66,13 +66,36 @@ def recovery_middleware(*, initial_model, reasoning_model, max_escalations=1):
     from .progress_guard import current_turn_messages
     from .tool_outcomes import tool_outcome
 
+    escalated=False
     @wrap_model_call
     async def adaptive_recovery(request, handler):
+        nonlocal escalated
         messages=current_turn_messages(request.state.get("messages",[]))
         failures=sum(tool_outcome(m)=="failed" for m in messages if getattr(m,"type",None)=="tool")
-        # Recompute from the current turn, not a mutable process-global counter.
-        # One escalation of tier, retained for the remainder of that turn.
+        # Middleware is created once per graph/request, never shared across
+        # users. The escalation is sticky even if upstream compacts messages.
         if failures>=2 and max_escalations==1 and reasoning_model is not initial_model:
+            escalated=True
+        if escalated:
             return await handler(request.override(model=reasoning_model))
         return await handler(request)
     return adaptive_recovery
+
+
+def routed_model(objective,*,model_factory,has_tools=False,has_attachments=False,
+                 durable=False,parent_job_id=None):
+    """Use identical selection and fallback policy across every core entrypoint."""
+    kwargs={"parent_job_id":parent_job_id} if parent_job_id is not None else {}
+    if os.getenv("DRAGONZPYDER_ADAPTIVE_ROUTING_ENABLED")!="1":
+        return model_factory(**kwargs),None,None
+    route=select_model(objective,has_tools=has_tools,has_attachments=has_attachments,durable=durable)
+    model=model_factory(model_override=route.model,**kwargs)
+    middleware=None
+    reasoning=os.getenv("DRAGONZPYDER_AGENT_REASONING_MODEL_ID","").strip()
+    if reasoning and reasoning!=route.model and os.getenv("DRAGONZPYDER_AGENT_USE_GATEWAY")=="1":
+        from .runtime import configured_model
+        try:configured_model(reasoning)
+        except RuntimeError:pass
+        else:middleware=recovery_middleware(initial_model=model,
+            reasoning_model=model_factory(model_override=reasoning,**kwargs))
+    return model,route,middleware
