@@ -1,0 +1,6 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
+    <application android:label="DragonZpyder Benchmark">
+        <profileable android:shell="true" tools:targetApi="29"/>
+        <activity android:name="xyz.dragonzpyder.android.BenchmarkChatActivity" android:exported="true"/>
+    </application>
+</manifest>
