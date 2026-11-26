@@ -47,6 +47,8 @@ jobs:
           aab=app/build/outputs/bundle/release/app-release.aab
           test -s "$apk" && test -s "$aab"
           "$ANDROID_HOME/build-tools/36.0.0/zipalign" -c -P 16 -v 4 "$apk"
+          python tests/check_native_alignment.py "$apk" --report "$RUNNER_TEMP/apk-native-alignment.json"
+          python tests/check_native_alignment.py "$aab" --report "$RUNNER_TEMP/aab-native-alignment.json"
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$apk" | tee "$RUNNER_TEMP/apk-cert.txt"
           actual=$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$RUNNER_TEMP/apk-cert.txt")
           expected=$(printf '%s' "$EXPECTED_SIGNER_SHA256" | tr -d ':' | tr '[:upper:]' '[:lower:]')
@@ -64,4 +66,6 @@ jobs:
             android/app/build/outputs/apk/release/app-release.apk
             android/app/build/outputs/bundle/release/app-release.aab
             ${{ runner.temp }}/dragonzpyder-release-sha256.txt
+            ${{ runner.temp }}/apk-native-alignment.json
+            ${{ runner.temp }}/aab-native-alignment.json
           if-no-files-found: error
