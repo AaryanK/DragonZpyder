@@ -304,13 +304,23 @@ def build_frontier_agent(model, checkpointer, *, specialist_models=None, synthet
         "DRAGONZPYDER_AGENT_USE_GATEWAY",
         "DRAGONZPYDER_AGENT_PRODUCTION_MODE",
     ))
-    # QuickJS is an opt-in in-memory COMPUTE tool, never a host shell.
-    # Programmatic tool bridges and dynamic nested delegation remain disabled
-    # until a unified task-cost budget can bind every spawned operation.
+    # Only explicitly reviewed, bound, read-only Managed MCP capabilities
+    # may enter the programmatic interpreter. Never bridge generic invocation,
+    # mutations, approval tools, schedulers, filesystem, model calls or subagents.
+    programmatic_reads = [
+        item.name for item in delegated_tools
+        if getattr(item,"name","").startswith("mcp_read_")
+        and (getattr(item,"metadata",None) or {}).get("dz_programmatic_reviewed_read") is True
+    ] if (product_surface=="dragonzpyder" and
+          os.getenv("DRAGONZPYDER_MCP_PROGRAMMATIC_READS_ENABLED")=="1") else []
     quickjs_enabled = os.getenv("DRAGONZPYDER_AGENT_QUICKJS_ENABLED") == "1"
     interpreter = []
     if quickjs_enabled:
         from langchain_quickjs import CodeInterpreterMiddleware
+        if programmatic_reads:
+            prompt += ("\nFor multiple independent reviewed MCP reads, the eval tool can use its listed "
+                       "tools namespace to aggregate or filter results. Preserve relevant source "
+                       "receipts, distinguish failures and never claim objective verification from eval.")
         interpreter = [
             CodeInterpreterMiddleware(
                 memory_limit=16 * 1024 * 1024,
@@ -319,7 +329,7 @@ def build_frontier_agent(model, checkpointer, *, specialist_models=None, synthet
                 max_result_chars=2000,
                 subagents=False,
                 mode="call",
-                ptc=[],
+                ptc=programmatic_reads,
             ),
             ToolCallLimitMiddleware(
                 tool_name="eval", run_limit=4, exit_behavior="error"
