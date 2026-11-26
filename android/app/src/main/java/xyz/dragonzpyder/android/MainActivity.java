@@ -335,7 +335,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             public void copy(String value){android.content.ClipboardManager cb=(android.content.ClipboardManager)getSystemService(Context.CLIPBOARD_SERVICE);cb.setPrimaryClip(android.content.ClipData.newPlainText("DragonZpyder",value));}
             public void speak(String value){if(speechReady)tts.speak(value,TextToSpeech.QUEUE_FLUSH,null,"response");else setStatus("Speech engine unavailable");}
         });
-        chatUi.setDraft(draft);chatUi.setModeLabel(meshMode?"AI Mesh":"Agent");chatUi.setModelLabel(model);chatUi.setAttachmentLabel(attachmentName);chatUi.setProfileInitial(profileInitial);chatUi.setBusy(busy);chatUi.setVoiceAvailable(api.supportsVoice());chatUi.setFilesAvailable(api.supportsFiles());
+        chatUi.setDraft(draft);chatUi.setModeLabel(meshMode?"AI Mesh":"Agent");chatUi.setModelLabel(model);chatUi.setAttachmentLabel(attachmentName);chatUi.setProfileInitial(profileInitial);chatUi.setBusy(busy);chatUi.setVoiceAvailable(api.supportsVoice());chatUi.setFilesAvailable(api.supportsFiles());chatUi.setGoalsAvailable(!api.isFirstParty()||api.supportsGoals());chatUi.setLegacyActionsAvailable(!api.isFirstParty());
         for(String[] item:transcript)chatUi.append(item[0],item[1]);
         root.addView(chatUi.getView(),new LinearLayout.LayoutParams(-1,0,1));
     }
@@ -391,11 +391,11 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         if(chatUi==null||busy)return;
         ArrayList<String> availableNames=new ArrayList<>(),availableIcons=new ArrayList<>();ArrayList<Runnable> availableActions=new ArrayList<>();
         // Primary navigation lives in the drawer, not in a duplicate command list.
-        availableNames.add("Switch mode");availableIcons.add("more");availableActions.add(this::showModes);
+        if(!api.isFirstParty()){availableNames.add("Switch mode");availableIcons.add("more");availableActions.add(this::showModes);}
         availableNames.add("Dictate a message");availableIcons.add("mic");availableActions.add(this::dictate);
         if(api.supportsVoice()){availableNames.add("Live voice");availableIcons.add("voice");availableActions.add(this::showVoice);}
         if(!api.isFirstParty()){availableNames.add("AI Mesh media");availableIcons.add("attach");availableActions.add(this::showMedia);}
-        availableNames.add("Your tools");availableIcons.add("connections");availableActions.add(this::showTools);
+        if(!api.isFirstParty()){availableNames.add("Your tools");availableIcons.add("connections");availableActions.add(this::showTools);}
         chatUi.showCommands(availableNames.toArray(new String[0]),availableIcons.toArray(new String[0]),availableActions.toArray(new Runnable[0]));
     }
     private void showAdd(){
@@ -1011,7 +1011,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         },true);
     }
     private void showTasks(){
-        if(api.isFirstParty()){showFirstPartyGoals();return;}
+        if(api.isFirstParty()){if(api.supportsGoals())showFirstPartyGoals();else setStatus("Persistent goals are not enabled for this session.");return;}
         submit("Loading Personal workflows…",()->{
             JSONObject catalog=(JSONObject)api.call("/api/personal-tools?query=workflow&limit=100",null);
             JSONArray rows=catalog.optJSONArray("tools");HashSet<String> ids=new HashSet<>();if(rows!=null)for(int i=0;i<rows.length();i++){JSONObject t=rows.optJSONObject(i);if(t!=null)ids.add(t.optString("id"));}
