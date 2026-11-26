@@ -624,7 +624,7 @@ async def _execute_chat(payload: ChatInput, request: Request, user: str, convers
     generated = []
     if artifact_tools:
         async with _conversation_db() as db:
-            files = await db.fetch("SELECT id,filename,content_type,byte_count,sha256,direction FROM dz_agent_artifacts WHERE owner_id=$1 AND run_id=$2 AND direction=\'generated\' ORDER BY created_at",user,artifact_run)
+            files = await db.fetch("SELECT id,filename,content_type,byte_count,sha256,direction FROM dz_agent_artifacts WHERE owner_id=$1 AND run_id=$2 AND direction=\'generated\' AND storage_state='ready' ORDER BY created_at",user,artifact_run)
             generated = [artifacts.metadata(row) for row in files]
     return {
         "artifacts": generated,
