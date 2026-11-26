@@ -94,3 +94,34 @@ Start at [CODEBASE.md](../../CODEBASE.md), [file inventory](../../docs/codebase/
 | [`workspace_bridge.py`](workspace_bridge.py) | Signed Operly workspace delegation bridge; scoped MCP bearer excluded from model context. | Reviewed |
 
 Reviewed entries are source-inspected summaries; indexed entries are navigation only. Neither proves deployment.
+
+## Integrated harness changes
+
+- [adaptive_routing.py](adaptive_routing.py): Conservative fast/default/reasoning selection and sticky escalation after observed failures, through the approved model gateway.
+- [artifact_formats.py](artifact_formats.py): Render bounded PDF, DOCX, XLSX and PPTX outputs from validated structured data.
+- [artifact_http.py](artifact_http.py): Authenticated owner-scoped upload, list, download and deletion; only committed artifacts visible.
+- [artifact_object_store.py](artifact_object_store.py): Private encrypted S3-compatible bytes, conditional immutable writes and bounded reads.
+- [artifacts.py](artifacts.py): Owner-bound encrypted metadata/bytes, quotas, pending reconciliation, independent readback and idempotent publication.
+- [computer.py](computer.py): Signed scoped v2 runner transport with nonce-bound response verification and legacy compatibility.
+- [computer_acceptance.py](computer_acceptance.py): Verify isolated computation via exact file bytes, storage readback and cleanup; scripted transport tests are not live VM proof.
+- [computer_admission.py](computer_admission.py): Transactional per-owner/global VM exposure holds and unresolved cleanup fences.
+- [computer_artifacts.py](computer_artifacts.py): Import selected authorized files and publish verified VM exports to immutable storage.
+- [computer_run.py](computer_run.py): Lazy scoped VM allocation, per-call authority, deadlines, serialization and cleanup receipts.
+- [decision_routing.py](decision_routing.py): Offline calibrated decision-provider request and validation foundation; live integration absent.
+- [execution_contract.py](execution_contract.py): Shared bounded execution and exact current-turn checkpoint identification.
+- [first_party_chat.py](first_party_chat.py): Bind native chat request ledger to selected MCP, artifact, computer, media and workflow capabilities, adaptive routing and exact recovery while preserving login independence.
+- [first_party_voice.py](first_party_voice.py): Opt-in realtime WebRTC voice transport and authenticated transcript handoff into canonical chat with exact event identity.
+- [harness.py](harness.py): Bind reviewed native, delegated and programmatic tools and adaptive middleware in one Deep Agents graph.
+- [mcp_broker.py](mcp_broker.py): Normalize relevance of authorized capability metadata while retaining schema and invocation grants.
+- [mcp_managed_catalog.py](mcp_managed_catalog.py): Bound direct reviewed reads and QuickJS bridge, recheck account authority, enforce shared quotas and scheduled policy.
+- [media_policy.py](media_policy.py): Validate selected inline image/audio bytes and approved model/modality payloads without arbitrary remote URLs.
+- [media_tools.py](media_tools.py): Bind scoped media tools to capped metered provider gateway, durable attempts and verified artifact publication.
+- [native_workflows.py](native_workflows.py): Hatchet finite phase dispatch through the common checkpointed harness with owner authority, shared model budget and no blind replay.
+- [personal_bridge.py](personal_bridge.py): Apply common adaptive model policy to signed Operly Personal bridge.
+- [progress_guard.py](progress_guard.py): Detect stagnant observed action loops and stop after unresolved external outcomes.
+- [run_telemetry.py](run_telemetry.py): Privacy-minimal bounded callback for observed model/tool counts, latency and token usage; cost remains gateway-owned.
+- [runtime.py](runtime.py): Use bounded exact-turn recovery, shared routing and execution telemetry for internal harness runs.
+- [tool_outcomes.py](tool_outcomes.py): Classify observed native and external tool messages, distinguish unknown effects from successful results.
+- [tool_relevance.py](tool_relevance.py): Rank authorized metadata conservatively and abstain on ambiguous matching.
+- [worker.py](worker.py): Register gated native durable workflow Hatchet controller alongside existing jobs.
+- [workspace_bridge.py](workspace_bridge.py): Recover exact Workspace turn evidence on bounded failures and share adaptive routing without changing tenant scope.

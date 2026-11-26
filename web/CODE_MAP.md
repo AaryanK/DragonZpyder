@@ -44,3 +44,11 @@ Start at [CODEBASE.md](../CODEBASE.md), [file inventory](../docs/codebase/FILE_I
 | [`workspace.css`](workspace.css) | Stylesheet: workspace; inspect selectors and importing page. | Indexed |
 
 Reviewed entries are source-inspected summaries; indexed entries are navigation only. Neither proves deployment.
+
+## Integrated harness changes
+
+- [app.js](app.js): Native chat streaming, explicit per-turn consent, file upload/download and voice handoff; preserve native login routing.
+- [companion.js](companion.js): Bridge realtime voice transcript and spoken canonical response without provider tool authority.
+- [main.py](main.py): Register authenticated artifact and durable-workflow routes and scoped metered media dispatch; web proxy preserves native login and limits upload bodies.
+- [mesh.css](mesh.css): Honor hidden capability controls despite switch styling.
+- [mesh.js](mesh.js): Route native attachment drafts to the canonical chat adapter instead of legacy Mesh.

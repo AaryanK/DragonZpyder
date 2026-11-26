@@ -111,3 +111,20 @@ Read [repository instructions](../../AGENTS.md) and [codebase navigation](../../
 | [`test_usage_audit.py`](test_usage_audit.py) | Test target: usage audit; inspect assertions and fixtures for the exact contract. | Indexed |
 | [`test_workflow_catalog_100.py`](test_workflow_catalog_100.py) | Test target: workflow catalog 100; inspect assertions and fixtures for the exact contract. | Indexed |
 | [`test_workspace_bridge.py`](test_workspace_bridge.py) | Test target: workspace bridge; inspect assertions and fixtures for the exact contract. | Indexed |
+
+## Integrated harness changes
+
+- [test_agent_platform_contract.py](test_agent_platform_contract.py): Check agent contract and scoped runner/gateway compatibility.
+- [test_decision_routing.py](test_decision_routing.py): Test offline decision route validation and conservative fallback.
+- [test_first_party_agent_stream.py](test_first_party_agent_stream.py): Test exact request recovery and stream evidence after bounded termination.
+- [test_first_party_request_ledger.py](test_first_party_request_ledger.py): Check immutable request fingerprints including explicit compute consent.
+- [test_harness_product_surface.py](test_harness_product_surface.py): Preserve product-specific prompts and authorized capability separation.
+- [test_harness_tool_acceptance.py](test_harness_tool_acceptance.py): Exercise actual Deep Agents graph with scripted model, computer and reviewed MCP/QuickJS tools.
+- [test_mcp_connections.py](test_mcp_connections.py): Test direct capability selection, revocation and bounded connection behavior.
+- [test_native_harness_extensions.py](test_native_harness_extensions.py): Exercise voice event idempotency, model escalation, media schema and generic workflow plan checks.
+- [test_native_workflows_postgres.py](test_native_workflows_postgres.py): Test workflow phase recovery and media artifact readback using real PostgreSQL and scripted providers.
+- [test_progress_guard.py](test_progress_guard.py): Exercise stale-turn rejection, unknown effects, progress and telemetry regression fixtures.
+- [test_shared_artifacts.py](test_shared_artifacts.py): Test deterministic document rendering, encrypted storage policy and object transport.
+- [test_shared_artifacts_postgres.py](test_shared_artifacts_postgres.py): Test real PostgreSQL isolation, immutable publication, object reconciliation and VM admission using simulated external services.
+- [test_universal_mcp_catalog.py](test_universal_mcp_catalog.py): Retain grant-scoped catalog behavior under relevance ranking and direct reads.
+- [test_workspace_bridge.py](test_workspace_bridge.py): Check bounded Workspace execution and exact current-turn partial receipt recovery.

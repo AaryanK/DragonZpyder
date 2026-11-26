@@ -676,3 +676,329 @@ These paths are additional to the original 427 tracked files; the generated inde
 - [`web/frontend/src/README.md`](../../web/frontend/src/README.md) — Local directory guide.
 - [`web/frontend/tests/README.md`](../../web/frontend/tests/README.md) — Local directory guide.
 - [`web/tests/README.md`](../../web/tests/README.md) — Local directory guide.
+
+## Synchronization — Android and concurrent changes (2026-11-26)
+
+Baseline updated to [16a3d6a37322](https://github.com/AaryanK/DragonZpyder/tree/16a3d6a37322cf741e68a7cc360add8bdec4dcd7). This supplements the original inventory; the current checkout is validated for exact tracked-path coverage by CI. Reviewed Android entries were source-inspected; other entries are path-level navigation.
+
+### .github/workflows
+
+| File | Purpose / navigation | Evidence |
+| --- | --- | --- |
+| [`android-apk.yml`](../../.github/workflows/android-apk.yml) | Android APK build and qualification workflow; inspect actual triggers, checks and artifact handling. | Indexed |
+| [`android-benchmark.yml`](../../.github/workflows/android-benchmark.yml) | Android performance benchmark workflow; inspect device and measurement conditions. | Indexed |
+| [`android-release.yml`](../../.github/workflows/android-release.yml) | Android release workflow; inspect signing and publication gates. | Indexed |
+
+### android
+
+| File | Purpose / navigation | Evidence |
+| --- | --- | --- |
+| [`.gitignore`](../../android/.gitignore) | Android-generated outputs and local build exclusions. | Indexed |
+| [`AGENTS.md`](../../android/AGENTS.md) | Scoped Android architecture, accessibility, performance, security and release acceptance instructions; targets are not measured claims. | Reviewed |
+| [`CODE_MAP.md`](../../android/CODE_MAP.md) | Directory or subsystem navigation guide. | Indexed |
+| [`QUALIFICATION.md`](../../android/QUALIFICATION.md) | Android qualification evidence and outstanding gates; check evidence date. | Indexed |
+| [`README.md`](../../android/README.md) | Existing Android engineering-candidate overview, build instructions and rollout gates; version/capability prose may lag source. | Reviewed |
+| [`RELEASE_GATES.md`](../../android/RELEASE_GATES.md) | Android release acceptance matrix; distinguish targets from verified tests. | Indexed |
+| [`build.gradle`](../../android/build.gradle) | Gradle build configuration for this module/root; inspect plugins, dependencies and variants. | Indexed |
+| [`gradle.properties`](../../android/gradle.properties) | Gradle project build properties; inspect names and values locally. | Indexed |
+| [`prepare-brand.sh`](../../android/prepare-brand.sh) | Brand resource preparation script. | Indexed |
+| [`qualify-device.sh`](../../android/qualify-device.sh) | Device qualification script; inspect requirements and side effects before running. | Indexed |
+| [`run-benchmarks.sh`](../../android/run-benchmarks.sh) | Benchmark invocation script; inspect environment requirements. | Indexed |
+| [`settings.gradle`](../../android/settings.gradle) | Gradle module and repository settings. | Indexed |
+
+### android/app
+
+| File | Purpose / navigation | Evidence |
+| --- | --- | --- |
+| [`README.md`](../../android/app/README.md) | Directory or subsystem navigation guide. | Indexed |
+| [`build.gradle`](../../android/app/build.gradle) | Android app build configuration: compile/target SDK 36, minimum 26, version 0.9.2, Compose and conditional signing; inspect exact module. | Reviewed |
+
+### android/app/src
+
+| File | Purpose / navigation | Evidence |
+| --- | --- | --- |
+| [`README.md`](../../android/app/src/README.md) | Directory or subsystem navigation guide. | Indexed |
+
+### android/app/src/androidTest
+
+| File | Purpose / navigation | Evidence |
+| --- | --- | --- |
+| [`README.md`](../../android/app/src/androidTest/README.md) | Directory or subsystem navigation guide. | Indexed |
+
+### android/app/src/androidTest/java
+
+| File | Purpose / navigation | Evidence |
+| --- | --- | --- |
+| [`README.md`](../../android/app/src/androidTest/java/README.md) | Directory or subsystem navigation guide. | Indexed |
+
+### android/app/src/androidTest/java/xyz
+
+| File | Purpose / navigation | Evidence |
+| --- | --- | --- |
+| [`README.md`](../../android/app/src/androidTest/java/xyz/README.md) | Directory or subsystem navigation guide. | Indexed |
+
+### android/app/src/androidTest/java/xyz/dragonzpyder
+
+| File | Purpose / navigation | Evidence |
+| --- | --- | --- |
+| [`README.md`](../../android/app/src/androidTest/java/xyz/dragonzpyder/README.md) | Directory or subsystem navigation guide. | Indexed |
+
+### android/app/src/androidTest/java/xyz/dragonzpyder/android
+
+| File | Purpose / navigation | Evidence |
+| --- | --- | --- |
+| [`AccountIsolationTest.java`](../../android/app/src/androidTest/java/xyz/dragonzpyder/android/AccountIsolationTest.java) | Instrumentation test for native account isolation. | Indexed |
+| [`AgentRequestLifecycleTest.java`](../../android/app/src/androidTest/java/xyz/dragonzpyder/android/AgentRequestLifecycleTest.java) | Instrumentation test for native request lifecycle/recreation. | Indexed |
+| [`MarkdownRendererTest.kt`](../../android/app/src/androidTest/java/xyz/dragonzpyder/android/MarkdownRendererTest.kt) | Instrumentation test for Compose markdown rendering. | Indexed |
+| [`MediaPayloadTest.java`](../../android/app/src/androidTest/java/xyz/dragonzpyder/android/MediaPayloadTest.java) | Instrumentation test for media decoding contract. | Indexed |
+| [`MobileOAuthStoreTest.java`](../../android/app/src/androidTest/java/xyz/dragonzpyder/android/MobileOAuthStoreTest.java) | Instrumentation test for PKCE proof storage lifecycle. | Indexed |
+| [`NativeChatStateTest.java`](../../android/app/src/androidTest/java/xyz/dragonzpyder/android/NativeChatStateTest.java) | Instrumentation test for native chat presentation state. | Indexed |
+| [`NativeNavigationDrawerTest.kt`](../../android/app/src/androidTest/java/xyz/dragonzpyder/android/NativeNavigationDrawerTest.kt) | Instrumentation test for drawer behavior. | Indexed |
+| [`NavigationAccessibilityTest.kt`](../../android/app/src/androidTest/java/xyz/dragonzpyder/android/NavigationAccessibilityTest.kt) | Instrumentation test for navigation accessibility. | Indexed |
+| [`PendingAgentRequestStoreTest.java`](../../android/app/src/androidTest/java/xyz/dragonzpyder/android/PendingAgentRequestStoreTest.java) | Instrumentation test for recovery marker storage and scope. | Indexed |
+| [`ProviderSignInUiTest.java`](../../android/app/src/androidTest/java/xyz/dragonzpyder/android/ProviderSignInUiTest.java) | Instrumentation test for provider sign-in UI. | Indexed |
+| [`README.md`](../../android/app/src/androidTest/java/xyz/dragonzpyder/android/README.md) | Directory or subsystem navigation guide. | Indexed |
+| [`SecurePasswordFieldTest.java`](../../android/app/src/androidTest/java/xyz/dragonzpyder/android/SecurePasswordFieldTest.java) | Instrumentation test for password field security behavior. | Indexed |
+| [`SecureSessionStoreTest.java`](../../android/app/src/androidTest/java/xyz/dragonzpyder/android/SecureSessionStoreTest.java) | Instrumentation test for secure session persistence. | Indexed |
+
+### android/app/src/benchmark
+
+| File | Purpose / navigation | Evidence |
+| --- | --- | --- |
+| [`AndroidManifest.xml`](../../android/app/src/benchmark/AndroidManifest.xml) | Manifest for the respective Android source set/module; inspect components, permissions and exported flags. | Indexed |
+| [`README.md`](../../android/app/src/benchmark/README.md) | Directory or subsystem navigation guide. | Indexed |
+
+### android/app/src/benchmark/java
+
+| File | Purpose / navigation | Evidence |
+| --- | --- | --- |
+| [`README.md`](../../android/app/src/benchmark/java/README.md) | Directory or subsystem navigation guide. | Indexed |
+
+### android/app/src/benchmark/java/xyz
+
+| File | Purpose / navigation | Evidence |
+| --- | --- | --- |
+| [`README.md`](../../android/app/src/benchmark/java/xyz/README.md) | Directory or subsystem navigation guide. | Indexed |
+
+### android/app/src/benchmark/java/xyz/dragonzpyder
+
+| File | Purpose / navigation | Evidence |
+| --- | --- | --- |
+| [`README.md`](../../android/app/src/benchmark/java/xyz/dragonzpyder/README.md) | Directory or subsystem navigation guide. | Indexed |
+
+### android/app/src/benchmark/java/xyz/dragonzpyder/android
+
+| File | Purpose / navigation | Evidence |
+| --- | --- | --- |
+| [`BenchmarkChatActivity.kt`](../../android/app/src/benchmark/java/xyz/dragonzpyder/android/BenchmarkChatActivity.kt) | Benchmark-source-set chat Activity; not the production entrypoint. | Indexed |
+| [`README.md`](../../android/app/src/benchmark/java/xyz/dragonzpyder/android/README.md) | Directory or subsystem navigation guide. | Indexed |
+
+### android/app/src/main
+
+| File | Purpose / navigation | Evidence |
+| --- | --- | --- |
+| [`AndroidManifest.xml`](../../android/app/src/main/AndroidManifest.xml) | Manifest for the respective Android source set/module; inspect components, permissions and exported flags. | Indexed |
+| [`README.md`](../../android/app/src/main/README.md) | Directory or subsystem navigation guide. | Indexed |
+
+### android/app/src/main/java
+
+| File | Purpose / navigation | Evidence |
+| --- | --- | --- |
+| [`README.md`](../../android/app/src/main/java/README.md) | Directory or subsystem navigation guide. | Indexed |
+
+### android/app/src/main/java/xyz
+
+| File | Purpose / navigation | Evidence |
+| --- | --- | --- |
+| [`README.md`](../../android/app/src/main/java/xyz/README.md) | Directory or subsystem navigation guide. | Indexed |
+
+### android/app/src/main/java/xyz/dragonzpyder
+
+| File | Purpose / navigation | Evidence |
+| --- | --- | --- |
+| [`README.md`](../../android/app/src/main/java/xyz/dragonzpyder/README.md) | Directory or subsystem navigation guide. | Indexed |
+
+### android/app/src/main/java/xyz/dragonzpyder/android
+
+| File | Purpose / navigation | Evidence |
+| --- | --- | --- |
+| [`AgentFileRepository.kt`](../../android/app/src/main/java/xyz/dragonzpyder/android/AgentFileRepository.kt) | Background content-resolver file upload, inventory and save; bounds file size and validates safe filenames and receipt IDs/digests. | Reviewed |
+| [`AgentRequestViewModel.java`](../../android/app/src/main/java/xyz/dragonzpyder/android/AgentRequestViewModel.java) | Lifecycle-retained in-flight request and streaming outcome state, background executor and generation fencing; no Activity or automatic replay. | Reviewed |
+| [`ApiRoutePolicy.java`](../../android/app/src/main/java/xyz/dragonzpyder/android/ApiRoutePolicy.java) | Explicit first-party route allowlist, preauth handling and CSRF header selection; prevents cross-realm fallback. | Reviewed |
+| [`ChatPresentationState.kt`](../../android/app/src/main/java/xyz/dragonzpyder/android/ChatPresentationState.kt) | Immutable UI-only ChatScreenState snapshot updated through reducer bridge; no credentials or Activity references. | Reviewed |
+| [`DragonApi.java`](../../android/app/src/main/java/xyz/dragonzpyder/android/DragonApi.java) | Fixed-origin native HTTP/session client; discovers runtime capabilities, routes authenticated requests, streams agent replies and manages request cancellation. | Reviewed |
+| [`DragonDesignTokens.kt`](../../android/app/src/main/java/xyz/dragonzpyder/android/DragonDesignTokens.kt) | Shared light/dark brand tokens, Compose theme and transitional Java color adapter. | Reviewed |
+| [`DragonNavigationRow.kt`](../../android/app/src/main/java/xyz/dragonzpyder/android/DragonNavigationRow.kt) | Compose navigation row with icon alignment, selection state and wrapping text for large fonts. | Reviewed |
+| [`GoogleCredentialLogin.java`](../../android/app/src/main/java/xyz/dragonzpyder/android/GoogleCredentialLogin.java) | Native Android Credential Manager Google ID token request with supplied web client ID and nonce; handles credential outcomes. | Reviewed |
+| [`MainActivity.java`](../../android/app/src/main/java/xyz/dragonzpyder/android/MainActivity.java) | Native ComponentActivity host coordinating Compose chat, auth, session restoration, attachments, files, voice, request state and compatibility actions. | Reviewed |
+| [`MarkdownDocument.java`](../../android/app/src/main/java/xyz/dragonzpyder/android/MarkdownDocument.java) | Bounded CommonMark/GFM parser and plain-text extraction; does not render raw HTML or open links. | Reviewed |
+| [`MarkdownRenderer.kt`](../../android/app/src/main/java/xyz/dragonzpyder/android/MarkdownRenderer.kt) | Compose rendering of markdown blocks, code, lists, tables, links and restored math markup. | Reviewed |
+| [`MathMarkup.kt`](../../android/app/src/main/java/xyz/dragonzpyder/android/MathMarkup.kt) | Extracts math tokens while tracking code fences and inline code; preserves raw formulas for rendering. | Reviewed |
+| [`MediaPayload.java`](../../android/app/src/main/java/xyz/dragonzpyder/android/MediaPayload.java) | Bounded base64 media decoding with explicit supported audio/image MIME prefixes. | Reviewed |
+| [`MobileOAuthStore.java`](../../android/app/src/main/java/xyz/dragonzpyder/android/MobileOAuthStore.java) | Encrypted expiring single-attempt Discord PKCE device proof storage, verifier/challenge generation. | Reviewed |
+| [`NativeChatView.kt`](../../android/app/src/main/java/xyz/dragonzpyder/android/NativeChatView.kt) | Compose native chat UI and Actions interface for navigation, composer, request state, account, files and product controls. | Reviewed |
+| [`NativeCommandPalette.kt`](../../android/app/src/main/java/xyz/dragonzpyder/android/NativeCommandPalette.kt) | Compose searchable command dialog dispatching existing callbacks. | Reviewed |
+| [`NativeVoiceSession.java`](../../android/app/src/main/java/xyz/dragonzpyder/android/NativeVoiceSession.java) | Foreground audio WebRTC session lifecycle, peer/audio resources, timeout and backend API integration; no provider secrets. | Reviewed |
+| [`NativeVoiceView.kt`](../../android/app/src/main/java/xyz/dragonzpyder/android/NativeVoiceView.kt) | Compose voice presentation, animated orb, mute and end callbacks; transport lives separately. | Reviewed |
+| [`NavigationGlyph.kt`](../../android/app/src/main/java/xyz/dragonzpyder/android/NavigationGlyph.kt) | Compose navigation icon drawing; inspect supported glyph names and semantics. | Indexed |
+| [`PendingAgentRequestStore.java`](../../android/app/src/main/java/xyz/dragonzpyder/android/PendingAgentRequestStore.java) | Stores only request ID and verified first-party binding metadata for recovery; no prompt or credential storage. | Reviewed |
+| [`README.md`](../../android/app/src/main/java/xyz/dragonzpyder/android/README.md) | Directory or subsystem navigation guide. | Indexed |
+| [`SecurePasswordField.java`](../../android/app/src/main/java/xyz/dragonzpyder/android/SecurePasswordField.java) | Native password field behavior; inspect input type and visibility toggles. | Indexed |
+| [`SecureSessionStore.java`](../../android/app/src/main/java/xyz/dragonzpyder/android/SecureSessionStore.java) | Authenticated cookie-pair storage encrypted with a non-exportable Android Keystore key. | Reviewed |
+| [`SessionCookies.java`](../../android/app/src/main/java/xyz/dragonzpyder/android/SessionCookies.java) | Fixed-origin allowlisted cookie jar, separate first-party and compatibility session names, expiry and serialization. | Reviewed |
+
+### android/app/src/main/res
+
+| File | Purpose / navigation | Evidence |
+| --- | --- | --- |
+| [`README.md`](../../android/app/src/main/res/README.md) | Directory or subsystem navigation guide. | Indexed |
+
+### android/app/src/main/res/drawable
+
+| File | Purpose / navigation | Evidence |
+| --- | --- | --- |
+| [`README.md`](../../android/app/src/main/res/drawable/README.md) | Directory or subsystem navigation guide. | Indexed |
+| [`ic_logo.xml`](../../android/app/src/main/res/drawable/ic_logo.xml) | Android vector logo resource. | Indexed |
+
+### android/app/src/main/res/values
+
+| File | Purpose / navigation | Evidence |
+| --- | --- | --- |
+| [`README.md`](../../android/app/src/main/res/values/README.md) | Directory or subsystem navigation guide. | Indexed |
+| [`dialog_themes.xml`](../../android/app/src/main/res/values/dialog_themes.xml) | Android dialog theme resources. | Indexed |
+
+### android/app/src/main/res/xml
+
+| File | Purpose / navigation | Evidence |
+| --- | --- | --- |
+| [`README.md`](../../android/app/src/main/res/xml/README.md) | Directory or subsystem navigation guide. | Indexed |
+| [`camera_paths.xml`](../../android/app/src/main/res/xml/camera_paths.xml) | Camera FileProvider path configuration; inspect actual scoped directory. | Indexed |
+
+### android/app/src/test
+
+| File | Purpose / navigation | Evidence |
+| --- | --- | --- |
+| [`README.md`](../../android/app/src/test/README.md) | Directory or subsystem navigation guide. | Indexed |
+
+### android/app/src/test/java
+
+| File | Purpose / navigation | Evidence |
+| --- | --- | --- |
+| [`README.md`](../../android/app/src/test/java/README.md) | Directory or subsystem navigation guide. | Indexed |
+
+### android/app/src/test/java/xyz
+
+| File | Purpose / navigation | Evidence |
+| --- | --- | --- |
+| [`README.md`](../../android/app/src/test/java/xyz/README.md) | Directory or subsystem navigation guide. | Indexed |
+
+### android/app/src/test/java/xyz/dragonzpyder
+
+| File | Purpose / navigation | Evidence |
+| --- | --- | --- |
+| [`README.md`](../../android/app/src/test/java/xyz/dragonzpyder/README.md) | Directory or subsystem navigation guide. | Indexed |
+
+### android/app/src/test/java/xyz/dragonzpyder/android
+
+| File | Purpose / navigation | Evidence |
+| --- | --- | --- |
+| [`DesignContractTest.kt`](../../android/app/src/test/java/xyz/dragonzpyder/android/DesignContractTest.kt) | Local JVM test for design contract. | Indexed |
+| [`MarkdownDocumentTest.java`](../../android/app/src/test/java/xyz/dragonzpyder/android/MarkdownDocumentTest.java) | Local JVM parser tests. | Indexed |
+| [`MathMarkupTest.kt`](../../android/app/src/test/java/xyz/dragonzpyder/android/MathMarkupTest.kt) | Local JVM math markup tests. | Indexed |
+| [`README.md`](../../android/app/src/test/java/xyz/dragonzpyder/android/README.md) | Directory or subsystem navigation guide. | Indexed |
+
+### android/benchmark
+
+| File | Purpose / navigation | Evidence |
+| --- | --- | --- |
+| [`README.md`](../../android/benchmark/README.md) | Directory or subsystem navigation guide. | Indexed |
+| [`build.gradle`](../../android/benchmark/build.gradle) | Gradle build configuration for this module/root; inspect plugins, dependencies and variants. | Indexed |
+
+### android/benchmark/src
+
+| File | Purpose / navigation | Evidence |
+| --- | --- | --- |
+| [`README.md`](../../android/benchmark/src/README.md) | Directory or subsystem navigation guide. | Indexed |
+
+### android/benchmark/src/main
+
+| File | Purpose / navigation | Evidence |
+| --- | --- | --- |
+| [`AndroidManifest.xml`](../../android/benchmark/src/main/AndroidManifest.xml) | Manifest for the respective Android source set/module; inspect components, permissions and exported flags. | Indexed |
+| [`README.md`](../../android/benchmark/src/main/README.md) | Directory or subsystem navigation guide. | Indexed |
+
+### android/benchmark/src/main/java
+
+| File | Purpose / navigation | Evidence |
+| --- | --- | --- |
+| [`README.md`](../../android/benchmark/src/main/java/README.md) | Directory or subsystem navigation guide. | Indexed |
+
+### android/benchmark/src/main/java/xyz
+
+| File | Purpose / navigation | Evidence |
+| --- | --- | --- |
+| [`README.md`](../../android/benchmark/src/main/java/xyz/README.md) | Directory or subsystem navigation guide. | Indexed |
+
+### android/benchmark/src/main/java/xyz/dragonzpyder
+
+| File | Purpose / navigation | Evidence |
+| --- | --- | --- |
+| [`README.md`](../../android/benchmark/src/main/java/xyz/dragonzpyder/README.md) | Directory or subsystem navigation guide. | Indexed |
+
+### android/benchmark/src/main/java/xyz/dragonzpyder/benchmark
+
+| File | Purpose / navigation | Evidence |
+| --- | --- | --- |
+| [`README.md`](../../android/benchmark/src/main/java/xyz/dragonzpyder/benchmark/README.md) | Directory or subsystem navigation guide. | Indexed |
+| [`ReleaseBenchmarks.kt`](../../android/benchmark/src/main/java/xyz/dragonzpyder/benchmark/ReleaseBenchmarks.kt) | Macrobenchmark release performance scenarios; measured results depend on actual device/build. | Indexed |
+
+### android/tests
+
+| File | Purpose / navigation | Evidence |
+| --- | --- | --- |
+| [`ApiRoutePolicyTest.java`](../../android/tests/ApiRoutePolicyTest.java) | Standalone native route-policy contract test. | Indexed |
+| [`README.md`](../../android/tests/README.md) | Directory or subsystem navigation guide. | Indexed |
+| [`SessionCookiesTest.java`](../../android/tests/SessionCookiesTest.java) | Standalone cookie serialization and boundary tests. | Indexed |
+| [`check_native_alignment.py`](../../android/tests/check_native_alignment.py) | Native/API alignment check script; inspect asserted route and capability contracts. | Indexed |
+| [`test_native_alignment.py`](../../android/tests/test_native_alignment.py) | Offline tests for native alignment checks. | Indexed |
+
+## Universal harness integration additions
+
+| File | Purpose / navigation | Evidence |
+| --- | --- | --- |
+| [`.github/workflows/scoped-sandbox-runner.yml`](../../.github/workflows/scoped-sandbox-runner.yml) | Check Node runner syntax and scoped protocol tests without allocating live VMs. | Reviewed source; pending integrated validation |
+| [`api/agent_platform/adaptive_routing.py`](../../api/agent_platform/adaptive_routing.py) | Conservative fast/default/reasoning selection and sticky escalation after observed failures, through the approved model gateway. | Reviewed source; pending integrated validation |
+| [`api/agent_platform/artifact_formats.py`](../../api/agent_platform/artifact_formats.py) | Render bounded PDF, DOCX, XLSX and PPTX outputs from validated structured data. | Reviewed source; pending integrated validation |
+| [`api/agent_platform/artifact_http.py`](../../api/agent_platform/artifact_http.py) | Authenticated owner-scoped upload, list, download and deletion; only committed artifacts visible. | Reviewed source; pending integrated validation |
+| [`api/agent_platform/artifact_object_store.py`](../../api/agent_platform/artifact_object_store.py) | Private encrypted S3-compatible bytes, conditional immutable writes and bounded reads. | Reviewed source; pending integrated validation |
+| [`api/agent_platform/artifacts.py`](../../api/agent_platform/artifacts.py) | Owner-bound encrypted metadata/bytes, quotas, pending reconciliation, independent readback and idempotent publication. | Reviewed source; pending integrated validation |
+| [`api/agent_platform/computer_acceptance.py`](../../api/agent_platform/computer_acceptance.py) | Verify isolated computation via exact file bytes, storage readback and cleanup; scripted transport tests are not live VM proof. | Reviewed source; pending integrated validation |
+| [`api/agent_platform/computer_admission.py`](../../api/agent_platform/computer_admission.py) | Transactional per-owner/global VM exposure holds and unresolved cleanup fences. | Reviewed source; pending integrated validation |
+| [`api/agent_platform/computer_artifacts.py`](../../api/agent_platform/computer_artifacts.py) | Import selected authorized files and publish verified VM exports to immutable storage. | Reviewed source; pending integrated validation |
+| [`api/agent_platform/computer_run.py`](../../api/agent_platform/computer_run.py) | Lazy scoped VM allocation, per-call authority, deadlines, serialization and cleanup receipts. | Reviewed source; pending integrated validation |
+| [`api/agent_platform/decision_routing.py`](../../api/agent_platform/decision_routing.py) | Offline calibrated decision-provider request and validation foundation; live integration absent. | Reviewed source; pending integrated validation |
+| [`api/agent_platform/execution_contract.py`](../../api/agent_platform/execution_contract.py) | Shared bounded execution and exact current-turn checkpoint identification. | Reviewed source; pending integrated validation |
+| [`api/agent_platform/media_policy.py`](../../api/agent_platform/media_policy.py) | Validate selected inline image/audio bytes and approved model/modality payloads without arbitrary remote URLs. | Reviewed source; pending integrated validation |
+| [`api/agent_platform/media_tools.py`](../../api/agent_platform/media_tools.py) | Bind scoped media tools to capped metered provider gateway, durable attempts and verified artifact publication. | Reviewed source; pending integrated validation |
+| [`api/agent_platform/migrations/20261125_shared_artifacts.sql`](../../api/agent_platform/migrations/20261125_shared_artifacts.sql) | Create encrypted artifact metadata with pending, ready and deletion lifecycle. | Reviewed source; pending integrated validation |
+| [`api/agent_platform/migrations/20261126_agent_media_attempts.sql`](../../api/agent_platform/migrations/20261126_agent_media_attempts.sql) | Persist exact media invocation IDs and metered gateway receipts. | Reviewed source; pending integrated validation |
+| [`api/agent_platform/migrations/20261126_computer_admission.sql`](../../api/agent_platform/migrations/20261126_computer_admission.sql) | Persist durable VM exposure and cleanup states. | Reviewed source; pending integrated validation |
+| [`api/agent_platform/migrations/20261126_native_workflows.sql`](../../api/agent_platform/migrations/20261126_native_workflows.sql) | Store immutable finite workflow plan, authority reference, phase cursor and receipts. | Reviewed source; pending integrated validation |
+| [`api/agent_platform/native_workflows.py`](../../api/agent_platform/native_workflows.py) | Hatchet finite phase dispatch through the common checkpointed harness with owner authority, shared model budget and no blind replay. | Reviewed source; pending integrated validation |
+| [`api/agent_platform/run_telemetry.py`](../../api/agent_platform/run_telemetry.py) | Privacy-minimal bounded callback for observed model/tool counts, latency and token usage; cost remains gateway-owned. | Reviewed source; pending integrated validation |
+| [`api/agent_platform/tool_outcomes.py`](../../api/agent_platform/tool_outcomes.py) | Classify observed native and external tool messages, distinguish unknown effects from successful results. | Reviewed source; pending integrated validation |
+| [`api/agent_platform/tool_relevance.py`](../../api/agent_platform/tool_relevance.py) | Rank authorized metadata conservatively and abstain on ambiguous matching. | Reviewed source; pending integrated validation |
+| [`api/tests/test_decision_routing.py`](../../api/tests/test_decision_routing.py) | Test offline decision route validation and conservative fallback. | Reviewed source; pending integrated validation |
+| [`api/tests/test_native_harness_extensions.py`](../../api/tests/test_native_harness_extensions.py) | Exercise voice event idempotency, model escalation, media schema and generic workflow plan checks. | Reviewed source; pending integrated validation |
+| [`api/tests/test_native_workflows_postgres.py`](../../api/tests/test_native_workflows_postgres.py) | Test workflow phase recovery and media artifact readback using real PostgreSQL and scripted providers. | Reviewed source; pending integrated validation |
+| [`api/tests/test_shared_artifacts.py`](../../api/tests/test_shared_artifacts.py) | Test deterministic document rendering, encrypted storage policy and object transport. | Reviewed source; pending integrated validation |
+| [`api/tests/test_shared_artifacts_postgres.py`](../../api/tests/test_shared_artifacts_postgres.py) | Test real PostgreSQL isolation, immutable publication, object reconciliation and VM admission using simulated external services. | Reviewed source; pending integrated validation |
+| [`apps/sandbox_runner/README.md`](../../apps/sandbox_runner/README.md) | Navigation guide for isolated execution service and its gated protocol. | Reviewed source; pending integrated validation |
+| [`apps/sandbox_runner/computer_tool.py`](../../apps/sandbox_runner/computer_tool.py) | Bound VM shell/Python output, file reads and exports; reject symlink traversal and clean process groups. | Reviewed source; pending integrated validation |
+| [`apps/sandbox_runner/package-lock.json`](../../apps/sandbox_runner/package-lock.json) | Pin sandbox runner SDK and transitive Node dependencies. | Reviewed source; pending integrated validation |
+| [`apps/sandbox_runner/package.json`](../../apps/sandbox_runner/package.json) | Configure scoped runner Node package and tests. | Reviewed source; pending integrated validation |
+| [`apps/sandbox_runner/scope.mjs`](../../apps/sandbox_runner/scope.mjs) | Validate immutable personal/workspace scope, lifetime, operation allowlist and argument bounds. | Reviewed source; pending integrated validation |
+| [`apps/sandbox_runner/scope.test.mjs`](../../apps/sandbox_runner/scope.test.mjs) | Offline scope and protocol rejection fixtures. | Reviewed source; pending integrated validation |
+| [`apps/sandbox_runner/server.mjs`](../../apps/sandbox_runner/server.mjs) | Authenticate signed scoped VM requests, isolate networking, transfer bounded result files and serialize operations. | Reviewed source; pending integrated validation |
+| [`apps/sandbox_runner/server_ready.mjs`](../../apps/sandbox_runner/server_ready.mjs) | Start and warm runner with readiness checks. | Reviewed source; pending integrated validation |
+| [`apps/README.md`](../../apps/README.md) | Navigation guide for isolated execution service and its gated protocol. | Reviewed source; pending integrated validation |
