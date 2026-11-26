@@ -16,6 +16,9 @@ An implemented code path, a debug APK, or a green general CI job is not sufficie
 | Physical devices | At least one ARM64 phone and tablet/large-screen device, install/update, actual mic and camera, 16KB page-size device, crash-free test run. |
 | Release | API 36, release tests, verified upload certificate, signed AAB, 16KB native-library compatibility, Play internal test and privacy/data-safety review. |
 
+## Qualification evidence
+See [QUALIFICATION.md](QUALIFICATION.md) for the benchmark commands, exact baseline, expanded security and accessibility checks, and physical-device measurement protocol. Passing emulator tests is not a performance pass.
+
 ## Rollout dependencies (backend PR #141)
 Apply request-ledger and voice migrations to the agent database; apply native OAuth handoff migration to the MCP credential database. Use the authorized migration role. Keep feature flags off until tests and isolated runtime checks pass. Existing MCP egress and read-only policy remain in effect. Voice requires a dedicated, capped provider project/key; it is audio conversation only and has no agent tool access.
 
