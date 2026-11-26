@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
+import "./design-tokens.css";
 import "./admin.css";
 
 function formatInteger(value) {
@@ -42,7 +43,7 @@ function AdminPage() {
   return (
     <main className="admin-layout">
       <header className="admin-header">
-        <div><a href="/" className="brand">✦ DragonZpyder</a>
+        <div><a href="/" className="brand"><img src="/brand-icon.png" alt="" width="28" height="28"/> DragonZpyder</a>
           <div className="eyebrow">Private operations</div><h1>Model usage and traces</h1>
           <p>Server-recorded inference usage, attributed by application and model.</p></div>
         <a href="/account" className="account-link">Account ↗</a>

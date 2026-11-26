@@ -915,16 +915,6 @@ html[data-workspace-theme] .dz-jump-latest {
 }
 
 /* V2 foundation: semantic Personal shell tokens; permissions remain in adapters. */
-html[data-workspace-theme="dark"] {
- --dz-shell-bg:#141415;--dz-shell-surface:#1d1d20;--dz-shell-raised:#27272a;
- --dz-shell-line:#38383d;--dz-shell-text:#f4f3f1;--dz-shell-muted:#a1a1aa;
- --dz-shell-accent:#ee814d;--dz-shell-on-accent:#1b130e;--dz-shell-selected:#302621;
-}
-html[data-workspace-theme="light"] {
- --dz-shell-bg:#fafaf9;--dz-shell-surface:#fff;--dz-shell-raised:#f0f0ee;
- --dz-shell-line:#dcdcd9;--dz-shell-text:#202022;--dz-shell-muted:#64646b;
- --dz-shell-accent:#b8431b;--dz-shell-on-accent:#fff;--dz-shell-selected:#f4e6dd;
-}
 html[data-workspace-theme] :is(.app-shell,.workspace,.chat-main) {background:var(--dz-shell-bg);color:var(--dz-shell-text)}
 html[data-workspace-theme] :is(.sidebar,.workspace-head) {background:var(--dz-shell-bg);border-color:var(--dz-shell-line)}
 html[data-workspace-theme] .sidebar {padding:12px;gap:0}
@@ -1000,3 +990,14 @@ html[data-workspace-theme] .conversation-button {color:var(--dz-shell-text)}
 html[data-workspace-theme] .conversation-button.active {background:var(--dz-shell-selected);color:var(--dz-shell-text)}
 html[data-workspace-theme] .conversation-empty {color:var(--dz-shell-muted);padding:8px 10px;font-size:12px;line-height:1.5}
 html[data-workspace-theme] .workspace-head .profile-btn {min-width:44px;min-height:44px}
+
+/* User-selected typography and density are bounded to readable sizes and
+   preserve minimum touch targets. Browser accessibility zoom remains intact. */
+html[data-dz-text-size="large"] .messages .message-content {font-size:18px;line-height:1.7}
+html[data-dz-text-size="extra-large"] .messages .message-content {font-size:20px;line-height:1.7}
+html[data-dz-density="compact"] .sidebar .conversation-button {min-height:40px;padding:8px 10px}
+html[data-dz-density="compact"] .messages .message {margin-bottom:20px}
+html[data-dz-density="compact"] .sidebar-navigation {gap:2px}
+html[data-workspace-theme] .message.assistant .message-content {color:var(--dz-shell-text)}
+html[data-workspace-theme] .message.user .message-body {background:var(--dz-shell-raised);border-color:var(--dz-shell-line)}
+html[data-workspace-theme] .message.user .message-content {color:var(--dz-shell-text)}

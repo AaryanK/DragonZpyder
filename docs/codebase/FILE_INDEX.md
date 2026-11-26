@@ -782,3 +782,7 @@ These entries reconcile paths added after the documented baseline; Indexed descr
 - [`web/frontend/src/dz-mark.svg`](../../web/frontend/src/dz-mark.svg) — Canonical flat DZ geometric monogram; two closed paths, even-odd D counter, transparent background, 64-unit viewBox; read by web and Android build scripts.
 
 - [`web/frontend/src/NativeGoals.jsx`](../../web/frontend/src/NativeGoals.jsx) — Owner-scoped native goal presentation and cancellation controls.
+
+- [`web/frontend/src/ui-preferences.js`](../../web/frontend/src/ui-preferences.js) — Versioned, allowlisted browser-local theme, density, text size and reduced motion configuration; rejects arbitrary CSS and authority fields, preserves existing theme key.
+- [`web/frontend/src/AppearanceSettings.jsx`](../../web/frontend/src/AppearanceSettings.jsx) — Account appearance controls apply validated local preferences immediately and expose storage failures; no account or agent permission mutation.
+- [`web/frontend/src/design-tokens.css`](../../web/frontend/src/design-tokens.css) — Shared neutral/accent semantic tokens and bounded motion override, imported by Personal, account and admin entrypoints.

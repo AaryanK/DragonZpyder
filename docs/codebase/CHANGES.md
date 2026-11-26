@@ -49,3 +49,17 @@ Removed the three Markdown guides from Android drawable, values and xml resource
 - `web/frontend/src/workspace-center.css`: Semantic V2 surface/text/accent palette and responsive controls across native/legacy capability centers. CI and live qualification pending.
 - `web/account.js`: Broadcasts resolved native routing mode to React capability center before profile use, avoiding obsolete Operly connector routes for native accounts. CI and live qualification pending.
 - `web/frontend/tests/native-routing.spec.js`: Mock goal readback checks real wake counts, receipts, cancellation confirmation and absence of legacy requests. CI and live qualification pending.
+
+## 2026-11-26 — V2 shared design and appearance configuration
+
+- `web/frontend/src/ui-preferences.js`: Versioned, allowlisted browser-local theme, density, text size and reduced motion configuration; rejects arbitrary CSS and authority fields, preserves existing theme key. CI and production qualification pending.
+- `web/frontend/src/AppearanceSettings.jsx`: Account appearance controls apply validated local preferences immediately and expose storage failures; no account or agent permission mutation. CI and production qualification pending.
+- `web/frontend/src/design-tokens.css`: Shared neutral/accent semantic tokens and bounded motion override, imported by Personal, account and admin entrypoints. CI and production qualification pending.
+- `web/frontend/src/pages.jsx`: Applies validated browser preferences before compatibility controllers; imports shared design tokens. CI and production qualification pending.
+- `web/frontend/src/AccountTemplate.jsx`: Adds Appearance section and shared outline account icons; retains login/profile controller IDs and clarifies ownership. CI and production qualification pending.
+- `web/frontend/src/admin.jsx`: Uses shared logo and design tokens while retaining protected admin API. CI and production qualification pending.
+- `web/frontend/src/admin.css`: Applies shared semantic palette and accessible mobile controls. CI and production qualification pending.
+- `web/account.css`: Responsive V2 identity/account UI and appearance settings using the shared palette; preserves auth forms. CI and production qualification pending.
+- `web/ui-v1.css`: Moves palette definitions to shared design-token module and applies bounded chat density/text-size settings. CI and production qualification pending.
+- `web/frontend/tests/ui.spec.js`: Regression verifies validated presentation settings after reload without arbitrary styling injection. CI and production qualification pending.
+- `web/frontend/account.html`: Declares consistent default light appearance for server prerender before browser preferences load. CI and production qualification pending.

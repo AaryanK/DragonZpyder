@@ -200,3 +200,15 @@ test("V2 phone shell has compact header, unique connections entry and profile ap
   await page.keyboard.press("Escape");
   await expect(page.locator("#profile-menu")).toBeHidden();
 });
+
+test("versioned local appearance preferences use bounded size and motion settings",async({page})=>{
+  await page.evaluate(()=>{
+    localStorage.setItem("dragonzpyder:ui-preferences:v1",JSON.stringify({version:1,theme:"dark",density:"compact",textSize:"extra-large",reducedMotion:true,arbitraryCss:"body{display:none}"}));
+    localStorage.setItem("dragonzpyder:workspace-theme","dark");
+  });
+  await page.reload();
+  await expect(page.locator("html")).toHaveAttribute("data-dz-density","compact");
+  await expect(page.locator("html")).toHaveAttribute("data-dz-text-size","extra-large");
+  await expect(page.locator("html")).toHaveAttribute("data-dz-reduced-motion","true");
+  await expect(page.locator("#composer")).toBeVisible();
+});

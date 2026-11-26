@@ -30,3 +30,5 @@ Read [repository instructions](../../../AGENTS.md) and [codebase navigation](../
 - `PersonalTemplate.jsx`: compact shell; preserves controller IDs. `web/app.js` still owns identity and chat capability presentation.
 
 `NativeGoals.jsx` renders first-party goal list, wake counts, receipts and explicit cancellation through the existing owner-scoped API. `NativeMcpCenter.jsx` provides the native connections/goals navigation; no legacy execution fallback.
+
+V2 shared tokens live in `design-tokens.css`; `ui-preferences.js` defines a versioned allowlisted browser-local presentation contract and `AppearanceSettings.jsx` is its user-facing editor. Account synchronization and agent-mediated updates require a separate authenticated API, preview/approval and rollback contract.
