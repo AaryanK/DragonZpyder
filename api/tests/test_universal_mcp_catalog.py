@@ -213,3 +213,93 @@ def test_actual_langchain_artifact_failure_is_not_success():
             tools=[tool], provider_id="archive", capability_id="lookup",
             approved_ids=frozenset({"lookup"}), arguments={"query": "test"},
         ))
+
+
+def test_normalized_ranker_handles_plural_camel_case_and_abstains_on_ambiguity():
+    from agent_platform.tool_relevance import rank_candidates, direct_candidates
+    entries = [("archive", "Document storage", ["listDocuments", "workflow.list"]),
+               ("calendar", "Calendar", ["listEvents"])]
+    assert rank_candidates("show my workflows", entries)[0].tool_name == "workflow.list"
+    assert direct_candidates("list documents", entries)[0].tool_name == "listDocuments"
+    assert direct_candidates("delete documents", entries) == []
+    assert direct_candidates("hello there", entries) == []
+    assert direct_candidates("list workflows", [
+        ("one", "", ["workflow.list"]), ("two", "", ["workflow.list"])]) == []
+
+
+def test_direct_binding_real_graph_executes_one_reviewed_read_and_keeps_catalog():
+    from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
+    from langchain_core.messages import AIMessage, ToolMessage
+    from langgraph.checkpoint.memory import MemorySaver
+    from agent_platform.harness import build_frontier_agent
+    from agent_platform.mcp_managed_catalog import direct_read_tools
+
+    class Catalog(McpRunCatalog):
+        def __init__(self):
+            super().__init__([entry("archive", "document.list")])
+            self.descriptions = []
+            self.calls = []
+
+        async def describe(self, provider_id, tool_name):
+            self._one(provider_id, tool_name)
+            self.descriptions.append((provider_id, tool_name))
+            return {"provider_id":provider_id, "tool_name":tool_name,
+                    "input_schema":SCHEMA, "schema_sha256":"a"*64,
+                    "description":"Find records"}
+
+        async def invoke(self, provider_id, tool_name, arguments, schema_sha256):
+            self._one(provider_id, tool_name)
+            assert schema_sha256 == "a"*64
+            assert arguments == {"query":"physics"}
+            self.calls.append((provider_id,tool_name,arguments))
+            return {"receipt":{"status":"completed"},"result":{"records":[1]},
+                    "objective_verified":False}
+
+    class Scripted(FakeMessagesListChatModel):
+        def bind_tools(self, tools, **kwargs):
+            return self
+
+    async def run():
+        catalog = Catalog()
+        direct = await direct_read_tools(catalog, "list documents")
+        assert len(direct) == 1
+        assert len(catalog.descriptions) == 1
+        assert catalog.calls == []
+        alias = direct[0].name
+        model = Scripted(responses=[
+            AIMessage(content="", tool_calls=[{"name":alias,
+                "args":{"query":"physics"},"id":"direct-read"}]),
+            AIMessage(content="One matching record."),
+        ])
+        graph = build_frontier_agent(model, MemorySaver(),
+                                    delegated_tools=catalog_tools(catalog)+direct)
+        state = await graph.ainvoke(
+            {"messages":[{"role":"user","content":"List physics documents"}]},
+            config={"configurable":{"thread_id":"direct-read-graph"},"recursion_limit":128})
+        tool_messages = [m for m in state["messages"] if isinstance(m,ToolMessage)]
+        assert len(tool_messages) == 1 and tool_messages[0].name == alias
+        assert tool_messages[0].status == "success"
+        assert catalog.calls == [("archive","document.list",{"query":"physics"})]
+        assert state["messages"][-1].content == "One matching record."
+
+    import os
+    from unittest.mock import patch
+    with patch.dict(os.environ, {"DRAGONZPYDER_MCP_USER_CONNECTIONS_ENABLED":"1",
+                    "DRAGONZPYDER_AGENT_WEB_SEARCH_ENABLED":"0",
+                    "DRAGONZPYDER_AGENT_QUICKJS_ENABLED":"0"}):
+        asyncio.run(run())
+
+
+def test_direct_prefetch_does_not_execute_or_remove_lazy_fallback():
+    from agent_platform.mcp_managed_catalog import direct_read_tools
+
+    class Catalog(McpRunCatalog):
+        async def describe(self, provider_id, tool_name):
+            raise RuntimeError("synthetic unavailable")
+        async def invoke(self, *args, **kwargs):
+            raise AssertionError("Prefetch must not execute")
+
+    catalog = Catalog([entry("archive", "document.list")])
+    assert asyncio.run(direct_read_tools(catalog, "list documents")) == []
+    assert [t.name for t in catalog_tools(catalog)] == [
+        "search_tools","describe_tool","invoke_tool"]
