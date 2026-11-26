@@ -113,13 +113,13 @@ async def put(db, *, owner, name, mime, data, direction="upload", run_id=None, a
                     or row["filename"]!=name or row["content_type"]!=mime
                     or row["sha256"]!=digest or row["byte_count"]!=len(data)):
                 raise HTTPException(409,"Artifact publication identity conflict")
-            if row["storage_state"]=="deleting":
+            if row["storage_state"] in ("deleting","deleted"):
                 raise HTTPException(409,"Artifact deletion in progress")
             if row["storage_state"]=="ready":
                 return metadata(row)
             # Pending writes are reconciled by readback only, never overwritten.
         else:
-            usage=await db.fetchrow("SELECT count(*) AS files, COALESCE(sum(byte_count),0) AS bytes FROM dz_agent_artifacts WHERE owner_id=$1",owner)
+            usage=await db.fetchrow("SELECT count(*) AS files, COALESCE(sum(byte_count),0) AS bytes FROM dz_agent_artifacts WHERE owner_id=$1 AND storage_state<>\'deleted\'",owner)
             if usage["files"]>=MAX_FILES or usage["bytes"]+len(data)>OWNER_QUOTA:
                 raise HTTPException(429,"Artifact storage quota reached; delete unused files")
             key=object_key(owner,file_id) if backend=="s3" else None
@@ -180,6 +180,8 @@ async def delete(db, *, owner, file_id):
         row=await db.fetchrow("SELECT * FROM dz_agent_artifacts WHERE owner_id=$1 AND id=$2 FOR UPDATE",owner,file_id)
         if row is None:
             raise HTTPException(404,"Artifact not found")
+        if row["storage_state"]=="deleted":
+            return
         if row["storage_state"]=="pending":
             # A provider upload might still be running. Reconcile the pending
             # operation before removing its quota reservation or object key.
