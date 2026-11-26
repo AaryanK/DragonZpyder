@@ -11,7 +11,9 @@ const paths = {
   check:"M5 12L10 17L19 7",send:"M12 20V4 M5 11L12 4L19 11",panel:"M3 4H21V20H3Z M9 4V20",
   shield:"M12 3L21 7V12C21 17 17 21 12 23C7 21 3 17 3 12V7Z M8 12L11 15L16 10",
   idea:"M9 18H15 M10 22H14 M8 14C3 8 8 3 12 3S21 8 16 14L15 16H9Z",
-  plan:"M4 5H20V20H4Z M8 3V7 M16 3V7 M8 11H16 M8 15H13"
+  plan:"M4 5H20V20H4Z M8 3V7 M16 3V7 M8 11H16 M8 15H13",
+  tasks:"M8 4H5V21H19V4H16 M8 2H16V6H8Z M8 12L10 14L14 10 M8 17H16",
+  tools:"M4 4H10V10H4Z M14 4H20V10H14Z M4 14H10V20H4Z M14 14H20V20H14Z"
 };
 export function UiIcon({name,className="",size=20}) {
   return <svg className={`dz-ui-icon ${className}`} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d={paths[name]}/></svg>;

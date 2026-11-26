@@ -185,6 +185,8 @@ async function profile(){
   return;
  }
  try{const route=await request("/dz/status");nativeMode=route.web_cutover_enabled===true||route.native_session_present===true||location.pathname==="/login";}catch{nativeMode=location.pathname==="/login";}
+ window.dragonzpyderNativeMode=nativeMode;
+ window.dispatchEvent(new CustomEvent("dragonzpyder:runtime-mode",{detail:{firstParty:nativeMode}}));
  if(nativeMode){
   $("dragonzpyder-central-signin").hidden=true;
   $("legacy-login-link").hidden=location.pathname!=="/login";

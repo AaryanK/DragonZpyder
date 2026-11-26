@@ -160,3 +160,28 @@ test("native identity initials are not the device name and unavailable chat cann
   await expect(page.locator("#message-input")).toHaveValue("Preserve this draft");
   expect(submissions).toBe(0);
 });
+
+test("native Personal goals show server receipts without legacy execution", async ({page}) => {
+  const id="00000000-0000-4000-8000-000000000042",legacy=[];
+  await page.route("**/api/**",r=>{legacy.push(r.request().url());return r.fulfill({status:410,body:"legacy retired"})});
+  await page.route("**/dz/status",r=>r.fulfill({json:{web_cutover_enabled:true}}));
+  await page.route("**/dz/v2/personal/session",r=>r.fulfill({json:{authenticated:true,native_chat_enabled:true}}));
+  await page.route("**/dz/identity/v1/me",r=>r.fulfill({json:{display_name:"Ada Lovelace"}}));
+  await page.route("**/dz/v2/personal/conversations",r=>r.fulfill({json:{conversations:[]}}));
+  await page.route("**/dz/v2/personal/archive/conversations?*",r=>r.fulfill({json:{conversations:[],next_offset:null}}));
+  await page.route("**/dz/v2/personal/goals",r=>r.fulfill({json:{goals:[{goal_id:id,state:"active",completed_wakes:2,total_wakes:5,updated_at:"2026-11-26T00:00:00Z"}]}}));
+  await page.route("**/dz/v2/personal/goals/"+id,r=>r.fulfill({json:{goal_id:id,state:"active",receipts:[{sequence:1,status:"completed",tool_names:["tasks.list"],at:"2026-11-26T00:00:00Z"}]}}));
+  await page.goto("/app");
+  await page.locator(".sidebar").getByRole("button",{name:"Tasks & goals"}).click();
+  const dialog=page.getByRole("dialog",{name:"DragonZpyder Personal goals"});
+  await expect(dialog.getByText("2 of 5 scheduled wakes")).toBeVisible();
+  await dialog.getByRole("button",{name:"Details",exact:true}).click();
+  await expect(dialog.getByText("tasks.list",{exact:true})).toBeVisible();
+  await dialog.getByRole("button",{name:"Cancel goal",exact:true}).click();
+  await expect(dialog.getByRole("button",{name:"Confirm cancellation"})).toBeVisible();
+  await dialog.getByRole("button",{name:"Keep goal"}).click();
+  await expect(dialog.getByRole("button",{name:"Confirm cancellation"})).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  expect(legacy).toEqual([]);
+});

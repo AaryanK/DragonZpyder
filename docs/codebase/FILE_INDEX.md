@@ -780,3 +780,5 @@ These entries reconcile paths added after the documented baseline; Indexed descr
 - [`android/tests/test_native_alignment.py`](../../android/tests/test_native_alignment.py) — Indexed; inspect source or directory guide.
 - [`web/frontend/src/UiIcon.jsx`](../../web/frontend/src/UiIcon.jsx) — Presentation-only 24-unit vector icon component; accessible names belong to controls; used by PersonalTemplate and WorkspaceControls.
 - [`web/frontend/src/dz-mark.svg`](../../web/frontend/src/dz-mark.svg) — Canonical flat DZ geometric monogram; two closed paths, even-odd D counter, transparent background, 64-unit viewBox; read by web and Android build scripts.
+
+- [`web/frontend/src/NativeGoals.jsx`](../../web/frontend/src/NativeGoals.jsx) — Owner-scoped native goal presentation and cancellation controls.

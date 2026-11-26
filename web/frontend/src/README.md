@@ -28,3 +28,5 @@ Read [repository instructions](../../../AGENTS.md) and [codebase navigation](../
 - `dz-mark.svg`: canonical monogram consumed by the desktop asset build and Android resource generation.
 - `UiIcon.jsx`: outline icon geometry, used by the Personal shell and workspace controls.
 - `PersonalTemplate.jsx`: compact shell; preserves controller IDs. `web/app.js` still owns identity and chat capability presentation.
+
+`NativeGoals.jsx` renders first-party goal list, wake counts, receipts and explicit cancellation through the existing owner-scoped API. `NativeMcpCenter.jsx` provides the native connections/goals navigation; no legacy execution fallback.

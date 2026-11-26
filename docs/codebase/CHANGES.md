@@ -37,3 +37,15 @@ For each implementation change, add a new bullet beginning with the exact reposi
 - `web/frontend/tests/native-routing.spec.js`: Asserts unavailable history is not mislabeled as empty when chat capability is gated. Existing native authorization fixture retained.
 
 Removed the three Markdown guides from Android drawable, values and xml resource folders because AAPT rejects them; their parent guide now documents the resource paths.
+
+## 2026-11-26 — V2 native tasks and capability center
+
+- `web/frontend/src/NativeGoals.jsx`: First-party goal list/detail/receipts and explicitly confirmed cancellation using owner-scoped native routes and CSRF; progress counts are service-reported, no guessed titles or scheduler creation. CI and live qualification pending.
+- `web/frontend/src/NativeMcpCenter.jsx`: Native capability center switches between connections and first-party goals, focus containment and honest loading/empty states; retains authorized MCP aliases. CI and live qualification pending.
+- `web/frontend/src/WorkspaceCenter.jsx`: Uses shared outline icons and delegates focus ownership to native center in first-party mode. CI and live qualification pending.
+- `web/frontend/src/WorkspaceControls.jsx`: Adds Tasks and goals command and accurate workflow navigation copy. CI and live qualification pending.
+- `web/frontend/src/UiIcon.jsx`: Adds tasks and tool vector geometry. CI and live qualification pending.
+- `web/frontend/src/PersonalTemplate.jsx`: Direct Personal tasks navigation opens capability center. CI and live qualification pending.
+- `web/frontend/src/workspace-center.css`: Semantic V2 surface/text/accent palette and responsive controls across native/legacy capability centers. CI and live qualification pending.
+- `web/account.js`: Broadcasts resolved native routing mode to React capability center before profile use, avoiding obsolete Operly connector routes for native accounts. CI and live qualification pending.
+- `web/frontend/tests/native-routing.spec.js`: Mock goal readback checks real wake counts, receipts, cancellation confirmation and absence of legacy requests. CI and live qualification pending.

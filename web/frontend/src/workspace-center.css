@@ -111,3 +111,27 @@ html[data-workspace-theme="light"] .dz-center-search input{color:#2f312d}
 html[data-workspace-theme="light"] .dz-center-create-workspace input{background:#fff;color:#312b27;border-color:#ddd2c8}
 html[data-workspace-theme="light"] .dz-center-message{background:#f0e7d9;color:#60492f;border-color:#e0c8ac}
 html[data-workspace-theme="light"] .dz-center-tag.active{background:#e9f2e6;color:#426447;border-color:#cadcc9}
+
+/* V2 capability center shares the Personal palette, with safe account defaults. */
+.dz-center-shell {--center-bg:var(--dz-shell-bg,#141415);--center-surface:var(--dz-shell-surface,#1d1d20);--center-raised:var(--dz-shell-raised,#27272a);--center-line:var(--dz-shell-line,#38383d);--center-ink:var(--dz-shell-text,#f4f3f1);--center-muted:var(--dz-shell-muted,#a1a1aa);--center-accent:var(--dz-shell-accent,#ee814d)}
+html .dz-center-shell,html[data-workspace-theme] .dz-center-shell {background:var(--center-bg);color:var(--center-ink);border-color:var(--center-line);border-radius:16px}
+html .dz-center-rail,html[data-workspace-theme] .dz-center-rail {background:var(--center-surface);border-color:var(--center-line)}
+html .dz-center-rail nav :is(button,a),html[data-workspace-theme] .dz-center-rail nav :is(button,a) {display:flex;align-items:center;gap:10px;min-height:44px;padding:0 12px;color:var(--center-muted);text-decoration:none;border-radius:8px}
+html .dz-center-rail nav :is(button,a):hover,html[data-workspace-theme] .dz-center-rail nav :is(button,a):hover,html[data-workspace-theme] .dz-center-rail nav button.selected,html .dz-center-rail nav button.selected {background:var(--center-raised);color:var(--center-ink)}
+html .dz-center-top,html[data-workspace-theme] .dz-center-top {height:56px;color:var(--center-ink);border-color:var(--center-line)}
+html .dz-center-body {padding:clamp(16px,3vw,32px)}
+html .dz-center-intro h2 {font-size:clamp(26px,3vw,36px);letter-spacing:-.035em;line-height:1.2}
+html .dz-center-intro p,html[data-workspace-theme] .dz-center-intro p,html[data-workspace-theme] .dz-center-row-body :is(small,p),html .dz-center-row-body :is(small,p),html[data-workspace-theme] .dz-center-fineprint,html .dz-center-fineprint {color:var(--center-muted);font-size:13px}
+html .dz-center-row,html[data-workspace-theme] .dz-center-row {border-color:var(--center-line);padding:12px 14px}
+html .dz-center-row-body strong {font-size:14px;overflow-wrap:anywhere}
+html .dz-center-row-body input[type=checkbox] {accent-color:var(--center-accent);width:20px;height:20px;margin:0 8px 0 0;vertical-align:middle}
+html label.dz-center-row-body {cursor:pointer}
+html label.dz-center-row-body strong {display:inline}
+html .dz-center-row-body progress {width:100%;accent-color:var(--center-accent);height:7px;margin-top:8px}
+html .dz-center-shell :is(.dz-center-list,.dz-center-feature,.dz-center-detail,.dz-center-empty,.dz-center-info,.dz-center-search),html[data-workspace-theme] .dz-center-shell :is(.dz-center-list,.dz-center-feature,.dz-center-detail,.dz-center-empty,.dz-center-info,.dz-center-search) {background:var(--center-surface);border-color:var(--center-line);color:var(--center-ink)}
+html .dz-center-shell :is(.dz-center-provider,.dz-center-tag),html[data-workspace-theme] .dz-center-shell :is(.dz-center-provider,.dz-center-tag) {background:var(--center-raised);color:var(--center-ink);border-color:var(--center-line)}
+html .dz-center-shell :is(.dz-center-small-button,.dz-center-row-actions button,.dz-center-top button),html[data-workspace-theme] .dz-center-shell :is(.dz-center-small-button,.dz-center-row-actions button,.dz-center-top button) {min-height:44px;color:var(--center-ink);border:1px solid var(--center-line);background:var(--center-raised);border-radius:8px}
+html .dz-center-shell :is(button,a,input):focus-visible {outline:2px solid var(--center-accent);outline-offset:3px}
+html .dz-center-section-header button {color:var(--center-accent);min-height:44px}
+html .dz-center-shell button:disabled {opacity:.5;cursor:not-allowed}
+@media(max-width:700px){html .dz-center-shell,html[data-workspace-theme] .dz-center-shell{border-radius:0}html .dz-center-rail{padding:10px 12px}html .dz-center-rail nav{margin-top:6px}html .dz-center-body{padding:16px 16px max(20px,env(safe-area-inset-bottom))}html .dz-center-row-actions{padding-left:0}}

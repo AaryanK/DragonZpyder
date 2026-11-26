@@ -131,6 +131,7 @@ export function PersonalTemplate() {
       <div className="sidebar-navigation" aria-label="Navigation">
         <a className="nav-link selected" href="/app" aria-current="page"><span className="nav-glyph"><UiIcon name="chat"/></span> Conversations</a>
         <button type="button" className="nav-link dz-center-nav-link" onClick={() => window.dispatchEvent(new CustomEvent("dragonzpyder:center-open", { detail: { page: "connections" } }))}><span className="nav-glyph"><UiIcon name="plug"/></span> Connections &amp; tools</button>
+        <button type="button" className="nav-link dz-center-nav-link" onClick={() => window.dispatchEvent(new CustomEvent("dragonzpyder:center-open", { detail: { page: "tasks" } }))}><span className="nav-glyph"><UiIcon name="tasks"/></span> Tasks &amp; goals</button>
         <a className="nav-link" href="/account"><span className="nav-glyph"><UiIcon name="user"/></span> Account &amp; security</a>
       </div>
       <button className="new-chat" id="new-chat"><UiIcon name="plus"/> New chat</button>
