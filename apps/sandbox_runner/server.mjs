@@ -334,50 +334,87 @@ async function statusSession(runtimeId, scope) {
 }
 
 async function destroySession(runtimeId, scope) {
-  const {box} = await scopedBox(runtimeId, scope, true);
-  try { await box.destroy(); }
-  catch { throw Object.assign(new Error("Computer destruction outcome unconfirmed"), {statusCode:503}); }
-  return { id: cleanId(runtimeId), state: "stopped", destroyed: true };
+  const id = cleanId(runtimeId);
+  if (activeSessions.has(id)) throw Object.assign(new Error("Computer session is busy"), {statusCode:409});
+  activeSessions.add(id);
+  try {
+    const {box} = await scopedBox(id, scope, true);
+    try { await box.destroy(); }
+    catch { throw Object.assign(new Error("Computer destruction outcome unconfirmed"), {statusCode:503}); }
+    return {id,state:"stopped",destroyed:true};
+  } finally {
+    activeSessions.delete(id);
+  }
 }
 
 function shellQuote(value) { return `'${String(value).replaceAll("'", `'"'"'`)}'`; }
 
+const activeSessions = new Set();
+
 async function executeTool(runtimeId, toolId, scope, rawArgs) {
-  const {box} = await scopedBox(runtimeId, scope);
-  if (String(box.status || "") !== "RUNNING") throw Object.assign(new Error("Computer runtime is not running"), { statusCode: 409 });
-  const tool = cleanTool(toolId);
-  const args = parseToolArguments(tool, rawArgs);
-  const requestId = crypto.randomUUID();
-  const requestPath = `${REQUESTS}/${requestId}.json`;
-  const raw = Buffer.from(JSON.stringify(args && typeof args === "object" ? args : {}));
-  if (raw.length > MAX_REQUEST_BYTES) throw Object.assign(new Error("tool arguments exceed policy"), { statusCode: 413 });
-  // Root-owned directory prevents untrusted symlink/replacement races.
-  await box.files.write(requestPath, raw, { mode: 0o440 });
-  await requiredBootstrapExec(box, "protect-tool-request", `chown root:operly ${shellQuote(requestPath)} && chmod 0440 ${shellQuote(requestPath)}`);
-  const requestedTimeout = Number(args?.timeout_seconds || 30);
-  const timeoutSec = Math.max(20, Math.min(requestedTimeout + 15, 75));
-  let result;
+  const id = cleanId(runtimeId);
+  if (activeSessions.has(id)) throw Object.assign(new Error("Computer session is busy"), {statusCode:409});
+  activeSessions.add(id);
+  let box, requestPath, outputPath;
   try {
-    result = await box.exec(
-      `su -s /bin/bash operly -c ${shellQuote(`${PYTHON} /opt/operly-computer-tool.py ${tool} ${requestPath}`)}`,
+    ({box} = await scopedBox(id, scope));
+    if (String(box.status || "") !== "RUNNING") throw Object.assign(new Error("Computer runtime is not running"), { statusCode: 409 });
+    const tool = cleanTool(toolId);
+    const args = parseToolArguments(tool, rawArgs);
+    const requestId = crypto.randomUUID();
+    requestPath = `${REQUESTS}/${requestId}.json`;
+    outputPath = `${REQUESTS}/${requestId}.out`;
+    const raw = Buffer.from(JSON.stringify(args));
+    if (raw.length > MAX_REQUEST_BYTES) throw Object.assign(new Error("tool arguments exceed policy"), { statusCode: 413 });
+    await box.files.write(requestPath, raw, { mode: 0o440 });
+    await requiredBootstrapExec(box, "protect-tool-request", `chown root:operly ${shellQuote(requestPath)} && chmod 0440 ${shellQuote(requestPath)}`);
+    const requestedTimeout = Number(args?.timeout_seconds || 30);
+    const timeoutSec = Math.max(20, Math.min(requestedTimeout + 15, 75));
+    // Use the files API for the bounded JSON packet. The pinned SDK's exec
+    // stream is not a binary/artifact transport. Root opens the output file;
+    // the child only inherits stdout, not permission to replace the file.
+    const invocation = `${PYTHON} /opt/operly-computer-tool.py ${tool} ${requestPath}`;
+    const result = await box.exec(
+      `umask 077; su -s /bin/bash operly -c ${shellQuote(invocation)} > ${shellQuote(outputPath)}`,
       { cwd: WORKSPACE, timeoutSec },
     );
+    // A lost/terminated exec cannot be treated as a valid completion.
+    if (result?.timedOut || result?.exitCode == null || ![0,1].includes(result.exitCode)) {
+      throw Object.assign(new Error("Computer tool outcome unconfirmed"), {statusCode:503});
+    }
+    // No lingering agent-owned processes may race subsequent file operations.
+    await requiredBootstrapExec(box,"cleanup-tool-processes",
+      'pkill -KILL -u 10001; code=$?; test "$code" = 0 || test "$code" = 1');
+    const bytes = Buffer.from(await box.files.read(outputPath, {
+      format:"bytes",length:MAX_RESPONSE_BYTES+1,
+    }));
+    if (bytes.length>MAX_RESPONSE_BYTES) throw Object.assign(new Error("Computer result exceeds policy"), {statusCode:413});
+    let packet;
+    try { packet=JSON.parse(bytes.toString("utf8")); }
+    catch { throw Object.assign(new Error("Computer sandbox returned invalid tool output"), {statusCode:502}); }
+    if (!packet || typeof packet !== "object" || Array.isArray(packet)
+        || typeof packet.ok !== "boolean" || (packet.ok && result.exitCode!==0)
+        || (!packet.ok && result.exitCode!==1)) {
+      throw Object.assign(new Error("Invalid computer tool response"), {statusCode:502});
+    }
+    if (!packet.ok) {
+      return {runtime_state:"active",ok:false,
+        error:String(packet.error || "Computer tool failed").slice(0,2000),
+        error_type:String(packet.error_type || "ToolError").slice(0,100)};
+    }
+    if (!packet.result || typeof packet.result !== "object" || Array.isArray(packet.result)) {
+      throw Object.assign(new Error("Invalid computer result"), {statusCode:502});
+    }
+    return {...packet.result,runtime_state:"active",ok:true};
   } finally {
-    try { await box.exec(`rm -f ${shellQuote(requestPath)}`, { timeoutSec: 5 }); } catch {}
+    try {
+      if (box && requestPath && outputPath) {
+        await box.exec(`rm -f ${shellQuote(requestPath)} ${shellQuote(outputPath)}`,{timeoutSec:5});
+      }
+    } finally {
+      activeSessions.delete(id);
+    }
   }
-  const stdout = String(result.stdout || "").trim();
-  let packet;
-  try { packet = JSON.parse(stdout); }
-  catch { throw Object.assign(new Error("Computer sandbox returned invalid tool output"), { statusCode: 502 }); }
-  if (!packet || typeof packet !== "object") throw Object.assign(new Error("invalid Computer tool response"), { statusCode: 502 });
-  if (!packet.ok) {
-    return {
-      runtime_state: "active", ok: false,
-      error: String(packet.error || "Computer tool failed"), error_type: String(packet.error_type || "ToolError"),
-      runner_exit_code: result.exitCode, runner_stderr: String(result.stderr || "").slice(-12000),
-    };
-  }
-  return { runtime_state: "active", ok: true, ...packet.result };
 }
 
 function parseJson(raw) {
