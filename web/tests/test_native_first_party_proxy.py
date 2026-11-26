@@ -171,3 +171,13 @@ def test_native_origin_is_public_issuer_even_on_private_transport(monkeypatch):
             assert len(calls)==4
         finally:
             client.app.state.http=original
+
+
+def test_native_session_routes_without_global_cutover(monkeypatch):
+    monkeypatch.delenv("DRAGONZPYDER_FIRST_PARTY_WEB_CUTOVER_ENABLED", raising=False)
+    with TestClient(app, base_url="https://dragonzpyder.xyz") as client:
+        headers = {"cookie":"__Host-dz_identity=opaque; __Host-operly_session=legacy"}
+        assert client.get("/dz/status", headers=headers).json() == {
+            "web_cutover_enabled": False, "native_session_present": True}
+        assert client.get("/api/auth/sessions", headers=headers).status_code == 410
+        assert client.get("/mesh/models", headers=headers).status_code == 503

@@ -19,7 +19,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
-from identity.http_bridge import _identity_db, _issuer
+from identity.http_bridge import _identity_db, _issuer, _enabled as _identity_enabled
 from identity.sessions import SessionDenied, resolve_browser_session
 
 router = APIRouter(prefix="/v2/personal", tags=["first-party-personal"])
@@ -101,8 +101,16 @@ async def status():
 
 @router.get("/session")
 async def session(request: Request):
-    await _owner(request, changing=False)
-    return {"authenticated": True, "runtime": "dragonzpyder"}
+    # Authentication is independent of the agent rollout. Do not make a valid
+    # identity appear invalid just because the conversation schema is gated.
+    _identity_enabled()
+    try:
+        async with _identity_db() as conn:
+            await resolve_browser_session(conn, secret=request.cookies.get("__Host-dz_identity", ""))
+    except SessionDenied:
+        raise HTTPException(401, "Active DragonZpyder session required") from None
+    return {"authenticated": True, "runtime": "dragonzpyder",
+            "native_chat_enabled": (await status())["native_chat_enabled"]}
 
 
 def _goals_enabled():
