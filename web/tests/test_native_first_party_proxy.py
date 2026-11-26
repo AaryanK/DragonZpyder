@@ -147,3 +147,27 @@ def test_proof_proxy_never_relays_legacy_or_native_session_credentials(monkeypat
             assert calls[-1]==("",None,None)
         finally:
             client.app.state.http=original
+
+
+def test_native_origin_is_public_issuer_even_on_private_transport(monkeypatch):
+    import main
+    monkeypatch.setattr(main,"API","http://dragonzpyder-api.railway.internal:8080")
+    monkeypatch.setenv("DRAGONZPYDER_IMPORT_PROOF_WEB_ENABLED","1")
+    monkeypatch.setenv("DRAGONZPYDER_ACTIVE_RECOVERY_WEB_ENABLED","1")
+    calls=[]
+    def handler(request):
+        calls.append((str(request.url),request.headers.get("origin"),request.headers.get("referer")))
+        return httpx.Response(200,json={"ok":True})
+    with TestClient(app,base_url="https://dragonzpyder.xyz") as client:
+        original=client.app.state.http
+        client.app.state.http=httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        try:
+            for path in ("/identity/v1/import-proof/password","/identity/v1/recovery/start",
+                         "/identity/v1/password/login","/v2/personal/chat"):
+                assert client.post("/dz"+path,headers={"origin":"https://evil.invalid"},json={}).status_code==403
+                assert client.post("/dz"+path,headers={"origin":"https://dragonzpyder.xyz"},json={}).status_code==200
+                assert calls[-1]==("http://dragonzpyder-api.railway.internal:8080"+path,
+                    "https://api.dragonzpyder.xyz","https://api.dragonzpyder.xyz/")
+            assert len(calls)==4
+        finally:
+            client.app.state.http=original

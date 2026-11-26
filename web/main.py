@@ -17,6 +17,7 @@ from backend.chat_demo import router as chat_router
 ROOT = Path(__file__).resolve().parent
 DIST = ROOT / "dist"  # Vite-built React pages and fingerprinted assets
 API = os.getenv("DRAGONZPYDER_API_ORIGIN", "https://api.dragonzpyder.xyz").rstrip("/")
+IDENTITY_PUBLIC_ORIGIN = "https://api.dragonzpyder.xyz"
 CHAT_HOST = "chat.dragonspire.xyz"
 CHAT_PATHS = {"/chat", "/chat/app.js", "/chat/app.css", "/demo/session",
               "/demo/login", "/demo/logout", "/demo/chat", "/healthz"}
@@ -102,8 +103,11 @@ async def proxy(request: Request, destination: str, rewrite_origin=False, upstre
         # from attaching a previous caller's cookies when no cookie was sent.
         headers.setdefault("cookie", "")
     if rewrite_origin:
-        headers["origin"] = destination
-        headers["referer"] = destination + "/"
+        # Transport may use Railway private DNS; identity expects its public issuer.
+        # Native mutation routes validate browser Origin before reaching this proxy.
+        origin = IDENTITY_PUBLIC_ORIGIN if upstream_path and destination == API else destination
+        headers["origin"] = origin
+        headers["referer"] = origin + "/"
     if proof_only:
         data = bytearray()
         async for chunk in request.stream():
