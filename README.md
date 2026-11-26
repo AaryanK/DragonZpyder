@@ -1,84 +1,57 @@
 # DragonZpyder
 
-**One intelligence experience. Many models, tools, and environments. Verified work, not just answers.**
+**Express intent. Harness available intelligence. Complete and verify work.**
 
-DragonZpyder is an evolving **agentic AI platform** intended to help people express a goal, coordinate the best permitted models and tools, execute work over time, and verify what actually happened. Its longer-term ambition is to make computing feel less like manually operating disconnected apps and more like directing an accountable, persistent assistant.
+DragonZpyder is building the general-purpose intelligence layer through which people operate computers and applications. Instead of manually coordinating software, a person describes an objective through text, speech, vision or files. DragonZpyder discovers authorized capabilities, selects suitable models and execution mechanisms, performs the work, verifies the result, and can resume unfinished objectives over time.
 
-The design is deliberately **not** to build another monolithic agent framework or pretend that one model can do everything. DragonZpyder uses existing model providers, Deep Agents, LangGraph, MCP, schedulers, and governed tool runtimes, adding the integration, permissions, state, product experience, and outcome verification those components do not supply together.
+The goal is not another chatbot or coding agent, and not to own every model or application. It is to compose existing intelligence and computing resources into reliable, accountable digital work.
 
-**[Website](https://dragonzpyder.xyz/) · [Personal AI](https://dragonzpyder.xyz/app) · [Operly](https://operly.dragonzpyder.xyz/) · [Engineering notes](api/agent_platform/README.md) · [Platform ownership](docs/platform-ownership.md)**
+**[Website](https://dragonzpyder.xyz/) · [Personal AI](https://dragonzpyder.xyz/app) · [Universal Harness V4 — canonical architecture](docs/universal-harness-v4.md) · [Contributor/agent instructions](AGENTS.md) · [Platform ownership](docs/platform-ownership.md) · [Operly](https://github.com/AaryanK/Operly)**
 
-> **Status — November 21, 2026:** An actively developed, partially deployed platform, **not** a generally available autonomous computer replacement. The repository contains real model APIs, a React/FastAPI web product, an internal agent harness, PostgreSQL persistence, Hatchet workers, and guarded Operly MCP adapters. Their presence in source does **not** imply that every feature is enabled for every signed-in user. The Personal MCP bridge and scheduled Personal tool execution are still gated and have not passed a live, user-scoped, multi-wake production acceptance test.
+> **Status — November 25, 2026:** actively developed, partially deployed platform. The architecture below is the accepted direction, not a claim that universal autonomous computer use has shipped. Check actual source, feature gates, deployed SHA, and end-to-end evidence before asserting availability.
 
-## The product we are building
+## What the platform is designed to do
 
-A user should eventually be able to say *what they want done*, rather than specify every application, prompt, and sequence of clicks. The system should:
+A user can eventually request an outcome rather than specify individual tools: analyze a PDF and produce a report, write and run software, use a browser or application, create images/audio/video, or monitor a goal over time. The harness should choose among structured APIs/MCP, deterministic code execution, graphical computer use and specialized models. It should prefer the most reliable and economical suitable mechanism, enforce user authority, and return real artifacts or verified effects.
 
-1. **Understand the objective.** Plan the work, clarify only consequential uncertainty, and define measurable completion criteria.
-2. **Discover available capabilities.** Find permitted models, MCP tools, connected accounts, computer environments, and existing services without inventing access.
-3. **Execute and delegate.** Select capable models and specialized workers; run independent tasks in parallel when useful, with bounded costs and isolated authority.
-4. **Persist and resume.** Save goals, dependencies, checkpoints, approvals, results, and failures so a task survives requests and worker restarts.
-5. **Verify outcomes.** Read back actual artifacts, tool receipts, external state, and costs; distinguish evidence from an agent's claim of success.
-6. **Keep the user in control.** Enforce identity, per-tool permissions, revocation, approvals for consequential actions, spending limits, and privacy boundaries.
-
-**Operly** provides the governed real-world action layer and currently the authentication and Personal runtime used by DragonZpyder's web product. DragonZpyder's intended long-term role is the **shared intelligence and execution platform**; Operly remains authoritative for its business tenants, memberships, connected accounts, policies, tools, and approvals. A personal login must never imply permission to act for a business workspace.
-
-## Current implementation, without conflating code with rollout
-
-| Capability | Implemented or verified | Important boundary |
-| --- | --- | --- |
-| **Web experience** | React 19 + Vite 7 frontend, Python FastAPI delivery, Personal chat, account pages, model/media UI, and server-side proxying | Some features require provider credentials or explicit flags; compatibility controllers are still being migrated to React |
-| **Identity** | DragonZpyder browser login uses Operly's existing authenticated Personal session, via same-origin `/api/*` | Independent DragonZpyder identity/OIDC migration remains future work; no implicit Workspace permissions |
-| **AI Mesh experience** | Model selection and chat/media endpoints exist, including guarded image, speech, transcription and video paths | This is not a universal, contractually available model/app marketplace or full autonomous model router |
-| **Inference gateway** | Separate service-authenticated FastAPI API with model allowlists, server-side provider access, usage accounting and policy checks | Per-user/global cost enforcement and provider coverage need continued validation; the browser never receives provider keys |
-| **Agent harness** | Deep Agents + LangGraph, bounded specialists, virtual filesystem, approved tool adapters, and PostgreSQL checkpoints | Internal/operator-gated. Virtual files are not arbitrary host files; model output alone is not verified completion |
-| **Persistent jobs** | Dedicated Hatchet worker; real production ping execution; PostgreSQL checkpoint write and resume across fresh production deployments | Those production proofs used a zero-inference ping and **synthetic** tool messages, not real Personal account tools |
-| **Long-horizon model/tool canary** | Isolated staging three-wake read-only local tool selection completed, persisted receipts, and stopped on terminal state | The selected local tools were not Operly Personal tools and do not prove general unattended work |
-| **Operly MCP** | Native LangChain MCP adapter, server authorization, read-only tool tests, and first-party Personal delegation code merged across repositories | Personal MCP execution for logged-in end users remains disabled pending live end-to-end and revocation acceptance |
-| **Personal multi-wake path** | Source includes a session-bound Personal run route, PostgreSQL goal/receipt ledger, replay protections, and an opt-in Hatchet wake | Two-wake and cross-user tests use real PostgreSQL but simulated remote calls. No public recurring Personal jobs are enabled |
-| **Parallelism / verification** | Bounded LangGraph fan-out, specialist agents, verification-oriented tests and receipt checks | Not yet a globally budgeted, durable, externally verified parallel execution system |
-| **Memory and computer tools** | Mem0/pgvector experiment and a scoped Operly computer adapter exist | Neither authorizes arbitrary end-user desktop control; complete memory retention/erasure is not production-certified |
-| **Project IC / AIC** | Research and product concept | **No launched AIC wallet, transferable token, universal subscription, or issued currency** |
-
-**Operational snapshot (November 21, 2026):** The existing Railway production API and Hatchet worker were deployed from `develop` at merge `55044a93`; the production web service remained on its earlier pinned build. Production tests verified an authenticated worker-to-gateway request, a real Hatchet ping, and synthetic LangGraph tool-message persistence across two separate deployments. All eight DragonZpyder production services were healthy after those tests. These are **infrastructure acceptance results**, not an end-to-end Personal MCP or live multi-wake agent success claim. Runtime status can change independently of this README.
-
-## Architecture and ownership
+## Target architecture
 
 ```text
-User / web client
-    |
-    v
-DragonZpyder Web (React/Vite -> FastAPI)
-    |                              |
-    | same-origin /api/*           | /mesh/* and media/voice routes
-    v                              v
-Operly authentication        DragonZpyder model/provider boundary
-+ existing Personal runtime  (authenticated gateway, metering, limits)
-    |                              |
-    | current Personal chat        v
-    |                        Permitted AI providers
-    |
-    | gated first-party Personal delegation (NOT enabled by default)
-    v
-DragonZpyder Agent Harness (Deep Agents + LangGraph)
-    |           |                |
-    |           |                +--> specialist agents / bounded fan-out
-    |           +--> PostgreSQL checkpoints and goal/receipt ledger
-    +--> Hatchet worker and explicitly authorized wakes
-    |
-    +--> approved outbound MCP client
-              |
-              v
-         Operly MCP server
-              |
-              v
-       Operly Kernel + per-user capability registry
-       (membership, connector availability, policy, approvals, audit)
+Text / speech / vision / files / web / mobile / desktop / Operly
+                             |
+                  Unified identity and sessions
+                             |
+               DragonZpyder shared intelligence
+                  Deep Agents + LangGraph
+         planning / context / skills / delegation / verification
+                             |
+                Governed capability discovery and execution
+                /            |                |            \
+          MCP / APIs     Files / shell     Browser / GUI   Models / media
+                \            |                |            /
+                 scoped execution, artifacts and receipts
+                             |
+            Hatchet + PostgreSQL + object storage + Langfuse
 ```
 
-The **model never becomes the source of authorization**. Operly validates the already signed-in Personal user and, when the bridge is explicitly enabled, issues a short-lived delegation for that user's currently allowed tools. DragonZpyder discovers only those tools and presents a separate first-party service proof. Operly revalidates the session and authorization at the MCP boundary. No browser cookies, OAuth provider secrets, or broad administrator tokens belong in model context or LangGraph checkpoints.
+Deep Agents, LangGraph, OpenRouter/direct providers, Hatchet, existing MCP infrastructure and sandbox abstractions are foundations to extend, not duplicate. Realtime voice is an interface to the shared harness, not a second execution engine. Personal identity, native intelligence, artifacts and computer environments belong to DragonZpyder; Operly remains authoritative for its own business data, workspaces, memberships, application workflows, policies and approvals. Never infer business access from Personal login.
 
-A scheduled Personal wake obtains **fresh** authority. The current session-bound mechanism must stop when the source Operly session expires or is revoked. Truly unattended work lasting beyond a browser session requires a separate consented **durable grant** with its own lifecycle, expiry, revocation, and policy checks—not an indefinitely reusable session token.
+## Current source and rollout boundaries
+
+| Capability | Source baseline | Remaining boundary |
+| --- | --- | --- |
+| Core harness | Deep Agents, LangGraph, virtual filesystem, bounded specialists | Real executable sandbox, skills and generalized capability policy |
+| Native chat | First-party text API, identity and conversation paths, streaming and MCP account IDs | Attachment IDs, artifact stream, verified deployment/cutover |
+| Computer | Signed scoped runner transport | Not bound as general agent tool; genuine Personal authorization and isolation proof |
+| Models and media | Metered gateway; image, transcription, speech and video routes | Integrated multimodal agent workflows; provider availability and cost gates |
+| Voice | Audio-only first-party WebRTC code | No execution tools in inspected session; shared conversation and execution bridge needed |
+| External tools | MCP broker, managed OAuth connections and lazy discovery | End-to-end permission, revocation and rollout evidence |
+| Durable tasks | Hatchet, PostgreSQL checkpoints, goal/receipt paths | General multi-wake task execution, recovery and budget proof |
+| Memory | Experimental Mem0 integration | Consent, retention and complete erasure before rollout |
+| Artifacts | Virtual file readbacks | Real binary upload/download, durable metadata and object storage |
+| Project IC / AIC | Research concept | No launched wallet, transferable token or universal subscription |
+
+Historical operational results from November 21 and earlier remain available in the previous README revisions and engineering notes. A source-level implementation or successful mock is not proof of a production feature. The [V4 contract](docs/universal-harness-v4.md#current-source-baseline-and-gaps-2026-11-25) records current gaps and how to update them.
 
 ## Repository map
 
@@ -95,16 +68,16 @@ A scheduled Personal wake obtains **fresh** authority. The current session-bound
 | [`api/agent_platform/personal_wake.py`](api/agent_platform/personal_wake.py) | Opt-in session-renewed Hatchet wakes, durable progress and receipts |
 | [`api/agent_platform/worker.py`](api/agent_platform/worker.py) | Dedicated Hatchet worker registration |
 | [`api/agent_platform/memory.py`](api/agent_platform/memory.py) | Experimental Mem0 memory integration |
-| [`identity/`](identity/) | Independent identity/OIDC migration contracts; not the live sign-in authority |
+| [`identity/`](identity/) | Independent identity/OIDC migration contracts and first-party identity implementation; verify rollout |
 | [`docs/`](docs/) | Platform ownership and security guidance |
 | [`tests/`](tests/) and [`api/tests/`](api/tests/) | Client, agent, provider, authorization, persistence and integration regressions |
 | [`legacy/`](legacy/) | Historical implementation material; do not treat as the current deployed harness |
 
-The related Operly repository owns the **inbound MCP server and governed Personal/Workspace tool registries**. Cross-repository integration landed in [Operly PR #383](https://github.com/AaryanK/Operly/pull/383) and [DragonZpyder PR #56](https://github.com/AaryanK/DragonZpyder/pull/56). Merged source is not equivalent to enabled customer access.
+The related Operly repository owns its **inbound MCP server and governed business capability registries**, with transitional Personal integrations subject to migration. Cross-repository integration landed in [Operly PR #383](https://github.com/AaryanK/Operly/pull/383) and [DragonZpyder PR #56](https://github.com/AaryanK/DragonZpyder/pull/56). Merged source is not equivalent to enabled customer access.
 
 ## Develop and test
 
-The actively integrated branch is **`develop`**. GitHub's repository default is still **`master`**; do not assume that the default branch contains the latest application or deployed integration. Production services may also be **pinned to specific commits** even when their configured branch is `develop`.
+The actively integrated branch is **`develop`**. GitHub's default branch is **`develop`** as of November 25, 2026; do not infer the deployed revision from the branch name. Production services may also be **pinned to specific commits** even when their configured branch is `develop`.
 
 ### Frontend
 
@@ -172,29 +145,22 @@ The agent, MCP, personal delegated execution, schedule registration, model spend
 
 For current security and ownership details, see [security baseline](docs/security-baseline.md), [platform ownership](docs/platform-ownership.md), [agent harness notes](api/agent_platform/AGENT_HARNESS_V3.md), and [long-horizon canary specification](api/agent_platform/REAL_LONG_HORIZON_STAGING.md). Some older engineering notes describe earlier branches; use current source, CI, and deployment evidence to resolve their historical status.
 
-## Roadmap: what needs to happen next
+## Roadmap: implementation in dependency order
 
-**P0 — make the actual user experience trustworthy**
+The [Universal Harness V4 contract](docs/universal-harness-v4.md) is the source of truth for the architecture, milestones, acceptance criteria and research references.
 
-1. **Complete Personal MCP acceptance.** Run a synthetic signed-in Operly user through the *live* first-party MCP bridge with a real model selecting read-only tools on at least two separate scheduled wakes. Verify the underlying Operly Kernel result, checkpoint readback, grant expiry, revocation, cross-user isolation, cost and replay handling.
-2. **Introduce durable, consented goals.** Move beyond a session-bound canary to an owner-scoped Goal Manager with persisted objectives, dependencies, attempt history, deadlines, pause/resume, approvals, cancellation and explicitly authorized wake policies.
-3. **Verify outcomes, not narratives.** Establish independent artifacts/external-state oracles, receipts, negative tests and transparent partial-completion reporting.
-4. **Make production spend predictable.** Enforce per-user and per-goal limits, atomic budgets across delegated/parallel workers, provider pricing checks and accurate usage reconciliation.
-5. **Ship a coherent agent UI.** Show goal state, why a tool is available, approval requests, step receipts, failures, resumptions, artifacts and actual incurred costs.
+1. Shared execution context, capability authorization, budgets, cancellation and receipts.
+2. Isolated real filesystem, shell and Python sandbox using Deep Agents backends.
+3. Durable artifact manager, authenticated uploads/downloads and sandbox transfers.
+4. Native multimodal chat, typed progress and artifact events across clients.
+5. Image, audio, speech and other media capabilities behind the same metered harness.
+6. Reviewed skills, lazy discovery, capability-aware model selection and scoped specialist construction.
+7. Browser/GUI, realtime voice execution bridge, bounded programmatic tool composition and durable recovery.
+8. Repeatable objective-level evaluation and continuous improvement.
 
-**P1 — expand useful, safely delegated execution**
+Work in small staging-first PRs. Public execution requires adversarial isolation, scope, revocation, replay, approval, cancellation and budget tests. Compare harnesses using matched models and fixtures; measure verified success, latency, cost and intervention. No performance parity is claimed.
 
-- Bounded parallel specialist workers with real concurrency measurement, durable parent-child recovery, cancellation and shared-resource isolation.
-- An outbound MCP broker with reviewed providers, user-scoped OAuth, safe discovery, policy enforcement, egress restrictions and genuine revocation.
-- Secure computer/browser execution in disposable sandboxes; local-device operation only with explicit per-device grants and credential isolation.
-- Multimodal and realtime experiences that use the same accountable execution and tool-authorization model across clients.
-- Long-term Personal memory only after consent, retention, complete deletion/erasure and data-migration guarantees are proven.
-
-**Research, not a shipping promise**
-
-- **AI Mesh:** broad provider and participating-app discovery, robust model routing and interoperability subject to vendor APIs and agreements. The currently deployed model/media UI is only a subset.
-- **Project IC / AIC:** a proposed, auditable prepaid usage balance shared across participating services. It is **not** a live wallet, a transferable token, or a way to obtain a vendor's paid subscription entitlements. Payments, compliance, pricing, refunds, fraud, and contractual rights must be solved first.
-- **Privacy-preserving local intelligence:** device-side context minimization and selective cloud consultation with measurable privacy controls; do not claim perfect anonymization.
+AI Mesh, Project IC/AIC and privacy-preserving local intelligence remain research directions, subject to provider agreements, security and legal/product validation.
 
 ## Engineering rule
 
