@@ -178,6 +178,21 @@ Removed the three Markdown guides from Android drawable, values and xml resource
 - `web/mesh.css`: Honor hidden capability controls despite switch styling. Integrated revision requires fresh CI; no live provider, storage or sandbox qualification asserted.
 - `web/mesh.js`: Route native attachment drafts to the canonical chat adapter instead of legacy Mesh. Integrated revision requires fresh CI; no live provider, storage or sandbox qualification asserted.
 
+
+## 2026-11-26 — screenshot-driven UI correction
+
+- `web/app.js`: Canonical account entrypoint redirects for signed-out sessions, retry state for outages, removes duplicate chat credential submission. CI and device verification pending.
+- `web/frontend/src/PersonalTemplate.jsx`: Simplifies sidebar and removes duplicate login markup; voice retained. CI and device verification pending.
+- `web/frontend/src/AccountTemplate.jsx`: Removes marketing hero and numbered settings headings; compact account navigation; preserves credential and recovery form IDs. CI and device verification pending.
+- `web/account.js`: Official Google outline widget and explicit legacy eligibility; failed routing does not silently downgrade to legacy. CI and device verification pending.
+- `web/ui-v1.css`: Explicit sidebar button reset and compact navigation/error UI; voice untouched. CI and device verification pending.
+- `web/account.css`: Compact sign-in and flat settings sections; preserves accessible controls and hidden states. CI and device verification pending.
+- `web/frontend/src/AppearanceSettings.jsx`: Concise appearance copy. CI and device verification pending.
+- `web/frontend/tests/ui.spec.js`: Checks transparent button styling, border reset and mobile targets in both themes. CI and device verification pending.
+- `web/frontend/tests/native-routing.spec.js`: Tests direct native redirect and failed-session retry without credential form. CI and device verification pending.
+
+- `web/frontend/scripts/check-build.mjs`: Replaces obsolete workspace-switcher presence assertion with new-chat navigation and explicit checks that the duplicate credential form and marketing intro are absent; preserves all voice, composer, and account controller assertions. Rerun pending.
+
 ## Modular voice transport
 
 - `api/agent_platform/modular_voice.py`: Room-scoped voice admission, expiry, participant token and authenticated worker turn dispatch. No live rollout or paid audio qualification performed.
