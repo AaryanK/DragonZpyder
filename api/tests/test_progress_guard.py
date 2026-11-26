@@ -368,3 +368,41 @@ def test_execution_limits_do_not_enable_stress_with_partial_flags(monkeypatch):
     monkeypatch.setenv(_STRESS_FLAGS[-1], "1")
     assert execution_limits().deadline_seconds == 220
     assert execution_limits(parent_job=True).deadline_seconds == 110
+
+
+def test_run_telemetry_redacts_inputs_and_tracks_unknown_usage():
+    from types import SimpleNamespace
+    from agent_platform.run_telemetry import RunTelemetry
+    from langchain_core.messages import AIMessage, ToolMessage
+    ticks=iter(range(0,100000000,1000000))
+    trace=RunTelemetry(clock=lambda:next(ticks))
+    trace.on_chat_model_start({"name":"secret-provider"},["private prompt"],run_id="private-id")
+    trace.on_llm_end(SimpleNamespace(generations=[[SimpleNamespace(message=AIMessage(
+        content="secret answer",usage_metadata={"input_tokens":9,"output_tokens":3,"total_tokens":12}))]]),
+        run_id="private-id")
+    trace.on_chat_model_start({},["private prompt"],run_id="m2")
+    trace.on_llm_end(SimpleNamespace(generations=[[SimpleNamespace(message=AIMessage(
+        content="private data"))]]),run_id="m2")
+    trace.on_tool_start({"name":"operly_secret_account"},"secret arguments",run_id="t1")
+    trace.on_tool_end(ToolMessage(name="operly_secret_account",tool_call_id="t1",
+        content='{"status":"waiting_for_approval","secret":"private"}'),run_id="t1")
+    trace.on_tool_start({"name":"write_file"},"secret arguments",run_id="t2")
+    trace.on_tool_error(RuntimeError("secret error"),run_id="t2")
+    trace.on_tool_start({"name":"eval"},"secret arguments",run_id="t3")
+    result=trace.snapshot(status="incomplete",termination_reason="execution_deadline")
+    assert result["model_started"]==2 and result["model_returned"]==2
+    assert result["observed_input_tokens"]==9 and result["observed_output_tokens"]==3
+    assert result["successful_models_missing_usage"]==1 and not result["token_usage_complete"]
+    assert result["tool_started"]==3 and result["tool_approval_required"]==1
+    assert result["tool_failed"]==1 and result["unfinished_callbacks"]==1
+    assert not result["callback_observation_complete"]
+    assert result["cost_usd"] is None and not result["objective_verified"]
+    assert "secret" not in str(result) and "private" not in str(result)
+    assert "operly_capability" in str(result)
+
+
+def test_run_telemetry_missing_or_duplicate_callback_is_not_complete():
+    from agent_platform.run_telemetry import RunTelemetry
+    trace=RunTelemetry()
+    trace.on_llm_error(RuntimeError("unknown"),run_id="missing")
+    assert not trace.snapshot(status="failed")["callback_observation_complete"]
