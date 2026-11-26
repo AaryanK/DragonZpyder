@@ -22,7 +22,8 @@ class ReleaseBenchmarks {
         packageName=target,metrics=listOf(StartupTimingMetric()),
         compilationMode=CompilationMode.None(),startupMode=StartupMode.COLD,iterations=20,
         setupBlock={pressHome()}
-    ){startActivityAndWait()}
+    ){startActivityAndWait(Intent().setComponent(ComponentName(target,
+        "xyz.dragonzpyder.android.MainActivity")))}
 
     // Local synthetic chat fixture is present only in the benchmark build type.
     @Test fun syntheticChatScroll()=benchmark.measureRepeated(
