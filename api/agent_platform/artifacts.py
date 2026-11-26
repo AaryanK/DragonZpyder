@@ -64,7 +64,7 @@ def metadata(row):
             "download_path":"/v2/personal/files/"+str(row["id"])}
 
 
-async def put(db, *, owner, name, mime, data, direction="upload", run_id=None):
+async def put(db, *, owner, name, mime, data, direction="upload", run_id=None, artifact_id=None):
     enc=cipher()
     name=filename(name)
     mime=media_type(mime)
@@ -73,11 +73,22 @@ async def put(db, *, owner, name, mime, data, direction="upload", run_id=None):
     if direction not in ("upload","generated") or (direction=="generated" and run_id is None):
         raise ValueError("Invalid artifact provenance")
     digest=hashlib.sha256(data).hexdigest()
-    file_id=uuid4()
+    if artifact_id is not None and (direction != "generated" or not isinstance(artifact_id,UUID)):
+        raise ValueError("Invalid generated artifact identity")
+    file_id=artifact_id or uuid4()
     nonce=os.urandom(12)
     encrypted=enc.encrypt(nonce,data,aad(owner,file_id,name,mime,digest,direction,run_id))
     async with db.transaction():
         await db.execute("SELECT pg_advisory_xact_lock(hashtextextended($1,0))","dz-artifacts:"+owner)
+        if artifact_id is not None:
+            existing=await db.fetchrow("SELECT * FROM dz_agent_artifacts WHERE owner_id=$1 AND id=$2",owner,file_id)
+            if existing is not None:
+                # Idempotent replay must match the same run, name, MIME and bytes.
+                if (existing["direction"]!=direction or existing["run_id"]!=run_id
+                        or existing["filename"]!=name or existing["content_type"]!=mime
+                        or existing["sha256"]!=digest or existing["byte_count"]!=len(data)):
+                    raise HTTPException(409,"Artifact publication identity conflict")
+                return metadata(existing)
         usage=await db.fetchrow("SELECT count(*) AS files, COALESCE(sum(byte_count),0) AS bytes FROM dz_agent_artifacts WHERE owner_id=$1",owner)
         if usage["files"]>=MAX_FILES or usage["bytes"]+len(data)>OWNER_QUOTA:
             raise HTTPException(429,"Artifact storage quota reached; delete unused files")
