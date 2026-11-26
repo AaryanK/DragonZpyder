@@ -642,8 +642,15 @@ async def _execute_chat(payload: ChatInput, request: Request, user: str, convers
         if not acquired:
             raise HTTPException(409, "Conversation is already processing another message")
         try:
+            routing = None
+            if os.getenv("DRAGONZPYDER_ADAPTIVE_ROUTING_ENABLED") == "1":
+                from .adaptive_routing import select_model
+                routing = select_model(payload.message,
+                    has_tools=bool(tools or computer_run or artifact_tools),
+                    has_attachments=bool(payload.attachment_ids))
+            selected_model = model_client(model_override=routing.model) if routing else model_client()
             agent = build_frontier_agent(
-                model_client(), runtime._checkpointer,
+                selected_model, runtime._checkpointer,
                 delegated_tools=tools if tools else None,
                 **({"artifact_tools":artifact_tools} if artifact_tools else {}),
                 **({"computer_run":computer_run,"computer_artifacts":computer_artifacts} if computer_run else {}),
@@ -679,6 +686,7 @@ async def _execute_chat(payload: ChatInput, request: Request, user: str, convers
         "conversation_id": str(conversation_id),
         "message": report["answer"][:16000],
         "dispatch": "dragonzpyder_first_party",
+        "model_route": routing.tier if routing else "default",
         "status": report["status"],
         "termination_reason": report.get("termination_reason"),
         "execution_receipts": execution_receipt_report(report),
