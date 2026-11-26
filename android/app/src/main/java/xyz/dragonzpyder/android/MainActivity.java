@@ -365,19 +365,17 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     }
     private void confirmSignOut(){alert().setTitle("Sign out of DragonZpyder?").setMessage("You’ll need to sign in again to access your Personal workspace on this device.").setNegativeButton("Cancel",null).setPositiveButton("Sign out",(d,i)->signOut()).show();}
     private void showCommands(){
-        Dialog sheet=new Dialog(this);LinearLayout page=column();page.setPadding(dp(16),dp(8),dp(16),dp(10));page.setBackground(surface(PANEL,24));
-        View handle=new View(this);handle.setBackground(surface(LINE,3));LinearLayout.LayoutParams hp=new LinearLayout.LayoutParams(dp(32),dp(4));hp.gravity=Gravity.CENTER_HORIZONTAL;hp.bottomMargin=dp(14);page.addView(handle,hp);
-        LinearLayout header=row();header.addView(heading("Commands",22),new LinearLayout.LayoutParams(0,-2,1));Button close=button("×",sheet::dismiss);close.setContentDescription("Close commands");header.addView(close,new LinearLayout.LayoutParams(dp(48),dp(48)));page.addView(header);
-        page.addView(text("Find an action in your Personal workspace.",13,MUTED));gap(page,10);
-        EditText search=field("Search commands",false);search.setSingleLine(true);page.addView(search);gap(page,8);
-        ScrollView scroller=new ScrollView(this);LinearLayout list=column();scroller.addView(list);page.addView(scroller,new LinearLayout.LayoutParams(-1,0,1));
+        if(chatUi==null||busy)return;
         String[] names={"New chat","Find conversations","Switch mode","Approvals","Dictate a message","Live voice","Toggle appearance","Connections & tools","Personal tasks","AI Mesh media","Account & security","Your tools"};
-        String[] icons={"＋","⌕","✦","◇","◉","♪","☾","⌘","◷","▧","◎","▦"};
+        String[] icons={"new","search","more","approvals","mic","voice","moon","connections","tasks","attach","account","connections"};
         Runnable[] actions={this::newChat,this::showMenu,this::showModes,this::approvals,this::dictate,this::showVoice,this::toggleTheme,this::showConnections,this::showTasks,this::showMedia,this::showAccount,this::showTools};
-        Runnable filter=()->{list.removeAllViews();String q=value(search).toLowerCase(Locale.ROOT);int count=0;for(int k=0;k<names.length;k++){final int n=k;if(names[k].toLowerCase(Locale.ROOT).contains(q)){list.addView(navRow(icons[k],names[k],false,()->{sheet.dismiss();actions[n].run();}));count++;}}if(count==0)list.addView(text("No matching commands.",14,MUTED));};
-        search.addTextChangedListener(new android.text.TextWatcher(){public void beforeTextChanged(CharSequence s,int a,int c,int f){}public void onTextChanged(CharSequence s,int a,int b,int c){filter.run();}public void afterTextChanged(android.text.Editable e){}});
-        filter.run();page.setFocusableInTouchMode(true);page.requestFocus();
-        sheet.setContentView(page);sheet.show();Window w=sheet.getWindow();if(w!=null){w.setBackgroundDrawableResource(android.R.color.transparent);w.setGravity(Gravity.BOTTOM|Gravity.CENTER_HORIZONTAL);w.setLayout(Math.min(getResources().getDisplayMetrics().widthPixels-dp(16),dp(520)),Math.min(dp(570),(int)(getResources().getDisplayMetrics().heightPixels*.78)));w.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE|WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN);}
+        ArrayList<String> availableNames=new ArrayList<>(),availableIcons=new ArrayList<>();ArrayList<Runnable> availableActions=new ArrayList<>();
+        for(int i=0;i<names.length;i++){
+            if(i==5&&!api.supportsVoice())continue;
+            if(i==9&&api.isFirstParty())continue;
+            availableNames.add(names[i]);availableIcons.add(icons[i]);availableActions.add(actions[i]);
+        }
+        chatUi.showCommands(availableNames.toArray(new String[0]),availableIcons.toArray(new String[0]),availableActions.toArray(new Runnable[0]));
     }
     private void showAdd(){
         if(api.isFirstParty()){
