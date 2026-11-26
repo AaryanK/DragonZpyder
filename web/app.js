@@ -255,7 +255,7 @@ async function bootstrapAuth() {
       const mesh = $("mesh-switch");
       if (mesh) mesh.hidden = true;
       const voice = $("companion-open");
-      if (voice) voice.hidden = true;
+      if (voice) voice.hidden = state.nativeCapabilities.voice_agent_enabled!==true;
     }
     await ensurePersonalSession();
     hideAuth();
@@ -780,7 +780,7 @@ async function submitViaClientAdapter(message,requestId,{files=[],allowComputer=
   return await api("/api/personal-agent/chat",{method:"POST",body});
 }
 
-async function sendMessage(message, { companion = false, fromComposer = false } = {}) {
+async function sendMessage(message, { companion = false, fromComposer = false, voiceTurn=null } = {}) {
   if (state.archiveSelected) { showToast("Start a new chat to continue.", 4000); return; }
   const selectedFiles=state.firstParty&&fromComposer?[...state.agentFiles]:[];
   const allowComputer=Boolean(state.firstParty&&fromComposer&&computerConsent?.checked);
@@ -806,7 +806,7 @@ async function sendMessage(message, { companion = false, fromComposer = false } 
 
   try {
     let preview="";
-    const result = await submitViaClientAdapter(clean, requestId,{files:selectedFiles,allowComputer,onEvent:event=>{
+    const result = voiceTurn ? await api("/dz/v2/personal/voice/"+encodeURIComponent(voiceTurn.sessionId)+"/turn",{method:"POST",body:{event_id:voiceTurn.eventId,transcript:clean}}) : await submitViaClientAdapter(clean, requestId,{files:selectedFiles,allowComputer,onEvent:event=>{
       if(event.type==="reset"){preview="";pending.value.textContent="";}
       if(event.type==="delta"&&typeof event.text==="string"){preview=(preview+event.text).slice(0,16000);pending.value.textContent=preview;}
       if(event.type==="phase"&&!preview&&typeof event.message==="string")pending.value.textContent=event.message.slice(0,300);
@@ -916,7 +916,7 @@ async function sendMessage(message, { companion = false, fromComposer = false } 
       inline.appendChild(review);
       pending.body.appendChild(inline);
     }
-    return { message: text, approval_required: Boolean(result.approval_id), blocked: Boolean(blocker) };
+    return { message: text, approval_required: Boolean(result.approval_id), blocked: Boolean(blocker), status:result.status||"unknown" };
   } catch (error) {
     pending.wrap.classList.remove("dz-running");
     pending.value.classList.add("error");
@@ -953,6 +953,24 @@ async function sendMessage(message, { companion = false, fromComposer = false } 
   }
 }
 window.dragonzpyderDelegatePersonalTask = (request) => sendMessage(request, { companion: true });
+window.dragonzpyderNativeVoiceStart=async(sessionId,sdp)=>{
+  if(!state.firstParty||!state.session||state.archiveSelected||state.sending||state.nativeCapabilities.voice_agent_enabled!==true)
+    throw Error("Native voice agent unavailable.");
+  return api("/dz/v2/personal/voice/start",{method:"POST",body:{
+    session_id:sessionId,sdp,agent_mode:true,
+    conversation_id:state.conversationId||null,mcp_connection_ids:[...state.selectedMcpConnections]
+  }});
+};
+window.dragonzpyderNativeVoiceTurn=(sessionId,eventId,transcript)=>
+  sendMessage(transcript,{companion:true,voiceTurn:{sessionId,eventId}});
+window.dragonzpyderNativeVoiceEnd=(sessionId)=>{
+  const csrf=sessionCsrf();
+  if(!csrf)return;
+  return fetch("/dz/v2/personal/voice/"+encodeURIComponent(sessionId)+"/end",{
+    method:"POST",credentials:"same-origin",keepalive:true,
+    headers:{"X-DZ-CSRF":csrf,"Content-Type":"application/json"},body:"{}"
+  }).catch(()=>{});
+};
 
 async function refreshApprovals() {
   if (state.firstParty) {
