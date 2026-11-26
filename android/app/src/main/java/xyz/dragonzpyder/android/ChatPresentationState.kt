@@ -18,7 +18,9 @@ internal data class ChatScreenState(
     val attachmentLabel:String="",
     val profileInitial:String="D",
     val voiceAvailable:Boolean=false,
-    val filesAvailable:Boolean=false
+    val filesAvailable:Boolean=false,
+    val goalsAvailable:Boolean=true,
+    val legacyActionsAvailable:Boolean=true
 )
 internal class ChatPresentationState {
     var snapshot by mutableStateOf(ChatScreenState())
