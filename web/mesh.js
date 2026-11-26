@@ -208,6 +208,7 @@ async function asDataUrl(file,mime){
 }
 async function setFiles(files){
  if(loading)return;
+ if(window.dragonzpyderQueueAgentFiles?.(files)){upload.value="";return;}
  const offered=Array.from(files||[]).filter(Boolean);if(!offered.length)return;
  const incoming=[];let bytes=assets.reduce((total,a)=>total+a.bytes,0);
  for(const file of offered){
