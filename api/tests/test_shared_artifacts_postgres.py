@@ -136,3 +136,97 @@ def test_vm_artifact_roundtrip_real_postgres_and_authenticated_download(monkeypa
             async with db_factory() as db:
                 await db.execute("DELETE FROM dz_agent_artifacts WHERE owner_id=$1",owner)
     asyncio.run(exercise())
+
+
+def test_object_backed_artifacts_atomic_publication_and_owner_isolation(monkeypatch):
+    import hashlib
+    from agent_platform import artifact_object_store
+    dsn=os.environ.get("DRAGONZPYDER_BUDGET_TEST_DSN")
+    if not dsn:
+        pytest.skip("PostgreSQL integration DSN required")
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_ARTIFACTS_ENABLED","1")
+    monkeypatch.setenv("DRAGONZPYDER_ARTIFACT_KEY_B64",base64.b64encode(os.urandom(32)).decode())
+    monkeypatch.setenv("DRAGONZPYDER_ARTIFACT_STORAGE_BACKEND","s3")
+    class ObjectStore:
+        def __init__(self):
+            self.objects={}
+            self.puts=0
+            self.reads=0
+            self.deletes=0
+            self.fail_after_put=False
+            self.fail_delete=False
+        async def put_new(self,key,data):
+            self.puts+=1
+            assert key not in self.objects
+            self.objects[key]=data
+            if self.fail_after_put:
+                raise TimeoutError("uncertain upload")
+        async def read(self,key,expected_size):
+            self.reads+=1
+            data=self.objects[key]
+            assert len(data)==expected_size
+            return data
+        async def delete(self,key):
+            self.deletes+=1
+            if self.fail_delete:
+                raise TimeoutError("uncertain delete")
+            self.objects.pop(key,None)
+    store=ObjectStore()
+    monkeypatch.setattr(artifact_object_store,"configured_store",lambda:store)
+    async def exercise():
+        db=await asyncpg.connect(dsn)
+        owner="object-artifacts-"+uuid4().hex
+        file_id,run_id=uuid4(),uuid4()
+        raw=b"private verified artifact bytes"
+        try:
+            sql=Path(__file__).resolve().parents[1]/"agent_platform/migrations/20261125_shared_artifacts.sql"
+            await db.execute(sql.read_text())
+            params=dict(owner=owner,name="report.txt",mime="text/plain",data=raw,
+                        direction="generated",run_id=run_id,artifact_id=file_id)
+            store.fail_after_put=True
+            with pytest.raises(HTTPException) as error:
+                await artifacts.put(db,**params)
+            assert error.value.status_code==503
+            row=await db.fetchrow("SELECT * FROM dz_agent_artifacts WHERE owner_id=$1 AND id=$2",owner,file_id)
+            assert row["storage_state"]=="pending" and row["ciphertext"] is None
+            assert row["object_key"]==artifact_object_store.object_key(owner,file_id)
+            assert raw not in store.objects[row["object_key"]]
+            with pytest.raises(HTTPException) as e:
+                await artifacts.get(db,owner=owner,file_id=file_id)
+            assert e.value.status_code==404
+            store.fail_after_put=False
+            info=await artifacts.put(db,**params)
+            assert store.puts==1 # reconcile existing bytes, do not reissue
+            assert info["sha256"]==hashlib.sha256(raw).hexdigest()
+            assert (await artifacts.get(db,owner=owner,file_id=file_id))[1]==raw
+            reads=store.reads
+            with pytest.raises(HTTPException) as e:
+                await artifacts.get(db,owner=owner+"-stranger",file_id=file_id)
+            assert e.value.status_code==404 and store.reads==reads
+            with pytest.raises(HTTPException) as e:
+                await artifacts.put(db,**dict(params,data=b"different"))
+            assert e.value.status_code==409
+            key=row["object_key"]
+            original=store.objects[key]
+            store.objects[key]=bytes([original[0]^1])+original[1:]
+            with pytest.raises(HTTPException) as e:
+                await artifacts.get(db,owner=owner,file_id=file_id)
+            assert e.value.status_code==503
+            store.objects[key]=original
+            store.fail_delete=True
+            with pytest.raises(HTTPException):
+                await artifacts.delete(db,owner=owner,file_id=file_id)
+            with pytest.raises(HTTPException) as e:
+                await artifacts.get(db,owner=owner,file_id=file_id)
+            assert e.value.status_code==404
+            store.fail_delete=False
+            await artifacts.delete(db,owner=owner,file_id=file_id)
+            assert key not in store.objects
+            assert await db.fetchval("SELECT storage_state FROM dz_agent_artifacts WHERE owner_id=$1 AND id=$2",owner,file_id)=="deleted"
+            with pytest.raises(HTTPException) as e:
+                await artifacts.put(db,**params)
+            assert e.value.status_code==409 and store.puts==1
+        finally:
+            await db.execute("DELETE FROM dz_agent_artifacts WHERE owner_id=$1",owner)
+            await db.close()
+    asyncio.run(exercise())
