@@ -25,11 +25,12 @@ from .mcp_connections import ConnectionDenied, OAuthConnectionManager, reviewed_
 
 class ManagedMcpRunCatalog(McpRunCatalog):
     def __init__(self, entries, *, owner: str, manager: OAuthConnectionManager,
-                 scheduled: bool):
+                 scheduled: bool, authorize=None):
         super().__init__(entries)
         self.owner = owner
         self.manager = manager
         self.scheduled = scheduled
+        self._authorize = authorize
         # One quota shared by ordinary tools and QuickJS host calls. A
         # cancelled or uncertain attempt consumes its slot; no refund/replay.
         self._deadline = monotonic() + 90
@@ -55,6 +56,17 @@ class ManagedMcpRunCatalog(McpRunCatalog):
         # signed service; the manager then enforces database ownership, active
         # revocation, current provider manifest, and refreshed OAuth authority.
         self._one(provider_id, tool_name)
+        if self._authorize is not None:
+            await self._authorize()
+        if self.scheduled:
+            # Recheck unattended-specific policy, not just ordinary read
+            # approval. The reviewed provider may change during a wake.
+            records=await self.manager.list_connections(self.owner)
+            record=next((x for x in records if x["connection_id"]==provider_id
+                         and x["status"]=="active"),None)
+            provider=reviewed_providers().get(record["provider_id"]) if record else None
+            if not provider or tool_name not in provider.scheduled_tools:
+                raise ConnectionDenied("Unattended capability no longer approved")
         grant = await self.manager.grant(
             owner=self.owner, alias=provider_id, capability=tool_name,
             authorized=True,
@@ -193,7 +205,7 @@ async def direct_read_tools(catalog, objective: str) -> list:
 async def managed_catalog_tools(
     *, manager: OAuthConnectionManager, owner: str,
     selected_account_ids: list[str], scheduled: bool = False,
-    objective: str | None = None,
+    objective: str | None = None, authorize=None,
 ) -> list:
     """Only a trusted, authenticated caller may choose account IDs.
 
@@ -228,7 +240,7 @@ async def managed_catalog_tools(
             frozenset(names), provider.description,
         ))
     catalog = ManagedMcpRunCatalog(
-        entries, owner=owner, manager=manager, scheduled=scheduled,
+        entries, owner=owner, manager=manager, scheduled=scheduled, authorize=authorize,
     )
     bound = catalog_tools(catalog)
     if (not scheduled and objective and
