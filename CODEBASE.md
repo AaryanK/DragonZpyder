@@ -8,7 +8,7 @@ Baseline: [develop at d38aa819af86](https://github.com/AaryanK/DragonZpyder/tree
 
 1. Read the goal and mandatory guardrails in [AGENTS.md](AGENTS.md).
 2. Find the relevant system and request path in [Implementation and execution flows](docs/codebase/IMPLEMENTATION.md).
-3. Locate individual paths in [the tracked file inventory](docs/codebase/FILE_INDEX.md). It indexes every baseline tracked file and identifies reviewed vs path-only entries.
+3. Locate individual paths in [the tracked file inventory](docs/codebase/FILE_INDEX.md). It indexes every tracked file, including the Android source tree, and distinguishes reviewed vs path-only entries.
 4. For source-derived folder and individual file pages, symbols, imports, routes and candidate references, run `python scripts/build_codebase_index.py --directory /tmp/dragonzpyder-codebase`. Start at `INDEX.md`. Use `--output /tmp/dragonzpyder-symbols.md` for one searchable file. This is static navigation, not behavioral verification. CI publishes the generated index and rejects missing or stale maintained inventory entries or directories without guides.
 5. Read the specific function and its tests before editing. Check current PRs, source SHA and actual deployment evidence when relevant. Do not rely on historical reports for current rollout.
 
@@ -16,6 +16,7 @@ Baseline: [develop at d38aa819af86](https://github.com/AaryanK/DragonZpyder/tree
 
 | Task | Entry point | Tests |
 | --- | --- | --- |
+| Native Android UI, auth, streaming, files and voice | [Android code map](android/CODE_MAP.md), [Android engineering contract](android/AGENTS.md) | [native alignment](android/tests/check_native_alignment.py), [instrumentation tests](android/app/src/androidTest/) |
 | Personal chat, streaming, cancellation | [first_party_chat.py](api/agent_platform/first_party_chat.py) | [chat](api/tests/test_first_party_chat.py), [stream](api/tests/test_first_party_agent_stream.py), [request ledger](api/tests/test_first_party_request_ledger.py) |
 | Core agent and specialists | [harness.py](api/agent_platform/harness.py), [runtime.py](api/agent_platform/runtime.py) | [harness](api/tests/test_harness_v2.py), [tool acceptance](api/tests/test_harness_tool_acceptance.py) |
 | MCP and authorization | [mcp_broker.py](api/agent_platform/mcp_broker.py), [mcp_connections.py](api/agent_platform/mcp_connections.py) | [broker](api/tests/test_mcp_broker.py), [connections](api/tests/test_mcp_connections.py) |

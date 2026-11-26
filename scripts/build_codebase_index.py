@@ -104,6 +104,31 @@ def file_info(root, name):
             for n, line in enumerate(source.splitlines(), 1):
                 if path.suffix in JS:
                     imports.extend(re.findall(r"""(?:\bfrom\s*|\bimport\s*\(|\brequire\s*\(|^\s*import\s*)['"]([^'"]+)['"]""", line))
+                elif path.suffix in {".java", ".kt", ".kts"}:
+                    # Lexical JVM navigation only; no compiler/type resolution.
+                    match = re.match(r"^\s*(?:@\w+\s+)*(?:(?:public|private|protected|internal|static|final|abstract|open|override|suspend|data|sealed|inline|enum)\s+)*(class|interface|object|fun|enum)\s+([A-Za-z_$][\w$]*)", line)
+                    if match:
+                        entries.append((match.group(1) + " " + match.group(2), n))
+                    elif path.suffix == ".java":
+                        method = re.match(r"^\s*(?:(?:public|private|protected|static|final|synchronized|abstract|native)\s+)*(?:[\w.$<>\[\],?]+\s+)+([A-Za-z_$][\w$]*)\s*\(", line)
+                        if method and method.group(1) not in {"if", "for", "while", "switch", "return", "throw", "catch"}:
+                            entries.append(("method candidate " + method.group(1), n))
+                    imp = re.match(r"^\s*import\s+(?:static\s+)?([\w.$]+(?:\.\*)?)", line)
+                    if imp:
+                        imports.append(imp.group(1))
+                    pkg = re.match(r"^\s*package\s+([\w.]+)", line)
+                    if pkg:
+                        entries.append(("package " + pkg.group(1), n))
+                elif path.suffix == ".xml":
+                    for match in re.finditer(r"<([A-Za-z_][\w.:-]*)\b", line):
+                        entries.append(("XML element " + match.group(1), n))
+                    match = re.search(r'\b(?:android:name|name)\s*=\s*["\x27]([\w.$:-]+)["\x27]', line)
+                    if match:
+                        entries.append(("XML named element " + match.group(1), n))
+                elif path.suffix == ".gradle" or path.name == "gradle.properties":
+                    match = re.match(r"^\s*([A-Za-z_][\w.-]*)\s*(?:[={]|['\x27]|\d)", line)
+                    if match:
+                        entries.append(("Gradle key " + match.group(1), n))
                 elif path.suffix == ".md" and re.match(r"^#{1,6} ", line):
                     entries.append(("heading " + line.lstrip("# ").strip()[:140], n))
                 elif path.suffix in {".yaml", ".yml", ".toml", ".json"}:
@@ -171,7 +196,7 @@ def graph(paths, info):
 
 def is_test(name):
     p = Path(name).name
-    return p.startswith("test_") or ".test." in p or ".spec." in p
+    return p.startswith("test_") or ".test." in p or ".spec." in p or (p.endswith(("Test.java", "Test.kt", "Tests.java", "Tests.kt")))
 
 def tests_for(name, paths, reverse):
     stem = re.sub(r"[^a-z0-9]+", "_", Path(name).stem.lower())
@@ -180,7 +205,7 @@ def tests_for(name, paths, reverse):
         for p in paths:
             if is_test(p):
                 test = re.sub(r"[^a-z0-9]+", "_", Path(p).stem.lower())
-                if "_" + stem + "_" in "_" + test + "_":
+                if "_" + stem + "_" in "_" + test + "_" or (p.endswith((".java", ".kt")) and test in {stem + "test", stem + "tests"}):
                     result.add(p)
     return result
 
