@@ -32,3 +32,5 @@ Read [repository instructions](../../../AGENTS.md) and [codebase navigation](../
 `NativeGoals.jsx` renders first-party goal list, wake counts, receipts and explicit cancellation through the existing owner-scoped API. `NativeMcpCenter.jsx` provides the native connections/goals navigation; no legacy execution fallback.
 
 V2 shared tokens live in `design-tokens.css`; `ui-preferences.js` defines a versioned allowlisted browser-local presentation contract and `AppearanceSettings.jsx` is its user-facing editor. Account synchronization and agent-mediated updates require a separate authenticated API, preview/approval and rollback contract.
+
+The chat no longer owns a duplicate credential form. `web/app.js` redirects known signed-out sessions to the canonical account entrypoint and shows a retry state for connection failures. `AccountTemplate.jsx` uses compact utility layouts; the sidebar prioritizes chat and capability navigation.

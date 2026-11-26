@@ -2,6 +2,7 @@ import { renderMarkdown } from "./frontend/src/markdown.js";
 const state = {
   session: null,
   firstParty: false,
+  routingResolved: false,
   selectedMcpConnections: [],
   nativeCapabilities: {},
   agentFiles: [],
@@ -12,7 +13,6 @@ const state = {
   historyState: "loading",
   approvals: [],
   sending: false,
-  preauthCsrf: null,
   lastRequestId: null,
 };
 
@@ -29,10 +29,6 @@ class ApiError extends Error {
 
 const $ = (id) => document.getElementById(id);
 const authModal = $("auth-modal");
-const loginForm = $("login-form");
-const loginEmail = $("login-email");
-const loginPassword = $("login-password");
-const loginButton = $("login-button");
 const loginError = $("login-error");
 const conversationList = $("conversation-list");
 const emptyState = $("empty-state");
@@ -117,7 +113,7 @@ async function api(path, { method = "GET", body = undefined, csrf = true, csrfTo
     requestBody = JSON.stringify(body);
   }
   if (!["GET", "HEAD", "OPTIONS"].includes(upper) && csrf) {
-    const token = csrfToken || sessionCsrf() || state.preauthCsrf;
+    const token = csrfToken || sessionCsrf();
     if (!token) throw new ApiError("Secure session token is missing. Sign in again.", { code: "CSRF_TOKEN_MISSING", status: 401 });
     // The native identity issuer uses its own anti-CSRF header. Never mix
     // the legacy Operly CSRF header with first-party DragonZpyder sessions.
@@ -161,24 +157,23 @@ function showToast(message, timeout = 4200) {
   showToast.timer = setTimeout(() => { toast.hidden = true; }, timeout);
 }
 
+// Credentials belong to the account page. Failed probes do not justify legacy fallback.
 function showAuth(error = "") {
-  authModal.hidden = false;
   profileMenu.hidden = true;
-  if (error) {
-    loginError.textContent = error;
-    loginError.hidden = false;
-  } else {
-    loginError.hidden = true;
+  if (!error && state.routingResolved) {
+    window.location.replace(state.firstParty ? "/login" : "/account");
+    return;
   }
-  setTimeout(() => loginEmail.focus(), 30);
+  authModal.hidden = false;
+  loginError.textContent = error || "Unable to check your session. Please retry.";
+  loginError.hidden = false;
+  $("dragonzpyder-central-signin-modal").href = state.routingResolved && !state.firstParty ? "/account" : "/login";
+  $("retry-session").focus();
 }
-
 function hideAuth() {
   authModal.hidden = true;
   loginError.hidden = true;
-  loginPassword.value = "";
 }
-
 function initials(value) {
   const parts = String(value || "").trim().split(/\s+/).filter(Boolean);
   return parts.length ? parts.slice(0, 2).map(part => Array.from(part)[0]).join("").toUpperCase() : "?";
@@ -241,17 +236,6 @@ async function ensurePersonalSession() {
   return current;
 }
 
-async function discoverCentralIdentity() {
-  const link = $("dragonzpyder-central-signin-modal");
-  if (!link) return;
-  try {
-    const config = await api("/api/auth/bootstrap", { csrf: false });
-    link.hidden = false;
-  } catch {
-    link.hidden = false;
-  }
-}
-
 async function bootstrapAuth() {
   setRuntimeStatus(null, "Checking personal runtime…");
   try {
@@ -259,6 +243,7 @@ async function bootstrapAuth() {
     // never fall back to Operly when the DragonZpyder API is unavailable.
     const routing = await api("/dz/status", { csrf: false });
     state.firstParty = routing.web_cutover_enabled === true || routing.native_session_present === true;
+    state.routingResolved = true;
     // Optional capabilities must never prevent the existing native text login.
     // A failed capability lookup leaves every new capability disabled.
     state.nativeCapabilities = {};
@@ -270,12 +255,7 @@ async function bootstrapAuth() {
     if(durableConsent) durableConsent.closest("label").hidden=state.nativeCapabilities.durable_workflows_enabled!==true;
     window.dragonzpyderNativeMode = state.firstParty;
     window.dispatchEvent(new CustomEvent("dragonzpyder:runtime-mode", { detail: { firstParty: state.firstParty } }));
-    if (!state.firstParty) {
-      await discoverCentralIdentity();
-    }
     if (state.firstParty) {
-      const obsolete = $("dragonzpyder-central-signin-modal");
-      if (obsolete) obsolete.hidden = false;
       // Mesh remains legacy-only; voice is independently capability-gated
       // by the authenticated first-party session below.
       const mesh = $("mesh-switch");
@@ -303,43 +283,6 @@ async function bootstrapAuth() {
     setRuntimeStatus("error", "Runtime unavailable");
     showAuth(error.message || "DragonZpyder runtime is unavailable.");
   }
-}
-
-async function login(email, password) {
-  if (state.firstParty) {
-    await api("/dz/identity/v1/password/login", {
-      method: "POST", body: { email, password }, csrf: false,
-    });
-    await ensurePersonalSession();
-    hideAuth();
-    if (state.session.nativeChatEnabled === false) {
-      setRuntimeStatus("error", "Signed in · Agent runtime not enabled");
-      state.historyState = "unavailable";
-      renderConversations();
-      return;
-    }
-    setRuntimeStatus("online", "DragonZpyder agent connected");
-    await loadConversations({ restoreLatest: true });
-    return;
-  }
-  const bootstrap = await api("/api/auth/bootstrap", { csrf: false });
-  state.preauthCsrf = bootstrap && bootstrap.csrf_token ? String(bootstrap.csrf_token) : null;
-  if (!state.preauthCsrf) throw new ApiError("Operly did not provide a login security token.", { code: "CSRF_BOOTSTRAP_FAILED" });
-
-  const result = await api("/api/auth/login", {
-    method: "POST",
-    body: { email, password },
-    csrfToken: state.preauthCsrf,
-  });
-  state.preauthCsrf = null;
-
-  if (!result || result.scope !== "personal") {
-    await api("/api/auth/personal-scope", { method: "POST", body: {} });
-  }
-  await ensurePersonalSession();
-  hideAuth();
-  setRuntimeStatus("online", "Personal runtime connected");
-  await Promise.all([loadConversations(), refreshApprovals()]);
 }
 
 function escapeHtml(value) {
@@ -1298,25 +1241,7 @@ function autoSizeInput() {
   syncComposerAction();
 }
 
-loginForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const email = loginEmail.value.trim();
-  const password = loginPassword.value;
-  if (!email || !password) return;
-  loginButton.disabled = true;
-  loginButton.textContent = "Signing in…";
-  loginError.hidden = true;
-  try {
-    await login(email, password);
-  } catch (error) {
-    loginError.textContent = error.message || "Sign-in failed.";
-    loginError.hidden = false;
-    setRuntimeStatus("error", "Sign-in failed");
-  } finally {
-    loginButton.disabled = false;
-    loginButton.textContent = "Sign in";
-  }
-});
+$("retry-session").addEventListener("click", () => window.location.reload());
 
 composer.addEventListener("submit", (event) => {
   event.preventDefault();

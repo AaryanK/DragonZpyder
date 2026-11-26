@@ -9,7 +9,7 @@ export function AppearanceSettings(){
  useEffect(()=>setValue(readUiPreferences()),[]);
  function change(next){const valid=normalizeUiPreferences(next);setValue(valid);setMessage(saveUiPreferences(valid)?"Appearance saved on this device.":"Appearance applied; browser storage is unavailable.");}
  return <section className="dz-account-group dz-appearance-settings" id="dz-appearance">
- <div className="dz-account-group-heading"><div><span className="eyebrow">PERSONALIZATION</span><h3>Appearance</h3><p className="muted small">Customize the interface on this device. These preferences never change agent permissions.</p></div><span className="dz-account-symbol"><UiIcon name="sun"/></span></div>
+ <div className="dz-account-group-heading"><div><h3>Appearance</h3><p className="muted small">Saved on this device.</p></div><span className="dz-account-symbol"><UiIcon name="sun"/></span></div>
  <div className="dz-preference-grid">
  <label>Theme<select value={value.theme} onChange={e=>change({...value,theme:e.target.value})}><option value="light">Light</option><option value="dark">Dark</option></select></label>
  <label>Layout density<select value={value.density} onChange={e=>change({...value,density:e.target.value})}><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select></label>

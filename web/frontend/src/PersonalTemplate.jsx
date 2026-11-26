@@ -123,28 +123,19 @@ export function PersonalTemplate() {
         <a className="brand" href="/" aria-label="DragonZpyder home"><img src="/brand-icon.png" alt=""/><span>DragonZpyder</span></a>
         <button className="icon-btn mobile-only" id="close-sidebar" aria-label="Close sidebar"><UiIcon name="close"/></button>
       </div>
-      <div className="workspace-switcher" aria-label="Current workspace">
-        <span className="workspace-switcher-icon"><UiIcon name="user"/></span>
-        <span><strong>Personal</strong><small>Conversations & tools</small></span>
-        <span className="workspace-switcher-check"><UiIcon name="check" size={16}/></span>
-      </div>
+      <button className="new-chat" id="new-chat"><UiIcon name="edit"/> New chat</button>
+      <div className="sidebar-search-wrap"><UiIcon name="search"/><input type="search" id="conversation-search" placeholder="Search chats" aria-label="Find conversations" autoComplete="off"/></div>
       <div className="sidebar-navigation" aria-label="Navigation">
-        <a className="nav-link selected" href="/app" aria-current="page"><span className="nav-glyph"><UiIcon name="chat"/></span> Conversations</a>
         <button type="button" className="nav-link dz-center-nav-link" onClick={() => window.dispatchEvent(new CustomEvent("dragonzpyder:center-open", { detail: { page: "connections" } }))}><span className="nav-glyph"><UiIcon name="plug"/></span> Connections &amp; tools</button>
         <button type="button" className="nav-link dz-center-nav-link" onClick={() => window.dispatchEvent(new CustomEvent("dragonzpyder:center-open", { detail: { page: "tasks" } }))}><span className="nav-glyph"><UiIcon name="tasks"/></span> Tasks &amp; goals</button>
-        <a className="nav-link" href="/account"><span className="nav-glyph"><UiIcon name="user"/></span> Account &amp; security</a>
       </div>
-      <button className="new-chat" id="new-chat"><UiIcon name="plus"/> New chat</button>
-      <div className="sidebar-search-wrap"><UiIcon name="search"/><input type="search" id="conversation-search" placeholder="Find conversations" aria-label="Find conversations" autoComplete="off"/></div>
-      <div className="sidebar-label">Your conversations</div>
+      <div className="sidebar-label">Chats</div>
       <nav className="conversation-list" id="conversation-list" aria-label="Recent conversations"></nav>
       <div className="sidebar-spacer"></div>
-      <div className="sidebar-footer-label">WORKSPACE</div>
       <WorkspaceHub />
-      <button className="side-action dz-mobile-commands" type="button" onClick={() => { document.getElementById("close-sidebar")?.click(); window.dispatchEvent(new Event("dragonzpyder:command-open")); }}><span>Commands</span><UiIcon name="search"/></button>
-      <button className="side-action" id="approvals-button"><span>Approvals</span><span className="badge-count" id="approval-count" hidden>0</span></button>
-      <a className="side-action" href="https://operly.dragonzpyder.xyz/" target="_blank" rel="noreferrer"><span>Open Operly</span><span aria-hidden="true">↗</span></a>
-      <a className="side-action" href="/"><span>About DragonZpyder</span><span aria-hidden="true">↗</span></a>
+      <button className="side-action dz-mobile-commands" type="button" onClick={() => { document.getElementById("close-sidebar")?.click(); window.dispatchEvent(new Event("dragonzpyder:command-open")); }}><span className="dz-footer-icon"><UiIcon name="search"/></span><span>Commands</span></button>
+      <button className="side-action" id="approvals-button"><span className="dz-footer-icon"><UiIcon name="shield"/></span><span>Approvals</span><span className="badge-count" id="approval-count" hidden>0</span></button>
+      <a className="side-action" href="/account"><span className="dz-footer-icon"><UiIcon name="user"/></span><span>Settings</span></a>
     </aside>
     <section className="workspace">
       <header className="workspace-head">
@@ -158,7 +149,7 @@ export function PersonalTemplate() {
           <div className="welcome-emblem"><img src="/brand-icon.png" alt="" className="hero-logo"/></div>
           <div className="eyebrow">YOUR SPACE TO THINK AND MAKE</div>
           <h1>What shall we work on?</h1>
-          <p>From a quick question to a big idea. Start anywhere. We’ll find the way forward.</p>
+          <p>Ask a question or give DragonZpyder a task.</p>
           <div className="welcome-section-title">Start anywhere <span aria-hidden="true">↗</span></div>
           <div className="prompt-grid">
             <button className="prompt-chip" data-prompt="Help me think through a new idea."><UiIcon name="idea"/>Explore an idea</button>
@@ -213,7 +204,7 @@ export function PersonalTemplate() {
   <section className="companion-panel dz-voice-orb-panel" id="companion-panel" role="dialog" aria-modal="true" aria-label="Live companion" hidden>
     <VoiceOrb />
   </section>
-  <div className="modal-backdrop" id="auth-modal" hidden><section className="modal auth-card" role="dialog" aria-modal="true" aria-labelledby="auth-title"><a className="brand auth-brand" href="/"><img src="/brand-icon.png" alt=""/><span>DragonZpyder</span></a><div className="eyebrow">Private personal runtime</div><h2 id="auth-title">Sign in to your Personal AI</h2><p className="modal-copy">Sign in with your DragonZpyder account. Existing accounts that have not yet migrated can use the legacy form below.</p><a id="dragonzpyder-central-signin-modal" className="primary-btn" href="/login">Sign in with DragonZpyder</a><form id="login-form" className="login-form"><label>Email<input id="login-email" type="email" autoComplete="email" required/></label><label>Password<input id="login-password" type="password" autoComplete="current-password" required/></label><button className="primary-btn" id="login-button" type="submit">Sign in</button></form><div className="form-error" id="login-error" hidden></div><p className="small-copy">New to DragonZpyder? <a href="/login?mode=signup">Create an account</a> · <a href="/login">Continue with Google</a> · <a href="/login?mode=forgot">Forgot password?</a></p></section></div>
+  <div className="modal-backdrop" id="auth-modal" hidden><section className="modal auth-card dz-session-error" role="dialog" aria-modal="true" aria-labelledby="auth-title"><img className="dz-session-mark" src="/brand-icon.png" alt="DragonZpyder"/><h2 id="auth-title">Unable to connect</h2><p className="form-error" id="login-error" role="alert" hidden></p><button type="button" id="retry-session" className="primary-btn">Try again</button><a id="dragonzpyder-central-signin-modal" href="/login">Go to sign in</a></section></div>
   <div className="drawer-backdrop" id="approvals-drawer" hidden><aside className="drawer" role="dialog" aria-modal="true" aria-labelledby="approvals-title"><div className="drawer-head"><div><div className="eyebrow">Human boundary</div><h2 id="approvals-title">Pending approvals</h2></div><button className="icon-btn" id="close-approvals" aria-label="Close approvals">×</button></div><p className="modal-copy">Review the exact action and content before allowing DragonZpyder to execute it.</p><div id="approval-list" className="approval-list"></div></aside></div>
   <div className="menu" id="profile-menu" hidden><div className="menu-title" id="session-label">Personal session</div><button type="button" onClick={() => document.getElementById("workspace-theme-toggle")?.click()}>Appearance</button><a className="menu-account-link" href="/account">My account & connections ↗</a><button id="logout-button">Sign out</button></div>
   <div className="toast" id="toast" hidden></div>

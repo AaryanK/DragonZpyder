@@ -76,3 +76,7 @@ The checkout-specific generated directory contains an index, a page for every tr
 ## Integrated V4 candidate paths
 
 Native chat uses the shared adaptive router and the canonical Deep Agents graph. Selected MCP reads may be bound directly or through bounded QuickJS. Selected artifacts pass through owner-bound encrypted storage and the signed scoped VM runner. Reviewed media operations pass through the capped provider gateway. Native voice transcripts enter the chat ledger; spoken playback remains separate. Native durable objectives are finite dependent phases dispatched by Hatchet with checkpoint/receipt fencing, original authority and shared model budget. All rollout gates remain off unless separately authorized. Tests use scripted providers; production validation remains outstanding.
+
+### Browser sign-in correction
+
+Once `/dz/status` establishes routing, signed-out `/app` goes directly to `/login` for native identity or `/account` for explicitly legacy access. Failed probes show a retry dialog, not a second credential form. `web/account.js` retains verified provider, password, migration and recovery flows; the legacy sign-in link requires explicit routing eligibility. Voice and server authorization remain unchanged.

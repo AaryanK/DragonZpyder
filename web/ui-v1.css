@@ -1005,3 +1005,27 @@ html[data-workspace-theme] .message.user .message-content {color:var(--dz-shell-
 html[data-workspace-theme] #profile-button{padding:0;overflow:hidden}
 html[data-workspace-theme] #profile-avatar{width:100%;height:100%;object-fit:cover;border-radius:50%}
 html[data-workspace-theme] #profile-avatar[hidden],html[data-workspace-theme] #profile-initial[hidden]{display:none!important}
+
+/* Explicit nav reset: native button bevels must never leak into the sidebar. */
+html[data-workspace-theme] .sidebar{padding:12px;gap:0}
+html[data-workspace-theme] .sidebar-head{padding:0 4px;margin:0 0 12px}
+html[data-workspace-theme] .sidebar .brand img{background:transparent;border:0;box-shadow:none;border-radius:0}
+html[data-workspace-theme] .sidebar .brand span{font-size:15px;font-weight:680}
+html[data-workspace-theme] .sidebar .new-chat{display:flex;align-items:center;justify-content:flex-start;gap:10px;margin:0 0 8px;padding:0 10px;background:var(--dz-shell-raised);border:1px solid var(--dz-shell-line);border-radius:8px;font-size:14px;font-weight:600}
+html[data-workspace-theme] .sidebar-search-wrap{margin:0 0 12px;min-height:44px;padding:0 10px;border-radius:8px}
+html[data-workspace-theme] .sidebar-navigation{gap:2px;margin:0 0 14px}
+html[data-workspace-theme] .sidebar :is(.nav-link,.side-action,.dz-workspace-trigger){appearance:none;-webkit-appearance:none;display:flex;align-items:center;justify-content:flex-start;gap:10px;width:100%;min-height:44px;margin:0;padding:0 10px;border:0;box-shadow:none;background:transparent;color:var(--dz-shell-text);font:500 14px/1.35 var(--dz-font);text-decoration:none;text-align:left;border-radius:7px}
+html[data-workspace-theme] .sidebar :is(.nav-link,.side-action,.dz-workspace-trigger):hover{background:var(--dz-shell-raised)!important;color:var(--dz-shell-text)}
+html[data-workspace-theme] .sidebar :is(.nav-link,.side-action,.dz-workspace-trigger):focus-visible{outline:2px solid var(--dz-shell-accent);outline-offset:2px}
+html[data-workspace-theme] .sidebar :is(.nav-glyph,.dz-footer-icon){display:grid;place-items:center;width:20px;flex:0 0 20px;color:var(--dz-shell-muted)}
+html[data-workspace-theme] .sidebar .badge-count{margin-left:auto}
+html[data-workspace-theme] .sidebar .badge-count[hidden]{display:none!important}
+html[data-workspace-theme] .sidebar-label{font-size:12px;font-weight:600;letter-spacing:0;text-transform:none;padding:0 10px;margin:4px 0 8px}
+html[data-workspace-theme] .sidebar .sidebar-spacer{min-height:8px}
+html[data-workspace-theme] .sidebar .dz-workspace-trigger>span:last-child{margin-left:auto}
+@media(min-width:821px){html[data-workspace-theme] .sidebar .dz-mobile-commands{display:none}}
+html[data-workspace-theme] .dz-session-error{max-width:360px;padding:24px;border-radius:14px;background:var(--dz-shell-surface);border:1px solid var(--dz-shell-line);color:var(--dz-shell-text);text-align:center;box-shadow:none}
+html[data-workspace-theme] .dz-session-mark{width:42px;height:42px;object-fit:contain}
+html[data-workspace-theme] .dz-session-error h2{font-size:23px;margin:12px 0;letter-spacing:-.03em}
+html[data-workspace-theme] .dz-session-error .primary-btn{display:block;width:100%;min-height:44px;margin:18px 0 10px}
+html[data-workspace-theme] .dz-session-error a{display:inline-flex;align-items:center;justify-content:center;min-height:44px;color:var(--dz-shell-text);font-size:14px;text-decoration:underline}
