@@ -853,3 +853,9 @@ These entries reconcile paths added after the documented baseline; Indexed descr
 | [`web/frontend/src/openrouter-voice.js`](../../web/frontend/src/openrouter-voice.js) | Local AudioWorklet microphone capture, energy VAD with pre-roll, 16 kHz WAV resampling, bounded one-at-a-time turns, prefetch one committed speech segment and stop audio on interruption. | Reviewed |
 | [`api/tests/test_openrouter_voice.py`](../../api/tests/test_openrouter_voice.py) | Offline WAV, modality, session authority, capped key and redacted metering contracts. | Reviewed |
 | [`web/frontend/scripts/test-openrouter-voice.mjs`](../../web/frontend/scripts/test-openrouter-voice.mjs) | Offline WAV encoding, silence/pause and short-noise detector checks. | Reviewed |
+
+## Universal interaction additions
+| File | Purpose / navigation | Evidence |
+| --- | --- | --- |
+| [`api/agent_platform/interaction.py`](../../api/agent_platform/interaction.py) | Typed ingress contract and normalization | Reviewed |
+| [`api/tests/test_interaction.py`](../../api/tests/test_interaction.py) | Offline validation tests | Reviewed |
