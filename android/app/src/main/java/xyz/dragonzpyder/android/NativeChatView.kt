@@ -84,6 +84,12 @@ class NativeChatView(context: Context, private val dark: Boolean, private val ac
     var filesAvailable:Boolean
         get()=presentation.snapshot.filesAvailable
         set(value){presentation.update{it.copy(filesAvailable=value)}}
+    var goalsAvailable:Boolean
+        get()=presentation.snapshot.goalsAvailable
+        set(value){presentation.update{it.copy(goalsAvailable=value)}}
+    var legacyActionsAvailable:Boolean
+        get()=presentation.snapshot.legacyActionsAvailable
+        set(value){presentation.update{it.copy(legacyActionsAvailable=value)}}
     fun openDrawer(){drawerRequest++;historyError=false}
     fun setConversationHistory(history:org.json.JSONArray,selected:String){
         conversations=(0 until history.length()).mapNotNull{history.optJSONObject(it)?.let{row->
@@ -229,8 +235,8 @@ class NativeChatView(context: Context, private val dark: Boolean, private val ac
                 item{DrawerSection("Workspace")}
                 item{DrawerRow("connections","Connections & tools",false){select(actions::connections)}}
                 if(filesAvailable)item{DrawerRow("attach","Your files",false){select(actions::files)}}
-                item{DrawerRow("tasks","Tasks",false){select(actions::tasks)}}
-                item{DrawerRow("approvals","Approvals",false){select(actions::approvals)}}
+                if(goalsAvailable)item{DrawerRow("tasks","Tasks",false){select(actions::tasks)}}
+                if(legacyActionsAvailable)item{DrawerRow("approvals","Approvals",false){select(actions::approvals)}}
                 item{DrawerSection("Conversations")}
                 if(historyError)item{Text("Could not refresh history",color=muted,fontSize=12.sp,modifier=Modifier.padding(10.dp))}
                 if(filtered.isEmpty())item{Text(if(query.isBlank())"No conversations yet" else "No matching conversations",color=muted,fontSize=13.sp,modifier=Modifier.padding(10.dp))}
@@ -327,10 +333,11 @@ class NativeChatView(context: Context, private val dark: Boolean, private val ac
                 BoxWithConstraints(Modifier.fillMaxWidth()){
                 val compact=maxWidth<300.dp||LocalDensity.current.fontScale>=1.5f
                 Column {
-                if(compact)TextButton(onClick=actions::mode,enabled=!busy,modifier=Modifier.heightIn(min=DragonSizes.touch)){Text(modeLabel,color=ink)}
+                if(compact&&legacyActionsAvailable)TextButton(onClick=actions::mode,enabled=!busy,modifier=Modifier.heightIn(min=DragonSizes.touch)){Text(modeLabel,color=ink)}
                 Row(verticalAlignment=Alignment.CenterVertically,modifier=Modifier.fillMaxWidth()) {
                     ToolButton("attach","Attach",actions::add)
-                    if(!compact)TextButton(onClick=actions::mode,enabled=!busy){Text(modeLabel,color=ink)}
+                    if(!compact&&legacyActionsAvailable)TextButton(onClick=actions::mode,enabled=!busy){Text(modeLabel,color=ink)}
+                    if(!legacyActionsAvailable)Text("Agent",color=muted,modifier=Modifier.padding(horizontal=8.dp))
                     Spacer(Modifier.weight(1f))
                     ToolButton("mic","Dictate",actions::dictate)
                     if(voiceAvailable&&!busy&&draft.isBlank()&&attachmentLabel.isBlank()) ToolButton("voice","Live voice",actions::voice) else Button(onClick={if(streaming)actions.stop() else actions.send()},enabled=streaming||(!busy&&(draft.isNotBlank()||((modeLabel=="AI Mesh"||filesAvailable)&&attachmentLabel.isNotBlank()))&&draft.length<=(if(modeLabel=="AI Mesh") 5000 else 12000)),shape=RoundedCornerShape(50),contentPadding=PaddingValues(0.dp),modifier=Modifier.size(DragonSizes.touch).semantics{contentDescription=if(streaming)"Stop response" else "Send message"},colors=ButtonDefaults.buttonColors(containerColor=accent,contentColor=tokens.onAccent,disabledContainerColor=line.copy(alpha=.35f),disabledContentColor=muted)) { NavigationGlyph(if(streaming)"stop" else "send",if(streaming||draft.isNotBlank()||attachmentLabel.isNotBlank())tokens.onAccent else muted) }
