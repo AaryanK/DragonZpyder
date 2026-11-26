@@ -38,10 +38,11 @@ async def relying_party_status(request: Request):
                     WHERE s.subject=a.subject) AS revoked_at
             FROM identity_accounts a WHERE a.subject=$1
         """,sid)
-        if row and os.getenv("DRAGONZPYDER_ACTIVE_RECOVERY_ENABLED")=="1":
-            watermark=await db.fetchval("SELECT revoked_at FROM public.identity_credential_revocations WHERE subject=$1",sid)
-        else:
-            watermark=None
+        has_watermark=await db.fetchval("SELECT to_regclass('public.identity_credential_revocations') IS NOT NULL")
+        if os.getenv("DRAGONZPYDER_ACTIVE_RECOVERY_ENABLED")=="1" and not has_watermark:
+            raise HTTPException(503,"Status service unavailable")
+        watermark=(await db.fetchval("SELECT revoked_at FROM public.identity_credential_revocations WHERE subject=$1",sid)
+                   if row and has_watermark else None)
     active=bool(row and row["active"])
     revoked=row["revoked_at"] if row else None
     if watermark is not None and (revoked is None or watermark>revoked):
