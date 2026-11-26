@@ -37,6 +37,7 @@ def app(monkeypatch):
     monkeypatch.setenv("RAILWAY_ENVIRONMENT_NAME", "staging")
     monkeypatch.setenv("DRAGONZPYDER_IDENTITY_HTTP_ENABLED", "1")
     class FakeDB:
+        async def fetchval(self,query,*args): return 1
         @asynccontextmanager
         async def transaction(self):
             yield self
