@@ -13,6 +13,8 @@ from typing import Any
 APPROVAL = frozenset({"approval_required", "waiting_for_approval", "pending_approval"})
 FAILURE = frozenset({"error", "failed", "denied", "blocked", "cancelled", "timeout"})
 UNKNOWN = frozenset({"unknown", "uncertain", "outcome_unknown", "outcome_unconfirmed"})
+NATIVE_CONTROL = frozenset({"schedule_workflow", "inspect_workflow", "stop_workflow",
+                            "inspect_image", "transcribe_audio", "generate_image", "generate_speech"})
 
 
 def _structured_outcome(value: Any, depth: int = 0) -> str:
@@ -73,6 +75,21 @@ def tool_outcome(message: Any) -> str:
     # structured business-envelope detection to known broker/capability tools.
     structured = (name.startswith("operly_")
                   or name in {"invoke_tool", "search_tools", "describe_tool"})
+    if name in NATIVE_CONTROL:
+        # These native tools own their top-level envelope; do not inspect nested data.
+        for value in (getattr(message, "content", None), getattr(message, "artifact", None)):
+            if isinstance(value, str):
+                try:
+                    value = json.loads(value)
+                except ValueError:
+                    continue
+            if isinstance(value, dict):
+                state = value.get("state")
+                if isinstance(state, str) and state in UNKNOWN:
+                    return "unknown"
+                outcome = _structured_outcome(value)
+                if outcome != "returned":
+                    return outcome
     if structured:
         states = [_structured_outcome(getattr(message, "content", None)),
                   _structured_outcome(getattr(message, "artifact", None))]
@@ -95,7 +112,7 @@ def unresolved_external_control(messages: list) -> str | None:
         name = getattr(message, "name", None)
         if (getattr(message, "type", None) != "tool"
                 or not isinstance(name, str)
-                or not (name.startswith("operly_") or name == "invoke_tool")):
+                or not (name.startswith("operly_") or name == "invoke_tool" or name in NATIVE_CONTROL)):
             continue
         outcome = tool_outcome(message)
         if outcome == "approval_required":
