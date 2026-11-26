@@ -9,7 +9,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 @pytest.mark.asyncio
-async def test_least_privileged_identity_role_disposable_pg():
+async def test_least_privileged_identity_role_disposable_pg(monkeypatch):
     dsn = os.getenv("DRAGONZPYDER_IDENTITY_TEST_DSN", "")
     if not dsn:
         pytest.skip("No disposable identity PostgreSQL")
@@ -35,6 +35,8 @@ async def test_least_privileged_identity_role_disposable_pg():
         await conn.execute("""INSERT INTO identity_accounts
             (subject,source_operly_user_id,email,display_name,source_active)
             VALUES ('imported','imported','imported@example.test','Imported',TRUE)""")
+        mobile_sql=(base/"schema_mobile_provider_manual.sql").read_text("utf-8")
+        await conn.execute(mobile_sql.replace("BEGIN;\n","",1).removesuffix("COMMIT;\n"))
         await conn.execute("SET LOCAL ROLE dz_identity_api")
         assert not await conn.fetchval("SELECT has_column_privilege(current_user,'public.identity_accounts','status','UPDATE')")
         assert not await conn.fetchval("SELECT has_any_column_privilege(current_user,'public.identity_oauth_clients','UPDATE')")
@@ -47,6 +49,22 @@ async def test_least_privileged_identity_role_disposable_pg():
                 (subject,provider,provider_subject,source,login_eligible)
                 VALUES ('native','google','google-native','auth',TRUE)""")
             await conn.execute("UPDATE public.identity_accounts SET display_name='Changed' WHERE subject='native'")
+        from identity.mobile_provider import claim_callback, redeem_ticket, digest, pkce
+        monkeypatch.setenv("DRAGONZPYDER_IDENTITY_GRANT_HASH_KEY","ci-mobile-proof-only-"+"x"*48)
+        await conn.execute("""INSERT INTO identity_mobile_provider_attempts
+            (state_hash,app_state,browser_hash,challenge,provider,nonce,expires_at)
+            VALUES($1,$2,$3,$4,'discord','nonce',now()+interval '5 minutes')""",
+            digest("state","s"*43),"a"*43,digest("browser","b"*43),pkce("v"*43))
+        assert await claim_callback(conn,"google","s"*43,"b"*43) is None
+        assert await claim_callback(conn,"discord","s"*43,"x"*43) is None
+        assert (await claim_callback(conn,"discord","s"*43,"b"*43))["app_state"]=="a"*43
+        assert await claim_callback(conn,"discord","s"*43,"b"*43) is None
+        await conn.execute("UPDATE identity_mobile_provider_attempts SET subject='native',ticket_hash=$1 WHERE state_hash=$2",
+                           digest("ticket","t"*43),digest("state","s"*43))
+        assert await redeem_ticket(conn,"discord","t"*43,"x"*43) is None
+        assert await redeem_ticket(conn,"google","t"*43,"v"*43) is None
+        assert await redeem_ticket(conn,"discord","t"*43,"v"*43)=="native"
+        assert await redeem_ticket(conn,"discord","t"*43,"v"*43) is None
         for query in (
             "UPDATE public.identity_accounts SET status='active' WHERE subject='imported'",
             "UPDATE public.identity_oauth_clients SET enabled=TRUE",
