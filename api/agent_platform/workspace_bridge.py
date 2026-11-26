@@ -20,9 +20,13 @@ from .personal_bridge import _authorized, execution_receipt_report
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+# Graph supersteps include middleware nodes, not just model calls. Keep the
+# independent model/tool budgets and 90s deadline; allow their graph overhead.
+WORKSPACE_RECURSION_LIMIT = 128
 
 
-def workspace_turn_persisted(checkpoint, *, turn_id: str, prompt: str) -> bool:
+def workspace_turn_persisted(checkpoint, *, turn_id: str, prompt: str,
+                             require_answer: bool = True) -> bool:
     """Prove this exact invocation, even on an empty or compacted thread."""
     values = getattr(checkpoint, "values", None)
     messages = values.get("messages") if isinstance(values, dict) else None
@@ -32,8 +36,16 @@ def workspace_turn_persisted(checkpoint, *, turn_id: str, prompt: str) -> bool:
                if getattr(message, "id", None) == turn_id
                and getattr(message, "type", None) == "human"
                and getattr(message, "content", None) == prompt]
-    return len(matches) == 1 and any(
-        getattr(message, "type", None) == "ai" for message in messages[matches[0] + 1:])
+    if len(matches) != 1:
+        return False
+    tail = messages[matches[0] + 1:]
+    if any(getattr(message, "type", None) == "human" for message in tail):
+        return False
+    return not require_answer or bool(
+        tail and getattr(tail[-1], "type", None) == "ai"
+        and not getattr(tail[-1], "tool_calls", None)
+        and getattr(tail[-1], "content", None)
+    )
 
 
 
@@ -74,7 +86,8 @@ async def run_workspace(
     try:
         from .operly_mcp_client import load_authorized_operly_mcp_tools
         from .harness import build_frontier_agent
-        from .runtime import model_client, summarize_agent_result
+        from .runtime import (model_client, summarize_agent_result,
+                              controlled_termination_reason, summarize_checkpoint_evidence)
         tools = await asyncio.wait_for(load_authorized_operly_mcp_tools(
             url=os.getenv("DRAGONZPYDER_OPERLY_MCP_URL",
                           "https://operly.dragonzpyder.xyz/mcp"),
@@ -97,7 +110,7 @@ async def run_workspace(
         "thread_id": workspace_thread(
             payload.user_id, payload.workspace_id, payload.conversation_id,
         ),
-    }, "recursion_limit": 48}
+    }, "recursion_limit": WORKSPACE_RECURSION_LIMIT}
     # A server-generated message ID survives persistence and distinguishes
     # repeated identical prompts from older turns. No pre-read is needed.
     turn_id = str(uuid4())
@@ -107,14 +120,26 @@ async def run_workspace(
         }, config=config), timeout=90)
         report = summarize_agent_result(result)
     except Exception as error:
-        # Never fall back to a different agent on ambiguous network failures;
-        # an upstream mutation could already have succeeded.
-        logger.warning("workspace_bridge_failed stage=execution type=%s", type(error).__name__)
-        raise HTTPException(503, "Workspace agent failed; reconcile before retry") from error
+        # No automatic retries or alternate agents after an ambiguous effect.
+        reason = controlled_termination_reason(error)
+        if reason is None:
+            logger.warning("workspace_bridge_failed stage=execution type=%s", type(error).__name__)
+            raise HTTPException(503, "Workspace agent failed; reconcile before retry") from error
+        try:
+            checkpoint = await agent.aget_state(config)
+            if not workspace_turn_persisted(checkpoint, turn_id=turn_id,
+                                            prompt=payload.prompt, require_answer=False):
+                raise RuntimeError("Current workspace turn not persisted")
+            report = summarize_checkpoint_evidence(checkpoint.values, termination_reason=reason)
+        except Exception:
+            logger.warning("workspace_bridge_failed stage=partial_checkpoint")
+            raise HTTPException(503, "Workspace stopped; current checkpoint unavailable") from error
+        logger.warning("workspace_bridge_incomplete reason=%s", reason)
     try:
         checkpoint = await agent.aget_state(config)
         checkpointed = workspace_turn_persisted(
             checkpoint, turn_id=turn_id, prompt=payload.prompt,
+            require_answer=report["status"] == "completed",
         )
     except Exception:
         checkpointed = False
@@ -129,6 +154,7 @@ async def run_workspace(
             if isinstance(item, str) and item.startswith("operly_")
         ][:40],
         "execution_receipts": execution_receipt_report(report),
+        "termination_reason": report.get("termination_reason"),
         "thread_checkpointed": True,
         "objective_verified": False,
     }
