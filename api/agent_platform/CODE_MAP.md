@@ -129,3 +129,5 @@ Reviewed entries are source-inspected summaries; indexed entries are navigation 
 ### P0 gateway termination handling
 
 `gateway_protocol.py` emits a fixed truncation code, `runtime.py` exposes the bounded opt-in metered-gateway output ceiling and exact-turn recovery, `personal_bridge.py` classifies the SDK envelope, and `first_party_chat.py` reports incomplete current-turn receipts. CI and live qualification pending.
+
+The metered SDK transport explicitly disables provider streaming even when a graph is consumed with SSE/message callbacks. The outer graph stream is independent of the signed complete-response inference protocol.

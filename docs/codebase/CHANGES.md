@@ -267,3 +267,8 @@ Removed the three Markdown guides from Android drawable, values and xml resource
 - `apps/sandbox_runner/server_ready.mjs`: Distinguish SDK allocation failure from readiness failure; known VM cleanup result logged, ambiguous allocation remains unknown.
 - `apps/sandbox_runner/scope.mjs`: Add pure allowlisted diagnostic formatter with bounded numeric status and cleanup label; no private messages or identifiers.
 - `apps/sandbox_runner/scope.test.mjs`: Verify diagnostic sanitization and fallback; offline CI pending.
+
+## 2026-11-26 — P0 production streaming transport regression
+
+- `api/agent_platform/runtime.py`: Disable SDK auto-streaming specifically for the signed non-streaming inference gateway. Graph-level SSE remains independent; no replay or security/budget bypass. Production 23:47 UTC requests rejected stream=true before inference; streaming flag temporarily rolled back.
+- `api/tests/test_agent_stack_integration.py`: Exercise actual ChatOpenAI and LangGraph message-mode streaming against mock HTTP gateway validating complete-response request contract, one inference request and final result. Offline CI pending.
