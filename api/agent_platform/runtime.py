@@ -184,10 +184,11 @@ def summarize_checkpoint_evidence(values: Any, *, termination_reason: str) -> di
     messages = current_turn_messages(messages)
     successful: list[str] = []
     failed = 0
+    from .tool_outcomes import tool_outcome
     for msg in messages:
         if getattr(msg, "type", None) != "tool":
             continue
-        if getattr(msg, "status", "success") == "error":
+        if tool_outcome(msg) != "returned":
             failed += 1
         else:
             name = getattr(msg, "name", "")
@@ -242,10 +243,13 @@ def summarize_agent_result(result: dict) -> dict:
     turn_messages = current_turn_messages(messages)
     successful = []
     failures = 0
+    from .tool_outcomes import tool_outcome, unresolved_external_control
+    external_blocker = unresolved_external_control(turn_messages)
+    incomplete = incomplete or external_blocker is not None
     for message in turn_messages:
         if getattr(message, "type", None) != "tool":
             continue
-        if getattr(message, "status", "success") == "error":
+        if tool_outcome(message) != "returned":
             failures += 1
             continue
         name = getattr(message, "name", "")
@@ -263,8 +267,8 @@ def summarize_agent_result(result: dict) -> dict:
         "answer": content,
         "status": "incomplete" if incomplete else "completed",
         "termination_reason": (
-            content[len(STOP_PREFIX):].split(";", 1)[0].strip()
-            if incomplete else None
+            external_blocker or (content[len(STOP_PREFIX):].split(";", 1)[0].strip()
+                                 if content.startswith(STOP_PREFIX) else None)
         ),
         "successful_tools": successful[:80],
         "failed_tool_count": failures,
