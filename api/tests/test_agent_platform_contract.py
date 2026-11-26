@@ -86,3 +86,67 @@ def test_memory_search_uses_v3_scoped_filters():
     instance = PersonalMemory.__new__(PersonalMemory)
     instance._memory = Store()
     assert instance.search(user_id="synthetic-test", query="test lighthouse") == {"results": []}
+
+
+def test_scoped_transport_binds_identity_arguments_and_response_nonce(monkeypatch):
+    import asyncio
+    import json
+    import httpx
+    from agent_platform.computer import ComputerScope, ScopedComputerTransport
+
+    key = "k" * 48
+    scope = ComputerScope("personal","owner-123","task-123")
+    requests = []
+    last_signature = None
+    replay = False
+
+    def handler(request):
+        nonlocal last_signature
+        raw = request.content
+        body = json.loads(raw)
+        nonce = request.headers["x-operly-nonce"]
+        expected = hmac.new(key.encode(), canonical(request.method,request.url.path,
+            request.headers["x-operly-timestamp"],nonce,raw),hashlib.sha256).hexdigest()
+        assert request.headers["x-operly-signature"] == expected
+        assert body["scope"] == scope.wire()
+        requests.append((request.url.path, body))
+        if request.url.path.endswith("/sessions"):
+            result = {"id":"sandbox-123","state":"active","private_network":False,"network_policy":"off"}
+        elif request.url.path.endswith("/destroy"):
+            result = {"destroyed":True}
+        else:
+            result = {"ok":True,"stdout":"42","exit_code":0}
+        data = json.dumps(result).encode()
+        signature = hmac.new(key.encode(), f"{nonce}\n200\n".encode()+data,hashlib.sha256).hexdigest()
+        if replay:
+            signature = last_signature
+        else:
+            last_signature = signature
+        return httpx.Response(200,content=data,headers={"X-Operly-Signature":signature})
+
+    client_type = httpx.AsyncClient
+    monkeypatch.setattr(httpx,"AsyncClient",lambda **kwargs: client_type(
+        transport=httpx.MockTransport(handler),**kwargs))
+    transport = ScopedComputerTransport(base_url="https://runner.example.org",token="a"*48,signing_key=key)
+
+    async def run():
+        nonlocal replay
+        box = await transport.create(scope=scope)
+        await transport.execute_authorized(sandbox_id=box["id"],scope=scope,
+            tool_id="python.exec",args={"code":"print(42)"})
+        assert requests[-1][1]["arguments"] == {"code":"print(42)"}
+        replay = True
+        with pytest.raises(RuntimeError,match="signature"):
+            await transport.execute_authorized(sandbox_id=box["id"],scope=scope,
+                tool_id="python.exec",args={"code":"print(42)"})
+        replay = False
+        assert (await transport.destroy_authorized(box["id"],scope=scope))["destroyed"]
+        with pytest.raises(ValueError):
+            await transport.execute_authorized(sandbox_id=box["id"],scope=scope,
+                tool_id="web.fetch",args={"url":"https://example.org"})
+
+    asyncio.run(run())
+    with pytest.raises(ValueError):
+        ComputerScope("personal","owner-123","task-123",workspace_id="workspace-123")
+    with pytest.raises(ValueError):
+        ComputerScope("workspace","owner-123","task-123")
