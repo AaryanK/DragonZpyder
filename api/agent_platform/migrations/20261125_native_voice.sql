@@ -11,3 +11,6 @@ CREATE TABLE IF NOT EXISTS dz_native_voice_sessions (
 );
 CREATE INDEX IF NOT EXISTS dz_native_voice_expiry
     ON dz_native_voice_sessions(expires_at) WHERE state='active';
+ALTER TABLE dz_native_voice_sessions ADD COLUMN IF NOT EXISTS agent_mode boolean NOT NULL DEFAULT false;
+ALTER TABLE dz_native_voice_sessions ADD COLUMN IF NOT EXISTS conversation_id uuid;
+ALTER TABLE dz_native_voice_sessions ADD COLUMN IF NOT EXISTS mcp_connection_ids jsonb NOT NULL DEFAULT '[]'::jsonb;
