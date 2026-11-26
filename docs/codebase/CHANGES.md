@@ -8,3 +8,10 @@ For each implementation change, add a new bullet beginning with the exact reposi
 - `scripts/check_codebase_docs.py`: Compares base and head; requires a new record naming every changed non-documentation path, including both old/new paths on rename; checks exact tracked inventory and folder guides. Structural check, not semantic certification.
 - `tests/test_codebase_documentation.py`: Offline temporary-repository fixtures for extraction, reference hints, generated pages and change-record validation.
 - `.github/workflows/codebase-docs.yml`: Read-only CI builds/uploads the index and checks path-specific records on PRs; no deployment or automatic branch writes.
+
+## 2026-11-26 — post-merge Android inventory synchronization
+
+- `scripts/build_codebase_index.py`: Adds conservative Java/Kotlin declaration/import hints, XML elements and Gradle structure plus JVM test-name matching so native source pages are useful. This is lexical extraction, not a compiler-resolved dependency graph. No application runtime change.
+- `tests/test_codebase_documentation.py`: Adds an offline JVM/XML fixture checking Android symbols and candidate test links. Full CI required before claiming the new extraction passes.
+
+The concurrent Android and web changes were already merged before this documentation pass. Their paths are now indexed; the Android code map records inspected client entrypoints and security boundaries without changing application code or the prior release goals.

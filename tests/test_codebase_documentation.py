@@ -87,6 +87,18 @@ class DocumentationTests(unittest.TestCase):
         self.assertIn("api/new.py", gate.inventory_difference(self.root)[0])
         self.assertIn("api", gate.inventory_difference(self.root)[2])
 
+    def test_android_source_symbols_and_test_candidates(self):
+        self.write("android/Demo.kt", "package example\ninternal class Demo {\n    fun greet() {}\n}\n")
+        self.write("android/DemoTest.java", "package example;\npublic class DemoTest {\n public void verify() {}\n}\n")
+        self.write("android/AndroidManifest.xml", '<manifest><application android:name="Example"/></manifest>')
+        self.commit()
+        pages = index.render(self.root)
+        self.assertIn("class Demo", pages["files/android/Demo.kt.md"])
+        self.assertIn("fun greet", pages["files/android/Demo.kt.md"])
+        self.assertIn("DemoTest.java", pages["files/android/Demo.kt.md"])
+        self.assertIn("method candidate verify", pages["files/android/DemoTest.java.md"])
+        self.assertIn("XML element application", pages["files/android/AndroidManifest.xml.md"])
+
     def test_documentation_only(self):
         self.write("README.md", "# Updated fixture\n")
         self.commit()
