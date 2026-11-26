@@ -1,4 +1,5 @@
 import { Sandbox } from "railway";
+import { bootstrapFailure } from "./scope.mjs";
 
 const originalCreate = Sandbox.create.bind(Sandbox);
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -33,9 +34,19 @@ async function waitUntilRunning(box, timeoutMs = 45000) {
 }
 
 Sandbox.create = async (...args) => {
-  const box = await originalCreate(...args);
+  let box;
+  try { box = await originalCreate(...args); }
+  catch (error) {
+    console.warn("DZ_VM_BOOTSTRAP_FAILURE "+JSON.stringify(bootstrapFailure("sdk-create",error,"unknown_allocation")));
+    throw error;
+  }
   try { return await waitUntilRunning(box); }
-  catch (error) { try { await box.destroy(); } catch {} throw error; }
+  catch (error) {
+    let cleanup="unconfirmed";
+    try { await box.destroy(); cleanup="confirmed"; } catch {}
+    console.warn("DZ_VM_BOOTSTRAP_FAILURE "+JSON.stringify(bootstrapFailure("sdk-ready",error,cleanup)));
+    throw error;
+  }
 };
 
 await import("./server.mjs");

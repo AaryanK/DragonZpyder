@@ -260,3 +260,10 @@ Removed the three Markdown guides from Android drawable, values and xml resource
 - `api/tests/test_agent_stack_integration.py`: Assert bounded opt-in output configuration, default ceiling and no automatic retry using SDK model construction. Offline test, CI pending.
 - `api/tests/test_personal_mcp_bridge.py`: Verify flattened and nested gateway error envelope and unrelated error type handling. Offline test, CI pending.
 - `api/tests/test_first_party_agent_stream.py`: Add output limit to exact-turn checkpoint recovery, verify no repeated invocation or historical receipt. Offline test, CI pending.
+
+## 2026-11-26 — P0 runner bootstrap diagnostics
+
+- `apps/sandbox_runner/server.mjs`: Record safe fixed stage and bounded exit status for bootstrap failure, log cleanup outcome on known VM failure. No auth, firewall or execution policy relaxation; real allocation failed before patch.
+- `apps/sandbox_runner/server_ready.mjs`: Distinguish SDK allocation failure from readiness failure; known VM cleanup result logged, ambiguous allocation remains unknown.
+- `apps/sandbox_runner/scope.mjs`: Add pure allowlisted diagnostic formatter with bounded numeric status and cleanup label; no private messages or identifiers.
+- `apps/sandbox_runner/scope.test.mjs`: Verify diagnostic sanitization and fallback; offline CI pending.

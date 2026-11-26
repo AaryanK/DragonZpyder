@@ -4,7 +4,7 @@ import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Sandbox } from "railway";
-import { SCOPED_TOOLS, parseCreate, verifyScope, parseToolArguments } from "./scope.mjs";
+import { SCOPED_TOOLS, parseCreate, verifyScope, parseToolArguments, bootstrapFailure } from "./scope.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const TOOL_HELPER = await fs.readFile(path.join(here, "computer_tool.py"));
@@ -224,15 +224,20 @@ function requireExecSuccess(result, label) {
   if (!Number.isFinite(exitCode) || exitCode !== 0) {
     throw Object.assign(
       new Error(`Agent Computer ${label} failed closed (exit ${String(rawCode)})`),
-      { statusCode: 503 },
+      { statusCode: 503, bootstrapExitCode: exitCode },
     );
   }
   return result;
 }
 
 async function requiredBootstrapExec(box, label, command) {
-  const result = await bootstrapOperation(label, () => box.exec(command, { timeoutSec: 10 }));
-  return requireExecSuccess(result, label);
+  try {
+    const result = await bootstrapOperation(label, () => box.exec(command, { timeoutSec: 10 }));
+    return requireExecSuccess(result, label);
+  } catch (error) {
+    console.warn("DZ_VM_BOOTSTRAP_FAILURE "+JSON.stringify(bootstrapFailure(label,error)));
+    throw error;
+  }
 }
 
 async function harden(box, networkPolicy) {
@@ -277,7 +282,11 @@ async function createSession(payload) {
   // Build the content-addressed base image once and let all later Computer
   // sessions fork the Railway-cached template instead of building it in the
   // user's request path.
-  await ensureComputerTemplateWarm();
+  try { await ensureComputerTemplateWarm(); }
+  catch (error) {
+    console.warn("DZ_VM_BOOTSTRAP_FAILURE "+JSON.stringify(bootstrapFailure("template",error)));
+    throw error;
+  }
 
   const options = {
     environmentId: ENVIRONMENT_ID,
@@ -285,16 +294,21 @@ async function createSession(payload) {
     networkIsolation: "ISOLATED",
   };
   const box = await Sandbox.create(computerTemplate(), options);
+  let stage = "write-helper";
   try {
     await writeHelper(box);
     const expiresAt = new Date(Date.now() + request.ttlSeconds * 1000).toISOString();
     const meta = Buffer.from(JSON.stringify({scope: request.scope, expiresAt,
       profile: request.profile, networkPolicy: request.networkPolicy}));
     const publicMeta = Buffer.from(JSON.stringify({profile: request.profile, networkPolicy: request.networkPolicy}));
+    stage = "write-scope-meta";
     await bootstrapOperation("write-scope-meta", () => box.files.write(SCOPE_META, meta, { mode: 0o600 }));
+    stage = "write-public-meta";
     await bootstrapOperation("write-public-meta", () => box.files.write(PUBLIC_META, publicMeta, { mode: 0o444 }));
+    stage = "protect-session-meta";
     await requiredBootstrapExec(box, "protect-session-meta",
       "chown root:root /opt/dz-computer-scope.json /opt/dz-computer-public.json && chmod 0600 /opt/dz-computer-scope.json && chmod 0444 /opt/dz-computer-public.json");
+    stage = "network-harden";
     await harden(box, request.networkPolicy);
     console.log(`Agent Computer session ${String(box.id || "").slice(0, 24)} ready in ${Date.now() - started}ms`);
     return {
@@ -303,7 +317,9 @@ async function createSession(payload) {
       profile: request.profile, network_policy: request.networkPolicy, private_network: false, tools: TOOL_IDS, expires_at: expiresAt,
     };
   } catch (error) {
-    try { await box.destroy(); } catch {}
+    let cleanup="unconfirmed";
+    try { await box.destroy(); cleanup="confirmed"; } catch {}
+    console.warn("DZ_VM_BOOTSTRAP_FAILURE "+JSON.stringify(bootstrapFailure(stage,error,cleanup)));
     throw error;
   }
 }

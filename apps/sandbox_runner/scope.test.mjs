@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {parseScope,verifyScope,parseCreate,parseToolArguments} from "./scope.mjs";
+import {parseScope,verifyScope,parseCreate,parseToolArguments,bootstrapFailure} from "./scope.mjs";
 const alice={scopeKind:"personal",principalId:"alice-123",clientSessionId:"run-123"};
 const bob={...alice,principalId:"bob-123"};
 const expiresAt="2030-01-01T00:00:00Z";
@@ -27,4 +27,9 @@ test("network, deadlines, and unsupported operations fail closed",()=>{
   assert.throws(()=>parseToolArguments("terminal.exec",{command:"echo ok",background:true}));
   assert.throws(()=>parseToolArguments("terminal.exec",{command:"echo ok",timeout_seconds:900}));
   assert.equal(parseToolArguments("terminal.exec",{command:"echo ok"}).timeout_seconds,30);
+});
+
+test("bootstrap diagnostics are fixed and do not log private error details",()=>{
+  assert.deepEqual(bootstrapFailure("network-verify",{statusCode:503,bootstrapExitCode:1,message:"secret"}, "confirmed"),{stage:"network-verify",status:503,exit_code:1,cleanup:"confirmed"});
+  assert.deepEqual(bootstrapFailure("private-token",{statusCode:"not-a-status",bootstrapExitCode:"secret"},"private-id"),{stage:"session-bootstrap",status:503,exit_code:null,cleanup:"unconfirmed"});
 });

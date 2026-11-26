@@ -53,3 +53,14 @@ export function parseToolArguments(tool, value) {
   if (Buffer.byteLength(JSON.stringify(result)) > 25*1024*1024) fail("Tool arguments exceed policy",413);
   return result;
 }
+
+// Diagnostics contain fixed phase names and bounded numerical fields only.
+export function bootstrapFailure(stage, error, cleanup = "not_attempted") {
+  const stages = new Set(["template","sdk-create","sdk-ready","write-helper","prepare-workspace","write-scope-meta","write-public-meta","protect-session-meta","network-harden","network-verify","session-bootstrap"]);
+  const cleanups = new Set(["not_attempted","confirmed","unconfirmed","unknown_allocation"]);
+  const status = Number(error?.statusCode ?? error?.status ?? 503);
+  const exit = error?.bootstrapExitCode;
+  return {stage:stages.has(stage)?stage:"session-bootstrap",status:Number.isInteger(status)&&status>=400&&status<=599?status:503,
+    exit_code:Number.isInteger(exit)&&exit>=0&&exit<=255?exit:null,
+    cleanup:cleanups.has(cleanup)?cleanup:"unconfirmed"};
+}
