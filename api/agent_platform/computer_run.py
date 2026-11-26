@@ -47,9 +47,10 @@ class ComputerRun:
     A failed allocation can leave an orphan until provider TTL; no cleanup
     claim is made without a signed destroy receipt.
     """
-    def __init__(self, transport: ScopedComputerTransport, grant: ComputerRunGrant, *, admission=None):
+    def __init__(self, transport: ScopedComputerTransport, grant: ComputerRunGrant, *, admission=None, authorize=None):
         self._transport = transport
         self._admission = admission
+        self._authorize = authorize
         self._grant = grant
         self._deadline = monotonic() + grant.deadline_seconds
         self._remaining = grant.max_calls
@@ -77,6 +78,8 @@ class ComputerRun:
             self._time_left()
             self._remaining -= 1
             try:
+                if self._authorize is not None:
+                    await asyncio.wait_for(self._authorize(),timeout=self._time_left())
                 if self._sandbox_id is None:
                     if self._admission is not None:
                         await asyncio.wait_for(self._admission.reserve(),timeout=self._time_left())
@@ -88,6 +91,8 @@ class ComputerRun:
                     self._sandbox_id = allocated["id"]
                     if self._admission is not None:
                         await asyncio.wait_for(self._admission.allocated(self._sandbox_id),timeout=self._time_left())
+                if self._authorize is not None:
+                    await asyncio.wait_for(self._authorize(),timeout=self._time_left())
                 return await asyncio.wait_for(self._transport.execute_authorized(
                     sandbox_id=self._sandbox_id, scope=self._grant.scope,
                     tool_id=tool_id, args=args), timeout=self._time_left())
