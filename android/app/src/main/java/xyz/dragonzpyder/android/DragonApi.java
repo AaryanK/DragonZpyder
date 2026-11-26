@@ -234,23 +234,24 @@ final class DragonApi {
     /** Fresh server-bound Google nonce. Credential Manager receives this unchanged. */
     synchronized JSONObject googleBootstrap() throws Exception {
         discoverMode();clear();
-        if(firstParty){JSONObject result=(JSONObject)call("/dz/identity/v1/provider/google/start",new JSONObject());googleState=result.optString("state","");if(googleState.isEmpty()||result.optString("nonce").isEmpty()||result.optString("client_id").isEmpty()||cookies.value("__Host-dz_provider").isEmpty())throw new IOException("Google challenge was incomplete");return result;}
-        JSONObject result=(JSONObject)call("/api/auth/bootstrap",null);
-        bootstrapCsrf=result.optString("csrf_token","");
-        String nonce=result.optString("google_nonce","");
-        String client=result.optString("google_client_id","");
-        if(bootstrapCsrf.isEmpty()||nonce.isEmpty()||client.isEmpty()||
-                !nonce.equals(cookies.value("operly_google_nonce")))
-            throw new ApiError(503,"GOOGLE_NOT_CONFIGURED","Google login is not configured for this mobile client.");
-        if(!client.matches("[0-9]+-[A-Za-z0-9._-]+\\.apps\\.googleusercontent\\.com"))
-            throw new IOException("Unexpected Google client configuration");
-        return new JSONObject().put("client_id",client).put("nonce",nonce);
+        if(!firstParty)throw unsupported();
+        JSONObject result=(JSONObject)call("/dz/identity/v1/provider/google/start",new JSONObject());
+        googleState=result.optString("state","");
+        String nonce=result.optString("nonce","");
+        String client=result.optString("client_id","");
+        if(googleState.isEmpty()||nonce.isEmpty()||cookies.value("__Host-dz_provider").isEmpty()
+                ||!client.matches("[0-9]+-[A-Za-z0-9._-]+\\.apps\\.googleusercontent\\.com"))
+            throw new IOException("Google challenge or client configuration was incomplete");
+        return result;
     }
     synchronized void loginWithGoogle(String idToken,boolean signup) throws Exception {
         if(idToken==null||idToken.isEmpty()||idToken.length()>16000)
             throw new IOException("Invalid Google credential");
         try {
-            if(firstParty){if(googleState.isEmpty())throw new IOException("Google challenge expired");call("/dz/identity/v1/provider/google/"+(signup?"signup":"complete"),new JSONObject().put("state",googleState).put("credential",idToken));googleState="";}else call("/api/auth/google",object("credential",idToken));
+            if(!firstParty)throw unsupported();
+            if(googleState.isEmpty())throw new IOException("Google challenge expired");
+            call("/dz/identity/v1/provider/google/"+(signup?"signup":"complete"),new JSONObject().put("state",googleState).put("credential",idToken));
+            googleState="";
             bootstrapCsrf="";
             ensurePersonal();
         } catch(Exception e) { clear(); throw e; }
@@ -258,7 +259,7 @@ final class DragonApi {
     synchronized boolean browserProviderAvailable(String provider) throws Exception {
         ensureMode();
         if(!firstParty)return false;
-        if(!Arrays.asList("google","discord").contains(provider))return false;
+        if(!"discord".equals(provider))return false;
         try{return ((JSONObject)call("/dz/identity/v1/mobile/capabilities",null)).optBoolean(provider,false);}
         catch(ApiError e){if(e.status==404||e.status==503)return false;throw e;}
     }
