@@ -59,6 +59,10 @@ class ComputerRun:
         self._closed = False
         self.cleanup_confirmed: bool | None = None
 
+    @property
+    def scope(self) -> ComputerScope:
+        return self._grant.scope
+
     def _time_left(self):
         remaining = self._deadline - monotonic()
         if remaining <= 0:

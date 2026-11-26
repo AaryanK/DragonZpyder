@@ -154,7 +154,7 @@ def specialist_specs(models: dict | None = None, search_tools=None) -> list[dict
     return specs
 
 
-def build_frontier_agent(model, checkpointer, *, specialist_models=None, synthetic_tools=None, delegated_tools=None, computer_run=None, product_surface="dragonzpyder"):
+def build_frontier_agent(model, checkpointer, *, specialist_models=None, synthetic_tools=None, delegated_tools=None, computer_run=None, computer_artifacts=None, artifact_tools=None, product_surface="dragonzpyder"):
     """Compose real LangChain primitives without making a provider request."""
     virtual_state = StateBackend()
     # Explicit staging/test injection only. Never enable synthetic business tools
@@ -280,6 +280,17 @@ def build_frontier_agent(model, checkpointer, *, specialist_models=None, synthet
             "actual result. A VM file is not yet a downloadable user artifact. "
             "Never blindly repeat an operation with an uncertain outcome."
         )
+    if computer_artifacts is not None:
+        from .computer_artifacts import ComputerArtifacts, computer_artifact_tools
+        if not isinstance(computer_artifacts, ComputerArtifacts) or computer_artifacts.run is not computer_run:
+            raise ValueError("Artifact binding must belong to the authorized computer run")
+        native_computer_tools.extend(computer_artifact_tools(computer_artifacts))
+        prompt += "\nUse computer_import_attachment for selected input files and computer_publish_file for completed downloadable outputs. Inspect and verify output content before publishing."
+    artifact_tools = list(artifact_tools or [])
+    if artifact_tools:
+        if os.getenv("DRAGONZPYDER_AGENT_ARTIFACTS_ENABLED") != "1":
+            raise ValueError("Artifact tools disabled")
+        prompt += "\nBound artifact tools operate on selected attachments and authenticated user-owned output storage; only claim delivery from a successful artifact receipt."
     if not native_computer_tools:
         prompt += "\nNo real shell or Python environment is bound for this run."
     stress_mode = all(os.getenv(key) == "1" for key in (
@@ -311,7 +322,7 @@ def build_frontier_agent(model, checkpointer, *, specialist_models=None, synthet
         ]
     return create_deep_agent(
         model=model,
-        tools=[*search_tools, *synthetic_tools, *delegated_tools, *native_computer_tools, check_quadratic_gradient_step, check_trilinear_interpolation],
+        tools=[*search_tools, *synthetic_tools, *delegated_tools, *native_computer_tools, *artifact_tools, check_quadratic_gradient_step, check_trilinear_interpolation],
         backend=virtual_state,
         checkpointer=checkpointer,
         # First match wins; default is otherwise permissive. These rules
