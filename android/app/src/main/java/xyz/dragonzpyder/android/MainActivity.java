@@ -190,7 +190,12 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     }
     private void startDiscordSignIn(){
         if(busy||googleSignInPending)return;
-        if(api.isFirstParty()){startBrowserProvider("discord",false);return;}
+        submit("Checking identity routing…",()->{api.refreshAuthenticationMode();return api.isFirstParty();},mode->{
+            if(Boolean.TRUE.equals(mode)){startBrowserProvider("discord",false);return;}
+            startLegacyDiscordSignIn();
+        },true);
+    }
+    private void startLegacyDiscordSignIn(){
         submit("Checking Discord sign-in…",()->api.discordMobileAvailable(),enabled->{
             if(!Boolean.TRUE.equals(enabled)){
                 setStatus(api.isFirstParty()?"Discord sign-in: first-party mobile OAuth is not available yet.":"Discord sign-in: the server does not advertise the required mobile OAuth endpoint.");
@@ -305,6 +310,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             }
             if(password!=null)password.setText("");if(confirm!=null)confirm.setText("");
         }));
+        if(mode.equals("login")&&api.isFirstParty()){card.addView(button("Account recovery or migration",()->{try{new androidx.browser.customtabs.CustomTabsIntent.Builder().setShowTitle(true).build().launchUrl(this,android.net.Uri.parse("https://dragonzpyder.xyz/account"));}catch(Exception failure){setStatus("Open dragonzpyder.xyz/account in your browser.");}}));}
         if(mode.equals("login")&&!api.isFirstParty()){card.addView(button("Forgot password?",()->{authEmail=value(email);authScreen("forgot","");}));card.addView(button("Already have a verification code?",()->{authEmail=value(email);challengeId="";authScreen("verify","");}));}
         if(mode.equals("verify"))card.addView(button("Resend code",()->{String e=value(email);if(!emailValid(e))return;submit("Requesting code…",()->api.preauth("resend-verification",DragonApi.object("email",e)),r->setStatus("If verification is pending, another code is on its way."),true);}));
         if(mode.equals("forgot"))card.addView(button("I have a reset code",()->{authEmail=value(email);authScreen("reset","");}));
