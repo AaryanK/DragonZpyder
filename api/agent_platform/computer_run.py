@@ -47,8 +47,9 @@ class ComputerRun:
     A failed allocation can leave an orphan until provider TTL; no cleanup
     claim is made without a signed destroy receipt.
     """
-    def __init__(self, transport: ScopedComputerTransport, grant: ComputerRunGrant):
+    def __init__(self, transport: ScopedComputerTransport, grant: ComputerRunGrant, *, admission=None):
         self._transport = transport
+        self._admission = admission
         self._grant = grant
         self._deadline = monotonic() + grant.deadline_seconds
         self._remaining = grant.max_calls
@@ -77,12 +78,16 @@ class ComputerRun:
             self._remaining -= 1
             try:
                 if self._sandbox_id is None:
+                    if self._admission is not None:
+                        await asyncio.wait_for(self._admission.reserve(),timeout=self._time_left())
                     self._allocation_attempted = True
                     allocated = await asyncio.wait_for(
                         self._transport.create(scope=self._grant.scope, profile="coding",
                             ttl_seconds=max(60, min(1800, self._grant.deadline_seconds + 120))),
                         timeout=self._time_left())
                     self._sandbox_id = allocated["id"]
+                    if self._admission is not None:
+                        await asyncio.wait_for(self._admission.allocated(self._sandbox_id),timeout=self._time_left())
                 return await asyncio.wait_for(self._transport.execute_authorized(
                     sandbox_id=self._sandbox_id, scope=self._grant.scope,
                     tool_id=tool_id, args=args), timeout=self._time_left())
@@ -98,15 +103,22 @@ class ComputerRun:
                 return self.cleanup_confirmed is True
             self._closed = True
             if self._sandbox_id is None:
-                self.cleanup_confirmed = not self._allocation_attempted
-                return self.cleanup_confirmed
-            try:
-                result = await asyncio.wait_for(self._transport.destroy_authorized(
-                    self._sandbox_id, scope=self._grant.scope), timeout=30)
-                self.cleanup_confirmed = result.get("destroyed") is True
-            except Exception:
-                self.cleanup_confirmed = False
-            return self.cleanup_confirmed is True
+                confirmed = not self._allocation_attempted
+            else:
+                try:
+                    result = await asyncio.wait_for(self._transport.destroy_authorized(
+                        self._sandbox_id, scope=self._grant.scope), timeout=30)
+                    confirmed = result.get("destroyed") is True
+                except Exception:
+                    confirmed = False
+            if self._admission is not None and self._allocation_attempted:
+                try:
+                    await asyncio.wait_for(self._admission.finish(
+                        attempted=True,confirmed=confirmed,sandbox_id=self._sandbox_id),timeout=10)
+                except Exception:
+                    confirmed=False
+            self.cleanup_confirmed=confirmed
+            return confirmed
 
 
 def computer_tools(run: ComputerRun) -> list:
