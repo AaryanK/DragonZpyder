@@ -100,6 +100,7 @@ class NativeChatView(context: Context, private val dark: Boolean, private val ac
             allowComputer=computer&&it.allowComputer,allowMedia=media&&it.allowMedia,allowDurable=durable&&it.allowDurable)}
     }
     fun clearExecutionConsent(){presentation.update{it.copy(allowComputer=false,allowMedia=false,allowDurable=false)}}
+    internal fun selectExecutionOptions(computer:Boolean,media:Boolean,durable:Boolean){presentation.update{it.copy(allowComputer=it.computerAvailable&&computer,allowMedia=it.mediaAvailable&&media,allowDurable=it.durableAvailable&&durable)}}
     fun allowsComputer()=presentation.snapshot.computerAvailable&&presentation.snapshot.allowComputer
     fun allowsMedia()=presentation.snapshot.mediaAvailable&&presentation.snapshot.allowMedia
     fun allowsDurable()=presentation.snapshot.durableAvailable&&presentation.snapshot.allowDurable
@@ -358,9 +359,9 @@ class NativeChatView(context: Context, private val dark: Boolean, private val ac
         if(open)AlertDialog(onDismissRequest={open=false},title={Text("Tools for this message")},text={
             Column{
                 Text("Choose optional capabilities for the next message only. Server permissions and approvals still apply.",fontSize=13.sp)
-                if(options.computerAvailable)Row(verticalAlignment=Alignment.CenterVertically){Checkbox(checked=options.allowComputer,onCheckedChange={v->presentation.update{it.copy(allowComputer=v)}});Text("Use isolated computer")}
-                if(options.mediaAvailable)Row(verticalAlignment=Alignment.CenterVertically){Checkbox(checked=options.allowMedia,onCheckedChange={v->presentation.update{it.copy(allowMedia=v)}});Text("Use media tools")}
-                if(options.durableAvailable)Row(verticalAlignment=Alignment.CenterVertically){Checkbox(checked=options.allowDurable,onCheckedChange={v->presentation.update{it.copy(allowDurable=v)}});Text("Allow scheduled work")}
+                if(options.computerAvailable)Row(verticalAlignment=Alignment.CenterVertically){Checkbox(checked=options.allowComputer,onCheckedChange={v->selectExecutionOptions(v,options.allowMedia,options.allowDurable)});Text("Use isolated computer")}
+                if(options.mediaAvailable)Row(verticalAlignment=Alignment.CenterVertically){Checkbox(checked=options.allowMedia,onCheckedChange={v->selectExecutionOptions(options.allowComputer,v,options.allowDurable)});Text("Use media tools")}
+                if(options.durableAvailable)Row(verticalAlignment=Alignment.CenterVertically){Checkbox(checked=options.allowDurable,onCheckedChange={v->selectExecutionOptions(options.allowComputer,options.allowMedia,v)});Text("Allow scheduled work")}
             }
         },confirmButton={TextButton(onClick={open=false}){Text("Done")}},dismissButton={TextButton(onClick={clearExecutionConsent();open=false}){Text("Clear")}})
     }

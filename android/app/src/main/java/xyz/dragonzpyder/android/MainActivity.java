@@ -131,7 +131,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private boolean strong(String p){if(p.length()<12){setStatus("Use at least 12 characters for your password.");return false;}return true;}
     private boolean six(String code){if(!code.matches("[0-9]{6}")){setStatus("Enter the six-digit code.");return false;}return true;}
     private void clearAccountView(){
-        closeVoice();
+        closeVoice();dictationBinding="";
         activeRequestId="";if(agentRequests!=null)agentRequests.reset();
         conversation="";pendingPrompt="";attachment=null;pendingFileDownload=null;attachmentName="";transcript.clear();
         meshMode=false;model="";modelAcceptsImages=false;restoredMesh=false;restoredModel="";restoredModelAcceptsImages=false;lastAnswer="";meshMessages=new JSONArray();history=new JSONArray();

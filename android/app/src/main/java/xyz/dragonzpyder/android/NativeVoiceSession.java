@@ -32,7 +32,7 @@ final class NativeVoiceSession {
     private final JSONArray aliases;
     private final boolean agentMode;
     private final HashSet<String> completedEvents=new HashSet<>();
-    private boolean agentBusy;
+    private boolean agentBusy,awaitingPlayback;
     private PeerConnectionFactory factory;
     private PeerConnection peer;
     private AudioSource source;
@@ -135,7 +135,7 @@ final class NativeVoiceSession {
     private void handleAgentTranscript(JSONObject event){
         String eventId=event.optString("item_id"),prompt=event.optString("transcript").trim();
         if(!agentMode||muted||agentBusy||!eventId.matches("[A-Za-z0-9_-]{1,180}")||prompt.isEmpty()||prompt.length()>12000||completedEvents.size()>=128||!completedEvents.add(eventId))return;
-        agentBusy=true;if(track!=null)track.setEnabled(false);
+        agentBusy=true;awaitingPlayback=false;if(track!=null)track.setEnabled(false);
         status("Working through DragonZpyder…");
         io.execute(()->{
             try{
@@ -154,13 +154,13 @@ final class NativeVoiceSession {
                             .put("input",new JSONArray().put(new JSONObject().put("type","message").put("role","user")
                             .put("content",new JSONArray().put(new JSONObject().put("type","input_text").put("text",answer.substring(0,Math.min(10000,answer.length()))))))));
                         if(channel==null||channel.state()!=DataChannel.State.OPEN||!channel.send(new DataChannel.Buffer(ByteBuffer.wrap(speech.toString().getBytes(StandardCharsets.UTF_8)),false)))throw new IllegalStateException("Voice playback unavailable");
-                        status("Reading the agent result…");
+                        awaitingPlayback=true;status("Reading the agent result…");
                     }catch(Exception failure){status("Answer saved in chat; speech unavailable.");close();}
                 });
             }catch(Exception failure){main.post(()->{if(!closed){listener.transcript("DragonZpyder","The request outcome is unconfirmed. Check conversation history before repeating it.");status("Voice request unconfirmed.");close();}});}
         });
     }
-    private void finishPlayback(){agentBusy=false;if(track!=null)track.setEnabled(!muted);status(muted?"Microphone muted":"Ready · microphone live");}
+    private void finishPlayback(){awaitingPlayback=false;agentBusy=false;if(track!=null)track.setEnabled(!muted);status(muted?"Microphone muted":"Ready · microphone live");}
     private void onProviderEvent(JSONObject event){
         if(closed||!connected||!binding.equals(api.pendingRequestBinding()))return;
         String type=event.optString("type");
@@ -174,9 +174,9 @@ final class NativeVoiceSession {
         switch(type){
             case "input_audio_buffer.speech_started":if(!muted)status("Listening…");break;
             case "input_audio_buffer.speech_stopped":if(!muted)status("Thinking…");break;
-            case "output_audio_buffer.started":status("Speaking…");break;
+            case "output_audio_buffer.started":if(!agentMode||awaitingPlayback)status("Speaking…");break;
             case "output_audio_buffer.stopped":
-            case "output_audio_buffer.cleared":if(agentMode){if(agentBusy)finishPlayback();}else status(muted?"Microphone muted":"Ready · microphone live");break;
+            case "output_audio_buffer.cleared":if(agentMode){if(awaitingPlayback)finishPlayback();}else status(muted?"Microphone muted":"Ready · microphone live");break;
             case "error":status("Voice provider reported an error.");if(agentBusy)close();break;
             default:break;
         }

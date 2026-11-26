@@ -215,3 +215,11 @@ Removed the three Markdown guides from Android drawable, values and xml resource
 - `web/app.js`: Syncs menu with available first-party capabilities and clears selections. CI/device/live qualification pending.
 - `web/ui-v1.css`: Compact responsive menu style. CI/device/live qualification pending.
 - `web/frontend/tests/native-routing.spec.js`: Mock test for gated capability options and chat reset. CI/device/live qualification pending.
+
+## 2026-11-26 — voice lifecycle and appearance review
+
+- `android/app/src/main/java/xyz/dragonzpyder/android/NativeVoiceSession.java`: Separates in-flight execution from playback; stale provider audio buffer events cannot reopen the microphone before a committed agent answer is available.
+- `android/app/src/main/java/xyz/dragonzpyder/android/MainActivity.java`: Clears the pending dictation binding when account state resets.
+- `android/app/src/androidTest/java/xyz/dragonzpyder/android/AccountIsolationTest.java`: Updates account isolation regression for the current neutral initials fallback and verifies reset of the dictation binding.
+- `web/frontend/src/design-tokens.css`: Uses system sans-serif for the shared web token, matching Android platform typography on Android devices; not a bundled identical font file.
+- `android/app/src/main/java/xyz/dragonzpyder/android/NativeChatView.kt`: Centralizes capability selection so unavailable controls cannot set consent. Full qualification pending.
