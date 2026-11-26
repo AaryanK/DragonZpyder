@@ -102,6 +102,7 @@ async def status():
                 "DRAGONZPYDER_COMPUTER_RUNNER_URL","DRAGONZPYDER_COMPUTER_RUNNER_TOKEN",
                 "DRAGONZPYDER_COMPUTER_RUNNER_SIGNING_KEY","DRAGONZPYDER_ARTIFACT_KEY_B64")),
             "voice_enabled": enabled and os.getenv("DRAGONZPYDER_NATIVE_VOICE_ENABLED") == "1" and bool(os.getenv("DRAGONZPYDER_NATIVE_VOICE_API_KEY")),
+            "voice_agent_enabled": enabled and os.getenv("DRAGONZPYDER_NATIVE_VOICE_AGENT_ENABLED")=="1" and os.getenv("DRAGONZPYDER_NATIVE_VOICE_ENABLED")=="1" and bool(os.getenv("DRAGONZPYDER_NATIVE_VOICE_API_KEY")) and os.getenv("DRAGONZPYDER_FIRST_PARTY_REQUEST_LEDGER_ENABLED")=="1",
             "request_ledger_enabled": enabled and os.getenv("DRAGONZPYDER_FIRST_PARTY_REQUEST_LEDGER_ENABLED") == "1",
             "agent_stream_enabled": enabled and os.getenv("DRAGONZPYDER_FIRST_PARTY_REQUEST_LEDGER_ENABLED") == "1" and os.getenv("DRAGONZPYDER_FIRST_PARTY_STREAM_ENABLED") == "1",
             "goal_management_enabled": enabled and os.getenv("DRAGONZPYDER_FIRST_PARTY_GOAL_MANAGEMENT_ENABLED") == "1",
