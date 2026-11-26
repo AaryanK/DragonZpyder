@@ -101,3 +101,8 @@ Removed the three Markdown guides from Android drawable, values and xml resource
 - `web/frontend/tests/voice-browser-fallback.spec.js`: Explicit legacy route fixture and readiness assertion for fallback regression tests. CI and real audio qualification pending.
 - `web/frontend/tests/native-routing.spec.js`: Tests native start/owner CSRF/SDP/voice orb/mute/end and absence of legacy calls using mocked transport. CI and real audio qualification pending.
 - `.github/workflows/web.yml`: Checks companion transport JavaScript syntax as part of web validation. CI and real audio qualification pending.
+
+## 2026-11-26 — short portrait voice correction
+
+- `web/frontend/src/voice-canvas-renderer.js`: Windows restored voice suite reported 33/34 passes; 360×600 captions overlapped the globe by 61px versus 36px allowed. Raise only the short portrait orb center, retaining radius, waveform energy, original art, and normal viewport geometry. The existing failure assertion is unchanged; rerun pending.
+- `web/companion.js`: Prevent a second native start while a previously submitted WebRTC reservation is settling after the UI was closed; retain server-side expiry and explicit hangup handling.

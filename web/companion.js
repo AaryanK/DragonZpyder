@@ -4,7 +4,7 @@ const calls=new Set();
 // Native voice reservations belong to the authenticated session, not the
 // legacy companion. Let a submitted start settle even if the UI closes,
 // so a late accepted provider call can be ended rather than orphaned.
-let nativeCall=null,nativeClosing=null,expiryTimer=null;
+let nativeCall=null,nativePending=null,nativeClosing=null,expiryTimer=null;
 function voiceContext(){return window.dragonzpyderVoiceContext?.()||{available:false,native:false}}
 function endNative(call){
   if(!call||call.ending)return call?.ending;
@@ -169,7 +169,7 @@ function onEvent(text,v,native=false){
 async function start(){
   if(live||starting||browserMode)return;
   const context=voiceContext();
-  if(!context.available||launch.disabled||nativeClosing)return;
+  if(!context.available||launch.disabled||nativePending||nativeClosing)return;
   const native=context.native===true;
   window.dispatchEvent(new Event("dragonzpyder:live-start"));
   panel.hidden=false;launch.setAttribute("aria-expanded","true");
@@ -200,9 +200,10 @@ async function start(){
     if(native){
       const token=csrf(true);if(!token)throw Error("Secure session missing. Sign in again.");
       if(!window.crypto?.randomUUID)throw Error("Secure browser context required.");
-      call={id:crypto.randomUUID(),csrf:token,settled:false,closed:false,ending:null};nativeCall=call;
+      call={id:crypto.randomUUID(),csrf:token,settled:false,closed:false,ending:null};nativeCall=call;nativePending=call;
       try{r=await fetch("/dz/v2/personal/voice/start",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json","X-DZ-CSRF":token},body:JSON.stringify({session_id:call.id,sdp:peer.localDescription.sdp}),cache:"no-store",redirect:"error"});}
       catch(err){call.settled=true;void endNative(call);throw err;}
+      finally{if(nativePending===call)nativePending=null;}
       call.settled=true;
       if(v!==version||call.closed){if(r.ok||r.status>=500)void endNative(call);return;}
     }else r=await fetch("/companion/realtime",{method:"POST",credentials:"same-origin",headers:{"content-type":"application/sdp","x-csrf-token":csrf()},body:peer.localDescription.sdp,signal:controller.signal});
