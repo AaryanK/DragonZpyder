@@ -425,7 +425,7 @@ def test_native_computer_tools_execute_multistep_graph_with_scoped_mock_runner(m
             scripted_call("computer_python",{"code":"from pathlib import Path; Path('output.txt').write_text(str(int(Path('input.txt').read_text())+1))"}),
             scripted_call("computer_read_file",{"path":"output.txt"}),
             AIMessage(content="The computed output is 42."),
-        ]),MemorySaver(),synthetic_tools=computer_tools(run))
+        ]),MemorySaver(),computer_run=run)
         assert runner.calls == []
         try:
             result = await graph.ainvoke(
