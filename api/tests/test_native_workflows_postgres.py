@@ -116,3 +116,89 @@ def test_native_workflow_commits_and_recovers_exact_phase_without_replay(monkeyp
                 await db.execute("DELETE FROM dz_native_workflows WHERE goal_id=$1",goal)
                 await db.execute("DELETE FROM dz_agent_artifacts WHERE owner_id=$1",owner)
     asyncio.run(run())
+
+
+def test_media_graph_selected_image_and_generation_real_postgres(monkeypatch):
+    import httpx
+    from uuid import UUID
+    from agent_platform.media_tools import MediaRun
+    from agent_platform.harness import build_frontier_agent
+    from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
+    from langchain_core.messages import AIMessage,ToolMessage
+    from langgraph.checkpoint.memory import MemorySaver
+    dsn=os.environ["DRAGONZPYDER_BUDGET_TEST_DSN"]
+    owner="media-test-"+uuid4().hex
+    rid=uuid4()
+    raw=base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jVZkAAAAASUVORK5CYII=")
+    for key,value in {
+        "DRAGONZPYDER_AGENT_ARTIFACTS_ENABLED":"1",
+        "DRAGONZPYDER_ARTIFACT_KEY_B64":base64.b64encode(os.urandom(32)).decode(),
+        "DRAGONZPYDER_ARTIFACT_STORAGE_BACKEND":"postgres",
+        "DRAGONZPYDER_AGENT_MEDIA_ENABLED":"1",
+        "DRAGONZPYDER_AGENT_USE_GATEWAY":"1",
+        "DRAGONZPYDER_AGENT_GATEWAY_BASE_URL":"https://gateway.example.org/internal/agent/v1",
+        "DRAGONZPYDER_AGENT_GATEWAY_TOKEN":"synthetic-service-token-"+"x"*40,
+        "DRAGONZPYDER_AGENT_VISION_MODEL":"test/vision",
+        "DRAGONZPYDER_AGENT_IMAGE_MODEL":"test/image",
+        "DRAGONZPYDER_AGENT_QUICKJS_ENABLED":"0",
+        "DRAGONZPYDER_AGENT_WEB_SEARCH_ENABLED":"0",
+    }.items():monkeypatch.setenv(key,value)
+    for key in ("DRAGONZPYDER_AGENT_TRANSCRIPTION_MODEL","DRAGONZPYDER_AGENT_SPEECH_MODEL"):
+        monkeypatch.delenv(key,raising=False)
+    @asynccontextmanager
+    async def db_factory():
+        db=await asyncpg.connect(dsn)
+        try:yield db
+        finally:await db.close()
+    calls=[]
+    def provider(req):
+        assert req.headers["authorization"].startswith("Bearer synthetic-service-token-")
+        body=json.loads(req.content)
+        calls.append(body["model"])
+        headers={"x-dragonzpyder-audit":"persisted","x-dragonzpyder-request-id":str(uuid4()),
+                 "x-dragonzpyder-trace-id":uuid4().hex}
+        if body["model"]=="test/vision":
+            assert body["messages"][0]["content"][1]["image_url"]["url"]=="data:image/png;base64,"+base64.b64encode(raw).decode()
+            return httpx.Response(200,json={"choices":[{"message":{"content":"A tiny image."}}]},headers=headers)
+        assert body=={"model":"test/image","prompt":"Draw a small dot","n":1}
+        return httpx.Response(200,json={"data":[{"b64_json":base64.b64encode(raw).decode()}]},headers=headers)
+    async def authorize():return None
+    class Model(FakeMessagesListChatModel):
+        def bind_tools(self,tools,**kwargs):return self
+    async def run():
+        async with db_factory() as db:
+            root=Path(__file__).resolve().parents[1]/"agent_platform/migrations"
+            await db.execute((root/"20261125_shared_artifacts.sql").read_text())
+            await db.execute((root/"20261126_agent_media_attempts.sql").read_text())
+            info=await artifacts.put(db,owner=owner,name="input.png",mime="image/png",data=raw)
+        try:
+            async with httpx.AsyncClient(transport=httpx.MockTransport(provider)) as http:
+                binding=MediaRun(owner=owner,run_id=rid,allowed_ids=[UUID(info["id"])],
+                    db_factory=db_factory,authorize=authorize,http=http)
+                with pytest.raises(PermissionError):await binding.selected(str(uuid4()))
+                model=Model(responses=[
+                    AIMessage(content="",tool_calls=[{"name":"inspect_image","args":{"file_id":info["id"],"question":"Describe"},"id":"vision"}]),
+                    AIMessage(content="",tool_calls=[{"name":"generate_image","args":{"prompt":"Draw a small dot"},"id":"image"}]),
+                    AIMessage(content="Image inspected and generated."),
+                ])
+                agent=build_frontier_agent(model,MemorySaver(),media_run=binding)
+                state=await agent.ainvoke({"messages":[{"role":"user","content":"Inspect and generate a similar image"}]},
+                    config={"configurable":{"thread_id":"media-"+rid.hex},"recursion_limit":128})
+                responses=[m for m in state["messages"] if isinstance(m,ToolMessage)]
+                assert len(responses)==2 and all(m.status=="success" for m in responses)
+                assert "A tiny image." in str(responses[0].content)
+                assert base64.b64encode(raw).decode() not in str(responses)
+                assert "synthetic-service-token" not in str(state)
+                async with db_factory() as db:
+                    row=await db.fetchrow("SELECT id FROM dz_agent_artifacts WHERE owner_id=$1 AND run_id=$2",owner,rid)
+                    _,stored=await artifacts.get(db,owner=owner,file_id=row["id"])
+                    assert stored==raw
+                    assert await db.fetchval("SELECT count(*) FROM dz_agent_media_attempts WHERE owner_id=$1 AND run_id=$2 AND state='returned'",owner,rid)==2
+                with pytest.raises(PermissionError):
+                    await binding.invoke("image",{"prompt":"Draw a small dot","n":1})
+                assert calls==["test/vision","test/image"]
+        finally:
+            async with db_factory() as db:
+                await db.execute("DELETE FROM dz_agent_media_attempts WHERE owner_id=$1",owner)
+                await db.execute("DELETE FROM dz_agent_artifacts WHERE owner_id=$1",owner)
+    asyncio.run(run())
