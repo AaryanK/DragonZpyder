@@ -27,15 +27,15 @@ internal data class CommandItem(val title:String,val icon:String,val action:Runn
             Surface(Modifier.padding(16.dp).widthIn(max=520.dp).fillMaxWidth(),shape=RoundedCornerShape(24.dp),color=tokens.surface){
                 Column(Modifier.padding(16.dp).heightIn(max=560.dp)){
                     Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){
-                        Text("Commands",style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.SemiBold,modifier=Modifier.weight(1f).semantics{heading()})
+                        Text("More actions",style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.SemiBold,modifier=Modifier.weight(1f).semantics{heading()})
                         IconButton(onClick=onDismiss,modifier=Modifier.size(DragonSizes.touch).semantics{contentDescription="Close commands"}){NavigationGlyph("close",tokens.ink)}
                     }
-                    OutlinedTextField(value=query,onValueChange={query=it},label={Text("Search commands")},singleLine=true,leadingIcon={NavigationGlyph("search",tokens.muted)},modifier=Modifier.fillMaxWidth())
+                    OutlinedTextField(value=query,onValueChange={query=it},label={Text("Search actions")},singleLine=true,leadingIcon={NavigationGlyph("search",tokens.muted)},modifier=Modifier.fillMaxWidth())
                     Spacer(Modifier.height(8.dp))
                     LazyColumn(Modifier.weight(1f,fill=false)){
                         if(filtered.isEmpty())item{Text("No matching commands",color=tokens.muted,modifier=Modifier.padding(12.dp))}
                         items(filtered,key={it.title}){command->
-                            NavigationDrawerItem(label={Text(command.title)},selected=false,onClick={onDismiss();command.action.run()},icon={NavigationGlyph(command.icon,tokens.ink)},modifier=Modifier.heightIn(min=DragonSizes.touch),shape=RoundedCornerShape(12.dp))
+                            DragonNavigationRow(command.title,command.icon,dark){onDismiss();command.action.run()}
                         }
                     }
                 }
