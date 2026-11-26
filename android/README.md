@@ -27,3 +27,5 @@ The GitHub Actions Android APK workflow checks the cookie and route contracts, b
 6. Production signing, signed AAB, release-mode tests, Play requirements, privacy disclosures, crash/performance monitoring.
 
 Release signing uses `DZ_ANDROID_KEYSTORE`, `DZ_ANDROID_STORE_PASSWORD`, `DZ_ANDROID_KEY_ALIAS`, and `DZ_ANDROID_KEY_PASSWORD` supplied through an authorized secure environment. Never commit keys or passwords. Debug builds are for testing only.
+
+The brand preparation command generates `R.drawable.brand_icon` as a vector from the shared `web/frontend/src/dz-mark.svg`; Android build and device verification are still required for changes.

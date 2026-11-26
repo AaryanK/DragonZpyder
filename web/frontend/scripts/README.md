@@ -11,3 +11,5 @@ Read [repository instructions](../../../AGENTS.md) and [codebase navigation](../
 | [`prerender.mjs`](prerender.mjs) | Navigation hint: prerender; source behavior not independently reviewed. | Indexed |
 | [`test-desktop.mjs`](test-desktop.mjs) | Navigation hint: test desktop; source behavior not independently reviewed. | Indexed |
 | [`test-markdown.mjs`](test-markdown.mjs) | Navigation hint: test markdown; source behavior not independently reviewed. | Indexed |
+
+`prepare-desktop.mjs` generates DragonZpyder brand sizes from `../src/dz-mark.svg`; only the unrelated Operly brand remains a pinned network fetch. `test-desktop.mjs` verifies asset structure and manifest compatibility.

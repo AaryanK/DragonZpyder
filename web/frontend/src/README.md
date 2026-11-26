@@ -22,3 +22,9 @@ Read [repository instructions](../../../AGENTS.md) and [codebase navigation](../
 | [`voice-canvas-renderer.js`](voice-canvas-renderer.js) | Navigation hint: voice canvas renderer; source behavior not independently reviewed. | Indexed |
 | [`voice-orb.css`](voice-orb.css) | Stylesheet: voice orb; inspect selectors and importing page. | Indexed |
 | [`workspace-center.css`](workspace-center.css) | Stylesheet: workspace center; inspect selectors and importing page. | Indexed |
+
+## V2 foundation
+
+- `dz-mark.svg`: canonical monogram consumed by the desktop asset build and Android resource generation.
+- `UiIcon.jsx`: outline icon geometry, used by the Personal shell and workspace controls.
+- `PersonalTemplate.jsx`: compact shell; preserves controller IDs. `web/app.js` still owns identity and chat capability presentation.
