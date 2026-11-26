@@ -52,3 +52,70 @@ def test_cancel_inflight_stops_local_agent_without_claiming_rollback():
         assert err.value.status_code==409
         assert stopped.is_set()
     asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("failure", ["recursion", "timeout", "unknown", "none"])
+def test_native_checkpoint_recovery_never_replays_or_credits_old_turn(failure):
+    from types import SimpleNamespace
+    from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
+    from langgraph.errors import GraphRecursionError
+
+    class DB:
+        async def fetchval(self, *args):
+            return False
+
+    class Agent:
+        calls = 0
+        values = None
+
+        async def ainvoke(self, inputs, config):
+            self.calls += 1
+            turn = inputs["messages"][0]
+            self.values = {"messages": [
+                HumanMessage(content="same request", id="historical"),
+                ToolMessage(content="old result", name="old_tool", tool_call_id="old"),
+                AIMessage(content="old answer"),
+                HumanMessage(content=turn["content"], id=turn["id"]),
+                ToolMessage(content="new result", name="new_tool", tool_call_id="new"),
+            ]}
+            if failure == "recursion":
+                raise GraphRecursionError("bounded")
+            if failure == "timeout":
+                raise TimeoutError("bounded")
+            if failure == "unknown":
+                raise RuntimeError("ambiguous")
+            self.values["messages"].append(AIMessage(content="new answer"))
+            return self.values
+
+        async def aget_state(self, config):
+            return SimpleNamespace(values=self.values)
+
+    agent = Agent()
+    run = native._run_checkpointed_turn(agent, "same request", {}, DB(), "owner", None, None)
+    if failure == "unknown":
+        with pytest.raises(HTTPException) as err:
+            asyncio.run(run)
+        assert err.value.status_code == 503
+    else:
+        report = asyncio.run(run)
+        assert report["successful_tools"] == ["new_tool"]
+        assert report["objective_verified"] is False
+        assert report["status"] == ("completed" if failure == "none" else "incomplete")
+        if failure != "none":
+            assert report["termination_reason"] in {"graph_recursion_limit", "execution_deadline"}
+    assert agent.calls == 1
+
+
+def test_exact_turn_rejects_stale_duplicate_superseded_or_unfinished_state():
+    from langchain_core.messages import HumanMessage, AIMessage
+    h = HumanMessage(content="repeat", id="current")
+    historical = HumanMessage(content="repeat", id="old")
+    pending = AIMessage(content="", tool_calls=[{"name":"tool", "args":{}, "id":"call"}])
+    for messages in ([historical, AIMessage(content="old answer")],
+                     [h, h, AIMessage(content="answer")],
+                     [h, historical, AIMessage(content="answer")],
+                     [h, pending]):
+        with pytest.raises(RuntimeError):
+            native._exact_turn_state({"messages":messages}, "current", "repeat", require_answer=True)
+    assert native._exact_turn_state({"messages":[historical,h,pending]},
+        "current", "repeat", require_answer=False)["messages"] == [h,pending]
