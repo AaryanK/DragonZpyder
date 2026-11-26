@@ -336,21 +336,15 @@ class McpRunCatalog:
             raise ValueError("Provide a bounded MCP search query")
         if type(limit) is not int or not 1 <= limit <= 20:
             raise ValueError("Invalid MCP search limit")
-        terms = set(re.findall(r"[a-z0-9]+", query.lower()))
-        if not terms:
-            return []
-        ranked = []
-        for provider_id, entry in self._entries.items():
-            provider_words = set(re.findall(r"[a-z0-9]+",
-                (provider_id + " " + entry.description[:500]).lower()))
-            for capability in entry.readonly_ids:
-                words = set(re.findall(r"[a-z0-9]+", capability.lower()))
-                score = 3 * len(words & terms) + len(provider_words & terms)
-                if score:
-                    ranked.append((score, provider_id, capability))
-        ranked.sort(key=lambda item: (-item[0], item[1], item[2]))
-        return [{"provider_id": provider, "tool_name": name}
-                for _, provider, name in ranked[:limit]]
+        from .tool_relevance import rank_candidates
+        ranked = rank_candidates(query, self.relevance_entries())
+        return [{"provider_id": item.provider_id, "tool_name": item.tool_name}
+                for item in ranked[:limit]]
+
+    def relevance_entries(self) -> list[tuple[str, str, frozenset[str]]]:
+        """Only already-authorized identities and non-secret reviewed metadata."""
+        return [(provider_id, entry.description, entry.readonly_ids)
+                for provider_id, entry in self._entries.items()]
 
     def _one(self, provider_id: str, tool_name: str) -> McpGrant:
         entry = self._entries.get(provider_id)
