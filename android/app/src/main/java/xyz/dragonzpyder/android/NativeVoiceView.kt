@@ -32,6 +32,9 @@ class NativeVoiceView(context:Context, private val callbacks:Actions) {
         fun end()
     }
     var status by mutableStateOf("Connecting…")
+    var agentMode by mutableStateOf(false)
+    private var caption by mutableStateOf("")
+    fun showTranscript(speaker:String,value:String){caption=speaker+": "+value.take(1200)}
     private var muted by mutableStateOf(false)
     val view=ComposeView(context).apply{
         setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindowOrReleasedFromPool)
@@ -60,7 +63,8 @@ class NativeVoiceView(context:Context, private val callbacks:Actions) {
                 }
                 Text(if(muted&&!inactive)"Microphone muted" else status,modifier=Modifier.fillMaxWidth().semantics{liveRegion=LiveRegionMode.Polite},color=ink,fontSize=20.sp,textAlign=TextAlign.Center,fontWeight=FontWeight.Medium)
                 Spacer(Modifier.height(8.dp))
-                Text("Audio-only session · no external tool access",fontSize=12.sp,color=Color(0xFFB9B5B0),textAlign=TextAlign.Center)
+                Text(if(agentMode)"DragonZpyder agent · selected connections" else "Audio-only session · no external tool access",fontSize=12.sp,color=Color(0xFFB9B5B0),textAlign=TextAlign.Center)
+                if(caption.isNotBlank())Text(caption,modifier=Modifier.fillMaxWidth().padding(top=10.dp),fontSize=14.sp,lineHeight=20.sp,maxLines=4,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis,color=ink,textAlign=TextAlign.Center)
                 Spacer(Modifier.height(24.dp))
                 Row(Modifier.fillMaxWidth().padding(bottom=12.dp),horizontalArrangement=Arrangement.Center,verticalAlignment=Alignment.CenterVertically){
                     Column(horizontalAlignment=Alignment.CenterHorizontally){

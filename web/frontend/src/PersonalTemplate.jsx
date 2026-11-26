@@ -169,9 +169,14 @@ export function PersonalTemplate() {
           <div className="composer-toolbar">
             <div className="composer-left">
               <QuickAddMenu camera={<CameraAttachment />} />
+              <details id="native-tools-menu" className="dz-native-tools" hidden>
+                <summary><UiIcon name="tools" size={18}/> <span id="native-tools-label">Tools</span></summary>
+                <div className="dz-native-tools-panel"><strong>Tools for this message</strong><p>Optional capabilities for the next message only.</p>
               <label className="mesh-switch native-consent" hidden><input id="native-computer-consent" type="checkbox" /> Use isolated computer</label>
               <label className="mesh-switch native-consent" hidden><input id="native-media-consent" type="checkbox" /> Use media tools</label>
               <label className="mesh-switch native-consent" hidden><input id="native-durable-consent" type="checkbox" /> Allow scheduled work</label>
+                </div>
+              </details>
               <button type="button" id="mesh-switch" className="mesh-switch" aria-pressed="false" title="Switch between permissioned Agent and direct AI Mesh"><span aria-hidden="true">✦</span> Agent</button>
               <div id="mesh-controls" className="mesh-controls" hidden>
                 <select id="mesh-task" className="mesh-select task-select" aria-label="AI Mesh task">

@@ -282,3 +282,23 @@ test("failed native session probe offers retry, not a duplicate credential form"
   await expect(page.getByRole("button",{name:"Try again"})).toBeVisible();
   await expect(page.locator("#login-form")).toHaveCount(0);
 });
+
+test("native optional execution tools are gated and opt-in in the compact composer",async({page})=>{
+  await page.route("**/dz/status",r=>r.fulfill({json:{web_cutover_enabled:true}}));
+  await page.route("**/dz/v2/personal/status",r=>r.fulfill({json:{computer_enabled:true,media_enabled:true,durable_workflows_enabled:false,request_ledger_enabled:true,agent_stream_enabled:true}}));
+  await page.route("**/dz/v2/personal/session",r=>r.fulfill({json:{authenticated:true,native_chat_enabled:true}}));
+  await page.route("**/dz/identity/v1/me",r=>r.fulfill({json:{display_name:"Test User"}}));
+  await page.route("**/dz/v2/personal/conversations",r=>r.fulfill({json:{conversations:[]}}));
+  await page.route("**/dz/v2/personal/archive/conversations?*",r=>r.fulfill({json:{conversations:[],next_offset:null}}));
+  await page.setViewportSize({width:360,height:740});
+  await page.goto("/app");
+  await expect(page.locator("#native-tools-menu")).toBeVisible();
+  await page.locator("#native-tools-menu summary").click();
+  await expect(page.locator("#native-computer-consent")).not.toBeChecked();
+  await expect(page.locator("#native-media-consent")).not.toBeChecked();
+  await expect(page.locator("#native-durable-consent")).toBeHidden();
+  await page.locator("#native-computer-consent").check();
+  await expect(page.locator("#native-tools-label")).toHaveText("Tools · 1");
+  await page.locator("#new-chat").evaluate(el=>el.click());
+  await expect(page.locator("#native-computer-consent")).not.toBeChecked();
+});

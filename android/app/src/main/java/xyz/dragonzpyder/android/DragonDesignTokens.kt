@@ -7,20 +7,22 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-/** Shared brand palette for Compose and the transitional Java host. */
+/** Shared web V2 semantic palette for Compose and the transitional Java host.
+ * prepare-brand.sh checks the cross-client tokens. Control outlines retain
+ * their separately tested higher contrast; native targets remain 48dp. */
 class DragonDesignTokens private constructor(val dark:Boolean) {
-    val background=if(dark)Color(0xFF0E0F11) else Color(0xFFFAF9F7)
-    val surface=if(dark)Color(0xFF242124) else Color.White
-    val ink=if(dark)Color(0xFFF6F4F1) else Color(0xFF24221F)
-    val muted=if(dark)Color(0xFFC2B8B0) else Color(0xFF70665F)
-    val accent=if(dark)Color(0xFFFF8A50) else Color(0xFFA83F1B)
-    val onAccent=if(dark)Color(0xFF17110D) else Color.White
+    val background=if(dark)Color(0xFF141415) else Color(0xFFFAFAF9)
+    val surface=if(dark)Color(0xFF1D1D20) else Color(0xFFFFFFFF)
+    val ink=if(dark)Color(0xFFF4F3F1) else Color(0xFF202022)
+    val muted=if(dark)Color(0xFFA1A1AA) else Color(0xFF64646B)
+    val accent=if(dark)Color(0xFFEE814D) else Color(0xFFB8431B)
+    val onAccent=if(dark)Color(0xFF1B130E) else Color(0xFFFFFFFF)
     val outline=if(dark)Color(0xFF89766F) else Color(0xFF92867D)
-    val divider=if(dark)Color(0xFF665047) else Color(0xFFE1DAD2)
-    val sidebar=if(dark)Color(0xFF141416) else Color(0xFFF3F1EE)
-    val chip=if(dark)Color(0xFF1A191C) else Color(0xFFF6F3EF)
-    val bubble=if(dark)Color(0xFF222922) else Color(0xFFEEEBE6)
-    val code=if(dark)Color(0xFF353034) else Color(0xFFECE7E2)
+    val divider=if(dark)Color(0xFF38383D) else Color(0xFFDCDCD9)
+    val sidebar=if(dark)Color(0xFF141415) else Color(0xFFFAFAF9)
+    val chip=if(dark)Color(0xFF1D1D20) else Color(0xFFFFFFFF)
+    val bubble=if(dark)Color(0xFF27272A) else Color(0xFFF0F0EE)
+    val code=if(dark)Color(0xFF27272A) else Color(0xFFF0F0EE)
     val danger=if(dark)Color(0xFFFFB4AB) else Color(0xFFB3261E)
     fun legacyColors():IntArray=listOf(background,surface,ink,muted,accent,divider,sidebar,chip,bubble,surface).map{it.toArgb()}.toIntArray()
     companion object {

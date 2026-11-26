@@ -40,6 +40,12 @@ public final class ApiRoutePolicyTest {
         require(ApiRoutePolicy.route(true,"/dz/identity/v1/mobile/unknown/redeem")==null);
         require(ApiRoutePolicy.route(true,"/dz/identity/v1/mobile/google/%72edeem")==null);
         require(ApiRoutePolicy.route(true,"//evil.example/dz/identity/v1/mobile/google/redeem")==null);
+        String turn="/dz/v2/personal/voice/00000000-0000-0000-0000-000000000001/turn";
+        require(turn.equals(ApiRoutePolicy.route(true,turn)));
+        require(ApiRoutePolicy.route(false,turn)==null);
+        require(ApiRoutePolicy.route(true,turn+"?x=1")==null);
+        require(ApiRoutePolicy.route(true,turn.replace("00000000-0000-0000-0000-000000000001","not-a-uuid"))==null);
+        require(!ApiRoutePolicy.nativePreauth(true,turn));
         System.out.println("Identity route contract passed");
     }
 }

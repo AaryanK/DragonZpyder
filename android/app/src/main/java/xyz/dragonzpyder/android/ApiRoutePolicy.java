@@ -27,7 +27,7 @@ final class ApiRoutePolicy {
         if(FIRST_PARTY_ROUTES.contains(value)||FIRST_PARTY_PREAUTH.contains(value))return value;
         if(value.matches("/dz/v2/personal/conversations/[0-9a-fA-F-]{36}/messages"))return value;
         if(value.matches("/dz/v2/personal/requests/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"))return value;
-        if(value.matches("/dz/v2/personal/voice/[0-9a-fA-F-]{36}/end"))return value;
+        if(value.matches("/dz/v2/personal/voice/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/(end|turn)"))return value;
         if(value.matches("/dz/v2/personal/goals/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}(/cancel)?"))return value;
         if(value.matches("/dz/internal/mcp/connections/c[a-f0-9]{30}"))return value;
         if(value.matches("/dz/internal/mcp/connections/[a-z][a-z0-9_-]{1,30}/native/start"))return value;

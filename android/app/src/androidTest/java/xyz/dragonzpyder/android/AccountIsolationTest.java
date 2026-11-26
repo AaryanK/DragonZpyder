@@ -33,7 +33,8 @@ public final class AccountIsolationTest {
                     reset.setAccessible(true);reset.invoke(activity);
                     for(String key:new String[]{"conversation","pendingPrompt","lastAnswer","model","authEmail","challengeId","restoredDraft","restoredConversation","attachmentName","transcriptionModel"})
                         assertEquals(key,"",field(key).get(activity));
-                    assertEquals("D",field("profileInitial").get(activity));
+                    assertEquals("?",field("profileInitial").get(activity));
+                    assertEquals("",field("dictationBinding").get(activity));
                     assertEquals(0,((JSONArray)field("history").get(activity)).length());
                     assertEquals(0,((JSONArray)field("meshMessages").get(activity)).length());
                     assertFalse(field("restorePending").getBoolean(activity));

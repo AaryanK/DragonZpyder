@@ -238,3 +238,34 @@ Removed the three Markdown guides from Android drawable, values and xml resource
 - `web/companion.js`: Use neutral session admission and closure endpoints. Offline CI pending; no live transport proof.
 - `web/frontend/src/openrouter-voice.js`: Use shared neutral turn and speech endpoint. Offline CI pending; no live transport proof.
 - `api/tests/test_openrouter_voice.py`: Add native PCM/telephone codec fixtures and bridge grant ownership and authority tests. Offline CI pending; no live transport proof.
+
+## 2026-11-26 — Android harness and appearance parity
+
+- `android/app/src/main/java/xyz/dragonzpyder/android/DragonApi.java`: Reads computer/media/durable/voice-agent capability flags without legacy fallback; ledger and streaming prerequisites. CI/device qualification pending.
+- `android/app/src/main/java/xyz/dragonzpyder/android/NativeChatView.kt`: Native one-message execution options and compact neutral drawer/welcome. CI/device qualification pending.
+- `android/app/src/main/java/xyz/dragonzpyder/android/MainActivity.java`: Submits selected allow_* fields through existing ledger, clears on send/chat change, simplifies auth/settings and binds dictation result to session. CI/device qualification pending.
+- `android/app/src/main/java/xyz/dragonzpyder/android/DragonDesignTokens.kt`: Matches web semantic palette, keeping accessible outlines and native targets. CI/device qualification pending.
+- `android/app/src/main/java/xyz/dragonzpyder/android/ChatPresentationState.kt`: Immutable optional capability state, default-off. CI/device qualification pending.
+- `android/prepare-brand.sh`: Validates web/Android palette parity during preparation. CI/device qualification pending.
+- `android/app/src/test/java/xyz/dragonzpyder/android/DesignContractTest.kt`: Tests default-off consent state. CI/device qualification pending.
+
+## 2026-11-26 — existing voice and capability integration
+
+- `android/app/src/main/java/xyz/dragonzpyder/android/NativeVoiceSession.java`: Adds existing native WebRTC agent-mode transcript submission, dedupe, authenticated request binding and readback of committed response; no automatic replay. Native voice art unchanged. CI/device/live qualification pending.
+- `android/app/src/main/java/xyz/dragonzpyder/android/NativeVoiceView.kt`: Shows current provider transcript/committed agent answer and actual voice mode in existing native orb; status-driven animation retained. CI/device/live qualification pending.
+- `android/app/src/main/java/xyz/dragonzpyder/android/MainActivity.java`: Requests explicit voice consent, binds selected connections and conversation to the voice session, inserts confirmed agent results and file receipts. CI/device/live qualification pending.
+- `android/app/src/main/java/xyz/dragonzpyder/android/DragonApi.java`: Voice call bound to authenticated session under identity lock. CI/device/live qualification pending.
+- `android/app/src/main/java/xyz/dragonzpyder/android/ApiRoutePolicy.java`: Exact UUID turn/end allowlist, no broad proxy. CI/device/live qualification pending.
+- `android/tests/ApiRoutePolicyTest.java`: Tests voice turn route and rejection paths. CI/device/live qualification pending.
+- `web/frontend/src/PersonalTemplate.jsx`: Compact web execution capability menu preserving existing consent IDs. CI/device/live qualification pending.
+- `web/app.js`: Syncs menu with available first-party capabilities and clears selections. CI/device/live qualification pending.
+- `web/ui-v1.css`: Compact responsive menu style. CI/device/live qualification pending.
+- `web/frontend/tests/native-routing.spec.js`: Mock test for gated capability options and chat reset. CI/device/live qualification pending.
+
+## 2026-11-26 — voice lifecycle and appearance review
+
+- `android/app/src/main/java/xyz/dragonzpyder/android/NativeVoiceSession.java`: Separates in-flight execution from playback; stale provider audio buffer events cannot reopen the microphone before a committed agent answer is available.
+- `android/app/src/main/java/xyz/dragonzpyder/android/MainActivity.java`: Clears the pending dictation binding when account state resets.
+- `android/app/src/androidTest/java/xyz/dragonzpyder/android/AccountIsolationTest.java`: Updates account isolation regression for the current neutral initials fallback and verifies reset of the dictation binding.
+- `web/frontend/src/design-tokens.css`: Uses system sans-serif for the shared web token, matching Android platform typography on Android devices; not a bundled identical font file.
+- `android/app/src/main/java/xyz/dragonzpyder/android/NativeChatView.kt`: Centralizes capability selection so unavailable controls cannot set consent. Full qualification pending.
