@@ -204,6 +204,23 @@ def build_frontier_agent(model, checkpointer, *, specialist_models=None, synthet
                    "inventory, email or deployed changes. Tool-side approvals and "
                    "idempotency remain mandatory.")
     if delegated_tools:
+        # The signed runtime catalog is authoritative. Do not contradict its
+        # actual capabilities with the no-external-tools default prompt.
+        prompt = prompt.replace(
+            "- External web, OS, browser, and business tools are NOT available in this\n"
+            "  harness. Say so if the objective genuinely requires them.",
+            "- External access is limited to explicitly authorized tools in the current catalog."
+        ).replace(
+            "- OS, browser, computer and business tools are not available.",
+            "- OS, browser and business access is limited to explicitly authorized tools."
+        )
+        prompt += (
+            "\nFor a straightforward read or list request, invoke the matching authorized "
+            "tool directly, then summarize the returned data. Do not create a todo plan, "
+            "write files, delegate to a specialist, or repeat successful reads unless the "
+            "task genuinely requires additional work. If the required capability is absent, "
+            "report the limitation rather than inventing a tool or trying unrelated tools."
+        )
         delegated_names = {getattr(item, "name", "") for item in delegated_tools}
         if {"search_tools", "describe_tool", "invoke_tool"}.issubset(delegated_names):
             prompt += (

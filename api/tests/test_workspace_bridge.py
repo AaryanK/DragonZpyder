@@ -192,3 +192,21 @@ def test_partial_workspace_checkpoint_only_credits_current_turn():
     assert report["status"] == "incomplete"
     assert report["successful_tools"] == ["operly_workflow_list"]
     assert not report["objective_verified"]
+
+
+def test_workspace_trace_is_current_turn_only_and_never_records_arguments():
+    from types import SimpleNamespace as NS
+    from agent_platform.workspace_bridge import workspace_trace_evidence
+    old = NS(type="human", id="old", content="private old")
+    old_tool = NS(type="tool", name="operly_old", content="private output")
+    new = NS(type="human", id="new", content="private prompt")
+    call = NS(type="ai", tool_calls=[{"name":"operly_workflow_list","args":{"secret":"sensitive"}},
+                                    {"name":"private-user-supplied-name","args":{}}])
+    reply = NS(type="tool", name="operly_workflow_list", status="error", content="private reply")
+    snap = NS(values={"messages":[old, old_tool, new, call, reply]})
+    evidence = workspace_trace_evidence(snap, turn_id="new", allowed_names={"operly_workflow_list"})
+    assert evidence["persisted_ai_messages"] == 1
+    assert evidence["tool_attempts"] == ["operly_workflow_list", "other"]
+    assert evidence["tool_returns"] == [{"name":"operly_workflow_list","status":"error"}]
+    assert "private" not in str(evidence) and "sensitive" not in str(evidence)
+    assert not workspace_trace_evidence(snap, turn_id="old", allowed_names=set())["current_turn_seen"]

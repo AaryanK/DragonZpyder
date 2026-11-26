@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
+import re
 from uuid import uuid4
 import os
 from typing import Literal
@@ -47,6 +48,38 @@ def workspace_turn_persisted(checkpoint, *, turn_id: str, prompt: str,
         and getattr(tail[-1], "content", None)
     )
 
+
+def workspace_trace_evidence(checkpoint, *, turn_id: str, allowed_names: set[str]) -> dict:
+    """Bounded current-turn diagnostics; never include input, arguments or results."""
+    values = getattr(checkpoint, "values", None)
+    messages = values.get("messages") if isinstance(values, dict) else None
+    if not isinstance(messages, list):
+        return {"current_turn_seen": False}
+    positions = [i for i, m in enumerate(messages)
+                 if getattr(m, "type", None) == "human" and getattr(m, "id", None) == turn_id]
+    if len(positions) != 1:
+        return {"current_turn_seen": False}
+    tail = messages[positions[0] + 1:]
+    if any(getattr(m, "type", None) == "human" for m in tail):
+        return {"current_turn_seen": False}
+    known = allowed_names | {"task", "write_todos", "ls", "read_file", "write_file",
+                             "edit_file", "glob", "grep", "eval", "web_search"}
+    def safe_name(value):
+        return value if isinstance(value, str) and value in known else "other"
+    attempts = []
+    receipts = []
+    model_messages = 0
+    for m in tail:
+        if getattr(m, "type", None) == "ai":
+            model_messages += 1
+            for call in getattr(m, "tool_calls", []) or []:
+                if isinstance(call, dict) and len(attempts) < 40:
+                    attempts.append(safe_name(call.get("name")))
+        elif getattr(m, "type", None) == "tool" and len(receipts) < 40:
+            receipts.append({"name": safe_name(getattr(m, "name", None)),
+                             "status": "error" if getattr(m, "status", None) == "error" else "returned"})
+    return {"current_turn_seen": True, "persisted_ai_messages": model_messages,
+            "tool_attempts": attempts, "tool_returns": receipts}
 
 
 class WorkspaceRun(BaseModel):
@@ -114,6 +147,10 @@ async def run_workspace(
     # A server-generated message ID survives persistence and distinguishes
     # repeated identical prompts from older turns. No pre-read is needed.
     turn_id = str(uuid4())
+    allowed_names = {t.name for t in tools
+                     if isinstance(getattr(t, "name", None), str)
+                     and re.fullmatch(r"operly_[A-Za-z0-9_-]{1,79}", t.name)}
+    logger.info("workspace_bridge_catalog turn=%s tools=%s", turn_id, sorted(allowed_names))
     try:
         result = await asyncio.wait_for(agent.ainvoke({
             "messages": [{"role": "user", "content": payload.prompt, "id": turn_id}],
@@ -124,6 +161,12 @@ async def run_workspace(
         reason = controlled_termination_reason(error)
         if reason is None:
             logger.warning("workspace_bridge_failed stage=execution type=%s", type(error).__name__)
+            try:
+                failed_checkpoint = await agent.aget_state(config)
+                logger.info("workspace_bridge_trace turn=%s evidence=%s", turn_id,
+                            workspace_trace_evidence(failed_checkpoint, turn_id=turn_id, allowed_names=allowed_names))
+            except Exception:
+                pass
             raise HTTPException(503, "Workspace agent failed; reconcile before retry") from error
         try:
             checkpoint = await agent.aget_state(config)
@@ -143,6 +186,9 @@ async def run_workspace(
         )
     except Exception:
         checkpointed = False
+    if checkpointed:
+        logger.info("workspace_bridge_trace turn=%s evidence=%s", turn_id,
+                    workspace_trace_evidence(checkpoint, turn_id=turn_id, allowed_names=allowed_names))
     if not checkpointed:
         logger.warning("workspace_bridge_failed stage=checkpoint")
         raise HTTPException(503, "Workspace checkpoint verification failed")
