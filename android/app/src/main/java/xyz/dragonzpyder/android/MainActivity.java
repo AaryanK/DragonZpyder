@@ -1055,9 +1055,9 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         },true);
     }
     private void showVoice(){
-        if(!signedIn||busy||!api.supportsVoice()){setStatus("Live voice is unavailable for this session.");return;}
+        if(!signedIn||busy||!api.supportsVoice()||!activeRequestId.isEmpty()){setStatus("Live voice is unavailable while another request is unresolved.");return;}
         new android.app.AlertDialog.Builder(this).setTitle("Live voice")
-            .setMessage("Microphone audio is sent to the realtime voice provider. This session is audio-only, has no external tool access, and closes when you leave the app.")
+            .setMessage(api.supportsVoiceAgent()?"Microphone audio is sent to the voice provider. Completed speech is submitted to your DragonZpyder agent using selected MCP connections. Computer, media and scheduled-work permission is not granted. The microphone closes when you leave the app.":"Microphone audio is sent to the realtime voice provider. This session is audio-only, has no external tool access, and closes when you leave the app.")
             .setNegativeButton("Cancel",null).setPositiveButton("Start",(d,w)->{
                 if(checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)!=android.content.pm.PackageManager.PERMISSION_GRANTED){
                     voicePermissionPending=true;requestPermissions(new String[]{android.Manifest.permission.RECORD_AUDIO},79);
@@ -1079,12 +1079,15 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         if(voiceStartOnResume){voiceStartOnResume=false;startVoice();}
     }
     private void startVoice(){
-        if(!signedIn||busy||!api.supportsVoice()||nativeVoice!=null||isFinishing())return;
+        if(!signedIn||busy||!api.supportsVoice()||nativeVoice!=null||isFinishing()||!activeRequestId.isEmpty())return;
+        final boolean agentMode=api.supportsVoiceAgent();final String binding=api.pendingRequestBinding();
+        if(binding.isEmpty())return;
         final android.app.Dialog dialog=new android.app.Dialog(this,android.R.style.Theme_Material_NoActionBar);
         final NativeVoiceView screen=new NativeVoiceView(this,new NativeVoiceView.Actions(){
             public void mute(boolean muted){if(nativeVoice!=null)nativeVoice.mute(muted);}
             public void end(){closeVoice();}
         });
+        screen.setAgentMode(agentMode);
         voiceDialog=dialog;
         androidx.lifecycle.ViewTreeLifecycleOwner.set(screen.getView(),this);
         androidx.lifecycle.ViewTreeViewModelStoreOwner.set(screen.getView(),this);
@@ -1093,7 +1096,14 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         dialog.setOnDismissListener(d->{if(voiceDialog==dialog)closeVoice();});
         dialog.show();
         if(dialog.getWindow()!=null)dialog.getWindow().setLayout(-1,-1);
-        nativeVoice=new NativeVoiceSession(this,api,value->{if(!isDestroyed()&&voiceDialog==dialog)screen.setStatus(value);});
+        nativeVoice=new NativeVoiceSession(this,api,agentMode,conversation,new JSONArray(selectedMcpConnections),new NativeVoiceSession.Listener(){
+            public void status(String value){if(!isDestroyed()&&voiceDialog==dialog)screen.setStatus(value);}
+            public void transcript(String speaker,String value){if(!isDestroyed()&&voiceDialog==dialog)screen.showTranscript(speaker,value);}
+            public void agentResult(String prompt,JSONObject result){
+                if(isDestroyed()||voiceDialog!=dialog||!signedIn||!binding.equals(api.pendingRequestBinding()))return;
+                conversation=result.optString("conversation_id",conversation);append("user",prompt);String answer=result.optString("message");lastAnswer=answer;append("assistant",answer);appendGeneratedFiles(result);
+            }
+        });
         nativeVoice.start();
     }
     private void closeVoice(){

@@ -84,3 +84,7 @@ Once `/dz/status` establishes routing, signed-out `/app` goes directly to `/logi
 ### Native capability parity
 
 Android consumes `/dz/v2/personal/status` and passes explicit `allow_computer`, `allow_media` and `allow_durable` on the existing ledger-backed chat request, like web. Server authorization and budget gates remain authoritative. Modular OpenRouter voice is a separate pending dependency.
+
+### Native voice agent path
+
+`NativeVoiceSession.java` uses the same capability-gated WebRTC start/turn/end API as the existing browser companion; sends only completed user transcript events to the canonical chat harness, reads committed answers, and checks account binding. Voice is not a second agent. The native canvas remains status-driven; full audio-amplitude parity and modular OpenRouter transport are unqualified. Web capability selections are grouped in a compact Tools menu.

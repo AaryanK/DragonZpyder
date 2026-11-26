@@ -79,6 +79,11 @@ final class DragonApi {
         String active = cookies.value(firstParty?"__Host-dz_csrf":"__Host-operly_csrf");
         return active.isEmpty() ? bootstrapCsrf : active;
     }
+    // Keep authorization binding and request under the same identity lock.
+    synchronized Object boundVoiceCall(String binding,String path,JSONObject body) throws Exception {
+        if(!authenticated||binding.isEmpty()||!binding.equals(requestBinding)||!firstParty||!path.startsWith("/dz/v2/personal/voice/"))throw new IOException("Voice account changed");
+        return call(path,body);
+    }
     synchronized Object call(String path, JSONObject body) throws Exception { return call(path,body==null?"GET":"POST",body); }
     synchronized Object call(String path, String method, JSONObject body) throws Exception {
         ensureMode();

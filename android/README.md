@@ -31,3 +31,5 @@ Release signing uses `DZ_ANDROID_KEYSTORE`, `DZ_ANDROID_STORE_PASSWORD`, `DZ_AND
 The brand preparation command generates `R.drawable.brand_icon` as a vector from the shared `web/frontend/src/dz-mark.svg`; Android build and device verification are still required for changes.
 
 The native composer exposes optional computer, media and durable work only when first-party status permits them, default-off and cleared on send or conversation change. The brand preparation script checks web/Android semantic palette parity. Dictation uses platform recognition, inserts text only and checks account binding. No provider activation or APK qualification implied.
+
+When `voice_agent_enabled` and the ledger are advertised, the existing native WebRTC screen submits completed speech to the owner-scoped `/voice/{id}/turn` endpoint and reads the committed agent answer. Audio-only mode remains separately gated. Selected MCP aliases are fixed at session start; optional computer/media/scheduled-work consent is not inherited. The newer OpenRouter-only audio transport remains pending on PR #163.

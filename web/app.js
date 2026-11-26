@@ -40,7 +40,9 @@ const messageInput = $("message-input");
 const sendButton = $("send-button");
 const computerConsent = $("native-computer-consent");
 const mediaConsent=$("native-media-consent"),durableConsent=$("native-durable-consent");
-function clearCapabilityConsent(){for(const item of [computerConsent,mediaConsent,durableConsent])if(item)item.checked=false;}
+function syncCapabilityMenu(){const menu=$("native-tools-menu");if(!menu)return;const items=[computerConsent,mediaConsent,durableConsent].filter(item=>item&&!item.closest("label").hidden);menu.hidden=!state.firstParty||!state.session||!items.length||state.archiveSelected;const count=items.filter(item=>item.checked).length;$("native-tools-label").textContent=count?"Tools · "+count:"Tools";if(menu.hidden)menu.open=false;}
+function clearCapabilityConsent(){for(const item of [computerConsent,mediaConsent,durableConsent])if(item)item.checked=false;const menu=$("native-tools-menu");if(menu)menu.open=false;syncCapabilityMenu();}
+for(const item of [computerConsent,mediaConsent,durableConsent])item?.addEventListener("change",syncCapabilityMenu);
 const statusDot = $("status-dot");
 const statusText = $("status-text");
 const approvalCount = $("approval-count");
@@ -253,6 +255,7 @@ async function bootstrapAuth() {
     if(computerConsent) computerConsent.closest("label").hidden = state.nativeCapabilities.computer_enabled!==true;
     if(mediaConsent) mediaConsent.closest("label").hidden=state.nativeCapabilities.media_enabled!==true;
     if(durableConsent) durableConsent.closest("label").hidden=state.nativeCapabilities.durable_workflows_enabled!==true;
+    syncCapabilityMenu();
     window.dragonzpyderNativeMode = state.firstParty;
     window.dispatchEvent(new CustomEvent("dragonzpyder:runtime-mode", { detail: { firstParty: state.firstParty } }));
     if (state.firstParty) {
@@ -1213,6 +1216,7 @@ async function logout() {
 }
 
 function syncComposerAction() {
+  syncCapabilityMenu();
   // The single trailing action is Live voice while the composer is empty,
   // and Send when text or attachments are ready.
   const pending = Boolean(messageInput.value.trim()) ||

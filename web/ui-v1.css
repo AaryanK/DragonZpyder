@@ -1029,3 +1029,17 @@ html[data-workspace-theme] .dz-session-mark{width:42px;height:42px;object-fit:co
 html[data-workspace-theme] .dz-session-error h2{font-size:23px;margin:12px 0;letter-spacing:-.03em}
 html[data-workspace-theme] .dz-session-error .primary-btn{display:block;width:100%;min-height:44px;margin:18px 0 10px}
 html[data-workspace-theme] .dz-session-error a{display:inline-flex;align-items:center;justify-content:center;min-height:44px;color:var(--dz-shell-text);font-size:14px;text-decoration:underline}
+
+/* Optional harness capabilities stay out of the crowded mobile toolbar. */
+.dz-native-tools{position:relative;flex:none}
+.dz-native-tools[hidden]{display:none!important}
+.dz-native-tools summary{list-style:none;display:flex;align-items:center;gap:5px;cursor:pointer;min-height:44px;padding:0 8px;border-radius:8px;color:var(--dz-shell-text);font-size:13px}
+.dz-native-tools summary::-webkit-details-marker{display:none}
+.dz-native-tools summary:focus-visible{outline:2px solid var(--dz-shell-accent)}
+.dz-native-tools[open] summary{background:var(--dz-shell-raised)}
+.dz-native-tools-panel{position:absolute;bottom:calc(100% + 8px);left:0;z-index:40;width:min(260px,calc(100vw - 40px));padding:12px;background:var(--dz-shell-surface);color:var(--dz-shell-text);border:1px solid var(--dz-shell-line);border-radius:12px;box-shadow:0 8px 28px #0003}
+.dz-native-tools-panel strong{font-size:14px}
+.dz-native-tools-panel p{font-size:12px;color:var(--dz-shell-muted);margin:4px 0 8px}
+.dz-native-tools-panel .native-consent:not([hidden]){display:flex;align-items:center;justify-content:flex-start;gap:10px;min-height:44px;width:100%;padding:5px 2px;border:0;background:transparent;font-size:13px;white-space:normal;text-align:left;color:var(--dz-shell-text)}
+.dz-native-tools-panel .native-consent[hidden]{display:none!important}
+.dz-native-tools-panel input{width:18px;height:18px;accent-color:var(--dz-shell-accent)}
