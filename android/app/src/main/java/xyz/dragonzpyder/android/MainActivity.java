@@ -270,8 +270,6 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         status=text(message,13,message.isEmpty()?MUTED:TEXT);status.setLineSpacing(dp(2),1);card.addView(status);gap(card,8);
         if(mode.equals("login")||mode.equals("signup")){
             card.addView(providerButton("G","Continue with Google",0xff4285f4,this::startGoogleSignIn));
-            gap(card,10);
-            card.addView(providerButton("◈","Continue with Discord",0xff5865f2,this::startDiscordSignIn));
             if(api.isFirstParty()&&mode.equals("signup")){gap(card,12);card.addView(text("Create a DragonZpyder account with Google verification.",14,TEXT));return;}
             gap(card,18);
             LinearLayout separator=row();View left=new View(this);left.setBackgroundColor(LINE);
