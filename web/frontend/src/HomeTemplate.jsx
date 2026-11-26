@@ -13,7 +13,7 @@ function EditorialHeader(){
   return <header className="dz-topbar" id="topbar"><div className="dz-nav">
     <a className="dz-brand" href="#top" aria-label="DragonZpyder homepage"><img src="/brand-icon.png" className="dz-brand-mark" width="34" height="34" alt=""/>DragonZpyder™</a>
     <nav className="dz-navlinks" aria-label="Main navigation"><a href="#thesis">Product</a><a href="#mesh">AI Mesh</a><a href="#credits">Project IC</a><a href="#ecosystem">Ecosystem</a></nav>
-    <div className="dz-nav-cta"><a className="dz-header-link" href="/app">Sign in</a><a className="dz-btn" href="/app">Open Chat <span aria-hidden="true">↗</span></a></div>
+    <div className="dz-nav-cta"><a className="dz-header-link" href="/login">Sign in</a><a className="dz-btn" href="/app">Open Chat <span aria-hidden="true">↗</span></a></div>
   </div></header>;
 }
 function EditorialHero(){

@@ -119,3 +119,26 @@ test("migration proof pilot fails closed when disabled", async ({page})=>{
   await expect(page.locator("#migration-form")).toBeHidden();
   await expect(page.locator("#login-form")).toBeHidden();
 });
+
+
+test("dedicated native login works before global web cutover", async ({page}) => {
+    const legacy = [], logins = [];
+    await page.route("**/api/**", route => { legacy.push(route.request().url()); return route.fulfill({status:410}); });
+    await page.route("**/dz/status", route => route.fulfill({json:{web_cutover_enabled:false,native_session_present:logins.length>0}}));
+    await page.route("**/dz/recovery/status", route => route.fulfill({json:{enabled:false}}));
+    await page.route("**/dz/identity/v1/provider/google/start", route => route.fulfill({status:503}));
+    await page.route("**/dz/identity/v1/me", route => route.fulfill(logins.length?
+        {json:{id:"test-account",email:"test@example.test"}}:{status:401}));
+    await page.route("**/dz/identity/v1/password/login", route => {
+        logins.push(route.request().postDataJSON()); return route.fulfill({json:{authenticated:true}});
+    });
+    await page.route("**/dz/v2/personal/session", route => route.fulfill({json:{authenticated:true,runtime:"dragonzpyder"}}));
+    await page.route("**/dz/v2/personal/conversations", route => route.fulfill({json:{conversations:[]}}));
+    await page.goto("/login");
+    await page.locator("#login-email").fill("test@example.test");
+    await page.locator("#login-password").fill("test-password");
+    await page.locator("#login-form button[type=submit]").click();
+    await expect(page).toHaveURL(/\/app$/);
+    expect(logins).toEqual([{email:"test@example.test",password:"test-password"}]);
+    expect(legacy).toEqual([]);
+});

@@ -15,10 +15,10 @@ export function AccountTemplate() {
 <section className="account-card" aria-label="DragonZpyder account">
 <div className="tabs" id="mode-tabs" role="group" aria-label="Account access"><button type="button" data-mode="login" className="selected">Sign in</button><button type="button" data-mode="signup">Create account</button></div>
 <div className="message" id="account-message" role="status" aria-live="polite" hidden></div>
-<section id="login-panel" className="account-panel"><h2>Welcome back.</h2><p className="muted">Continue to your personal DragonZpyder.</p><a id="dragonzpyder-central-signin" className="submit" href="/api/auth/dragonzpyder/web/start" hidden>Continue with DragonZpyder</a><div id="google-provider" className="google-provider" aria-label="Google sign-in" hidden></div><div className="divider">or use your email</div><form id="login-form">
+<section id="login-panel" className="account-panel"><h2>Welcome back.</h2><p className="muted">Continue to your personal DragonZpyder.</p><a id="dragonzpyder-central-signin" className="submit" href="/login" hidden>Sign in with DragonZpyder</a><div id="google-provider" className="google-provider" aria-label="Google sign-in" hidden></div><div className="divider">or use your email</div><form id="login-form">
 <label htmlFor="login-email">Email address</label><input id="login-email" type="email" required autoComplete="username"/>
 <label htmlFor="login-password">Password</label><input id="login-password" type="password" required autoComplete="current-password"/>
-<button className="submit" type="submit">Sign in</button></form><p className="links"><button type="button" data-mode="forgot">Forgot password?</button></p></section>
+<button className="submit" type="submit">Sign in</button></form><p className="links"><button type="button" data-mode="forgot">Forgot password?</button> <a id="legacy-login-link" href="/account" hidden>Not migrated yet? Use existing Operly access</a></p></section>
 <section id="migration-panel" className="account-panel" hidden>
 <h2>Verify your existing account.</h2><p className="muted">Confirm the sign-in method already attached to your account. This does not sign you in or change your account; activation requires a separate review.</p>
 <div id="google-provider-migration" className="google-provider" aria-label="Google account migration verification" hidden></div>

@@ -197,8 +197,8 @@ function setSession(session) {
 
 async function ensurePersonalSession() {
   if (state.firstParty) {
-    await api("/dz/v2/personal/session", { csrf: false });
-    const session = { device: "DragonZpyder", scope: "personal" };
+    const result = await api("/dz/v2/personal/session", { csrf: false });
+    const session = { device: "DragonZpyder", scope: "personal", nativeChatEnabled: result.native_chat_enabled !== false };
     setSession(session);
     return session;
   }
@@ -224,9 +224,9 @@ async function discoverCentralIdentity() {
   if (!link) return;
   try {
     const config = await api("/api/auth/bootstrap", { csrf: false });
-    link.hidden = config?.dragonzpyder_web_sso_available !== true;
+    link.hidden = false;
   } catch {
-    link.hidden = true;
+    link.hidden = false;
   }
 }
 
@@ -236,7 +236,7 @@ async function bootstrapAuth() {
     // This flag comes from our own Web service. If native cutover is on,
     // never fall back to Operly when the DragonZpyder API is unavailable.
     const routing = await api("/dz/status", { csrf: false });
-    state.firstParty = routing.web_cutover_enabled === true;
+    state.firstParty = routing.web_cutover_enabled === true || routing.native_session_present === true;
     // Optional capabilities must never prevent the existing native text login.
     // A failed capability lookup leaves every new capability disabled.
     state.nativeCapabilities = {};
@@ -253,7 +253,7 @@ async function bootstrapAuth() {
     }
     if (state.firstParty) {
       const obsolete = $("dragonzpyder-central-signin-modal");
-      if (obsolete) obsolete.hidden = true;
+      if (obsolete) obsolete.hidden = false;
       // Voice/Mesh still use the legacy Operly session verifier. Until those
       // routes receive first-party identity, never expose that old path.
       const mesh = $("mesh-switch");
@@ -263,6 +263,11 @@ async function bootstrapAuth() {
     }
     await ensurePersonalSession();
     hideAuth();
+    if (state.firstParty && state.session.nativeChatEnabled === false) {
+      setRuntimeStatus("error", "Signed in · Agent runtime not enabled");
+      showToast("You are signed in. The native chat service is not enabled yet.", 7000);
+      return;
+    }
     setRuntimeStatus("online", "Personal runtime connected");
     await Promise.all([loadConversations({ restoreLatest: true }), refreshApprovals()]);
   } catch (error) {
@@ -284,6 +289,10 @@ async function login(email, password) {
     });
     await ensurePersonalSession();
     hideAuth();
+    if (state.session.nativeChatEnabled === false) {
+      setRuntimeStatus("error", "Signed in · Agent runtime not enabled");
+      return;
+    }
     setRuntimeStatus("online", "DragonZpyder agent connected");
     await loadConversations({ restoreLatest: true });
     return;
@@ -796,6 +805,10 @@ async function sendMessage(message, { companion = false, fromComposer = false, v
   if (!clean || state.sending) { if (companion) throw Error("Personal agent is busy"); return; }
   if (!state.session) { showAuth(); if (companion) throw Error("Sign in first"); return; }
 
+  if (state.firstParty && state.session.nativeChatEnabled === false) {
+    showToast("Signed in, but native chat is not enabled yet.", 5000);
+    return;
+  }
   state.sending = true;
   sendButton.disabled = true;
   // The accepted prompt now lives in the conversation, not in the editor.
@@ -1215,6 +1228,7 @@ async function logout() {
   refreshApprovals();
   profileMenu.hidden = true;
   setRuntimeStatus(null, "Sign in required");
+  if (state.firstParty) { window.location.replace("/login"); return; }
   showAuth();
 }
 

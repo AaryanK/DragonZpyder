@@ -22,7 +22,7 @@ CHAT_HOST = "chat.dragonspire.xyz"
 CHAT_PATHS = {"/chat", "/chat/app.js", "/chat/app.css", "/demo/session",
               "/demo/login", "/demo/logout", "/demo/chat", "/healthz"}
 # Clean public URLs; Vite uses HTML entry filenames only as internal build artifacts.
-PUBLIC_PAGES = {"/": "/index.html", "/app": "/app.html", "/account": "/account.html"}
+PUBLIC_PAGES = {"/": "/index.html", "/app": "/app.html", "/account": "/account.html", "/login": "/account.html"}
 LEGACY_PAGE_ROUTES = {"/app.html": "/app", "/account.html": "/account"}
 STATIC = {
     "/", "/index.html", "/app.html", "/account.html", "/account.css",
@@ -101,7 +101,17 @@ async def proxy(request: Request, destination: str, rewrite_origin=False, upstre
     else:
         # An explicit empty cookie header also prevents a client's cookie jar
         # from attaching a previous caller's cookies when no cookie was sent.
-        headers.setdefault("cookie", "")
+        # Never forward a native session to Operly or legacy cookies to the issuer.
+        cookie_names = ({"__Host-dz_identity", "__Host-dz_csrf", "__Host-dz_provider"}
+                        if destination == API and upstream_path else None)
+        if cookie_names is not None:
+            headers["cookie"] = "; ".join(part.strip() for part in headers.get("cookie", "").split(";")
+                                          if part.strip().partition("=")[0] in cookie_names)
+        elif destination == OPERLY:
+            headers["cookie"] = "; ".join(part.strip() for part in headers.get("cookie", "").split(";")
+                                          if not part.strip().partition("=")[0].startswith("__Host-dz_"))
+        else:
+            headers.setdefault("cookie", "")
     if rewrite_origin:
         # Transport may use Railway private DNS; identity expects its public issuer.
         # Native mutation routes validate browser Origin before reaching this proxy.
@@ -183,14 +193,20 @@ async def admin_auth_status(request: Request) -> str:
                os.getenv("DRAGONZPYDER_ADMIN_EMAILS", "").split(",") if entry.strip()}
     if not allowed:
         return "forbidden"
-    if not (request.cookies.get("__Host-operly_session") or
+    native = bool(request.cookies.get("__Host-dz_identity"))
+    if not native and not (request.cookies.get("__Host-operly_session") or
             request.cookies.get("operly_session")):
         return "signin"
+    target = API + "/identity/v1/me" if native else OPERLY + "/api/auth/me"
+    origin = IDENTITY_PUBLIC_ORIGIN if native else OPERLY
+    cookies = "; ".join(part.strip() for part in request.headers.get("cookie", "").split(";")
+                        if (part.strip().startswith("__Host-dz_identity=") if native
+                            else not part.strip().startswith("__Host-dz_")))
     try:
         response = await request.app.state.http.get(
-            OPERLY + "/api/auth/me",
-            headers={"cookie": request.headers.get("cookie", ""),
-                     "origin": OPERLY, "referer": OPERLY + "/",
+            target,
+            headers={"cookie": cookies,
+                     "origin": origin, "referer": origin + "/",
                      "accept": "application/json"},
             timeout=10)
     except httpx.HTTPError:
@@ -286,6 +302,11 @@ async def healthz():
     return {"status": "ok", "service": "dragonzpyder-web"}
 
 
+def native_web_session(request: Request) -> bool:
+    # A cookie is a routing hint, never authentication. The API verifies it.
+    return bool(request.cookies.get("__Host-dz_identity"))
+
+
 @app.api_route("/{path:path}", methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
 async def dispatch(path: str, request: Request):
     route = "/" + path
@@ -296,7 +317,8 @@ async def dispatch(path: str, request: Request):
     # reach the model gateway's service-token-bearing private routes.
     if route == "/dz/status" and request.method == "GET":
         return JSONResponse({"web_cutover_enabled":
-            os.getenv("DRAGONZPYDER_FIRST_PARTY_WEB_CUTOVER_ENABLED") == "1"},
+            os.getenv("DRAGONZPYDER_FIRST_PARTY_WEB_CUTOVER_ENABLED") == "1",
+            **({"native_session_present": True} if native_web_session(request) else {})},
             headers={"Cache-Control": "no-store"})
     if route == "/dz/recovery/status" and request.method == "GET":
         return JSONResponse({"enabled": os.getenv("DRAGONZPYDER_ACTIVE_RECOVERY_WEB_ENABLED") == "1"},
@@ -368,7 +390,7 @@ async def dispatch(path: str, request: Request):
         return await proxy(request, API, rewrite_origin=True, upstream_path=native)
     if route.startswith("/api/"):
         # Native cutover must never silently re-enter the old Operly runtime.
-        if os.getenv("DRAGONZPYDER_FIRST_PARTY_WEB_CUTOVER_ENABLED") == "1":
+        if os.getenv("DRAGONZPYDER_FIRST_PARTY_WEB_CUTOVER_ENABLED") == "1" or native_web_session(request):
             return JSONResponse({"detail": {"code": "LEGACY_OPERLY_ROUTE_RETIRED",
                 "message": "Use DragonZpyder's first-party API and optional MCP connections."}},
                 status_code=410)
@@ -377,11 +399,11 @@ async def dispatch(path: str, request: Request):
     if route.startswith("/internal/v1/"):
         return await proxy(request, API)
     if route == "/companion/realtime":
-        if os.getenv("DRAGONZPYDER_FIRST_PARTY_WEB_CUTOVER_ENABLED") == "1":
+        if os.getenv("DRAGONZPYDER_FIRST_PARTY_WEB_CUTOVER_ENABLED") == "1" or native_web_session(request):
             return JSONResponse({"detail": "First-party voice authorization not ready"}, status_code=503)
         return await realtime(request)
     if route.startswith("/mesh/"):
-        if os.getenv("DRAGONZPYDER_FIRST_PARTY_WEB_CUTOVER_ENABLED") == "1":
+        if os.getenv("DRAGONZPYDER_FIRST_PARTY_WEB_CUTOVER_ENABLED") == "1" or native_web_session(request):
             return JSONResponse({"detail": "First-party Mesh authorization not ready"}, status_code=503)
         return await mesh(request)
     if request.method in ("GET", "HEAD") and route in LEGACY_PAGE_ROUTES:

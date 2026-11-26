@@ -1,0 +1,58 @@
+#!/usr/bin/env python3
+"""Require a new explicit codebase change record for each changed non-doc path."""
+import argparse
+import os
+import re
+import subprocess
+from pathlib import PurePosixPath
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+LEDGER = "docs/codebase/CHANGES.md"
+RECORD = re.compile(r"^\+[-*] \x60([^\x60]+)\x60:\s*(\S.*)$")
+
+def git(root, *args):
+    return subprocess.check_output(["git", *args], cwd=root)
+
+def missing_records(root, base, head="HEAD"):
+    changed = git(root, "diff", "--name-only", "--no-renames", "-z", base + "..." + head)
+    paths = {os.fsdecode(p) for p in changed.split(b"\0") if p}
+    patch = git(root, "diff", "--no-ext-diff", "--unified=0", base + "..." + head, "--", LEDGER).decode("utf-8")
+    records = {m.group(1) for line in patch.splitlines() if (m := RECORD.match(line)) and len(m.group(2).strip()) >= 20}
+    return sorted(p for p in paths if not p.lower().endswith((".md", ".rst", ".adoc")) and p not in records)
+
+def inventory_difference(root, head="HEAD"):
+    """Check the maintained index against the exact tracked Git tree."""
+    paths = {os.fsdecode(p) for p in git(root, "ls-tree", "-r", "--name-only", "-z", head).split(b"\0") if p}
+    content = git(root, "show", head + ":docs/codebase/FILE_INDEX.md").decode("utf-8")
+    indexed = set(re.findall(r"\]\(\.\./\.\./([^)]+)\)", content))
+    directories = {str(parent) for p in paths for parent in PurePosixPath(p).parents}
+    missing_guides = []
+    for d in directories:
+        prefix = "" if d == "." else d + "/"
+        if not ({prefix + "README.md", prefix + "CODE_MAP.md"} & paths):
+            missing_guides.append(d)
+    return sorted(paths - indexed), sorted(indexed - paths), sorted(missing_guides)
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--base")
+    parser.add_argument("--head", default="HEAD")
+    args = parser.parse_args()
+    absent, stale, guides = inventory_difference(ROOT, args.head)
+    if absent or stale or guides:
+        for label, values in [("Missing inventory entries", absent), ("Stale inventory entries", stale), ("Missing directory guide", guides)]:
+            for value in values:
+                print(label + ": " + value)
+        raise SystemExit(1)
+    print("Maintained inventory covers every tracked path and directory.")
+    missing = missing_records(ROOT, args.base, args.head) if args.base else []
+    if missing:
+        print("Add a new path-specific record to " + LEDGER + ":")
+        for p in missing:
+            print(" - " + p)
+        raise SystemExit(1)
+    print("Documentation records cover all changed non-documentation paths.")
+
+if __name__ == "__main__":
+    main()

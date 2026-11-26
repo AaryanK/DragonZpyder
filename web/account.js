@@ -13,7 +13,7 @@ async function loadBootstrap(){
  if(nativeMode){bootstrap={};return bootstrap;}
  bootstrap=await request("/api/auth/bootstrap",{method:"GET",unauth:true});
  const central=$("dragonzpyder-central-signin");
- if(central)central.hidden=bootstrap?.dragonzpyder_web_sso_available!==true;
+ if(central)central.hidden=false;
  return bootstrap;
 }
 async function request(path,{method="GET",body,unauth=false}={}){
@@ -38,7 +38,7 @@ async function submitAction(form,action){
 function adminReturnRequested(){return new URLSearchParams(window.location.search).get("next")==="/admin";}
 function authenticated(){window.location.replace(adminReturnRequested()?"/admin":"/app");}
 async function ensurePersonal(){
- if(nativeMode){await request("/dz/v2/personal/session");return;}
+ if(nativeMode){await request("/dz/identity/v1/me");return;}
  let response=await request("/api/auth/sessions");
  const current=Array.isArray(response)?response.find(item=>item?.current):null;
  if(!current)throw Error("Could not establish your session.");
@@ -154,7 +154,7 @@ $("reset-form").addEventListener("submit",e=>{e.preventDefault();submitAction(e.
 $("profile-form").addEventListener("submit",e=>{e.preventDefault();submitAction(e.currentTarget,async()=>{
  await request(nativeMode?"/dz/identity/v1/me":"/api/auth/me",{method:"PATCH",body:{display_name:$("profile-name").value.trim()}});report("Your account has been updated.");
 })});
-$("account-logout").addEventListener("click",async()=>{try{await request(nativeMode?"/dz/identity/v1/logout":"/api/auth/logout",{method:"POST",body:{}});window.location.replace("/account")}catch(e){report(e.message,true)}});
+$("account-logout").addEventListener("click",async()=>{try{await request(nativeMode?"/dz/identity/v1/logout":"/api/auth/logout",{method:"POST",body:{}});window.location.replace(nativeMode?"/login":"/account")}catch(e){report(e.message,true)}});
 async function profile(){
  const p=await request(nativeMode?"/dz/identity/v1/me":"/api/auth/me");$("profile-email").textContent=p.email||"";$("profile-name").value=p.display_name||"";
  const identities=$("linked-identities");identities.replaceChildren();
@@ -184,17 +184,20 @@ async function profile(){
   report("Account migration verification is not available. Return to /account for regular access.",true);
   return;
  }
- try{const route=await request("/dz/status");nativeMode=route.web_cutover_enabled===true;}catch{nativeMode=false;}
+ try{const route=await request("/dz/status");nativeMode=route.web_cutover_enabled===true||route.native_session_present===true||location.pathname==="/login";}catch{nativeMode=location.pathname==="/login";}
  if(nativeMode){
+  $("dragonzpyder-central-signin").hidden=true;
+  $("legacy-login-link").hidden=location.pathname!=="/login";
   $("signup-form").hidden=true;
   activeRecoveryEnabled=(await request("/dz/recovery/status").catch(()=>({enabled:false}))).enabled===true;
   const forgotten=document.querySelector("[data-mode='forgot']");if(forgotten)forgotten.hidden=!activeRecoveryEnabled;
   if(activeRecoveryEnabled){const code=$("reset-code");code.minLength=43;code.maxLength=43;code.pattern="[A-Za-z0-9_-]{43}";code.inputMode="text";const label=document.querySelector("label[for='reset-code']");if(label)label.textContent="One-time recovery code";const copy=$("reset-panel").querySelector(".muted");if(copy)copy.textContent="Enter the one-time recovery code sent to your verified email.";}
  }
+ if(!nativeMode) $("legacy-login-link").hidden=true;
  if(params.get("discord_error"))report(params.get("discord_error"),true);
  try{
-  const sessions=nativeMode?await request("/dz/v2/personal/session"):await request("/api/auth/sessions");
-  if(nativeMode?sessions.authenticated===true:(Array.isArray(sessions)&&sessions.some(s=>s?.current))){
+  const sessions=nativeMode?await request("/dz/identity/v1/me"):await request("/api/auth/sessions");
+  if(nativeMode?Boolean(sessions.id):(Array.isArray(sessions)&&sessions.some(s=>s?.current))){
    if(adminReturnRequested()){window.location.replace("/admin");return;}
    await profile();return;
   }
@@ -202,6 +205,7 @@ async function profile(){
  show(params.get("mode")||"login");
  // Prefer central identity when it is activated, preserving the existing
  // password/Google flow as a safe fallback until verified account cutover.
+ if(!nativeMode) $("dragonzpyder-central-signin").hidden=false;
  await loadBootstrap().catch(()=>{});
  if(adminReturnRequested())report("Sign in to access your DragonZpyder admin dashboard.");
  if(params.get("email")){$("verify-email").value=params.get("email");$("reset-email").value=params.get("email")}
