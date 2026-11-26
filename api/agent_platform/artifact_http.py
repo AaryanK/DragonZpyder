@@ -16,7 +16,7 @@ async def list_files(request: Request):
     artifacts.cipher()
     async with _conversation_db() as db:
         rows=await db.fetch("""SELECT id,filename,content_type,byte_count,sha256,direction
-            FROM dz_agent_artifacts WHERE owner_id=$1 ORDER BY created_at DESC LIMIT 100""",owner)
+            FROM dz_agent_artifacts WHERE owner_id=$1 AND storage_state='ready' ORDER BY created_at DESC LIMIT 100""",owner)
     return {"files":[artifacts.metadata(row) for row in rows]}
 
 
@@ -51,7 +51,5 @@ async def delete(file_id: UUID,request: Request):
     owner=await _owner(request,changing=True)
     artifacts.cipher()
     async with _conversation_db() as db:
-        row=await db.fetchval("DELETE FROM dz_agent_artifacts WHERE owner_id=$1 AND id=$2 RETURNING id",owner,file_id)
-    if row is None:
-        raise HTTPException(404,"Artifact not found")
+        await artifacts.delete(db,owner=owner,file_id=file_id)
     return {"deleted":str(file_id)}
