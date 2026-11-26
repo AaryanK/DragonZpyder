@@ -1,5 +1,6 @@
 """Disposable PostgreSQL recovery tests. No real accounts or mail."""
 import os
+import secrets
 import sys
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -45,7 +46,8 @@ async def test_pending_recovery_authority_and_replay(monkeypatch):
                 await conn.execute("UPDATE public.identity_recovery_authority SET revoked_at=now()")
             with pytest.raises(asyncpg.InsufficientPrivilegeError):
                 await conn.fetch("SELECT * FROM public.identity_recovery_challenges")
-            hashed=hash_password("synthetic-safe-password")
+            initial_passphrase=secrets.token_urlsafe(32)
+            hashed=hash_password(initial_passphrase)
             async def redeem(email, digest, proof):
                 return await conn.fetchval("SELECT public.redeem_pending_recovery($1,$2,$3,$4)",email,digest,hashed,proof)
             assert not await redeem("b@example.test","a"*64,uuid4())
@@ -93,7 +95,8 @@ async def test_pending_recovery_authority_and_replay(monkeypatch):
                 scope="openid offline_access operly:access")
             assert await conn.fetchval("SELECT public.issue_active_recovery($1,$2)","b@example.test","2"*64) is None
             assert await conn.fetchval("SELECT public.issue_active_recovery($1,$2)","a@example.test","3"*64)=="a@example.test"
-            replacement=hash_password("synthetic-replacement-passphrase")
+            replacement_passphrase=secrets.token_urlsafe(32)
+            replacement=hash_password(replacement_passphrase)
             assert not await conn.fetchval("SELECT public.redeem_active_recovery($1,$2,$3)","b@example.test","3"*64,replacement)
             assert await conn.fetchval("SELECT public.redeem_active_recovery($1,$2,$3)","a@example.test","3"*64,replacement)
             assert not await conn.fetchval("SELECT public.redeem_active_recovery($1,$2,$3)","a@example.test","3"*64,replacement)
@@ -105,8 +108,8 @@ async def test_pending_recovery_authority_and_replay(monkeypatch):
             with pytest.raises(OAuthGrantDenied):
                 await rotate_refresh(conn,token=refresh.value,client_id="operly-web",redirect_uri=redirect)
             with pytest.raises(LoginDenied):
-                await password_login(conn,email="a@example.test",password="synthetic-safe-password")
-            assert await password_login(conn,email="a@example.test",password="synthetic-replacement-passphrase")
+                await password_login(conn,email="a@example.test",password=initial_passphrase)
+            assert await password_login(conn,email="a@example.test",password=replacement_passphrase)
         finally:
             await conn.execute("RESET SESSION AUTHORIZATION")
         assert await conn.fetchval("SELECT status FROM public.identity_accounts WHERE subject=$1",a)=="active"
