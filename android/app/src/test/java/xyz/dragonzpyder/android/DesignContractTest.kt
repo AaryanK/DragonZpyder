@@ -22,6 +22,14 @@ class DesignContractTest {
             assertTrue("control contrast",contrast(t.outline,t.surface)>=3f)
         }
     }
+    @Test fun executionConsentStartsOffEvenWhenCapabilitiesBecomeAvailable(){
+        val state=ChatPresentationState()
+        state.update{it.copy(computerAvailable=true,mediaAvailable=true,durableAvailable=true)}
+        assertFalse(state.snapshot.allowComputer)
+        assertFalse(state.snapshot.allowMedia)
+        assertFalse(state.snapshot.allowDurable)
+        assertTrue(state.snapshot.computerAvailable)
+    }
     @Test fun sizingContract(){
         assertTrue(DragonSizes.touch.value>=48)
         assertTrue(DragonSizes.icon.value>=24)

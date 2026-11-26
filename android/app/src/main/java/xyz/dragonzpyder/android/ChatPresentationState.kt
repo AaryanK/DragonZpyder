@@ -16,11 +16,17 @@ internal data class ChatScreenState(
     val modeLabel:String="Agent",
     val modelLabel:String="",
     val attachmentLabel:String="",
-    val profileInitial:String="D",
+    val profileInitial:String="?",
     val voiceAvailable:Boolean=false,
     val filesAvailable:Boolean=false,
     val goalsAvailable:Boolean=true,
-    val legacyActionsAvailable:Boolean=true
+    val legacyActionsAvailable:Boolean=true,
+    val computerAvailable:Boolean=false,
+    val mediaAvailable:Boolean=false,
+    val durableAvailable:Boolean=false,
+    val allowComputer:Boolean=false,
+    val allowMedia:Boolean=false,
+    val allowDurable:Boolean=false
 )
 internal class ChatPresentationState {
     var snapshot by mutableStateOf(ChatScreenState())

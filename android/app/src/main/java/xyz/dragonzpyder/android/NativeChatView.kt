@@ -94,6 +94,15 @@ class NativeChatView(context: Context, private val dark: Boolean, private val ac
     var legacyActionsAvailable:Boolean
         get()=presentation.snapshot.legacyActionsAvailable
         set(value){presentation.update{it.copy(legacyActionsAvailable=value)}}
+    // Optional execution authority is explicit and one-turn only.
+    fun setExecutionCapabilities(computer:Boolean,media:Boolean,durable:Boolean){
+        presentation.update{it.copy(computerAvailable=computer,mediaAvailable=media,durableAvailable=durable,
+            allowComputer=computer&&it.allowComputer,allowMedia=media&&it.allowMedia,allowDurable=durable&&it.allowDurable)}
+    }
+    fun clearExecutionConsent(){presentation.update{it.copy(allowComputer=false,allowMedia=false,allowDurable=false)}}
+    fun allowsComputer()=presentation.snapshot.computerAvailable&&presentation.snapshot.allowComputer
+    fun allowsMedia()=presentation.snapshot.mediaAvailable&&presentation.snapshot.allowMedia
+    fun allowsDurable()=presentation.snapshot.durableAvailable&&presentation.snapshot.allowDurable
     fun openDrawer(){drawerRequest++;historyError=false}
     fun setConversationHistory(history:org.json.JSONArray,selected:String){
         conversations=(0 until history.length()).mapNotNull{history.optJSONObject(it)?.let{row->
@@ -230,22 +239,21 @@ class NativeChatView(context: Context, private val dark: Boolean, private val ac
                 Text("DragonZpyder",color=ink,fontWeight=FontWeight.SemiBold,fontSize=17.sp,modifier=Modifier.weight(1f),maxLines=1,overflow=TextOverflow.Ellipsis)
                 IconButton(onClick=close,modifier=Modifier.size(DragonSizes.touch).semantics{contentDescription="Close menu"}){NavigationGlyph("close",muted)}
             }
-            Button(onClick={select(actions::newChat)},enabled=!busy,shape=RoundedCornerShape(14.dp),modifier=Modifier.fillMaxWidth().heightIn(min=DragonSizes.touch),colors=ButtonDefaults.buttonColors(containerColor=accent,contentColor=tokens.onAccent)){
-                NavigationGlyph("new",tokens.onAccent)
+            Button(onClick={select(actions::newChat)},enabled=!busy,shape=RoundedCornerShape(8.dp),modifier=Modifier.fillMaxWidth().heightIn(min=DragonSizes.touch),border=BorderStroke(1.dp,line),colors=ButtonDefaults.buttonColors(containerColor=tokens.bubble,contentColor=ink)){
+                NavigationGlyph("new",ink)
                 Spacer(Modifier.width(10.dp));Text("New chat",fontWeight=FontWeight.Medium)
             }
             Spacer(Modifier.height(10.dp))
-            OutlinedTextField(value=query,onValueChange={query=it},singleLine=true,placeholder={Text("Search conversations",fontSize=13.sp)},leadingIcon={NavigationGlyph("search",muted,22.dp)},modifier=Modifier.fillMaxWidth().semantics{contentDescription="Find conversations"},shape=RoundedCornerShape(14.dp),colors=OutlinedTextFieldDefaults.colors(unfocusedBorderColor=tokens.outline,focusedBorderColor=accent))
+            OutlinedTextField(value=query,onValueChange={query=it},singleLine=true,placeholder={Text("Search chats",fontSize=13.sp)},leadingIcon={NavigationGlyph("search",muted,22.dp)},modifier=Modifier.fillMaxWidth().semantics{contentDescription="Find conversations"},shape=RoundedCornerShape(14.dp),colors=OutlinedTextFieldDefaults.colors(unfocusedBorderColor=tokens.outline,focusedBorderColor=accent))
             Spacer(Modifier.height(8.dp))
             LazyColumn(Modifier.weight(1f).fillMaxWidth(),contentPadding=PaddingValues(top=2.dp,bottom=12.dp)){
-                item{DrawerSection("Workspace")}
                 item{DrawerRow("connections","Connections & tools",false){select(actions::connections)}}
                 if(filesAvailable)item{DrawerRow("attach","Your files",false){select(actions::files)}}
                 if(goalsAvailable)item{DrawerRow("tasks","Tasks",false){select(actions::tasks)}}
                 if(legacyActionsAvailable)item{DrawerRow("approvals","Approvals",false){select(actions::approvals)}}
-                item{DrawerSection("Conversations")}
+                item{DrawerSection("Chats")}
                 if(historyError)item{Text("Could not refresh history",color=muted,fontSize=12.sp,modifier=Modifier.padding(10.dp))}
-                if(filtered.isEmpty())item{Text(if(query.isBlank())"No conversations yet" else "No matching conversations",color=muted,fontSize=13.sp,modifier=Modifier.padding(10.dp))}
+                if(filtered.isEmpty())item{Text(if(historyError)"History unavailable" else if(query.isBlank())"No conversations yet" else "No matching conversations",color=muted,fontSize=13.sp,modifier=Modifier.padding(10.dp))}
                 items(filtered,key={it.id}){item->
                     DragonNavigationRow(item.title,null,dark,selected=item.id==selectedConversation,enabled=!busy){select{actions.openConversation(item.id)}}
                 }
@@ -261,7 +269,7 @@ class NativeChatView(context: Context, private val dark: Boolean, private val ac
                 Spacer(Modifier.width(8.dp))
                 Column(Modifier.weight(1f)){
                     if(profileName.isNotBlank())Text(profileName,color=ink,fontSize=12.sp,maxLines=1,overflow=TextOverflow.Ellipsis)
-                    DragonNavigationRow("Account",null,dark,enabled=!busy){select(actions::account)}
+                    DragonNavigationRow("Settings",null,dark,enabled=!busy){select(actions::account)}
                 }
                 IconButton(onClick={select(actions::theme)},enabled=!busy,modifier=Modifier.size(DragonSizes.touch).semantics{contentDescription="Switch appearance"}){NavigationGlyph(if(dark)"sun" else "moon",ink)}
 
@@ -277,13 +285,13 @@ class NativeChatView(context: Context, private val dark: Boolean, private val ac
     @Composable private fun Welcome() {
         Column(Modifier.fillMaxWidth().padding(horizontal=10.dp,vertical=22.dp),horizontalAlignment=Alignment.CenterHorizontally) {
             Image(painterResource(R.drawable.brand_icon),"DragonZpyder",Modifier.size(56.dp));Spacer(Modifier.height(22.dp))
-            Text("What shall we work on?",color=ink,fontSize=34.sp,lineHeight=39.sp,fontWeight=FontWeight.Bold,letterSpacing=(-1.5).sp,textAlign=TextAlign.Center)
+            Text("What shall we work on?",color=ink,fontSize=29.sp,lineHeight=35.sp,fontWeight=FontWeight.SemiBold,letterSpacing=(-1.0).sp,textAlign=TextAlign.Center)
             Spacer(Modifier.height(12.dp))
-            Text(if(modeLabel=="Agent") "From a quick question to a big idea. Start anywhere. We’ll find the way forward." else modelLabel,color=muted,fontSize=14.sp,lineHeight=22.sp,textAlign=TextAlign.Center,modifier=Modifier.widthIn(max=470.dp))
+            Text(if(modeLabel=="Agent") "Ask a question or give DragonZpyder a task." else modelLabel,color=muted,fontSize=14.sp,lineHeight=22.sp,textAlign=TextAlign.Center,modifier=Modifier.widthIn(max=470.dp))
             Spacer(Modifier.height(24.dp))
             val prompts=listOf("Explore an idea" to "Help me think through a new idea.","Plan a project" to "Help me plan a project from scratch.","Write something" to "Help me turn my notes into a clear draft.")
             for((label,prompt) in prompts) {
-                OutlinedButton(onClick={ draft=prompt },enabled=!busy,shape=RoundedCornerShape(24.dp),border=BorderStroke(1.dp,line),modifier=Modifier.heightIn(min=DragonSizes.touch)) { Text(label,color=ink) }
+                OutlinedButton(onClick={ draft=prompt },enabled=!busy,shape=RoundedCornerShape(10.dp),border=BorderStroke(1.dp,line),modifier=Modifier.heightIn(min=DragonSizes.touch)) { Text(label,color=ink) }
                 Spacer(Modifier.height(6.dp))
             }
         }
@@ -339,6 +347,23 @@ class NativeChatView(context: Context, private val dark: Boolean, private val ac
             }
         }
     }
+    @Composable private fun ExecutionOptions(){
+        val options=presentation.snapshot
+        if(!options.computerAvailable&&!options.mediaAvailable&&!options.durableAvailable)return
+        var open by remember{mutableStateOf(false)}
+        val count=listOf(allowsComputer(),allowsMedia(),allowsDurable()).count{it}
+        TextButton(onClick={open=true},enabled=!busy,modifier=Modifier.heightIn(min=DragonSizes.touch)){
+            Text(if(count==0)"Tools" else "Tools · "+count,color=if(count>0)accent else ink)
+        }
+        if(open)AlertDialog(onDismissRequest={open=false},title={Text("Tools for this message")},text={
+            Column{
+                Text("Choose optional capabilities for the next message only. Server permissions and approvals still apply.",fontSize=13.sp)
+                if(options.computerAvailable)Row(verticalAlignment=Alignment.CenterVertically){Checkbox(checked=options.allowComputer,onCheckedChange={v->presentation.update{it.copy(allowComputer=v)}});Text("Use isolated computer")}
+                if(options.mediaAvailable)Row(verticalAlignment=Alignment.CenterVertically){Checkbox(checked=options.allowMedia,onCheckedChange={v->presentation.update{it.copy(allowMedia=v)}});Text("Use media tools")}
+                if(options.durableAvailable)Row(verticalAlignment=Alignment.CenterVertically){Checkbox(checked=options.allowDurable,onCheckedChange={v->presentation.update{it.copy(allowDurable=v)}});Text("Allow scheduled work")}
+            }
+        },confirmButton={TextButton(onClick={open=false}){Text("Done")}},dismissButton={TextButton(onClick={clearExecutionConsent();open=false}){Text("Clear")}})
+    }
     @Composable private fun Composer() {
         Surface(modifier=Modifier.widthIn(max=DragonSizes.contentMax).fillMaxWidth(),shape=RoundedCornerShape(22.dp),color=panel,border=BorderStroke(1.dp,line),shadowElevation=0.dp) {
             Column(Modifier.padding(horizontal=9.dp,vertical=6.dp)) {
@@ -352,7 +377,7 @@ class NativeChatView(context: Context, private val dark: Boolean, private val ac
                 Row(verticalAlignment=Alignment.CenterVertically,modifier=Modifier.fillMaxWidth()) {
                     ToolButton("attach","Attach",actions::add)
                     if(!compact&&legacyActionsAvailable)TextButton(onClick=actions::mode,enabled=!busy){Text(modeLabel,color=ink)}
-                    if(!legacyActionsAvailable)Text("Agent",color=muted,modifier=Modifier.padding(horizontal=8.dp))
+                    if(!legacyActionsAvailable)ExecutionOptions()
                     Spacer(Modifier.weight(1f))
                     ToolButton("mic","Dictate",actions::dictate)
                     if(voiceAvailable&&!busy&&draft.isBlank()&&attachmentLabel.isBlank()) ToolButton("voice","Live voice",actions::voice) else Button(onClick={if(streaming)actions.stop() else actions.send()},enabled=streaming||(!busy&&(draft.isNotBlank()||((modeLabel=="AI Mesh"||filesAvailable)&&attachmentLabel.isNotBlank()))&&draft.length<=(if(modeLabel=="AI Mesh") 5000 else 12000)),shape=RoundedCornerShape(50),contentPadding=PaddingValues(0.dp),modifier=Modifier.size(DragonSizes.touch).semantics{contentDescription=if(streaming)"Stop response" else "Send message"},colors=ButtonDefaults.buttonColors(containerColor=accent,contentColor=tokens.onAccent,disabledContainerColor=line.copy(alpha=.35f),disabledContentColor=muted)) { NavigationGlyph(if(streaming)"stop" else "send",if(streaming||draft.isNotBlank()||attachmentLabel.isNotBlank())tokens.onAccent else muted) }

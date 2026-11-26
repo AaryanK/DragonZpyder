@@ -192,3 +192,13 @@ Removed the three Markdown guides from Android drawable, values and xml resource
 - `web/frontend/tests/native-routing.spec.js`: Tests direct native redirect and failed-session retry without credential form. CI and device verification pending.
 
 - `web/frontend/scripts/check-build.mjs`: Replaces obsolete workspace-switcher presence assertion with new-chat navigation and explicit checks that the duplicate credential form and marketing intro are absent; preserves all voice, composer, and account controller assertions. Rerun pending.
+
+## 2026-11-26 — Android harness and appearance parity
+
+- `android/app/src/main/java/xyz/dragonzpyder/android/DragonApi.java`: Reads computer/media/durable/voice-agent capability flags without legacy fallback; ledger and streaming prerequisites. CI/device qualification pending.
+- `android/app/src/main/java/xyz/dragonzpyder/android/NativeChatView.kt`: Native one-message execution options and compact neutral drawer/welcome. CI/device qualification pending.
+- `android/app/src/main/java/xyz/dragonzpyder/android/MainActivity.java`: Submits selected allow_* fields through existing ledger, clears on send/chat change, simplifies auth/settings and binds dictation result to session. CI/device qualification pending.
+- `android/app/src/main/java/xyz/dragonzpyder/android/DragonDesignTokens.kt`: Matches web semantic palette, keeping accessible outlines and native targets. CI/device qualification pending.
+- `android/app/src/main/java/xyz/dragonzpyder/android/ChatPresentationState.kt`: Immutable optional capability state, default-off. CI/device qualification pending.
+- `android/prepare-brand.sh`: Validates web/Android palette parity during preparation. CI/device qualification pending.
+- `android/app/src/test/java/xyz/dragonzpyder/android/DesignContractTest.kt`: Tests default-off consent state. CI/device qualification pending.

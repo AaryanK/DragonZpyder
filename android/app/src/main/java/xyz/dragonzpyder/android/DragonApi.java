@@ -12,10 +12,14 @@ final class DragonApi {
     private SessionCookies cookies = new SessionCookies();
     private volatile boolean firstParty=true;
     private volatile boolean modeKnown;
-    private volatile boolean requestLedger,agentStream,voiceEnabled,filesEnabled,goalsEnabled;
+    private volatile boolean requestLedger,agentStream,voiceEnabled,filesEnabled,goalsEnabled,computerEnabled,mediaEnabled,durableEnabled,voiceAgentEnabled;
     boolean supportsFiles(){return firstParty&&filesEnabled&&requestLedger;}
     boolean supportsGoals(){return firstParty&&goalsEnabled;}
     boolean supportsVoice(){return firstParty&&voiceEnabled;}
+    boolean supportsVoiceAgent(){return supportsVoice()&&requestLedger&&voiceAgentEnabled;}
+    boolean supportsComputer(){return supportsAgentStream()&&computerEnabled;}
+    boolean supportsMedia(){return supportsRequestLedger()&&mediaEnabled;}
+    boolean supportsDurable(){return supportsRequestLedger()&&durableEnabled;}
     boolean supportsRequestLedger(){return firstParty&&requestLedger;}
     boolean supportsAgentStream(){return supportsRequestLedger()&&agentStream;}
     private String googleState="";
@@ -27,8 +31,8 @@ final class DragonApi {
         // The public Web gateway forwards /dz/ to the first-party API.
         boolean nativeMode=true;
         if(!modeKnown||nativeMode!=firstParty){cookies.clear();cookies=new SessionCookies(nativeMode);authenticated=false;requestBinding="";bootstrapCsrf="";googleState="";firstParty=nativeMode;}
-        requestLedger=false;agentStream=false;voiceEnabled=false;filesEnabled=false;goalsEnabled=false;
-        if(nativeMode){try{JSONObject capabilities=(JSONObject)request("/dz/v2/personal/status","GET",null,true);requestLedger=capabilities.optBoolean("request_ledger_enabled",false);agentStream=capabilities.optBoolean("agent_stream_enabled",false);voiceEnabled=capabilities.optBoolean("voice_enabled",false);filesEnabled=capabilities.optBoolean("artifacts_enabled",false);goalsEnabled=capabilities.optBoolean("goal_management_enabled",false);}catch(Exception unavailable){/* Keep first-party mode; never downgrade identity. */}}
+        requestLedger=false;agentStream=false;voiceEnabled=false;filesEnabled=false;goalsEnabled=false;computerEnabled=false;mediaEnabled=false;durableEnabled=false;voiceAgentEnabled=false;
+        if(nativeMode){try{JSONObject capabilities=(JSONObject)request("/dz/v2/personal/status","GET",null,true);requestLedger=capabilities.optBoolean("request_ledger_enabled",false);agentStream=capabilities.optBoolean("agent_stream_enabled",false);voiceEnabled=capabilities.optBoolean("voice_enabled",false);filesEnabled=capabilities.optBoolean("artifacts_enabled",false);goalsEnabled=capabilities.optBoolean("goal_management_enabled",false);computerEnabled=capabilities.optBoolean("computer_enabled",false);mediaEnabled=capabilities.optBoolean("media_enabled",false);durableEnabled=capabilities.optBoolean("durable_workflows_enabled",false);voiceAgentEnabled=capabilities.optBoolean("voice_agent_enabled",false);}catch(Exception unavailable){/* Keep first-party mode; never downgrade identity. */}}
         modeKnown=true;
     }
     private void ensureMode() throws Exception {if(!modeKnown)discoverMode();}

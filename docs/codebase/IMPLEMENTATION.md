@@ -80,3 +80,7 @@ Native chat uses the shared adaptive router and the canonical Deep Agents graph.
 ### Browser sign-in correction
 
 Once `/dz/status` establishes routing, signed-out `/app` goes directly to `/login` for native identity or `/account` for explicitly legacy access. Failed probes show a retry dialog, not a second credential form. `web/account.js` retains verified provider, password, migration and recovery flows; the legacy sign-in link requires explicit routing eligibility. Voice and server authorization remain unchanged.
+
+### Native capability parity
+
+Android consumes `/dz/v2/personal/status` and passes explicit `allow_computer`, `allow_media` and `allow_durable` on the existing ledger-backed chat request, like web. Server authorization and budget gates remain authoritative. Modular OpenRouter voice is a separate pending dependency.
