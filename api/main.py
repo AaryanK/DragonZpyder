@@ -28,6 +28,7 @@ from identity.http_bridge import router as identity_http_bridge_router
 from identity.browser_authorize import router as identity_browser_authorize_router
 from identity.login_http import router as identity_login_router
 from identity.provider_http import router as identity_provider_router
+from identity.mobile_provider import router as identity_mobile_router
 from agent_platform.personal_bridge import router as operly_personal_bridge_router
 from agent_platform.first_party_chat import router as first_party_chat_router
 from agent_platform.first_party_voice import router as first_party_voice_router, cleanup_expired_voice
@@ -152,6 +153,7 @@ app.include_router(identity_http_bridge_router)
 app.include_router(identity_browser_authorize_router)
 app.include_router(identity_login_router)
 app.include_router(identity_provider_router)
+app.include_router(identity_mobile_router)
 app.include_router(agent_router)
 app.include_router(operly_personal_bridge_router)
 app.include_router(first_party_chat_router)

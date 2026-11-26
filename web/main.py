@@ -262,6 +262,13 @@ async def dispatch(path: str, request: Request):
                 "/identity/v1/provider/google/start",
                 "/identity/v1/provider/google/complete",
                 "/identity/v1/provider/google/signup",
+                "/identity/v1/mobile/capabilities",
+                "/identity/v1/mobile/google/start",
+                "/identity/v1/mobile/google/callback",
+                "/identity/v1/mobile/google/redeem",
+                "/identity/v1/mobile/discord/start",
+                "/identity/v1/mobile/discord/callback",
+                "/identity/v1/mobile/discord/redeem",
             )
             or native.startswith("/internal/mcp/")
         )
