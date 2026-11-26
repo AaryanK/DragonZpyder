@@ -670,26 +670,10 @@ async def _execute_chat(payload: ChatInput, request: Request, user: str, convers
         if not acquired:
             raise HTTPException(409, "Conversation is already processing another message")
         try:
-            routing = None
-            if os.getenv("DRAGONZPYDER_ADAPTIVE_ROUTING_ENABLED") == "1":
-                from .adaptive_routing import select_model
-                routing = select_model(payload.message,
-                    has_tools=bool(tools or computer_run or artifact_tools),
-                    has_attachments=bool(payload.attachment_ids))
-            selected_model = model_client(model_override=routing.model) if routing else model_client()
-            route_middleware=None
-            if routing and os.getenv("DRAGONZPYDER_AGENT_USE_GATEWAY")=="1":
-                from .adaptive_routing import recovery_middleware
-                from .runtime import configured_model
-                reasoning=os.getenv("DRAGONZPYDER_AGENT_REASONING_MODEL_ID","").strip()
-                if reasoning and reasoning!=routing.model:
-                    try:
-                        configured_model(reasoning)
-                    except RuntimeError:
-                        pass
-                    else:
-                        route_middleware=recovery_middleware(initial_model=selected_model,
-                            reasoning_model=model_client(model_override=reasoning))
+            from .adaptive_routing import routed_model
+            selected_model,routing,route_middleware=routed_model(payload.message,
+                model_factory=model_client,has_tools=bool(tools or computer_run or media_run or payload.allow_durable),
+                has_attachments=bool(payload.attachment_ids),durable=payload.allow_durable)
             workflow_tools=[]
             if payload.allow_durable:
                 from .native_workflows import native_workflow_tools,session_reference
