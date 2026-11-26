@@ -24,6 +24,9 @@ class FakeDB:
         self.email = "person@example.test"
         self.active = True
         self.queries = []
+    @asynccontextmanager
+    async def transaction(self):
+        yield self
     async def fetchval(self, query, *args):
         if "identity_login_rate_limits" in query:
             self.count += 1
@@ -102,3 +105,21 @@ def test_login_sets_host_only_cookies(monkeypatch):
     assert all("secure" in x.lower() and "path=/" in x.lower() and "domain=" not in x.lower() for x in cookies)
     assert "httponly" in cookies[0].lower()
     assert "httponly" not in cookies[1].lower()
+
+
+@pytest.mark.asyncio
+async def test_password_changed_before_session_creation_is_rejected(monkeypatch):
+    monkeypatch.setenv("DRAGONZPYDER_IDENTITY_GRANT_HASH_KEY","g"*48)
+    import identity.password_login as login
+    db=FakeDB(hash_password(SAMPLE_PASSPHRASE))
+    previous=db.fetchrow
+    async def fetchrow(query,*args):
+        if "FOR UPDATE" in query:
+            db.stored=hash_password("Another synthetic strong password")
+        return await previous(query,*args)
+    db.fetchrow=fetchrow
+    async def forbidden(*args,**kwargs):
+        raise AssertionError("Stale password must not mint a session")
+    monkeypatch.setattr(login,"create_browser_session",forbidden)
+    with pytest.raises(LoginDenied):
+        await password_login(db,email=db.email,password=SAMPLE_PASSPHRASE)
