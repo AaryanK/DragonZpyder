@@ -72,3 +72,7 @@ The checkout-specific generated directory contains an index, a page for every tr
 ## Frontend V2 foundation
 
 `web/frontend/src/dz-mark.svg` is the local brand master. `web/frontend/scripts/prepare-desktop.mjs` produces web/installation rasters; `android/prepare-brand.sh` produces the native vector. The Personal React shell uses `UiIcon.jsx` and V2 semantic shell tokens in `web/ui-v1.css`. The existing `web/app.js` adapter requests authenticated `/dz/identity/v1/me` for optional display name metadata and never uses it to grant authorization. Native chat capability remains backend-owned; unavailable chat retains drafts and disables send. No provider avatar claim, runtime flag changes or deployment implied.
+
+## Integrated V4 candidate paths
+
+Native chat uses the shared adaptive router and the canonical Deep Agents graph. Selected MCP reads may be bound directly or through bounded QuickJS. Selected artifacts pass through owner-bound encrypted storage and the signed scoped VM runner. Reviewed media operations pass through the capped provider gateway. Native voice transcripts enter the chat ledger; spoken playback remains separate. Native durable objectives are finite dependent phases dispatched by Hatchet with checkpoint/receipt fencing, original authority and shared model budget. All rollout gates remain off unless separately authorized. Tests use scripted providers; production validation remains outstanding.

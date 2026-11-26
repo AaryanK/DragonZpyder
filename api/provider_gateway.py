@@ -139,12 +139,16 @@ def _finish_span(span, result, code, duration_ms):
     span.end()
 
 
-async def provider_request(request: Request, path: str, *, app_id: str, runtime):
+async def provider_request(request: Request, path: str, *, app_id: str, runtime, agent_media: bool = False):
     """Called only after the central gateway validates the app-specific key."""
     op = _operation(request.method, path)
     if op is None:
         return error_response(404, "Unsupported provider route")
-    if not (app_id == "ai-mesh" or (app_id in {"chat-lab", "operly"} and path == "/chat/completions" and request.method == "POST")):
+    if agent_media:
+        if (app_id!="agent-media" or request.method!="POST" or path not in
+                {"/chat/completions","/images","/audio/transcriptions","/audio/speech"}):
+            return error_response(403,"Agent media operation not approved")
+    elif not (app_id == "ai-mesh" or (app_id in {"chat-lab", "operly"} and path == "/chat/completions" and request.method == "POST")):
         return error_response(403, "This provider operation is not enabled for the application")
     # The /models endpoint defaults to text output. Audio model discovery
     # requires explicit, tightly allowlisted output-modality filters.
@@ -157,7 +161,15 @@ async def provider_request(request: Request, path: str, *, app_id: str, runtime)
             }:
                 return error_response(400, "Unsupported model catalogue filter")
             model_filter = filters[0][1]
-    provider_key = _provider_key(path)
+    provider_key = (os.getenv("DRAGONZPYDER_AGENT_MEDIA_OPENROUTER_API_KEY","")
+                    if agent_media else _provider_key(path))
+    if agent_media:
+        # A separate non-resetting provider cap is required for the initial
+        # multimodal rollout. Ordinary inference credentials are never used.
+        from agent_platform.key_budget import verify_key_budget
+        cap=await verify_key_budget(request.app.state.http,provider_key)
+        if cap.get("approved") is not True or not ledger.available:
+            return error_response(503,"Agent media budget or accounting unavailable")
     if not provider_key:
         return error_response(503, "Image test provider is not configured" if
                               path in ("/images", "/images/models") else
@@ -182,8 +194,11 @@ async def provider_request(request: Request, path: str, *, app_id: str, runtime)
                 return error_response(413, "Request too large")
             try:
                 payload = _json_payload(raw, path)
-            except ValueError as exc:
-                return error_response(400, str(exc))
+                if agent_media:
+                    from agent_platform.media_policy import validate_media_payload
+                    validate_media_payload(path,payload)
+            except (ValueError,TypeError,KeyError,AttributeError,IndexError) as exc:
+                return error_response(400,"Invalid agent media request" if agent_media else str(exc))
             is_stream = payload.get("stream") is True
         model = str((payload or {}).get("model") or "catalog")
         span, trace_id = _start_span(request, app_id, path, request_id, model)
@@ -302,6 +317,15 @@ async def provider_request(request: Request, path: str, *, app_id: str, runtime)
             return error_response(502, "Provider response size exceeded")
         is_binary = path.endswith("/content") or path == "/audio/speech"
         report = _metadata(upstream, binary=is_binary)
+        # The media response is returned only to the authenticated agent
+        # transport. Persist accounting metadata, never media bytes, prompts,
+        # source image URLs or transcription/speech content in the usage log.
+        audit_report=report
+        audit_payload=payload
+        if agent_media:
+            audit_report={k:report[k] for k in ("id","model","usage","media_bytes","media_sha256","content_type")
+                          if k in report}
+            audit_payload={"model":model,"operation":path}
         elapsed = int((time.monotonic()-started)*1000)
         status_code = upstream.status_code
         recorded = True
@@ -313,12 +337,12 @@ async def provider_request(request: Request, path: str, *, app_id: str, runtime)
                     served_model=report.get("model") if isinstance(report.get("model"), str) else model,
                     generation_id=str(report.get("id") or "") or None,
                     status="ok" if 200 <= status_code < 300 else "error",
-                    duration_ms=elapsed, response=report, request_payload=payload,
+                    duration_ms=elapsed, response=audit_report, request_payload=audit_payload,
                     failure_code=None if 200 <= status_code < 300 else str(status_code))
             except Exception:
                 recorded = False
         _finish_span(span, report, status_code, elapsed)
-        if op == "generation" and ledger.required and not recorded:
+        if op == "generation" and (ledger.required or agent_media) and not recorded:
             return error_response(503, "Inference accounting unavailable")
         # Do not expose raw upstream provider errors or headers to the browser.
         if not 200 <= status_code < 300:

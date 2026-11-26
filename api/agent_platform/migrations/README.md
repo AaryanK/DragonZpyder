@@ -17,3 +17,11 @@ Read [repository instructions](../../../AGENTS.md) and [codebase navigation](../
 | [`operly_legacy_history_inventory_manual.sql`](operly_legacy_history_inventory_manual.sql) | SQL named for operly legacy history inventory manual; inspect statements, transaction requirements and target database before use. | Indexed |
 | [`operly_personal_history_export_role_manual.sql`](operly_personal_history_export_role_manual.sql) | SQL named for operly personal history export role manual; inspect statements, transaction requirements and target database before use. | Indexed |
 | [`operly_personal_history_inventory_manual.sql`](operly_personal_history_inventory_manual.sql) | SQL named for operly personal history inventory manual; inspect statements, transaction requirements and target database before use. | Indexed |
+
+## Integrated harness changes
+
+- [20261125_native_voice.sql](20261125_native_voice.sql): Persist voice mode, selected accounts and conversation reference alongside session expiry.
+- [20261125_shared_artifacts.sql](20261125_shared_artifacts.sql): Create encrypted artifact metadata with pending, ready and deletion lifecycle.
+- [20261126_agent_media_attempts.sql](20261126_agent_media_attempts.sql): Persist exact media invocation IDs and metered gateway receipts.
+- [20261126_computer_admission.sql](20261126_computer_admission.sql): Persist durable VM exposure and cleanup states.
+- [20261126_native_workflows.sql](20261126_native_workflows.sql): Store immutable finite workflow plan, authority reference, phase cursor and receipts.

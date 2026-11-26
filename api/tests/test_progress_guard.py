@@ -130,13 +130,17 @@ def test_runtime_recovers_checkpointed_evidence_on_real_graph_recursion_error(mo
     path = "/workspace/partial-result.md"
 
     class FakeAgent:
-        async def ainvoke(self, *args, **kwargs):
+        async def ainvoke(self, inputs, **kwargs):
+            from langchain_core.messages import HumanMessage
+            turn = inputs["messages"][0]
+            self.current = HumanMessage(content=turn["content"], id=turn["id"])
             raise GraphRecursionError("bounded fake execution")
 
         async def aget_state(self, config):
             assert "configurable" in config and "thread_id" in config["configurable"]
             return SimpleNamespace(values={
                 "messages": [
+                    self.current,
                     AIMessage(content="", tool_calls=[{
                         "id": "t1", "name": "write_file",
                         "args": {"file_path": path, "content": "offline test"}
@@ -235,3 +239,170 @@ def test_current_turn_tool_receipts_exclude_prior_checkpointed_calls():
     ]
     report = summarize_agent_result({"messages": msgs + follow})
     assert report["successful_tools"] == ["operly_tasks_list"]
+
+
+def test_changing_read_observations_are_not_stagnant():
+    messages = []
+    for i in range(4):
+        messages.extend([
+            _model_tool("operly_workflow_list", {}, i),
+            ToolMessage(content=f'{{"records": [{i}]}}', name="operly_workflow_list",
+                        tool_call_id=f"run-{i}", status="success"),
+        ])
+    assert stop_reason(messages, stress_mode=False) is None
+    for message in messages:
+        if isinstance(message, ToolMessage):
+            message.content = '{"records": [1]}'
+    assert stop_reason(messages, stress_mode=False) == "repeated_tool_cycle"
+
+
+def test_approval_control_stops_real_deepagents_before_another_model_call(monkeypatch):
+    """Actual graph + upstream middleware + real tool, no external provider."""
+    import asyncio
+    from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
+    from langchain_core.tools import tool
+    from langgraph.checkpoint.memory import MemorySaver
+    from agent_platform.harness import build_frontier_agent
+
+    calls = []
+
+    @tool
+    async def operly_update_record() -> str:
+        """Request approval for a synthetic record change."""
+        calls.append("request")
+        return '{"status": "waiting_for_approval", "approval_id": "synthetic"}'
+
+    class Scripted(FakeMessagesListChatModel):
+        def bind_tools(self, tools, **kwargs):
+            return self
+
+    monkeypatch.setenv("DRAGONZPYDER_OPERLY_TOOLS_ENABLED", "1")
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_WEB_SEARCH_ENABLED", "0")
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_QUICKJS_ENABLED", "0")
+    model = Scripted(responses=[
+        _model_tool("operly_update_record", {}, 1),
+        _model_tool("operly_update_record", {}, 2),
+        AIMessage(content="Wrongly claimed completion"),
+    ])
+    graph = build_frontier_agent(model, MemorySaver(), delegated_tools=[operly_update_record])
+    result = asyncio.run(graph.ainvoke(
+        {"messages": [{"role": "user", "content": "Request a record change"}]},
+        config={"configurable": {"thread_id": "approval-guard"}, "recursion_limit": 128},
+    ))
+    assert calls == ["request"]
+    report = summarize_agent_result(result)
+    assert report["status"] == "incomplete"
+    assert report["termination_reason"] == "external_approval_required"
+    assert report["successful_tools"] == []
+    assert report["failed_tool_count"] == 1
+    assert report["objective_verified"] is False
+
+
+def test_structured_tool_errors_are_not_success_receipts():
+    from langchain_core.messages import HumanMessage
+    from agent_platform.tool_outcomes import tool_outcome
+    cases = [
+        ('{"ok":false,"error_code":"bad_input"}', None, "failed"),
+        ('{"status":"waiting_for_approval"}', None, "approval_required"),
+        ([{"type":"text","text":'{"status":"outcome_unconfirmed"}'}], None, "unknown"),
+        ("transport returned", {"structured_content":{"isError":True}}, "failed"),
+        ('{"result":[{"status":"failed"},{"status":"pending_approval"}]}', None, "returned"),
+        ('[{"status":"failed"}]', None, "returned"),
+    ]
+    for index, (content, artifact, expected) in enumerate(cases):
+        message = ToolMessage(content=content, artifact=artifact, name="operly_workflow_list",
+                              tool_call_id=str(index), status="success")
+        assert tool_outcome(message) == expected
+        report = summarize_checkpoint_evidence(
+            {"messages":[HumanMessage(content="inspect"),message]},
+            termination_reason="model_call_limit")
+        assert report["successful_tools"] == (["operly_workflow_list"] if expected == "returned" else [])
+        assert report["failed_tool_count"] == int(expected != "returned")
+
+
+def test_runtime_rejects_stale_partial_checkpoint_even_for_identical_prompt(monkeypatch):
+    import asyncio
+    from types import SimpleNamespace
+    from langchain_core.messages import HumanMessage
+    from agent_platform import runtime
+
+    class GraphRecursionError(Exception):
+        pass
+
+    class FakeAgent:
+        calls = 0
+        async def ainvoke(self, inputs, config):
+            self.calls += 1
+            assert config["recursion_limit"] >= 128
+            raise GraphRecursionError()
+        async def aget_state(self, config):
+            return SimpleNamespace(values={"messages":[
+                HumanMessage(content="repeat", id="old-turn"),
+                ToolMessage(content="old data", name="old_tool", tool_call_id="old"),
+                AIMessage(content="old answer"),
+            ]})
+
+    agent = FakeAgent()
+    monkeypatch.setattr(runtime, "model_client", lambda: object())
+    monkeypatch.setattr(runtime, "build_agent", lambda model, cp: agent)
+    runner = runtime.AgentRuntime()
+    runner._checkpointer = object()
+    report = asyncio.run(runner.run_report(service_id="offline-test", thread_id="same",
+                       prompt="repeat", recover_partial_on_failure=True))
+    assert agent.calls == 1
+    assert report["status"] == "incomplete"
+    assert report["checkpoint_recovered"] is False
+    assert report["successful_tools"] == []
+    assert report["objective_verified"] is False
+
+
+def test_execution_limits_do_not_enable_stress_with_partial_flags(monkeypatch):
+    from agent_platform.execution_contract import execution_limits, _STRESS_FLAGS
+    for flag in _STRESS_FLAGS:
+        monkeypatch.delenv(flag, raising=False)
+    assert execution_limits().deadline_seconds == 90
+    assert execution_limits().graph_supersteps == 128
+    for flag in _STRESS_FLAGS[:-1]:
+        monkeypatch.setenv(flag, "1")
+    assert execution_limits().deadline_seconds == 90
+    monkeypatch.setenv(_STRESS_FLAGS[-1], "1")
+    assert execution_limits().deadline_seconds == 220
+    assert execution_limits(parent_job=True).deadline_seconds == 110
+
+
+def test_run_telemetry_redacts_inputs_and_tracks_unknown_usage():
+    from types import SimpleNamespace
+    from agent_platform.run_telemetry import RunTelemetry
+    from langchain_core.messages import AIMessage, ToolMessage
+    ticks=iter(range(0,100000000,1000000))
+    trace=RunTelemetry(clock=lambda:next(ticks))
+    trace.on_chat_model_start({"name":"secret-provider"},["private prompt"],run_id="private-id")
+    trace.on_llm_end(SimpleNamespace(generations=[[SimpleNamespace(message=AIMessage(
+        content="secret answer",usage_metadata={"input_tokens":9,"output_tokens":3,"total_tokens":12}))]]),
+        run_id="private-id")
+    trace.on_chat_model_start({},["private prompt"],run_id="m2")
+    trace.on_llm_end(SimpleNamespace(generations=[[SimpleNamespace(message=AIMessage(
+        content="private data"))]]),run_id="m2")
+    trace.on_tool_start({"name":"operly_secret_account"},"secret arguments",run_id="t1")
+    trace.on_tool_end(ToolMessage(name="operly_secret_account",tool_call_id="t1",
+        content='{"status":"waiting_for_approval","secret":"private"}'),run_id="t1")
+    trace.on_tool_start({"name":"write_file"},"secret arguments",run_id="t2")
+    trace.on_tool_error(RuntimeError("secret error"),run_id="t2")
+    trace.on_tool_start({"name":"eval"},"secret arguments",run_id="t3")
+    result=trace.snapshot(status="incomplete",termination_reason="execution_deadline")
+    assert result["model_started"]==2 and result["model_returned"]==2
+    assert result["observed_input_tokens"]==9 and result["observed_output_tokens"]==3
+    assert result["successful_models_missing_usage"]==1 and not result["token_usage_complete"]
+    assert result["tool_started"]==3 and result["tool_approval_required"]==1
+    assert result["tool_failed"]==1 and result["unfinished_callbacks"]==1
+    assert not result["callback_observation_complete"]
+    assert result["cost_usd"] is None and not result["objective_verified"]
+    assert "secret" not in str(result) and "private" not in str(result)
+    assert "operly_capability" in str(result)
+
+
+def test_run_telemetry_missing_or_duplicate_callback_is_not_complete():
+    from agent_platform.run_telemetry import RunTelemetry
+    trace=RunTelemetry()
+    trace.on_llm_error(RuntimeError("unknown"),run_id="missing")
+    assert not trace.snapshot(status="failed")["callback_observation_complete"]

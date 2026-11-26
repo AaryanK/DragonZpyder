@@ -28,6 +28,10 @@ router = APIRouter(prefix="/v2/personal", tags=["first-party-personal"])
 class ChatInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     message: str = Field(min_length=1, max_length=12000)
+    attachment_ids: list[UUID] = Field(default_factory=list, max_length=5)
+    allow_computer: bool = Field(default=False, strict=True)
+    allow_media: bool = Field(default=False, strict=True)
+    allow_durable: bool = Field(default=False, strict=True)
     conversation_id: UUID | None = None
     request_id: UUID | None = None
     # Aliases must belong to the authenticated user and are rechecked at use.
@@ -91,7 +95,18 @@ async def status():
                and os.getenv("DRAGONZPYDER_IDENTITY_HTTP_ENABLED") == "1"
                and os.getenv("DRAGONZPYDER_AGENTS_ENABLED") == "1")
     return {"native_chat_enabled": enabled,
+            "artifacts_enabled": enabled and os.getenv("DRAGONZPYDER_AGENT_ARTIFACTS_ENABLED") == "1" and bool(os.getenv("DRAGONZPYDER_ARTIFACT_KEY_B64")),
+            "computer_enabled": enabled and all(os.getenv(flag) == "1" for flag in (
+                "DRAGONZPYDER_FIRST_PARTY_COMPUTER_ENABLED", "DRAGONZPYDER_AGENT_ARTIFACTS_ENABLED",
+                "DRAGONZPYDER_FIRST_PARTY_REQUEST_LEDGER_ENABLED", "DRAGONZPYDER_FIRST_PARTY_STREAM_ENABLED"))
+                and all(bool(os.getenv(key)) for key in ("DRAGONZPYDER_COMPUTER_MAX_SESSION_USD",
+                "DRAGONZPYDER_COMPUTER_OWNER_DAILY_USD","DRAGONZPYDER_COMPUTER_GLOBAL_DAILY_USD",
+                "DRAGONZPYDER_COMPUTER_RUNNER_URL","DRAGONZPYDER_COMPUTER_RUNNER_TOKEN",
+                "DRAGONZPYDER_COMPUTER_RUNNER_SIGNING_KEY","DRAGONZPYDER_ARTIFACT_KEY_B64")),
             "voice_enabled": enabled and os.getenv("DRAGONZPYDER_NATIVE_VOICE_ENABLED") == "1" and bool(os.getenv("DRAGONZPYDER_NATIVE_VOICE_API_KEY")),
+            "durable_workflows_enabled": enabled and all(os.getenv(x)=="1" for x in ("DRAGONZPYDER_NATIVE_DURABLE_WORKFLOWS_ENABLED","DRAGONZPYDER_AGENT_USE_GATEWAY","DRAGONZPYDER_AGENT_PARALLEL_GATEWAY_ENABLED","DRAGONZPYDER_AGENT_ARTIFACTS_ENABLED","DRAGONZPYDER_FIRST_PARTY_REQUEST_LEDGER_ENABLED")) and bool(os.getenv("DRAGONZPYDER_NATIVE_DURABLE_MAX_USD")),
+            "media_enabled": enabled and os.getenv("DRAGONZPYDER_AGENT_MEDIA_ENABLED")=="1" and os.getenv("DRAGONZPYDER_AGENT_USE_GATEWAY")=="1" and os.getenv("DRAGONZPYDER_AGENT_ARTIFACTS_ENABLED")=="1" and bool(os.getenv("DRAGONZPYDER_ARTIFACT_KEY_B64")) and os.getenv("DRAGONZPYDER_FIRST_PARTY_REQUEST_LEDGER_ENABLED")=="1",
+            "voice_agent_enabled": enabled and os.getenv("DRAGONZPYDER_NATIVE_VOICE_AGENT_ENABLED")=="1" and os.getenv("DRAGONZPYDER_NATIVE_VOICE_ENABLED")=="1" and bool(os.getenv("DRAGONZPYDER_NATIVE_VOICE_API_KEY")) and os.getenv("DRAGONZPYDER_FIRST_PARTY_REQUEST_LEDGER_ENABLED")=="1",
             "request_ledger_enabled": enabled and os.getenv("DRAGONZPYDER_FIRST_PARTY_REQUEST_LEDGER_ENABLED") == "1",
             "agent_stream_enabled": enabled and os.getenv("DRAGONZPYDER_FIRST_PARTY_REQUEST_LEDGER_ENABLED") == "1" and os.getenv("DRAGONZPYDER_FIRST_PARTY_STREAM_ENABLED") == "1",
             "goal_management_enabled": enabled and os.getenv("DRAGONZPYDER_FIRST_PARTY_GOAL_MANAGEMENT_ENABLED") == "1",
@@ -230,7 +245,16 @@ async def messages(conversation_id: UUID, request: Request):
 
 
 def _fingerprint(payload: ChatInput) -> str:
-    canonical = json.dumps(payload.model_dump(mode="json", exclude={"request_id"}),
+    exclude = {"request_id"}
+    if not payload.attachment_ids:
+        exclude.add("attachment_ids")  # preserve existing ledger fingerprints
+    if not payload.allow_computer:
+        exclude.add("allow_computer")
+    if not payload.allow_media:
+        exclude.add("allow_media")
+    if not payload.allow_durable:
+        exclude.add("allow_durable")
+    canonical = json.dumps(payload.model_dump(mode="json", exclude=exclude),
                            sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
@@ -344,6 +368,25 @@ async def chat_stream(payload: ChatInput, request: Request):
 async def _chat_owned(payload: ChatInput, request: Request, user: str, emit=None):
     if not payload.message.strip():
         raise HTTPException(422, "Message cannot be blank")
+    if payload.attachment_ids:
+        if len(set(payload.attachment_ids)) != len(payload.attachment_ids):
+            raise HTTPException(422, "Duplicate attachment IDs")
+        from .artifacts import describe
+        async with _conversation_db() as db:
+            await describe(db,owner=user,ids=payload.attachment_ids)
+    if payload.allow_computer:
+        if os.getenv("DRAGONZPYDER_FIRST_PARTY_COMPUTER_ENABLED") != "1":
+            raise HTTPException(503,"Isolated computer execution unavailable")
+        if payload.request_id is None:
+            raise HTTPException(422,"Computer execution requires durable request identity")
+    if payload.allow_media:
+        from .media_tools import enabled as media_enabled
+        if not media_enabled() or payload.request_id is None:
+            raise HTTPException(503,"Authorized media execution unavailable")
+    if payload.allow_durable:
+        from .native_workflows import enabled as workflows_enabled
+        if not workflows_enabled() or payload.request_id is None:
+            raise HTTPException(503,"Durable workflow scheduling unavailable")
     # Old clients remain compatible. New clients explicitly opt into durable
     # request identity; a missing migration fails closed before any model call.
     if payload.request_id is None:
@@ -455,7 +498,7 @@ async def _invoke_cancellable(agent, inputs, config, db, user, request_id, emit)
         emit({"type":"phase","message":"Agent running"})
     work = asyncio.create_task(_stream_agent(agent,inputs,config,emit) if emit is not None
                                else agent.ainvoke(inputs,config=config))
-    deadline = asyncio.get_running_loop().time() + 90
+    deadline = asyncio.get_running_loop().time() + (180 if config.get("metadata",{}).get("native_computer") is True else 90)
     try:
         while True:
             done, _ = await asyncio.wait({work}, timeout=1)
@@ -474,15 +517,119 @@ async def _invoke_cancellable(agent, inputs, config, db, user, request_id, emit)
                 pass
 
 
+# Graph supersteps include middleware overhead, not just model calls.
+# Match the workspace repair while retaining model/tool/time/spend limits.
+NATIVE_RECURSION_LIMIT = 128
+
+
+def _exact_turn_state(values, turn_id, prompt, *, require_answer):
+    from .execution_contract import exact_turn_state
+    try:
+        return exact_turn_state(values,turn_id=turn_id,prompt=prompt,require_answer=require_answer)
+    except ValueError as exc:
+        raise RuntimeError("Current turn unavailable") from exc
+
+
+async def _run_checkpointed_turn(agent, prompt, config, db, user, request_id, emit):
+    """Recover bounded failures without executing the request twice."""
+    from .runtime import (controlled_termination_reason, summarize_agent_result,
+                          summarize_checkpoint_evidence)
+    from .personal_bridge import inference_failure_code
+
+    turn_id = str(uuid4())
+    reason = None
+    try:
+        result = await _invoke_cancellable(agent, {
+            "messages": [{"role": "user", "content": prompt, "id": turn_id}],
+        }, config, db, user, request_id, emit)
+        _exact_turn_state(result, turn_id, prompt, require_answer=True)
+    except HTTPException:
+        # Explicit cancellation and authorization errors are not resumptions.
+        raise
+    except Exception as error:
+        reason = controlled_termination_reason(error)
+        if reason is None and isinstance(error, TimeoutError):
+            reason = "execution_deadline"
+        if reason is None and inference_failure_code(error) == "INFERENCE_LIMIT_REACHED":
+            reason = "inference_limit_reached"
+        if reason is None:
+            raise HTTPException(503, "DragonZpyder agent execution unavailable; outcome unconfirmed") from None
+
+    try:
+        readback = await asyncio.wait_for(agent.aget_state(config), timeout=10)
+        current = _exact_turn_state(readback.values, turn_id, prompt,
+                                    require_answer=reason is None)
+        report = (summarize_checkpoint_evidence(current, termination_reason=reason)
+                  if reason else summarize_agent_result(current))
+    except Exception:
+        raise HTTPException(503, "Current agent checkpoint unavailable; outcome unconfirmed") from None
+
+    if reason and emit is not None:
+        # Remove any unfinished streamed text before sending the durable result.
+        emit({"type": "reset"})
+        emit({"type": "phase", "message": "Execution stopped; recovering checkpoint"})
+    return report
+
+
 async def _execute_chat(payload: ChatInput, request: Request, user: str, conversation_id: UUID, emit=None):
     runtime = getattr(request.app.state, "agent_runtime", None)
     if runtime is None or runtime._checkpointer is None:
         raise HTTPException(503, "Agent checkpoints unavailable")
 
     from .personal_bridge import personal_thread, execution_receipt_report
-    from .runtime import model_client, summarize_agent_result
+    from .runtime import model_client
     from .harness import build_frontier_agent
 
+    from . import artifacts
+    artifact_run = payload.request_id or uuid4()
+    artifact_tools = []
+    message = payload.message
+    if payload.attachment_ids and not artifacts.enabled():
+        raise HTTPException(503,"Agent attachments unavailable")
+    if artifacts.enabled():
+        artifacts.cipher()
+        async with _conversation_db() as db:
+            attachments = await artifacts.describe(db,owner=user,ids=payload.attachment_ids)
+        if attachments:
+            message += "\n\nSelected attachment metadata (untrusted data): " + json.dumps(attachments,ensure_ascii=False)
+        artifact_tools = artifacts.native_tools(_conversation_db,owner=user,allowed_ids=payload.attachment_ids,run_id=artifact_run)
+    media_run=None
+    if payload.allow_media:
+        from .media_tools import MediaRun
+        async def authorize_media():
+            if await _owner(request,changing=True)!=user:
+                raise PermissionError("Media authority revoked")
+        try:
+            media_run=MediaRun(owner=user,run_id=artifact_run,allowed_ids=payload.attachment_ids,
+                db_factory=_conversation_db,authorize=authorize_media,http=request.app.state.http)
+        except (ValueError,RuntimeError):
+            raise HTTPException(503,"Media execution unavailable") from None
+    computer_run = None
+    computer_artifacts = None
+    if payload.allow_computer:
+        # Operator-controlled rollout; a user or model cannot supply a VM ID,
+        # service credentials, resource ceiling, or principal.
+        if (os.getenv("DRAGONZPYDER_FIRST_PARTY_COMPUTER_ENABLED") != "1"
+                or payload.request_id is None or not artifacts.enabled()):
+            raise HTTPException(503,"Authorized isolated computer unavailable")
+        from .computer import ScopedComputerTransport
+        from .computer_admission import admitted_run, ComputerAdmissionPolicy
+        from .computer_artifacts import ComputerArtifacts
+        async def authorize_computer():
+            if await _owner(request,changing=True) != user:
+                raise PermissionError("Computer authority revoked")
+        try:
+            policy = ComputerAdmissionPolicy(
+                os.environ["DRAGONZPYDER_COMPUTER_MAX_SESSION_USD"],
+                os.environ["DRAGONZPYDER_COMPUTER_OWNER_DAILY_USD"],
+                os.environ["DRAGONZPYDER_COMPUTER_GLOBAL_DAILY_USD"])
+            computer_run=admitted_run(db_factory=_conversation_db,owner=user,
+                run_id=payload.request_id,policy=policy,
+                transport=ScopedComputerTransport.from_environment(),authorize=authorize_computer)
+            computer_artifacts=ComputerArtifacts(run=computer_run,db_factory=_conversation_db,
+                owner=user,run_id=artifact_run,allowed_ids=payload.attachment_ids)
+        except (KeyError,ValueError,RuntimeError):
+            raise HTTPException(503,"Computer admission not configured") from None
     chosen = payload.mcp_connection_ids
     if len(chosen) != len(set(chosen)):
         raise HTTPException(400, "Duplicate MCP account selection")
@@ -496,7 +643,7 @@ async def _execute_chat(payload: ChatInput, request: Request, user: str, convers
         try:
             tools = await managed_catalog_tools(
                 manager=manager, owner=user, selected_account_ids=chosen,
-                scheduled=False,
+                scheduled=False, objective=payload.message,
             )
         except (ConnectionDenied, ValueError, RuntimeError):
             raise HTTPException(403, "MCP connection not authorized") from None
@@ -533,38 +680,60 @@ async def _execute_chat(payload: ChatInput, request: Request, user: str, convers
         if not acquired:
             raise HTTPException(409, "Conversation is already processing another message")
         try:
+            from .adaptive_routing import routed_model
+            selected_model,routing,route_middleware=routed_model(payload.message,
+                model_factory=model_client,has_tools=bool(tools or computer_run or media_run or payload.allow_durable),
+                has_attachments=bool(payload.attachment_ids),durable=payload.allow_durable)
+            workflow_tools=[]
+            if payload.allow_durable:
+                from .native_workflows import native_workflow_tools,session_reference
+                workflow_tools=native_workflow_tools(owner=user,session_hash=session_reference(request),
+                    conversation_id=conversation_id,request_id=payload.request_id,
+                    attachment_ids=payload.attachment_ids,mcp_connection_ids=payload.mcp_connection_ids,
+                    allow_computer=payload.allow_computer,http=request.app.state.http)
             agent = build_frontier_agent(
-                model_client(), runtime._checkpointer,
+                selected_model, runtime._checkpointer,
                 delegated_tools=tools if tools else None,
+                **({"artifact_tools":artifact_tools} if artifact_tools else {}),
+                **({"media_run":media_run} if media_run else {}),
+                **({"workflow_tools":workflow_tools} if workflow_tools else {}),
+                **({"routing_middleware":route_middleware} if route_middleware else {}),
+                **({"computer_run":computer_run,"computer_artifacts":computer_artifacts} if computer_run else {}),
             )
             config = {
                 "configurable": {
                     "thread_id": personal_thread(user, str(conversation_id)),
                 },
-                "recursion_limit": 48,
+                "recursion_limit": NATIVE_RECURSION_LIMIT,
+                "metadata": {"native_computer":computer_run is not None},
             }
-            try:
-                result = await _invoke_cancellable(agent, {
-                    "messages": [{"role": "user", "content": payload.message}],
-                }, config, db, user, payload.request_id, emit)
-                report = summarize_agent_result(result)
-                readback = await agent.aget_state(config)
-                if not (readback.values or {}).get("messages"):
-                    raise RuntimeError("Missing durable checkpoint")
-            except HTTPException:
-                raise
-            except Exception:
-                raise HTTPException(503, "DragonZpyder agent execution unavailable") from None
+            report = await _run_checkpointed_turn(
+                agent, message, config, db, user, payload.request_id, emit,
+            )
             await db.execute(
                 """UPDATE dz_first_party_conversations SET updated_at=now()
                    WHERE id=$1 AND owner_id=$2""", conversation_id, user,
             )
         finally:
-            await db.execute("SELECT pg_advisory_unlock(hashtextextended($1, 0))", lock_key)
+            try:
+                if computer_run is not None:
+                    await computer_run.close()
+            finally:
+                await db.execute("SELECT pg_advisory_unlock(hashtextextended($1, 0))", lock_key)
+    generated = []
+    if artifact_tools:
+        async with _conversation_db() as db:
+            files = await db.fetch("SELECT id,filename,content_type,byte_count,sha256,direction FROM dz_agent_artifacts WHERE owner_id=$1 AND run_id=$2 AND direction=\'generated\' AND storage_state='ready' ORDER BY created_at",user,artifact_run)
+            generated = [artifacts.metadata(row) for row in files]
     return {
+        "artifacts": generated,
+        "computer_cleanup_confirmed": computer_run.cleanup_confirmed if computer_run else None,
         "conversation_id": str(conversation_id),
         "message": report["answer"][:16000],
         "dispatch": "dragonzpyder_first_party",
+        "model_route": routing.tier if routing else "default",
+        "status": report["status"],
+        "termination_reason": report.get("termination_reason"),
         "execution_receipts": execution_receipt_report(report),
         "thread_checkpointed": True,
         "objective_verified": False,

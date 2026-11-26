@@ -11,3 +11,8 @@ Read [repository instructions](../../AGENTS.md) and [codebase navigation](../../
 | [`dragonzpyder-api.yml`](dragonzpyder-api.yml) | Workflow/configuration: dragonzpyder api; inspect triggers, jobs and gates. | Indexed |
 | [`mcp-connections.yml`](mcp-connections.yml) | Workflow/configuration: mcp connections; inspect triggers, jobs and gates. | Indexed |
 | [`web.yml`](web.yml) | Workflow/configuration: web; inspect triggers, jobs and gates. | Indexed |
+
+## Integrated harness changes
+
+- [dragonzpyder-api.yml](dragonzpyder-api.yml): Run combined graph, media, recovery, and PostgreSQL integration tests, with agent-stack dependencies for actual checkpoints.
+- [scoped-sandbox-runner.yml](scoped-sandbox-runner.yml): Check Node runner syntax and scoped protocol tests without allocating live VMs.

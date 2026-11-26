@@ -68,9 +68,53 @@ def repeated_action_cycle(actions: list[str]) -> bool:
     return False
 
 
+def stagnant_action_fingerprints(messages: list) -> list[str]:
+    """Include observable tool results when detecting repeated cycles.
+
+    Repeated reads whose outputs actually change may be legitimate progress.
+    Missing receipts still count as the original action; do not use timestamps
+    or callback IDs as evidence of progress. Digests never leave this hook.
+    """
+    observed = []
+    receipts = {
+        getattr(message, "tool_call_id", None): message
+        for message in messages[-80:]
+        if getattr(message, "type", None) == "tool"
+        and isinstance(getattr(message, "tool_call_id", None), str)
+    }
+    for message in messages[-80:]:
+        if getattr(message, "type", None) != "ai":
+            continue
+        for call in getattr(message, "tool_calls", []) or []:
+            if not isinstance(call, dict) or not isinstance(call.get("name"), str):
+                continue
+            response = receipts.get(call.get("id"))
+            value = {"name": call["name"], "args": call.get("args", {})}
+            if response is not None:
+                # Compare only content, not per-call metadata or volatile
+                # artifact handles. All computation is local and bounded.
+                content = getattr(response, "content", None)
+                if isinstance(content, str) and len(content) > 65536:
+                    content = content[:32768] + content[-32768:]
+                value["observation"] = {
+                    "status": getattr(response, "status", None),
+                    "content": content,
+                }
+            try:
+                packed = json.dumps(value, sort_keys=True, separators=(",", ":"), default=str)
+                observed.append(hashlib.sha256(packed.encode()).hexdigest())
+            except (ValueError, TypeError, RecursionError):
+                continue
+    return observed[-24:]
+
+
 def stop_reason(messages: list, *, stress_mode: bool) -> str | None:
     messages = current_turn_messages(messages)
-    actions = action_fingerprints(messages)
+    from .tool_outcomes import unresolved_external_control
+    blocker = unresolved_external_control(messages)
+    if blocker:
+        return blocker
+    actions = stagnant_action_fingerprints(messages)
     if repeated_action_cycle(actions):
         return "repeated_tool_cycle"
     turns = sum(getattr(msg, "type", None) == "ai" for msg in messages)
@@ -88,11 +132,13 @@ def progress_guard_decision(state: dict) -> dict | None:
     reason = stop_reason(state.get("messages", []), stress_mode=is_stress)
     if reason is None:
         return None
+    explanation = {
+        "external_approval_required": "Review the pending action in the approval interface. No approval or completion is asserted.",
+        "external_outcome_unconfirmed": "An external operation has an uncertain outcome. Reconcile its status before retrying.",
+    }.get(reason, "Task stopped within execution limits. Any virtual artifacts are partial and not independently verified.")
     return {
         "messages": [AIMessage(content=(
-            STOP_PREFIX + " " + reason
-            + "; task stopped within execution limits. "
-            + "Any virtual artifacts are partial and not independently verified."
+            STOP_PREFIX + " " + reason + "; " + explanation
         ))],
         "jump_to": "end",
     }

@@ -33,3 +33,7 @@ Every implementation change must update [path-specific change records](docs/code
 ### Frontend V2 and Android
 
 See [web frontend V2](web/frontend/README.md) and [Android implementation and release requirements](android/README.md). The monogram source is [dz-mark.svg](web/frontend/src/dz-mark.svg); asset builders and the shell are described in the implementation guide. The Android source tree was added after the earlier documentation baseline; inventory reconciliation is path-based, not an assertion of behavioral review.
+
+## Integrated harness candidate
+
+See [adaptive routing](api/agent_platform/adaptive_routing.py), [media tools](api/agent_platform/media_tools.py), [durable workflows](api/agent_platform/native_workflows.py), [artifact service](api/agent_platform/artifacts.py) and [scoped VM runner](apps/sandbox_runner/README.md). These are gated implementation paths, not deployment evidence.

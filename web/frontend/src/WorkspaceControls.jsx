@@ -311,7 +311,7 @@ export function QuickAddMenu({ camera }) {
         title="Attach an image or document">
         <span aria-hidden="true">▤</span><span><strong>Attach files</strong><small>Images, documents, audio</small></span>
         <input id="mesh-upload" type="file" multiple
-          accept="image/png,image/jpeg,image/webp,.pdf,.docx,.txt,.md,.csv,.json,.py,.log,audio/*"
+          accept="image/png,image/jpeg,image/webp,.pdf,.docx,.xlsx,.pptx,.txt,.md,.csv,.json,.py,.log,audio/*"
           aria-label="Choose files to attach" onChange={() => setOpen(false)}/>
       </label>
       {camera}
@@ -319,7 +319,7 @@ export function QuickAddMenu({ camera }) {
       <button type="button" className="dz-menu-action" onClick={() => { setOpen(false); openWorkspace(); }}>
         <span aria-hidden="true">◈</span><span><strong>More capabilities</strong><small>Agents, projects and tools</small></span>
       </button>
-      <p className="dz-menu-foot">Files and screenshots use AI Mesh. Agent tools require their own permissions.</p>
+      <p className="dz-menu-foot">Selected files stay in your draft until Send. Available processing tools depend on your authorized runtime.</p>
     </div>
   </div>;
 }

@@ -1,0 +1,29 @@
+name: Scoped sandbox runner
+on:
+  pull_request:
+    paths:
+      - 'apps/sandbox_runner/**'
+      - 'api/agent_platform/computer.py'
+      - 'api/agent_platform/computer_run.py'
+      - '.github/workflows/scoped-sandbox-runner.yml'
+  push:
+    branches: [develop]
+    paths:
+      - 'apps/sandbox_runner/**'
+      - '.github/workflows/scoped-sandbox-runner.yml'
+permissions:
+  contents: read
+jobs:
+  offline-runner-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: apps/sandbox_runner
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm test
+      - run: python3 -m py_compile computer_tool.py

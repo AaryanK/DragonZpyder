@@ -250,3 +250,6 @@
 @media(prefers-reduced-motion:reduce){
  .mesh-image-pending-art::before{animation:none}
 }
+
+/* Explicit hidden capability controls must override the switch display rule. */
+.native-consent[hidden], #companion-open[hidden], #mesh-switch[hidden] { display: none !important; }

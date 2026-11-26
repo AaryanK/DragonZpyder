@@ -4,7 +4,7 @@ const calls=new Set();
 // Native voice reservations belong to the authenticated session, not the
 // legacy companion. Let a submitted start settle even if the UI closes,
 // so a late accepted provider call can be ended rather than orphaned.
-let nativeCall=null,nativePending=null,nativeClosing=null,expiryTimer=null;
+let nativeCall=null,nativePending=null,nativeClosing=null,expiryTimer=null,nativeBusy=false;
 function voiceContext(){return window.dragonzpyderVoiceContext?.()||{available:false,native:false}}
 function endNative(call){
   if(!call||call.ending)return call?.ending;
@@ -122,6 +122,7 @@ function row(id,label,value,append=false){
 }
 function send(event){if(channel?.readyState==="open")channel.send(JSON.stringify(event))}
 function cleanup(){
+  nativeBusy=false;
   version++;clearTimeout(expiryTimer);expiryTimer=null;
   const closing=nativeCall;nativeCall=null;
   if(closing){closing.closed=true;if(closing.settled)void endNative(closing);}
@@ -153,6 +154,31 @@ async function handleTool(item,v){
   send({type:"conversation.item.create",item:{type:"function_call_output",call_id:item.call_id,output:JSON.stringify(output)}});
   send({type:"response.create"});setStatus("Listening — speak naturally","listening");
 }
+function finishAgentPlayback(){
+  nativeBusy=false;
+  for(const t of mic?.getAudioTracks()||[])t.enabled=!silent;
+  setStatus(silent?"Microphone muted":"Listening — speak naturally","listening");
+}
+async function handleAgentTranscript(e,v){
+  const call=nativeCall,transcript=String(e.transcript||"").trim(),eventId=e.item_id;
+  if(!call?.agentMode||!eventId||!transcript||silent||nativeBusy||calls.has(eventId))return;
+  calls.add(eventId);nativeBusy=true;
+  for(const t of mic?.getAudioTracks()||[])t.enabled=false;
+  setStatus("Working through DragonZpyder…","working");
+  try{
+    const result=await window.dragonzpyderNativeVoiceTurn(call.id,eventId,transcript);
+    if(v!==version||call!==nativeCall)return;
+    send({type:"response.create",response:{conversation:"none",
+      instructions:"Read the supplied answer naturally without adding facts, claims or actions.",
+      input:[{type:"message",role:"user",content:[{type:"input_text",text:String(result?.message||"No confirmed agent response was returned.").slice(0,10000)}]}]}});
+    setStatus("Reading the agent result…","speaking");
+  }catch{
+    if(v===version&&call===nativeCall){
+      row("native-error-"+eventId,"DragonZpyder","The request outcome is unconfirmed. Check the conversation before repeating it.");
+      finishAgentPlayback();
+    }
+  }
+}
 function onEvent(text,v,native=false){
   if(v!==version)return;
   let e;try{e=JSON.parse(text)}catch{return}
@@ -161,9 +187,10 @@ function onEvent(text,v,native=false){
   if(e.type==="response.created")setStatus("Speaking…","speaking");
   if(["response.output_audio_transcript.delta","response.audio_transcript.delta"].includes(e.type))row(e.item_id||e.response_id||"agent","DragonZpyder",e.delta,true);
   if(["response.output_audio_transcript.done","response.audio_transcript.done"].includes(e.type))row(e.item_id||e.response_id||"agent","DragonZpyder",e.transcript);
-  if(e.type==="conversation.item.input_audio_transcription.completed")row(e.item_id||"user","You",e.transcript);
+  if(e.type==="conversation.item.input_audio_transcription.completed"){row(e.item_id||"user","You",e.transcript);if(nativeCall?.agentMode)void handleAgentTranscript(e,v);}
   if(!native&&e.type==="response.output_item.done"&&e.item?.type==="function_call"&&e.item.name==="delegate_personal_task")handleTool(e.item,v);
-  if(e.type==="response.done")setStatus("Listening — speak naturally","listening");
+  if(nativeCall?.agentMode&&e.type==="output_audio_buffer.stopped")finishAgentPlayback();
+  if(e.type==="response.done"&&!nativeCall?.agentMode)setStatus("Listening — speak naturally","listening");
   if(e.type==="error")setStatus(String(e.error?.message||"Voice error"),"error");
 }
 async function start(){
@@ -200,8 +227,8 @@ async function start(){
     if(native){
       const token=csrf(true);if(!token)throw Error("Secure session missing. Sign in again.");
       if(!window.crypto?.randomUUID)throw Error("Secure browser context required.");
-      call={id:crypto.randomUUID(),csrf:token,settled:false,closed:false,ending:null};nativeCall=call;nativePending=call;
-      try{r=await fetch("/dz/v2/personal/voice/start",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json","X-DZ-CSRF":token},body:JSON.stringify({session_id:call.id,sdp:peer.localDescription.sdp}),cache:"no-store",redirect:"error"});}
+      call={id:crypto.randomUUID(),csrf:token,settled:false,closed:false,ending:null,agentMode:context.agentMode===true};nativeCall=call;nativePending=call;
+      try{r=await fetch("/dz/v2/personal/voice/start",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json","X-DZ-CSRF":token},body:JSON.stringify({session_id:call.id,sdp:peer.localDescription.sdp,...(call.agentMode?{agent_mode:true,conversation_id:context.conversationId,mcp_connection_ids:context.mcpConnectionIds}: {})}),cache:"no-store",redirect:"error"});}
       catch(err){call.settled=true;void endNative(call);throw err;}
       finally{if(nativePending===call)nativePending=null;}
       call.settled=true;
@@ -219,7 +246,7 @@ async function start(){
     let answer;
     if(native){
       const result=await r.json();if(v!==version)return;
-      if(result.session_id!==call.id||typeof result.sdp!=="string"||!result.sdp.startsWith("v=0")||result.sdp.length>65536||!Number.isFinite(result.duration_seconds)||result.duration_seconds<=0||result.duration_seconds>600)throw Error("Invalid native voice response.");
+      if(result.session_id!==call.id||(call.agentMode&&result.agent_mode!==true)||typeof result.sdp!=="string"||!result.sdp.startsWith("v=0")||result.sdp.length>65536||!Number.isFinite(result.duration_seconds)||result.duration_seconds<=0||result.duration_seconds>600)throw Error("Invalid native voice response.");
       answer=result.sdp;
       const expires=Date.parse(result.expires_at),duration=result.duration_seconds*1000;
       expiryTimer=setTimeout(()=>{if(v===version){cleanup();panel.hidden=false;setStatus("Voice session allowance reached. Return to chat to continue.","error");}},Number.isFinite(expires)?Math.max(0,Math.min(duration,expires-Date.now())):duration);
@@ -238,7 +265,7 @@ mute.addEventListener("click",()=>{
     return;
   }
   if(!mic||!live)return;
-  silent=!silent;mic.getAudioTracks().forEach(t=>t.enabled=!silent);
+  silent=!silent;mic.getAudioTracks().forEach(t=>t.enabled=!silent&&!nativeBusy);
   window.dispatchEvent(new CustomEvent("dragonzpyder:voice-mute",{detail:{muted:silent}}));
   setStatus(silent?"Microphone muted":"Listening — speak naturally","listening");
 });
