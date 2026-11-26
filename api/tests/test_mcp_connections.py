@@ -622,3 +622,38 @@ def test_native_browser_stage_requires_original_device_and_session(manager, monk
         with pytest.raises(m.ConnectionDenied):
             await service.finish_native(owner="alice",session_secret="a"*40,state=state,verifier=verifier)
     asyncio.run(run())
+
+
+def test_direct_bound_read_revalidates_connection_before_each_invocation(manager, monkeypatch):
+    from agent_platform.mcp_managed_catalog import _direct_read_tool
+    from agent_platform.mcp_broker import CatalogGrant, McpGrant
+    service, _ = manager
+    discoveries = []
+    class Counted(FakeTool):
+        async def ainvoke(self, args):
+            discoveries.append("executed")
+            return await super().ainvoke(args)
+    async def sdk(grants, max_tools=1):
+        g = grants[0]
+        return [Counted(g.provider_id+"_lookup",g.headers["Authorization"][7:])]
+    monkeypatch.setattr("agent_platform.mcp_managed_catalog.discover_granted_mcp_tools",sdk)
+
+    async def run():
+        _, alias = await connect(service)
+        catalog = ManagedMcpRunCatalog([CatalogGrant(
+            McpGrant(alias,"https://archive.example.com/mcp",
+                     frozenset({"archive.example.com"}),{},frozenset({"lookup"})),
+            frozenset({"lookup"}),"Search documents")],
+            owner="owner-one",manager=service,scheduled=False)
+        info = await catalog.describe(alias,"lookup")
+        direct = _direct_read_tool(catalog,info)
+        assert "secret-long-access-token" not in direct.description
+        good = await direct.ainvoke({"q":"physics"})
+        assert good["result"]["records"] == ["physics"]
+        assert good["result"]["leak"] == "[redacted credential]"
+        assert await service.disconnect("owner-one",alias)
+        denied = await direct.ainvoke({"type":"tool_call","id":"revoked",
+                                      "name":direct.name,"args":{"q":"physics"}})
+        assert denied.status == "error"
+        assert discoveries == ["executed"]
+    asyncio.run(run())
