@@ -107,3 +107,7 @@ Operly is a **client** of DragonZpyder inference, never the upstream model owner
 **Migration:** Operly's `OPERLY_AGENT_MODEL_PROVIDER=dragonzpyder` selects this new service via the `DRAGONZPYDER_INFERENCE_BASE_URL` and `DRAGONZPYDER_RUNTIME_TOKEN` variables. Until end-to-end interoperability is tested, leave the production provider variable unchanged. The legacy OpenRouter key on Operly remains only during the transition; eventually give DragonZpyder its own provider key and remove direct Operly model-provider secrets after dependent workloads have moved. Existing business data, scopes, approvals, and connector credentials stay in Operly.
 
 The in-process call quota is *not* an enforced dollar budget. Create and monitor a provider-side spend cap before large-scale use.
+
+### Thanksgiving display
+
+`/thanksgiving` serves a minimal TV display; its QR targets `/thanksgiving/start` with Website and Android choices. `/thanksgiving/android` redirects only to an APK asset from the official repository's public releases; otherwise returns an honest unavailable page. These exact public routes are implemented in `main.py` without affecting auth or runtime routing.
