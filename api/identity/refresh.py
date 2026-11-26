@@ -45,7 +45,7 @@ async def issue_refresh(conn, *, subject: str, client_id: str, redirect_uri: str
             conn, client_id=client_id, redirect_uri=redirect_uri, scope=scope,
         )
         active = await conn.fetchval(
-            "SELECT 1 FROM identity_accounts WHERE subject=$1 AND status='active' AND source_active=TRUE",
+            "SELECT 1 FROM identity_accounts WHERE subject=$1 AND status='active' AND source_active=TRUE FOR UPDATE",
             subject,
         )
         if active != 1:
@@ -66,7 +66,6 @@ async def rotate_refresh(conn, *, token: str, client_id: str, redirect_uri: str)
     digest = _secret_digest("refresh:" + token)
     replay = False
     new_token = secrets.token_urlsafe(48)
-    expiry = _now() + timedelta(days=30)
     async with conn.transaction():
         # Serialize every refresh within the family (including simultaneous
         # reuse) by acquiring a transaction-level row lock on the family key.
@@ -74,8 +73,13 @@ async def rotate_refresh(conn, *, token: str, client_id: str, redirect_uri: str)
             """SELECT subject,client_id,family_id,scope,audience,expires_at,consumed_at,revoked_at
                FROM identity_refresh_grants WHERE refresh_hash=$1""", digest,
         )
-        if row is None:
+        if row is None or row["client_id"] != client_id:
             raise OAuthGrantDenied("Refresh token rejected")
+        if await conn.fetchval(
+            "SELECT 1 FROM identity_accounts WHERE subject=$1 AND status='active' AND source_active=TRUE FOR UPDATE",
+            row["subject"],
+        ) != 1:
+            raise OAuthGrantDenied("Account unavailable")
         await conn.execute(
             "SELECT pg_advisory_xact_lock(hashtext($1))",
             row["family_id"],
@@ -87,6 +91,17 @@ async def rotate_refresh(conn, *, token: str, client_id: str, redirect_uri: str)
         )
         if row is None:
             raise OAuthGrantDenied("Refresh token rejected")
+        # Check client/redirect/audience before treating a request as replay.
+        # A wrong client must not be able to revoke another client\'s family.
+        if row["client_id"] != client_id:
+            raise OAuthGrantDenied("Refresh token rejected")
+        client = await _registered_client(
+            conn, client_id=client_id, redirect_uri=redirect_uri, scope=row["scope"],
+        )
+        if client["audience"] != row["audience"]:
+            raise OAuthGrantDenied("Client audience changed")
+        # Rotation preserves the original absolute family lifetime.
+        expiry = row["expires_at"]
         # A consumed token indicates theft or replay: revoke its entire family.
         if row["consumed_at"] is not None:
             await conn.execute(
@@ -95,14 +110,8 @@ async def rotate_refresh(conn, *, token: str, client_id: str, redirect_uri: str)
             )
             replay = True
         else:
-            if (row["revoked_at"] is not None or row["expires_at"] <= _now()
-                    or row["client_id"] != client_id):
+            if row["revoked_at"] is not None or expiry <= _now():
                 raise OAuthGrantDenied("Refresh token rejected")
-            client = await _registered_client(
-                conn, client_id=client_id, redirect_uri=redirect_uri, scope=row["scope"],
-            )
-            if client["audience"] != row["audience"]:
-                raise OAuthGrantDenied("Client audience changed")
             active = await conn.fetchval(
                 "SELECT 1 FROM identity_accounts WHERE subject=$1 AND status='active' AND source_active=TRUE",
                 row["subject"],
@@ -141,6 +150,7 @@ async def revoke_refresh_family(conn, *, token: str) -> None:
             digest,
         )
         if family:
+            await conn.execute("SELECT pg_advisory_xact_lock(hashtext($1))", family)
             await conn.execute(
                 """UPDATE identity_refresh_grants SET revoked_at=now()
                    WHERE family_id=$1 AND revoked_at IS NULL""", family,

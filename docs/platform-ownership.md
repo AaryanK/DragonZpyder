@@ -1,5 +1,7 @@
 # DragonZpyder-first infrastructure migration
 
+> [Universal Harness V4](universal-harness-v4.md) is the canonical target architecture. This ownership document preserves migration sequencing and historical evidence; do not treat historical deployment descriptions as live status.
+
 **Target:** DragonZpyder is the intelligence platform and service provider.
 Operly is an authorised business client, not the owner of AI infrastructure.
 

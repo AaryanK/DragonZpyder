@@ -2,11 +2,12 @@
 import os
 import re
 from contextlib import asynccontextmanager
+from http.cookiejar import CookieJar, DefaultCookiePolicy
 from pathlib import Path
 
 import httpx
 from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse, JSONResponse, Response, RedirectResponse, HTMLResponse
+from fastapi.responses import FileResponse, JSONResponse, Response, RedirectResponse, HTMLResponse, StreamingResponse
 
 from backend.voice import realtime
 from backend.mesh import mesh
@@ -16,6 +17,7 @@ from backend.chat_demo import router as chat_router
 ROOT = Path(__file__).resolve().parent
 DIST = ROOT / "dist"  # Vite-built React pages and fingerprinted assets
 API = os.getenv("DRAGONZPYDER_API_ORIGIN", "https://api.dragonzpyder.xyz").rstrip("/")
+IDENTITY_PUBLIC_ORIGIN = "https://api.dragonzpyder.xyz"
 CHAT_HOST = "chat.dragonspire.xyz"
 CHAT_PATHS = {"/chat", "/chat/app.js", "/chat/app.css", "/demo/session",
               "/demo/login", "/demo/logout", "/demo/chat", "/healthz"}
@@ -34,9 +36,18 @@ HOP_HEADERS = {"connection", "transfer-encoding", "content-length", "host",
                "content-encoding", "keep-alive", "upgrade", "proxy-connection"}
 
 
+class _RejectUpstreamCookies(DefaultCookiePolicy):
+    """A multi-user proxy must not keep any upstream user's cookies."""
+    def set_ok(self, cookie, request):
+        return False
+    def return_ok(self, cookie, request):
+        return False
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    async with httpx.AsyncClient(follow_redirects=False, timeout=120.0) as http:
+    jar = CookieJar(policy=_RejectUpstreamCookies())
+    async with httpx.AsyncClient(follow_redirects=False, timeout=120.0, cookies=jar) as http:
         app.state.http = http
         yield
 
@@ -76,16 +87,62 @@ async def secure_headers(request: Request, call_next):
     return response
 
 
-async def proxy(request: Request, destination: str, rewrite_origin=False):
+async def proxy(request: Request, destination: str, rewrite_origin=False, upstream_path=None, *, proof_only=False):
     # Fixed trusted service origins; never proxy to a host provided by the browser.
     headers = {k: v for k, v in request.headers.items() if k.lower() not in HOP_HEADERS}
+    if proof_only:
+        # The migration verifier receives only its own challenge. Never relay
+        # Operly credentials, active identity sessions, or bearer headers.
+        headers = {k:v for k,v in headers.items() if k in ("accept","content-type","user-agent")}
+        challenge = (request.cookies.get("__Host-dz_import_proof", "")
+                     if upstream_path.startswith("/identity/v1/import-proof/") else "")
+        headers["cookie"] = ("__Host-dz_import_proof=" + challenge
+                             if re.fullmatch(r"[A-Za-z0-9_-]{32,128}", challenge) else "")
+    else:
+        # An explicit empty cookie header also prevents a client's cookie jar
+        # from attaching a previous caller's cookies when no cookie was sent.
+        headers.setdefault("cookie", "")
     if rewrite_origin:
-        headers["origin"] = destination
-        headers["referer"] = destination + "/"
-    body = await request.body()
+        # Transport may use Railway private DNS; identity expects its public issuer.
+        # Native mutation routes validate browser Origin before reaching this proxy.
+        origin = IDENTITY_PUBLIC_ORIGIN if upstream_path and destination == API else destination
+        headers["origin"] = origin
+        headers["referer"] = origin + "/"
+    if proof_only:
+        data = bytearray()
+        async for chunk in request.stream():
+            data.extend(chunk)
+            if len(data) > 12288:
+                return JSONResponse({"detail":"Request too large"},status_code=413,
+                                    headers={"Cache-Control":"no-store"})
+        body = bytes(data)
+    else:
+        body = await request.body()
+    if upstream_path == "/v2/personal/chat/stream":
+        client = request.app.state.http
+        try:
+            outgoing = client.build_request(request.method, destination + upstream_path,
+                                            headers=headers, content=body)
+            streamed = await client.send(outgoing, stream=True)
+        except httpx.HTTPError:
+            return JSONResponse({"detail":{"message":"Agent stream unavailable"}}, status_code=502)
+        if streamed.status_code != 200 or "text/event-stream" not in streamed.headers.get("content-type",""):
+            try:
+                return Response(content=await streamed.aread(), status_code=streamed.status_code,
+                                media_type=streamed.headers.get("content-type","application/json"))
+            finally:
+                await streamed.aclose()
+        async def body_stream():
+            try:
+                async for chunk in streamed.aiter_bytes():
+                    yield chunk
+            finally:
+                await streamed.aclose()
+        return StreamingResponse(body_stream(), media_type="text/event-stream",
+                                 headers={"Cache-Control":"no-store","X-Accel-Buffering":"no"})
     try:
         upstream = await request.app.state.http.request(
-            request.method, destination + request.url.path +
+            request.method, destination + (upstream_path or request.url.path) +
             ("?" + request.url.query if request.url.query else ""),
             headers=headers, content=body)
     except httpx.HTTPError:
@@ -98,6 +155,11 @@ async def proxy(request: Request, destination: str, rewrite_origin=False):
                         headers=dict((k.decode(), v.decode()) for k, v in response_headers))
     # Headers must retain repeated Set-Cookie values for secure sessions.
     for cookie in upstream.headers.get_list("set-cookie"):
+        if proof_only and not cookie.startswith("__Host-dz_import_proof="):
+            if not (upstream_path == "/identity/v1/recovery/complete"
+                    and cookie.startswith(("__Host-dz_identity=", "__Host-dz_csrf="))
+                    and "max-age=0" in cookie.lower()):
+                continue
         response.raw_headers.append((b"set-cookie", cookie.encode()))
     return response
 
@@ -222,13 +284,98 @@ async def dispatch(path: str, request: Request):
     route = "/" + path
     if route == "/admin" or route == "/admin/api/usage":
         return await admin_route(request)
+    # First-party identity, native chat and browser-only MCP routes terminate
+    # at DragonZpyder API. No wildcard /internal proxy: browsers must never
+    # reach the model gateway's service-token-bearing private routes.
+    if route == "/dz/status" and request.method == "GET":
+        return JSONResponse({"web_cutover_enabled":
+            os.getenv("DRAGONZPYDER_FIRST_PARTY_WEB_CUTOVER_ENABLED") == "1"},
+            headers={"Cache-Control": "no-store"})
+    if route == "/dz/recovery/status" and request.method == "GET":
+        return JSONResponse({"enabled": os.getenv("DRAGONZPYDER_ACTIVE_RECOVERY_WEB_ENABLED") == "1"},
+                            headers={"Cache-Control":"no-store"})
+    if route == "/dz/import-proof/status" and request.method == "GET":
+        return JSONResponse({"enabled": os.getenv("DRAGONZPYDER_IMPORT_PROOF_WEB_ENABLED") == "1"},
+                            headers={"Cache-Control": "no-store"})
+    if route == "/dz/import-proof/recovery/status" and request.method == "GET":
+        return JSONResponse({"enabled": os.getenv("DRAGONZPYDER_IMPORT_PROOF_WEB_ENABLED") == "1"
+            and os.getenv("DRAGONZPYDER_NATIVE_PENDING_RECOVERY_WEB_ENABLED") == "1"},
+            headers={"Cache-Control":"no-store"})
+    if route.startswith("/dz/"):
+        native = route[3:]
+        proof_routes = {
+            "/identity/v1/import-proof/password",
+            "/identity/v1/import-proof/google/start",
+            "/identity/v1/import-proof/google/complete",
+        }
+        if os.getenv("DRAGONZPYDER_NATIVE_PENDING_RECOVERY_WEB_ENABLED") == "1":
+            proof_routes.update({"/identity/v1/import-proof/recovery/start",
+                                 "/identity/v1/import-proof/recovery/complete"})
+        if native.startswith("/identity/v1/recovery/"):
+            if (native not in {"/identity/v1/recovery/start","/identity/v1/recovery/complete"}
+                    or request.method != "POST" or os.getenv("DRAGONZPYDER_ACTIVE_RECOVERY_WEB_ENABLED") != "1"):
+                return JSONResponse({"detail":"Not found"},status_code=404,headers={"Cache-Control":"no-store"})
+            if request.headers.get("origin") != "https://" + (request.url.hostname or "").lower():
+                return JSONResponse({"detail":"Origin rejected"},status_code=403,headers={"Cache-Control":"no-store"})
+            if request.url.query:
+                return JSONResponse({"detail":"Unexpected query"},status_code=400,headers={"Cache-Control":"no-store"})
+            return await proxy(request, API, rewrite_origin=True, upstream_path=native, proof_only=True)
+        if native.startswith("/identity/v1/import-proof/"):
+            if (native not in proof_routes or request.method != "POST"
+                    or os.getenv("DRAGONZPYDER_IMPORT_PROOF_WEB_ENABLED") != "1"):
+                return JSONResponse({"detail": "Not found"}, status_code=404,
+                                    headers={"Cache-Control": "no-store"})
+            if request.headers.get("origin") != "https://" + (request.url.hostname or "").lower():
+                return JSONResponse({"detail": "Origin rejected"}, status_code=403,
+                                    headers={"Cache-Control": "no-store"})
+            if request.url.query:
+                return JSONResponse({"detail":"Unexpected query"},status_code=400,headers={"Cache-Control":"no-store"})
+            return await proxy(request, API, rewrite_origin=True, upstream_path=native, proof_only=True)
+        permitted = (
+            native.startswith("/v2/personal/")
+            or native in (
+                "/identity/v1/password/login",
+                "/identity/v1/logout",
+                "/identity/v1/me",
+                "/identity/v1/provider/google/start",
+                "/identity/v1/provider/google/complete",
+                "/identity/v1/provider/google/signup",
+                "/identity/v1/mobile/capabilities",
+                "/identity/v1/mobile/google/start",
+                "/identity/v1/mobile/google/callback",
+                "/identity/v1/mobile/google/redeem",
+                "/identity/v1/mobile/discord/start",
+                "/identity/v1/mobile/discord/callback",
+                "/identity/v1/mobile/discord/redeem",
+            )
+            or native.startswith("/internal/mcp/")
+        )
+        if not permitted:
+            return JSONResponse({"detail": "Not found"}, status_code=404)
+        if request.method not in ("GET", "HEAD", "OPTIONS"):
+            # Reject cross-site browser mutation *before* re-authoring the
+            # Origin header for the private first-party API.
+            expected = "https://" + (request.url.hostname or "").lower()
+            if request.headers.get("origin") != expected:
+                return JSONResponse({"detail": "Origin rejected"}, status_code=403)
+        return await proxy(request, API, rewrite_origin=True, upstream_path=native)
     if route.startswith("/api/"):
+        # Native cutover must never silently re-enter the old Operly runtime.
+        if os.getenv("DRAGONZPYDER_FIRST_PARTY_WEB_CUTOVER_ENABLED") == "1":
+            return JSONResponse({"detail": {"code": "LEGACY_OPERLY_ROUTE_RETIRED",
+                "message": "Use DragonZpyder's first-party API and optional MCP connections."}},
+                status_code=410)
+        # Compatibility only until explicitly approved native cutover.
         return await proxy(request, OPERLY, rewrite_origin=True)
     if route.startswith("/internal/v1/"):
         return await proxy(request, API)
     if route == "/companion/realtime":
+        if os.getenv("DRAGONZPYDER_FIRST_PARTY_WEB_CUTOVER_ENABLED") == "1":
+            return JSONResponse({"detail": "First-party voice authorization not ready"}, status_code=503)
         return await realtime(request)
     if route.startswith("/mesh/"):
+        if os.getenv("DRAGONZPYDER_FIRST_PARTY_WEB_CUTOVER_ENABLED") == "1":
+            return JSONResponse({"detail": "First-party Mesh authorization not ready"}, status_code=503)
         return await mesh(request)
     if request.method in ("GET", "HEAD") and route in LEGACY_PAGE_ROUTES:
         query = ("?" + request.url.query) if request.url.query else ""

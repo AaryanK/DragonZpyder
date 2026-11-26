@@ -36,7 +36,7 @@ async def create_browser_session(conn, *, authenticated_subject: str) -> Browser
         raise SessionDenied("Authenticated user required")
     async with conn.transaction():
         active = await conn.fetchval(
-            "SELECT 1 FROM identity_accounts WHERE subject=$1 AND status='active' AND source_active=TRUE",
+            "SELECT 1 FROM identity_accounts WHERE subject=$1 AND status='active' AND source_active=TRUE FOR UPDATE",
             authenticated_subject,
         )
         if active != 1:

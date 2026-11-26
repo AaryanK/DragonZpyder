@@ -21,7 +21,14 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-async def create_provider_challenge(conn, *, provider: str) -> ProviderChallenge:
+def _challenge_digest(kind: str, value: str, purpose: str) -> str:
+    if purpose not in ("login", "pending_import"):
+        raise ProviderProofDenied("Unsupported challenge purpose")
+    prefix = "" if purpose == "login" else purpose + ":"
+    return _secret_digest(prefix + kind + ":" + value)
+
+
+async def create_provider_challenge(conn, *, provider: str, purpose: str = "login") -> ProviderChallenge:
     if provider not in ("google", "discord"):
         raise ProviderProofDenied("Unsupported provider")
     state = secrets.token_urlsafe(40)
@@ -31,20 +38,20 @@ async def create_provider_challenge(conn, *, provider: str) -> ProviderChallenge
         """INSERT INTO identity_provider_challenges
            (state_hash, binding_hash, provider, nonce, expires_at)
            VALUES ($1, $2, $3, $4, $5)""",
-        _secret_digest("state:" + state), _secret_digest("binding:" + binding),
+        _challenge_digest("state", state, purpose), _challenge_digest("binding", binding, purpose),
         provider, nonce, _now() + timedelta(minutes=5),
     )
     return ProviderChallenge(provider, state, binding, nonce)
 
 
 async def consume_provider_challenge(conn, *, provider: str, state: str,
-                                     binding: str) -> ProviderChallenge:
+                                     binding: str, purpose: str = "login") -> ProviderChallenge:
     if (provider not in ("google", "discord") or not isinstance(state, str)
             or not 40 <= len(state) <= 128 or not isinstance(binding, str)
             or not 40 <= len(binding) <= 128):
         raise ProviderProofDenied("Login challenge missing")
-    digest = _secret_digest("state:" + state)
-    bound = _secret_digest("binding:" + binding)
+    digest = _challenge_digest("state", state, purpose)
+    bound = _challenge_digest("binding", binding, purpose)
     # Atomic UPDATE is concurrency-safe: only one request can consume it.
     row = await conn.fetchrow(
         """UPDATE identity_provider_challenges SET consumed_at=now()

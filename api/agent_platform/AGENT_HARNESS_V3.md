@@ -1,4 +1,6 @@
-# DragonZpyder Agent Harness V3 — selective LangChain capabilities
+# DragonZpyder Agent Harness V3 — historical engineering notes
+
+> Superseded for new design decisions by [Universal Harness V4](../../docs/universal-harness-v4.md). Retained as historical evidence and rationale. Verify the current tree, PRs and deployment before relying on old feature gates or rollout descriptions.
 
 **Staging only.** Do not merge this draft branch, remove production workloads,
 grant external file/computer access, or turn on paid parallel evaluation without

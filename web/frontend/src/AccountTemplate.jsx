@@ -15,11 +15,35 @@ export function AccountTemplate() {
 <section className="account-card" aria-label="DragonZpyder account">
 <div className="tabs" id="mode-tabs" role="group" aria-label="Account access"><button type="button" data-mode="login" className="selected">Sign in</button><button type="button" data-mode="signup">Create account</button></div>
 <div className="message" id="account-message" role="status" aria-live="polite" hidden></div>
-<section id="login-panel" className="account-panel"><h2>Welcome back.</h2><p className="muted">Continue to your personal DragonZpyder.</p><div id="google-provider" className="google-provider" aria-label="Google sign-in" hidden></div><div className="divider">or use your email</div><form id="login-form">
+<section id="login-panel" className="account-panel"><h2>Welcome back.</h2><p className="muted">Continue to your personal DragonZpyder.</p><a id="dragonzpyder-central-signin" className="submit" href="/api/auth/dragonzpyder/web/start" hidden>Continue with DragonZpyder</a><div id="google-provider" className="google-provider" aria-label="Google sign-in" hidden></div><div className="divider">or use your email</div><form id="login-form">
 <label htmlFor="login-email">Email address</label><input id="login-email" type="email" required autoComplete="username"/>
 <label htmlFor="login-password">Password</label><input id="login-password" type="password" required autoComplete="current-password"/>
 <button className="submit" type="submit">Sign in</button></form><p className="links"><button type="button" data-mode="forgot">Forgot password?</button></p></section>
-<section id="signup-panel" className="account-panel" hidden><h2>Create your account.</h2><p className="muted">Start personal. Connect workspaces when you choose.</p><form id="signup-form">
+<section id="migration-panel" className="account-panel" hidden>
+<h2>Verify your existing account.</h2><p className="muted">Confirm the sign-in method already attached to your account. This does not sign you in or change your account; activation requires a separate review.</p>
+<div id="google-provider-migration" className="google-provider" aria-label="Google account migration verification" hidden></div>
+<form id="migration-form">
+<label htmlFor="migration-email">Email address</label><input id="migration-email" type="email" required maxLength="320" autoComplete="username"/>
+<label htmlFor="migration-password">Existing password</label><input id="migration-password" type="password" required maxLength="1024" autoComplete="current-password"/>
+<button className="submit" type="submit">Verify existing account</button>
+</form><p className="links"><a id="migration-recovery-link" href="/account?mode=migration-recovery" hidden>Recover access using verified email</a><a href="/account">Return to regular account access</a></p>
+</section>
+<section id="migration-recovery-panel" className="account-panel" hidden>
+<h2>Recover your existing account.</h2>
+<p className="muted">For eligible existing accounts that do not have a password. We send a one-time code to the verified email already on file. Completing recovery does not activate your account.</p>
+<form id="migration-recovery-start">
+<label htmlFor="migration-recovery-email">Email address</label><input id="migration-recovery-email" type="email" required maxLength="320" autoComplete="username"/>
+<button className="submit" type="submit">Request recovery code</button>
+</form>
+<form id="migration-recovery-complete" hidden>
+<label htmlFor="migration-recovery-code">Recovery code</label><input id="migration-recovery-code" required minLength="43" maxLength="43" autoComplete="one-time-code"/>
+<label htmlFor="migration-recovery-password">New password (at least 12 characters)</label><input id="migration-recovery-password" type="password" required minLength="12" maxLength="1024" autoComplete="new-password"/>
+<label htmlFor="migration-recovery-confirm">Confirm new password</label><input id="migration-recovery-confirm" type="password" required minLength="12" maxLength="1024" autoComplete="new-password"/>
+<button className="submit" type="submit">Establish password</button>
+</form>
+<p className="links"><a href="/account?mode=migration">Return to account verification</a></p>
+</section>
+<section id="signup-panel" className="account-panel" hidden><h2>Create your account.</h2><p className="muted">Start personal. Connect workspaces when you choose.</p><div id="google-provider-signup" className="google-provider" aria-label="Google signup" hidden></div><form id="signup-form">
 <label htmlFor="signup-name">Your name</label><input id="signup-name" required maxLength="200" autoComplete="name"/>
 <label htmlFor="signup-email">Email address</label><input id="signup-email" type="email" required autoComplete="email"/>
 <label htmlFor="signup-password">Password (at least 12 characters)</label><input id="signup-password" type="password" minLength="12" required autoComplete="new-password"/>

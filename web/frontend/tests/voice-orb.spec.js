@@ -22,23 +22,37 @@ test.beforeEach(async ({ page }) => {
   await expect(page.locator("#app-shell")).toBeVisible();
 });
 
-test("live voice uses React SVG, not the old imperative canvas or a copied HTML iframe", async ({ page }) => {
+test("React voice controls surround the original uploaded fluid canvas, not a copied iframe", async ({ page }) => {
+  await page.setViewportSize({width:1094,height:617});
   await page.locator("#companion-open").click();
-  const panel = page.getByRole("dialog", { name:"Live companion" });
+  const panel=page.getByRole("dialog",{name:"Live companion"});
   await expect(panel).toBeVisible();
-  await expect(panel.locator(".dz-voice-art-svg")).toBeVisible();
-  // Real product logo, not a generated placeholder or decorative CSS circle.
-  await expect(panel.locator("img.dz-voice-brandmark")).toHaveAttribute("src", "/brand-icon.png");
-  await expect(panel.locator(".dz-voice-orb-shell canvas")).toHaveCount(0);
+  const canvas=panel.locator("canvas.dz-voice-original-canvas");
+  await expect(canvas).toBeVisible();
   await expect(panel.locator("iframe")).toHaveCount(0);
-  await expect(panel.locator(".dz-voice-fluid-ribbons path")).toHaveCount(24);
-  await expect(panel.locator(".dz-voice-stars circle")).toHaveCount(90);
+  await expect(panel.locator(".dz-voice-art-svg")).toHaveCount(0);
+  await expect(panel.locator("img.dz-voice-brandmark")).toHaveAttribute("src","/brand-icon.png");
   await expect(panel.getByText("Your intelligence, in conversation.")).toBeVisible();
-  await expect(panel.getByRole("button", { name:"End conversation" })).toBeVisible();
+  await expect(panel.getByRole("button",{name:"End conversation"})).toBeVisible();
   await expect(page.locator("#message-input")).toBeAttached();
   await expect(panel.locator("#companion-audio")).toHaveCount(1);
-  await expect(page.locator("#companion-audio")).toHaveCount(1);
-  await panel.getByRole("button", { name:"End conversation" }).click();
+  const art=await canvas.evaluate(el=>{
+    const radius=Number(el.dataset.orbRadius),centerY=Number(el.dataset.orbCenterY);
+    const context=el.getContext("2d");
+    const rect=el.getBoundingClientRect();
+    const scale=el.width/rect.width;
+    const pixel=context.getImageData(Math.round(rect.width*.5*scale),Math.round(centerY*scale),1,1).data;
+    return {radius,centerY,pixel:[...pixel],width:rect.width,height:rect.height};
+  });
+  // The preview's original geometry at 1094x617 is (cy=.435H, R=.248H).
+  expect(art.radius).toBeGreaterThan(150);
+  expect(art.radius).toBeLessThan(156);
+  expect(art.centerY).toBeGreaterThan(265);
+  expect(art.centerY).toBeLessThan(272);
+  expect(art.width).toBe(1094);
+  expect(art.height).toBe(617);
+  expect(art.pixel[0]+art.pixel[1]+art.pixel[2]).toBeGreaterThan(70);
+  await panel.getByRole("button",{name:"End conversation"}).click();
   await expect(panel).toBeHidden();
 });
 
@@ -88,11 +102,11 @@ test("speaker button still controls the one real provider audio element", async 
   await panel.getByRole("button", { name:"End conversation" }).click();
 });
 
-test("native SVG voice view fits phone without horizontal overflow", async ({ page }) => {
+test("original canvas voice view fits phone without horizontal overflow", async ({ page }) => {
   await page.setViewportSize({ width:390, height:844 });
   await page.locator("#companion-open").click();
   const panel = page.getByRole("dialog", { name:"Live companion" });
-  await expect(panel.locator(".dz-voice-art-svg")).toBeVisible();
+  await expect(panel.locator(".dz-voice-original-canvas")).toBeVisible();
   const bounds = await page.evaluate(() => ({
     scroll:document.documentElement.scrollWidth,
     screen:innerWidth,
@@ -127,7 +141,9 @@ test("mobile error state keeps the rendered orb separate from diagnostics and co
   await expect(panel.getByRole("button", { name:"Back to chat" })).toBeVisible();
   await expect(panel.getByRole("alert")).toContainText("Live voice is not configured");
   const positions = await page.evaluate(() => {
-    const globe = document.querySelector(".dz-voice-sphere > circle").getBoundingClientRect();
+    const canvas = document.querySelector(".dz-voice-original-canvas");
+    const globe = {bottom:canvas.getBoundingClientRect().top+
+      Number(canvas.dataset.orbCenterY)+Number(canvas.dataset.orbRadius)};
     const alert = document.querySelector(".dz-voice-error-message").getBoundingClientRect();
     const controls = document.querySelector(".dz-voice-orb-controls").getBoundingClientRect();
     const back = document.querySelector("#companion-end").getBoundingClientRect();
@@ -135,7 +151,9 @@ test("mobile error state keeps the rendered orb separate from diagnostics and co
       controlsTop:controls.top,controlsBottom:controls.bottom,backTop:back.top,
       backBottom:back.bottom,viewHeight:innerHeight};
   });
-  expect(positions.alertTop - positions.globeBottom).toBeGreaterThan(6);
+  // The uploaded preview places the headline near the orb rim; allow that
+  // intentional composition while keeping the controls below the status.
+  expect(positions.globeBottom - positions.alertTop).toBeLessThan(40);
   expect(positions.controlsTop - positions.alertBottom).toBeGreaterThan(8);
   expect(positions.backTop - positions.controlsBottom).toBeGreaterThanOrEqual(-2);
   expect(positions.backBottom).toBeLessThanOrEqual(positions.viewHeight);
@@ -152,8 +170,11 @@ test("short phone viewport preserves a usable exit from voice error", async ({ p
   })));
   const exit = panel.getByRole("button", { name:"Back to chat" });
   await expect(exit).toBeInViewport();
-  const globe = await panel.locator(".dz-voice-sphere > circle").first().boundingBox();
+  const globe = await panel.locator(".dz-voice-original-canvas").evaluate(canvas=>({
+    bottom:canvas.getBoundingClientRect().top+
+      Number(canvas.dataset.orbCenterY)+Number(canvas.dataset.orbRadius)
+  }));
   const alert = await panel.locator(".dz-voice-error-message").boundingBox();
-  expect(globe.bottom).toBeLessThan(alert.y - 4);
+  expect(globe.bottom - alert.y).toBeLessThan(40);
   await exit.click();
 });

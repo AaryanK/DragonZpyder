@@ -19,6 +19,7 @@ from .provider_challenges import create_provider_challenge, consume_provider_cha
 from .providers import (ProviderProofDenied, verify_google_identity_token,
                         exchange_discord_oauth_code, find_login_account)
 from .sessions import create_browser_session
+from .native_signup import register_native_google_account
 
 router = APIRouter(prefix="/identity/v1/provider", tags=["identity-provider"])
 
@@ -52,6 +53,7 @@ async def start_provider(provider: str, request: Request):
         if not os.getenv("DRAGONZPYDER_IDENTITY_GOOGLE_CLIENT_ID"):
             raise HTTPException(503, "Google login unavailable")
         data["nonce"] = challenge.nonce
+        data["client_id"] = os.getenv("DRAGONZPYDER_IDENTITY_GOOGLE_CLIENT_ID")
     else:
         client_id = os.getenv("DRAGONZPYDER_IDENTITY_DISCORD_CLIENT_ID", "")
         redirect = _issuer() + "/identity/v1/provider/discord/callback"
@@ -72,8 +74,7 @@ class GoogleComplete(BaseModel):
     credential: str = Field(min_length=1, max_length=8192)
 
 
-@router.post("/google/complete", include_in_schema=False)
-async def complete_google(payload: GoogleComplete, request: Request):
+async def _google_login_or_signup(payload: GoogleComplete, request: Request, *, register: bool):
     _enabled()
     _origin_check(request)
     try:
@@ -86,11 +87,24 @@ async def complete_google(payload: GoogleComplete, request: Request):
             raise ProviderProofDenied("Google nonce missing")
         proof = verify_google_identity_token(payload.credential, expected_nonce=challenge.nonce)
         async with _identity_db() as conn:
-            subject = await find_login_account(conn, proof)
+            subject = (await register_native_google_account(conn, proof)
+                       if register else await find_login_account(conn, proof))
             session = await create_browser_session(conn, authenticated_subject=subject)
     except ProviderProofDenied:
         raise HTTPException(401, "Provider authentication rejected") from None
     return _success(session)
+
+
+@router.post("/google/complete", include_in_schema=False)
+async def complete_google(payload: GoogleComplete, request: Request):
+    return await _google_login_or_signup(payload, request, register=False)
+
+
+@router.post("/google/signup", include_in_schema=False)
+async def signup_google(payload: GoogleComplete, request: Request):
+    # Explicit new-account intent; an existing email/provider ID is never
+    # matched to another account or silently merged by signup.
+    return await _google_login_or_signup(payload, request, register=True)
 
 
 @router.get("/discord/callback", include_in_schema=False)

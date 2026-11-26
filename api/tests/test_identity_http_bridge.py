@@ -56,9 +56,14 @@ def test_authorize_rejects_cross_origin_and_non_pkce(monkeypatch):
 
 def test_authorize_requires_real_session_and_safely_redirects(monkeypatch):
     monkeypatch.setenv("DRAGONZPYDER_IDENTITY_HTTP_ENABLED", "1")
+    class DummyDB:
+        async def fetchval(self,query,*args): return 1
+        @asynccontextmanager
+        async def transaction(self):
+            yield self
     @asynccontextmanager
     async def db():
-        yield object()
+        yield DummyDB()
     monkeypatch.setattr(bridge, "_identity_db", db)
     async def authenticate(db, *, secret, csrf, require_csrf):
         assert require_csrf
@@ -71,9 +76,15 @@ def test_authorize_requires_real_session_and_safely_redirects(monkeypatch):
         return AuthorizationGrant(code="single-use-secret", expires_at=datetime.now(timezone.utc) + timedelta(seconds=90))
     monkeypatch.setattr(bridge, "resolve_browser_session", authenticate)
     monkeypatch.setattr(bridge, "authorize_code", issue)
+    async def consent(conn, **kwargs):
+        assert kwargs["ticket"] == "t" * 48
+        assert kwargs["subject"] == "existing-operly-user"
+        assert kwargs["session_secret"] == "session-secret"
+        assert kwargs["request"]["scope"] == "operly:access"
+    monkeypatch.setattr(bridge, "consume_interaction", consent)
     with TestClient(app) as c:
         c.cookies.set("__Host-dz_identity", "session-secret")
-        resp = c.post("/identity/v1/authorize", json=payload(),
+        resp = c.post("/identity/v1/authorize", json={**payload(), "consent_ticket": "t" * 48},
                       headers={"Origin": ISSUER, "x-dz-csrf": "csrf-secret"}, follow_redirects=False)
         assert resp.status_code == 303
         uri = urlsplit(resp.headers["location"])
@@ -144,3 +155,58 @@ def test_refresh_grant_routes_only_to_rotating_refresh_handler(monkeypatch):
         assert "id_token" not in response.json()
         invalid = c.post("/identity/v1/token", data={**data, "sub": "other-person"})
         assert invalid.status_code == 400
+
+
+
+@pytest.mark.asyncio
+async def test_production_identity_database_refuses_template_superuser(monkeypatch):
+    from fastapi import HTTPException
+    monkeypatch.setenv("RAILWAY_ENVIRONMENT_NAME", "production")
+    for user in ("postgres", "root", "railway", "arbitrary_admin"):
+        monkeypatch.setenv(
+            "DRAGONZPYDER_IDENTITY_DATABASE_URL",
+            f"postgresql://{user}:redacted@identity-db.railway.internal/railway")
+        with pytest.raises(HTTPException) as exc:
+            async with bridge._identity_db():
+                raise AssertionError("Superuser connection was permitted")
+        assert exc.value.status_code == 503
+        assert exc.value.detail == "Restricted identity database role required"
+
+    monkeypatch.setenv("DRAGONZPYDER_IDENTITY_DATABASE_URL",
+                       "postgresql://dz_identity_api:dummy@identity-db.railway.internal/railway")
+    connected = []
+    class SyntheticDB:
+        async def fetchval(self, query):
+            assert "rolsuper" in query and "pg_auth_members" in query
+            return True
+        async def close(self):
+            connected.append("closed")
+    async def fake_connect(*, dsn, **kwargs):
+        assert "dz_identity_api" in dsn
+        return SyntheticDB()
+    monkeypatch.setattr(bridge.asyncpg, "connect", fake_connect)
+    async with bridge._identity_db() as db:
+        assert isinstance(db, SyntheticDB)
+    assert connected == ["closed"]
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("allowed", [False, None])
+async def test_production_identity_role_catalog_rejection_closes_connection(monkeypatch, allowed):
+    from fastapi import HTTPException
+    monkeypatch.setenv("RAILWAY_ENVIRONMENT_NAME", "production")
+    monkeypatch.setenv("DRAGONZPYDER_IDENTITY_DATABASE_URL",
+        "postgresql://dz_identity_api:dummy@identity-db.railway.internal/railway")
+    closed = []
+    class SyntheticDB:
+        async def fetchval(self, query):
+            return allowed
+        async def close(self):
+            closed.append(True)
+    async def connect(**kwargs):
+        return SyntheticDB()
+    monkeypatch.setattr(bridge.asyncpg, "connect", connect)
+    with pytest.raises(HTTPException) as exc:
+        async with bridge._identity_db():
+            raise AssertionError("Unsafe role accepted")
+    assert exc.value.status_code == 503
+    assert closed == [True]

@@ -36,9 +36,14 @@ def app(monkeypatch):
     monkeypatch.setenv("DRAGONZPYDER_IDENTITY_ISSUER", ISSUER)
     monkeypatch.setenv("RAILWAY_ENVIRONMENT_NAME", "staging")
     monkeypatch.setenv("DRAGONZPYDER_IDENTITY_HTTP_ENABLED", "1")
+    class FakeDB:
+        async def fetchval(self,query,*args): return 1
+        @asynccontextmanager
+        async def transaction(self):
+            yield self
     @asynccontextmanager
     async def db():
-        yield object()
+        yield FakeDB()
     async def client(conn, **kwargs):
         assert kwargs["client_id"] == "operly-web"
         assert kwargs["redirect_uri"] == REDIRECT
@@ -59,7 +64,9 @@ def test_get_authorize_shows_login_without_leaking_client_secrets(app):
     with TestClient(app, base_url=ISSUER) as c:
         response = c.get("/identity/v1/authorize?" + urlencode(query()))
     assert response.status_code == 200
-    assert "login-form" in response.text
+    assert '<form id="login-form" method="post" action="/identity/v1/password/login"' in response.text
+    assert '<fieldset id="login-fields" disabled>' in response.text
+    assert "<noscript>" in response.text
     assert "consent" in response.text
     assert "hidden" in response.text
     assert "openid operly:access" in response.text
@@ -93,8 +100,13 @@ def test_consented_post_returns_json_url_for_same_origin_fetch(app, monkeypatch)
         return AuthorizationGrant("one-time-code", datetime.now(timezone.utc) + timedelta(seconds=90))
     monkeypatch.setattr(bridge, "resolve_browser_session", session)
     monkeypatch.setattr(bridge, "authorize_code", grant)
+    async def consume(conn, **kwargs):
+        assert kwargs["ticket"] == "t" * 48
+        assert kwargs["subject"] == "existing-user"
+        assert kwargs["request"]["nonce"] == "n" * 40
+    monkeypatch.setattr(bridge, "consume_interaction", consume)
     with TestClient(app, base_url=ISSUER) as c:
-        response = c.post("/identity/v1/authorize", json=query(),
+        response = c.post("/identity/v1/authorize", json={**query(), "consent_ticket": "t" * 48},
                           headers={"Origin": ISSUER, "x-dz-csrf": "synthetic-csrf",
                                    "Accept": "application/json"}, follow_redirects=False)
     assert response.status_code == 200
@@ -122,3 +134,28 @@ def test_discovery_off_by_default_and_lists_actual_routes(monkeypatch, app):
     assert config["token_endpoint"] == ISSUER + "/identity/v1/token"
     assert config["jwks_uri"] == ISSUER + "/.well-known/jwks.json"
     assert config["code_challenge_methods_supported"] == ["S256"]
+
+
+def test_google_issuer_login_isolated_from_consent(app,monkeypatch):
+    monkeypatch.delenv("DRAGONZPYDER_IDENTITY_ISSUER_GOOGLE_ENABLED",raising=False)
+    monkeypatch.setenv("DRAGONZPYDER_IDENTITY_GOOGLE_CLIENT_ID","synthetic-client")
+    with TestClient(app,base_url=ISSUER) as c:
+        url="/identity/v1/authorize?"+urlencode(query())
+        assert c.get("/identity/v1/signin/google").status_code==404
+        assert "/identity/v1/signin/google" not in c.get(url).text
+        monkeypatch.setenv("DRAGONZPYDER_IDENTITY_ISSUER_GOOGLE_ENABLED","1")
+        consent=c.get(url)
+        assert 'href="/identity/v1/signin/google"' in consent.text
+        assert "accounts.google.com" not in consent.headers["content-security-policy"]
+        assert "accounts.google.com" not in consent.text
+        assert c.get("/identity/v1/signin/google?state=secret").status_code==400
+        page=c.get("/identity/v1/signin/google")
+        assert page.status_code==200
+        assert "https://accounts.google.com/gsi/client" in page.text
+        assert "dz-consent-ticket" not in page.text
+        assert page.headers["referrer-policy"]=="no-referrer"
+        assert "frame-ancestors 'none'" in page.headers["content-security-policy"]
+        script=c.get("/identity/v1/signin/google.js")
+        assert script.status_code==200
+        assert "/identity/v1/provider/google/complete" in script.text
+        assert "location.assign" not in script.text

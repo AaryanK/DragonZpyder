@@ -16,6 +16,7 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field
 
 from .grants import OAuthGrantDenied, authorize_code
+from .consent import consume_interaction
 from .exchange import exchange_code, exchange_refresh
 from .sessions import SessionDenied, resolve_browser_session
 from .tokens import SigningIdentity, IdentityIssuerUnavailable, _origin
@@ -32,6 +33,7 @@ class AuthorizeInput(BaseModel):
     code_challenge_method: str
     code_challenge: str = Field(min_length=43, max_length=43)
     nonce: str | None = Field(default=None, min_length=24, max_length=128)
+    consent_ticket: str | None = Field(default=None, min_length=32, max_length=160)
 
 
 def _enabled():
@@ -49,17 +51,88 @@ def _issuer() -> str:
         raise HTTPException(503, "Identity issuer unavailable") from None
 
 
+async def _restricted_identity_role(conn):
+    # A username is not proof of privileges. Check effective server role,
+    # memberships (including SET ROLE), ownership, and protected mutations.
+    allowed = await conn.fetchval("""
+        SELECT current_user = 'dz_identity_api' AND session_user = current_user
+          AND NOT (r.rolsuper OR r.rolcreaterole OR r.rolcreatedb
+                   OR r.rolreplication OR r.rolbypassrls OR r.rolinherit)
+          AND NOT EXISTS (SELECT 1 FROM pg_auth_members m WHERE m.member=r.oid)
+          AND NOT EXISTS (SELECT 1 FROM pg_database d WHERE d.datname=current_database() AND d.datdba=r.oid)
+          AND NOT EXISTS (SELECT 1 FROM pg_namespace n WHERE n.nspname='public' AND n.nspowner=r.oid)
+          AND NOT EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+                          WHERE n.nspname='public' AND c.relowner=r.oid)
+          AND NOT has_database_privilege(current_user,current_database(),'CREATE')
+          AND NOT has_database_privilege(current_user,current_database(),'TEMPORARY')
+          AND NOT has_schema_privilege(current_user,'public','CREATE')
+          AND NOT has_column_privilege(current_user,'public.identity_accounts','status','UPDATE')
+          AND NOT has_column_privilege(current_user,'public.identity_accounts','source_active','UPDATE')
+          AND NOT has_column_privilege(current_user,'public.identity_accounts','identity_origin','UPDATE')
+          AND NOT has_column_privilege(current_user,'public.identity_accounts','source_operly_user_id','UPDATE')
+          AND NOT has_column_privilege(current_user,'public.identity_accounts','email','UPDATE')
+          AND NOT has_any_column_privilege(current_user,'public.identity_oauth_clients','UPDATE')
+          AND NOT has_any_column_privilege(current_user,'public.identity_oauth_clients','INSERT')
+          AND NOT has_table_privilege(current_user,'public.identity_accounts','DELETE,TRUNCATE')
+          AND NOT has_table_privilege(current_user,'public.identity_provider_links','DELETE,TRUNCATE')
+          AND NOT has_any_column_privilege(current_user,'public.identity_provider_links','UPDATE')
+          AND NOT EXISTS (
+              SELECT 1 FROM pg_attribute a
+              WHERE a.attrelid=to_regclass('public.identity_accounts')
+                AND a.attname='import_activation_receipt_id' AND NOT a.attisdropped
+                AND (has_column_privilege(current_user,a.attrelid,a.attnum,'UPDATE')
+                     OR has_column_privilege(current_user,a.attrelid,a.attnum,'INSERT')))
+          AND NOT EXISTS (
+              SELECT 1 FROM pg_class c
+              WHERE c.oid=to_regclass('public.identity_import_activation_receipts')
+                AND (has_any_column_privilege(current_user,c.oid,'INSERT,UPDATE')
+                     OR has_table_privilege(current_user,c.oid,'DELETE,TRUNCATE')))
+          AND NOT EXISTS (
+              SELECT 1 FROM pg_proc p
+              WHERE p.oid=to_regprocedure('public.approve_imported_identity(text,uuid)')
+                AND has_function_privilege(current_user,p.oid,'EXECUTE'))
+          AND NOT EXISTS (
+              SELECT 1 FROM pg_class c
+              WHERE c.oid=to_regclass('public.identity_import_proofs')
+                AND (has_any_column_privilege(current_user,c.oid,'UPDATE')
+                     OR has_table_privilege(current_user,c.oid,'DELETE,TRUNCATE')
+                     OR has_column_privilege(current_user,c.oid,'proved_at','INSERT')
+                     OR NOT c.relrowsecurity))
+          AND (SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+               WHERE n.nspname='public' AND c.relname IN ('identity_accounts','identity_provider_links')
+                 AND c.relrowsecurity)=2
+        FROM pg_roles r WHERE r.rolname=current_user
+    """)
+    if allowed is not True:
+        raise HTTPException(503, "Restricted identity database role required")
+
+
 @asynccontextmanager
 async def _identity_db():
     dsn = os.getenv("DRAGONZPYDER_IDENTITY_DATABASE_URL", "")
     if not dsn or not dsn.startswith(("postgresql://", "postgres://")):
         raise HTTPException(503, "Identity database not configured")
+    # A Railway Postgres template initially exposes a superuser DATABASE_URL.
+    # It may install the schema, but it must NEVER become the live identity
+    # application's production credential. Separate roles and GRANTs are needed.
+    if os.getenv("RAILWAY_ENVIRONMENT_NAME", "").lower() == "production":
+        try:
+            user = urlsplit(dsn).username
+        except ValueError:
+            raise HTTPException(503, "Invalid identity database URL") from None
+        if user != "dz_identity_api":
+            raise HTTPException(503, "Restricted identity database role required")
     # Dedicated identity DB role; never reuse the model gateway DB credentials.
     try:
         conn = await asyncpg.connect(dsn=dsn, timeout=5, command_timeout=8)
     except (OSError, asyncpg.PostgresError, TimeoutError):
         raise HTTPException(503, "Identity database unavailable") from None
     try:
+        if os.getenv("RAILWAY_ENVIRONMENT_NAME", "").lower() == "production":
+            try:
+                await _restricted_identity_role(conn)
+            except (OSError, asyncpg.PostgresError, TimeoutError):
+                raise HTTPException(503, "Restricted identity database role required") from None
         yield conn
     finally:
         await conn.close()
@@ -80,11 +153,25 @@ async def browser_authorize(payload: AuthorizeInput, request: Request):
             subject = await resolve_browser_session(
                 db, secret=session, csrf=csrf, require_csrf=True,
             )
-            grant = await authorize_code(
-                db, authenticated_subject=subject, client_id=payload.client_id,
-                redirect_uri=payload.redirect_uri, scope=payload.scope,
-                pkce_s256=payload.code_challenge, nonce=payload.nonce,
-            )
+            async with db.transaction():
+                if await db.fetchval(
+                    "SELECT 1 FROM identity_accounts WHERE subject=$1 AND status='active' AND source_active=TRUE FOR UPDATE",
+                    subject,
+                ) != 1:
+                    raise SessionDenied("Account unavailable")
+                # Recheck after acquiring the same account lock as reset.
+                if await resolve_browser_session(db,secret=session,csrf=csrf,require_csrf=True)!=subject:
+                    raise SessionDenied("Session changed")
+                await consume_interaction(
+                    db, ticket=payload.consent_ticket, subject=subject,
+                    session_secret=session,
+                    request=payload.model_dump(exclude={"consent_ticket"}),
+                )
+                grant = await authorize_code(
+                    db, authenticated_subject=subject, client_id=payload.client_id,
+                    redirect_uri=payload.redirect_uri, scope=payload.scope,
+                    pkce_s256=payload.code_challenge, nonce=payload.nonce,
+                )
     except (SessionDenied, OAuthGrantDenied) as exc:
         raise HTTPException(403, "Authorization denied") from exc
     # Registered redirect was validated by authorize_code; preserve any

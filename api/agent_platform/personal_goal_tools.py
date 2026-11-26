@@ -7,7 +7,9 @@ Only short, read-only jobs are supported until audited recovery and mutation.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
+import re
 from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
@@ -47,11 +49,21 @@ def _schedule_gate() -> str:
     return dsn
 
 
-def personal_goal_tools(*, user_id: str, session_id: str, conversation_id: str):
+def personal_goal_tools(*, user_id: str, session_id: str, conversation_id: str,
+                        mcp_connection_ids: list[str] | None = None):
     """Generate tools bound to a verified service payload, NEVER model input."""
     user_id, session_id, conversation_id = (
         _canonical(value) for value in (user_id, session_id, conversation_id)
     )
+    # Trusted service-bound selection; it is never a parameter of goal_schedule.
+    selected_accounts = tuple(mcp_connection_ids or ())
+    if (len(selected_accounts) > 10 or len(set(selected_accounts)) != len(selected_accounts)
+            or any(not isinstance(alias, str) or
+                   not re.fullmatch(r"c[a-f0-9]{30}", alias) for alias in selected_accounts)):
+        raise RuntimeError("Invalid signed MCP account selection")
+    if selected_accounts:
+        from .mcp_connections import require_gate
+        require_gate()
 
     @tool("goal_schedule")
     async def goal_schedule(objective: str, interval_minutes: int = 2,
@@ -116,6 +128,15 @@ def personal_goal_tools(*, user_id: str, session_id: str, conversation_id: str):
                            VALUES ($1,$2,$3,$4,$5,$6,'preparing')""",
                         goal_id,user_id,session_id,conversation_id,occurrences,objective_hash,
                     )
+                    if os.getenv("DRAGONZPYDER_MCP_USER_CONNECTIONS_ENABLED") == "1":
+                        selection_hash = hashlib.sha256(
+                            json.dumps(sorted(selected_accounts)).encode()
+                        ).hexdigest()
+                        await con.execute(
+                            """INSERT INTO dz_mcp_goal_selections
+                               (goal_id, owner_id, selection_hash) VALUES ($1,$2,$3)""",
+                            goal_id, user_id, selection_hash,
+                        )
             try:
                 from hatchet_sdk import Hatchet
                 hatchet = Hatchet()
@@ -129,6 +150,7 @@ def personal_goal_tools(*, user_id: str, session_id: str, conversation_id: str):
                         goal_id=goal_id,user_id=user_id,session_id=session_id,
                         conversation_id=conversation_id,sequence=seq,
                         total_wakes=occurrences,prompt=objective,
+                        mcp_connection_ids=list(selected_accounts),
                     )
                     await wake_task.aio_schedule(
                         run_at=base + timedelta(minutes=seq * interval_minutes),

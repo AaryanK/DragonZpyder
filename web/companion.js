@@ -11,6 +11,9 @@ function stopRecognition(){
   if(instance){try{instance.abort()}catch{}}
 }
 function browserPaused(message="Tap the microphone to resume transcription."){
+  // SpeechRecognition uses its browser-managed capture. Explicitly mute the
+  // separately held meter track too, so pausing transcription pauses visuals.
+  for(const track of mic?.getAudioTracks?.()||[])track.enabled=false;
   silent=true;browserEvent("voice-mute",{muted:true});setStatus(message,"paused");
 }
 function listenInBrowser(){
@@ -21,6 +24,7 @@ function listenInBrowser(){
   const v=version,run=++recognitionRun;
   recognition=instance;
   let failed=false,hadSpeech=false;
+  for(const track of mic?.getAudioTracks?.()||[])track.enabled=true;
   silent=false;browserEvent("voice-mute",{muted:false});
   setStatus("Starting browser transcription…","transcribing");
   const current=()=>browserMode&&v===version&&recognition===instance;
@@ -63,9 +67,20 @@ function listenInBrowser(){
 }
 function beginBrowserFallback(){
   if(!SpeechApi)return false;
+  // The WebRTC negotiation failed, not the user's granted microphone access.
+  // Retain only the previously authorized *local* audio stream for the visual
+  // meter; close the peer/data channel and abort the provider request as usual.
+  // Without this, the fallback closes its microphone and has no actual audio
+  // energy to drive the original canvas orb.
+  const localMeterStream=mic;
+  mic=null;
   cleanup();
+  mic=localMeterStream;
   browserMode=true;panel.hidden=false;launch.setAttribute("aria-expanded","true");
   browserEvent("voice-mode",{mode:"browser"});
+  if(mic?.getAudioTracks?.().some(track=>track.readyState!=="ended")){
+    browserEvent("voice-input",{stream:mic});
+  }
   listenInBrowser();
   return true;
 }

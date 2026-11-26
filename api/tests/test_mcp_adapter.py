@@ -52,15 +52,15 @@ def test_only_operator_reviewed_mcp_tools_enter_dragonzpyder_hub(monkeypatch):
             seen.append((connections, kwargs))
         async def get_tools(self):
             return [
-                SimpleNamespace(name="search_lookup", ainvoke=empty),
-                SimpleNamespace(name="search_delete_all", ainvoke=empty),
+                SimpleNamespace(name="lookup", ainvoke=empty),
+                SimpleNamespace(name="delete_all", ainvoke=empty),
             ]
     monkeypatch.setattr("langchain_mcp_adapters.client.MultiServerMCPClient", FakeClient)
     hub = asyncio.run(bind_reviewed_remote_mcp(CapabilityHub(), [reviewed()]))
     assert [x.name for x in hub.tools()] == ["search_lookup"]
     assert hub.catalog()[0]["provider"] == "mcp"
-    assert seen[0][1]["tool_name_prefix"] is True
-    assert seen[0][1]["handle_tool_errors"] is False
+    assert seen[0][0]["search"]["transport"] == "streamable_http"
+    assert seen[0][0]["search"]["url"] == "https://mcp.example.com/mcp"
 
 
 def test_required_mcp_tool_missing_fails_closed(monkeypatch):

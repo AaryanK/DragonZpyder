@@ -32,13 +32,22 @@ class OperlyPersonalRun(BaseModel):
     approved_tool_names: list[str] = Field(min_length=1, max_length=20)
     scheduled_wake: bool = False
     scheduled_tool_name: str | None = None
+    # Opaque account selection by a trusted Operly service, never bearer secrets.
+    mcp_connection_ids: list[str] = Field(default_factory=list, max_length=10)
 
 
-def _authorized(authorization: str, proof: str) -> bool:
+def _authorized(
+    authorization: str, proof: str, *, scope: Literal["personal", "workspace"] = "personal",
+) -> bool:
+    # One service identity boundary; independent Personal and Workspace
+    # activation gates. Workspace must not depend on Personal being enabled.
+    if scope not in ("personal", "workspace"):
+        return False
+    gate = ("DRAGONZPYDER_PERSONAL_MCP_HARNESS_ENABLED" if scope == "personal"
+            else "DRAGONZPYDER_OPERLY_WORKSPACE_HARNESS_ENABLED")
     agent_secret = os.getenv("DRAGONZPYDER_OPERLY_PERSONAL_AGENT_TOKEN", "")
     mcp_secret = os.getenv("DRAGONZPYDER_OPERLY_MCP_SERVICE_SECRET", "")
-    return (all(os.getenv(k) == "1" for k in (
-                "DRAGONZPYDER_PERSONAL_MCP_HARNESS_ENABLED",
+    return (os.getenv(gate) == "1" and all(os.getenv(k) == "1" for k in (
                 "DRAGONZPYDER_AGENTS_ENABLED",
                 "DRAGONZPYDER_AGENT_HARNESS_V2",
                 "DRAGONZPYDER_OPERLY_TOOLS_ENABLED",
@@ -291,6 +300,7 @@ async def operly_personal_run(
                 user_id=payload.user_id,
                 session_id=payload.session_id,
                 conversation_id=payload.conversation_id,
+                mcp_connection_ids=payload.mcp_connection_ids,
             )]
         if (not payload.scheduled_wake and
                 os.getenv("DRAGONZPYDER_NATIVE_CANARY_ENABLED") == "1"):
@@ -307,6 +317,23 @@ async def operly_personal_run(
                 session_id=payload.session_id,
                 conversation_id=payload.conversation_id,
             )]
+        if payload.mcp_connection_ids:
+            if os.getenv('DRAGONZPYDER_MCP_PERSONAL_PUBLIC_CATALOG_ENABLED') == '1':
+                raise ValueError('Two MCP progressive catalogs would collide')
+            from .mcp_managed_catalog import managed_catalog_tools
+            manager = getattr(request.app.state, 'mcp_connections', None)
+            if manager is None:
+                raise ValueError('OAuth connection store unavailable')
+            # Signed Operly delegation fixes the user. Database records and
+            # reviewed unattended read policy are checked again on every call.
+            tools = [*tools, *await managed_catalog_tools(
+                manager=manager, owner=payload.user_id,
+                selected_account_ids=payload.mcp_connection_ids,
+                scheduled=payload.scheduled_wake,
+            )]
+        if not payload.scheduled_wake:
+            from .mcp_adapter import reviewed_public_catalog_tools
+            tools = [*tools, *reviewed_public_catalog_tools()]
         direct_receipt = None
         instruction = payload.prompt
         if payload.scheduled_wake:
@@ -327,6 +354,7 @@ async def operly_personal_run(
             )[:12000]
         agent = build_frontier_agent(
             model_client(), checkpointer, delegated_tools=tools,
+            product_surface="operly",
         )
     except (ValueError, RuntimeError, asyncio.TimeoutError) as error:
         # No model query or credentials are included in HTTP error payload.

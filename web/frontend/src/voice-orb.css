@@ -1,394 +1,290 @@
 @import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap");
-/* Native React voice presentation. Every visible visual is JSX/SVG or scoped CSS.
-   The WebRTC controller remains in web/companion.js; no injected HTML/canvas. */
-.companion-panel.dz-voice-orb-panel {
-  position:fixed;inset:0;z-index:110;padding:0;display:block;
-  background:#08090d;overflow:hidden;backdrop-filter:none;
+
+/* Match the uploaded voice preview's original fullscreen stage.
+   React owns the complete UI; only the original fluid artwork is drawn on
+   this canvas. Avoid global overrides from app.css and old companion styles. */
+.companion-panel.dz-voice-orb-panel{
+  position:fixed;inset:0;z-index:110;display:block;padding:0;
+  overflow:hidden;background:#08090d;backdrop-filter:none;
 }
 .companion-panel.dz-voice-orb-panel[hidden]{display:none!important}
-.dz-voice-orb-shell {
+.dz-voice-orb-shell{
   position:absolute;inset:0;overflow:hidden;isolation:isolate;
   background:#08090d;color:#e8f3f8;
-  font-family:"DM Sans",Inter,system-ui,-apple-system,"Segoe UI",sans-serif;
+  font-family:"DM Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  font-size:14px;
 }
-.dz-voice-artwork {
-  position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:0;
-  --dz-voice-scale:1;--dz-voice-wave-scale:.55;--dz-voice-glow-opacity:.75;
+.dz-voice-original-canvas{
+  position:absolute;inset:0;width:100%;height:100%;
+  display:block;z-index:0;pointer-events:none;
 }
-.dz-voice-atmosphere {
-  position:absolute;inset:0;
-  background:
-    radial-gradient(ellipse 41% 45% at 50% 43%,rgba(33,65,84,.43),transparent 100%),
-    radial-gradient(ellipse 50% 55% at 50% 75%,rgba(13,41,63,.20),transparent 100%),
-    #08090d;
+.dz-voice-orb-vignette{
+  position:absolute;inset:0;z-index:1;pointer-events:none;
+  background:radial-gradient(ellipse at 50% 45%,transparent 17%,rgba(3,6,13,.20) 62%,rgba(2,4,10,.65) 100%);
 }
-.dz-voice-art-svg {
-  position:absolute;left:50%;top:46%;transform:translate(-50%,-50%);
-  width:min(100vw,930px);height:auto;max-height:110dvh;
-  aspect-ratio:1/1;overflow:visible;
-  filter:drop-shadow(0 0 32px rgba(144,91,137,.13));
+.dz-voice-orb-ui{
+  position:relative;z-index:2;
+  width:100%;height:100dvh;min-height:0;
+  display:flex;flex-direction:column;
+  padding:clamp(22px,3vw,44px) clamp(25px,4.4vw,72px);
+  pointer-events:none;
+  background:linear-gradient(180deg,rgba(8,9,13,.12),transparent 40%,rgba(8,9,13,.23));
 }
-.dz-voice-halo{opacity:var(--dz-voice-glow-opacity);transition:opacity .15s ease}
-.dz-voice-sphere {
-  transform-origin:380px 350px;
-  transform:scale(var(--dz-voice-scale));
-  transition:transform .085s ease-out;
+.dz-voice-orb-ui *{box-sizing:border-box}
+.dz-voice-orb-ui button{pointer-events:auto;cursor:pointer;font:inherit}
+.dz-voice-orb-ui button:focus-visible{outline:2px solid #f2ad80;outline-offset:4px}
+.dz-voice-orb-head{
+  display:flex;align-items:center;justify-content:space-between;gap:16px;
+  flex:none;min-width:0;
 }
-.dz-voice-fluid-ribbons,.dz-voice-fluid-filaments{transform-origin:380px 350px}
-.dz-voice-fluid-ribbons path{animation:dz-voice-ribbon-flow 5.5s ease-in-out infinite alternate}
-.dz-voice-fluid-filaments path{animation:dz-voice-filament-flow 8s ease-in-out infinite alternate}
-.dz-voice-orbit{transform-origin:380px 350px}
-.dz-voice-orbit-one{animation:dz-voice-orbit-one 41s linear infinite}
-.dz-voice-orbit-two{animation:dz-voice-orbit-two 55s linear infinite}
-.dz-voice-ripple{transform-origin:380px 350px;animation:dz-voice-ripple 8s ease-in-out infinite}
-.dz-voice-motes{transform-origin:380px 350px;animation:dz-voice-orbit-two 115s linear infinite}
-.dz-voice-audio-wave{transform-origin:380px 636px;transform:scaleY(var(--dz-voice-wave-scale));transition:transform .095s ease-out}
-.dz-voice-vignette,.dz-voice-orb-vignette {
-  position:absolute;inset:0;pointer-events:none;z-index:1;
-  background:radial-gradient(ellipse at 50% 43%,transparent 15%,rgba(3,6,13,.20) 65%,rgba(2,4,10,.70) 100%);
-}
-@keyframes dz-voice-ribbon-flow{
-  0%{transform:translate(-16px,5px) rotate(-2deg)}
-  50%{transform:translate(12px,-8px) rotate(1deg)}
-  100%{transform:translate(-5px,12px) rotate(3deg)}
-}
-@keyframes dz-voice-filament-flow{
-  0%{transform:translate(10px,-7px)}
-  100%{transform:translate(-15px,12px)}
-}
-@keyframes dz-voice-orbit-one{to{transform:rotate(360deg)}}
-@keyframes dz-voice-orbit-two{to{transform:rotate(-360deg)}}
-@keyframes dz-voice-ripple{0%,100%{opacity:.3;scale:.985}50%{opacity:.72;scale:1.075}}
-.dz-voice-orb-ui {
-  position:relative;z-index:2;min-height:100dvh;height:100dvh;
-  display:flex;flex-direction:column;pointer-events:none;
-  padding:clamp(21px,3vw,44px) clamp(22px,4.4vw,72px);
-  background:linear-gradient(180deg,rgba(8,9,13,.10),transparent 40%,rgba(8,9,13,.28));
-}
-.dz-voice-orb-ui button{pointer-events:auto;font:inherit;cursor:pointer}
-.dz-voice-orb-ui button:focus-visible{outline:2px solid #ffbf9e;outline-offset:5px}
-.dz-voice-orb-head{display:flex;align-items:center;justify-content:space-between;gap:15px}
-.dz-voice-orb-brand {
-  display:flex;align-items:center;gap:13px;font-family:"Space Grotesk",Inter,system-ui,sans-serif;
-  font-size:clamp(12px,1.4vw,16px);font-weight:750;letter-spacing:.1em;color:#e8f3f8;
+.dz-voice-orb-brand{
+  min-width:0;display:flex;align-items:center;gap:13px;
+  color:#e8f3f8;font-family:"Space Grotesk",system-ui,sans-serif;
+  font-size:clamp(12px,1.4vw,16px);font-weight:700;
+  letter-spacing:.09em;white-space:nowrap;
 }
 .dz-voice-brandmark{
-  width:30px;height:30px;flex:0 0 30px;display:block;
-  object-fit:cover;border-radius:9px;
-  filter:drop-shadow(0 0 10px rgba(244,152,104,.18));
+  display:block;flex:0 0 30px;width:30px;height:30px;
+  object-fit:contain;filter:drop-shadow(0 0 10px rgba(244,152,104,.15));
 }
 .dz-voice-orb-brand span span{color:#f4a674;font-weight:500}
-.dz-voice-orb-brand small{color:#83909c;font-size:10px;font-weight:500;letter-spacing:.12em}
+.dz-voice-orb-brand small{
+  font-size:10px;letter-spacing:.12em;color:#83909c;font-weight:500;
+}
 .dz-voice-orb-connection{
-  display:inline-flex;align-items:center;gap:10px;
-  border:1px solid rgba(244,166,116,.18);border-radius:50px;
-  background:rgba(12,20,30,.46);backdrop-filter:blur(12px);
-  padding:10px 14px;color:#e6bd9f;font-size:10px;
-  letter-spacing:.13em;white-space:nowrap;text-transform:uppercase;
+  flex:none;display:inline-flex;align-items:center;gap:9px;
+  padding:9px 13px;white-space:nowrap;
+  border:1px solid rgba(236,150,118,.22);
+  border-radius:50px;background:rgba(12,20,30,.46);
+  backdrop-filter:blur(12px);
+  color:#e6bd9f;font-size:11px;font-weight:500;
+  letter-spacing:.13em;text-transform:uppercase;
 }
-.dz-voice-orb-connection i{height:6px;width:6px;flex:0 0 6px;border-radius:50%;background:#f3a975;box-shadow:0 0 11px #f3a97560}
-.dz-voice-orb-shell[data-connected="true"] .dz-voice-orb-connection i{background:#98e8ca;box-shadow:0 0 12px #8fdfca}
-.dz-voice-orb-shell[data-session="error"] .dz-voice-orb-connection i{background:#f19591;box-shadow:0 0 12px #f1959199}
-.dz-voice-orb-main {
-  flex:1;min-height:0;display:flex;flex-direction:column;
-  align-items:center;justify-content:center;text-align:center;
+.dz-voice-orb-connection i{
+  display:block;width:6px;height:6px;flex:0 0 6px;
+  border-radius:50%;background:#f3a975;box-shadow:0 0 11px #f3a975;
 }
-.dz-voice-orb-eyebrow {
-  margin:0 0 0;font-size:11px;letter-spacing:.35em;font-weight:700;
-  color:#f3b18b;text-shadow:0 0 16px #f4a47733;
+.dz-voice-orb-shell[data-connected="true"] .dz-voice-orb-connection i,
+.dz-voice-orb-shell[data-voice-mode="browser"][data-session="transcribing"] .dz-voice-orb-connection i{
+  background:#92e2c4;box-shadow:0 0 11px #92e2c4;
 }
-.dz-voice-orb-space{height:clamp(240px,43vh,480px);width:100%;max-width:620px;flex-shrink:0;pointer-events:none}
+.dz-voice-orb-shell[data-session="error"] .dz-voice-orb-connection i{
+  background:#f19591;box-shadow:0 0 11px #f19591;
+}
+.dz-voice-orb-main{
+  flex:1;min-height:0;min-width:0;
+  display:flex;flex-direction:column;align-items:center;
+  justify-content:center;text-align:center;gap:0;
+}
+.dz-voice-orb-eyebrow{
+  flex:none;margin:clamp(0px,1vh,16px) 0 0;
+  font-size:11px;font-weight:700;line-height:1.4;
+  letter-spacing:.30em;color:#f3b18b;text-shadow:0 0 16px #f4a47733;
+  white-space:nowrap;
+}
+.dz-voice-orb-space{
+  flex:none;width:100%;max-width:620px;
+  height:clamp(240px,43vh,480px);
+  pointer-events:none;
+}
 .dz-voice-orb-conversation{
-  position:relative;display:flex;flex-direction:column;align-items:center;
-  gap:12px;max-width:min(680px,90vw);min-height:94px;
+  flex:none;position:relative;display:flex;flex-direction:column;
+  align-items:center;gap:11px;
+  max-width:min(680px,90vw);min-height:94px;
+  color:#e8f3f8;text-align:center;
 }
 .dz-voice-orb-conversation h2{
-  font:500 clamp(22px,2.6vw,34px)/1.22 "Space Grotesk",Inter,system-ui,sans-serif;
-  letter-spacing:-.045em;color:#eaf2f7;margin:0;
+  margin:0;font:500 clamp(22px,2.6vw,34px)/1.22 "Space Grotesk",system-ui,sans-serif;
+  letter-spacing:-.04em;color:#e8f3f8;
 }
 .dz-voice-orb-conversation #companion-status{
-  color:#9caeba;font-size:13px;line-height:1.65;max-width:510px;text-align:center;margin:0;
+  margin:0;max-width:510px;
+  font-size:13px;line-height:1.65;color:#8ba0b0;
+  overflow-wrap:anywhere;
 }
-.dz-voice-orb-shell[data-session="error"] #companion-status{color:#f2a09b}
-.dz-voice-orb-footer{display:flex;align-items:end;justify-content:space-between;gap:20px}
-.dz-voice-orb-footnote{font-size:10px;line-height:1.9;letter-spacing:.12em;color:#67818e;text-transform:uppercase;margin:0}
-.dz-voice-orb-controls{display:flex;align-items:center;gap:13px}
+.dz-voice-error-message{
+  display:flex;flex-direction:column;align-items:center;gap:9px;
+  max-width:100%;padding:5px 12px 0;
+}
+.dz-voice-error-message h2{font-size:clamp(19px,2.3vw,27px)}
+.dz-voice-orb-shell[data-session="error"] #companion-status{color:#e4a7a1}
+.dz-voice-browser-notice{
+  margin:0;color:#adbfca;font-size:11px;line-height:1.45;
+}
+.dz-voice-live-caption{
+  width:min(100%,620px);min-height:20px;max-height:4.2em;
+  padding:0 6px;margin:0;overflow-y:auto;overflow-wrap:anywhere;
+  pointer-events:auto;
+  font-size:clamp(14px,1.2vw,19px);line-height:1.55;color:#bbebf1;
+}
+.dz-voice-live-caption[data-interim="true"],
+.companion-transcript p[data-interim="true"]{opacity:.70}
+.dz-voice-orb-footer{
+  flex:none;display:flex;justify-content:space-between;
+  align-items:flex-end;gap:20px;min-width:0;
+}
+.dz-voice-orb-footnote{
+  margin:0;font-size:10px;line-height:1.9;
+  letter-spacing:.14em;color:#5c7484;text-transform:uppercase;
+}
+.dz-voice-orb-controls{
+  display:flex;align-items:center;justify-content:center;gap:13px;
+}
 .dz-voice-orb-circle{
-  height:52px;width:52px;border:1px solid #34505b;background:rgba(12,26,37,.65);
-  color:#b9dbe2;backdrop-filter:blur(16px);border-radius:50%;
-  display:grid;place-items:center;transition:background .2s,border-color .2s,transform .2s;
+  flex:none;display:grid;place-items:center;
+  width:52px;height:52px;padding:0;border-radius:50%;
+  border:1px solid #284452;background:rgba(12,26,37,.61);
+  color:#bad8df;backdrop-filter:blur(16px);
+  transition:background .2s,border-color .2s,transform .2s;
+  touch-action:manipulation;
 }
-.dz-voice-orb-circle svg{height:21px;width:21px}
-.dz-voice-orb-circle:hover:not(:disabled){background:#203d4d;color:#fff;border-color:#e6ad8a;transform:translateY(-2px)}
+.dz-voice-orb-circle svg{width:20px;height:20px;flex:none}
+.dz-voice-orb-circle:hover:not(:disabled){
+  background:#173744;color:white;border-color:#e6ad8a;transform:translateY(-2px);
+}
+.dz-voice-orb-circle:disabled{opacity:.45;cursor:not-allowed}
 .dz-voice-orb-mic{
-  height:68px;width:68px;border-color:#ffddb7;
+  width:66px;height:66px;border:1px solid #ffddb7;
   background:linear-gradient(150deg,#ffdfbb,#f4a476 70%,#d36d63);
-  color:#251320;box-shadow:0 0 28px #ff9b6660,0 0 65px #ff9b6622;
+  box-shadow:0 0 28px #ff9b6666,0 0 65px #ff9b6620;color:#251320;
 }
-.dz-voice-orb-mic svg{height:25px;width:25px}
-.dz-voice-orb-mic.is-muted{background:linear-gradient(145deg,#d0f3ff,#74b5f3);border-color:#c7e9ff;box-shadow:0 0 35px #7cb9eb77}
-.dz-voice-orb-mic:disabled{opacity:.65;cursor:not-allowed}
-/* Higher specificity than the legacy global #companion-end rule in app.css. */
+.dz-voice-orb-mic svg{width:23px;height:23px}
+.dz-voice-orb-mic.is-muted{
+  background:linear-gradient(145deg,#d0f3ff,#74b5f3);
+  border-color:#c7e9ff;box-shadow:0 0 35px #7cb9eb77;
+}
 #companion-end.dz-voice-orb-end{
-  display:inline-flex;align-items:center;justify-content:center;gap:7px;
-  min-height:42px;padding:9px 14px;border:1px solid #36505b;
-  border-radius:999px;background:rgba(12,26,37,.64);box-shadow:none;
-  color:#b8cad4;font-size:12px;font-weight:550;
-  letter-spacing:.02em;white-space:nowrap;line-height:1.2;
+  flex:none;display:inline-flex;align-items:center;justify-content:center;gap:7px;
+  min-height:43px;padding:9px 12px;
+  border:0;border-radius:0;box-shadow:none;background:none;
+  color:#7e9dab;font-size:12px;font-weight:500;
+  letter-spacing:.035em;white-space:nowrap;line-height:1.25;
 }
-#companion-end.dz-voice-orb-end:hover{color:#fff;background:#223a45;border-color:#9d8273}
+#companion-end.dz-voice-orb-end:hover{background:none;color:#d1fbff}
+.dz-voice-orb-end span{font-size:14px}
 .dz-voice-orb-transcript-panel{
-  position:absolute;right:clamp(22px,4.4vw,72px);bottom:118px;
+  position:absolute;z-index:4;right:clamp(22px,4.4vw,72px);
+  bottom:110px;display:none;flex-direction:column;
   width:min(410px,calc(100vw - 44px));max-height:min(45dvh,380px);
-  display:none;pointer-events:auto;flex-direction:column;
+  padding:16px 18px;pointer-events:auto;
   border:1px solid rgba(244,166,116,.23);border-radius:16px;
-  padding:16px 18px;background:rgba(11,17,27,.94);
-  backdrop-filter:blur(20px);box-shadow:0 26px 80px #0009;
+  background:rgba(11,17,27,.94);backdrop-filter:blur(20px);
+  box-shadow:0 26px 80px #0009;
 }
 .dz-voice-orb-transcript-panel.is-open{display:flex}
-.dz-voice-orb-transcript-heading{display:flex;align-items:center;justify-content:space-between;color:#f1c2a2;font-size:12px;font-weight:700}
-.dz-voice-orb-transcript-heading button{border:0;background:transparent;color:#d7b8a6;font-size:24px;line-height:1}
-.dz-voice-orb-transcript-panel .companion-transcript {
-  margin:13px 0 3px;max-height:235px;min-height:64px;width:100%;overflow-y:auto;
-  border-color:#32434d;color:#cbdae3;font-size:12px;text-align:left;
+.dz-voice-orb-transcript-heading{
+  display:flex;align-items:center;justify-content:space-between;
+  font-size:12px;font-weight:700;color:#f1c2a2;
 }
-.dz-voice-orb-transcript-panel .companion-transcript p{line-height:1.7;margin:7px 0;overflow-wrap:anywhere}
+.dz-voice-orb-transcript-heading button{
+  border:0;background:transparent;color:#d7b8a6;
+  font-size:24px;line-height:1;
+}
+.dz-voice-orb-transcript-panel .companion-transcript{
+  width:100%;max-height:235px;min-height:64px;
+  margin:13px 0 3px;overflow-y:auto;text-align:left;
+  border-color:#32434d;color:#cbdae3;font-size:12px;
+}
+.dz-voice-orb-transcript-panel .companion-transcript p{
+  margin:7px 0;line-height:1.7;overflow-wrap:anywhere;
+}
 .dz-voice-orb-transcript-panel .companion-transcript strong{color:#f2b68e}
 .dz-voice-transcript-empty{color:#849eaa}
-.dz-voice-orb-transcript-panel>p{font-size:10px;line-height:1.6;color:#92a6b2}
-.dz-voice-orb-shell #companion-audio{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
-@media (max-width:680px) {
-  .dz-voice-orb-ui{padding:21px 18px 26px}
-  .dz-voice-orb-brand{gap:9px;font-size:12px;letter-spacing:.07em}
-  .dz-voice-brandmark{width:25px;height:25px;flex-basis:25px}
-  .dz-voice-orb-brand small{font-size:9px}
-  .dz-voice-orb-connection{font-size:9px;padding:9px 10px;gap:7px}
-  .dz-voice-orb-eyebrow{font-size:9px}
-  .dz-voice-orb-space{height:40vh;min-height:205px}
-  .dz-voice-art-svg{width:min(148vw,630px);max-height:none;top:45%}
-  .dz-voice-orb-conversation h2{font-size:24px}
-  .dz-voice-orb-conversation #companion-status{font-size:12px}
+.dz-voice-orb-transcript-panel>p{
+  font-size:10px;line-height:1.6;color:#92a6b2;
+}
+.dz-voice-orb-shell #companion-audio{
+  position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;
+}
+
+/* Mobile, including a phone using the desktop-site setting (wide CSS viewport).
+   Layout follows the preview's 40vh hero but sizes buttons to comfortable taps. */
+@media(max-width:680px),
+  (orientation:portrait) and (any-pointer:coarse),
+  (orientation:portrait) and (max-aspect-ratio:3/4) and (max-width:1200px){
+  .dz-voice-orb-shell{--voice-u:max(1px,.25vw)}
+  .dz-voice-orb-ui{
+    padding:calc(20 * var(--voice-u)) calc(18 * var(--voice-u))
+      max(calc(20 * var(--voice-u)),env(safe-area-inset-bottom));
+    overflow-y:auto;overflow-x:hidden;
+  }
+  .dz-voice-orb-head{gap:calc(8 * var(--voice-u))}
+  .dz-voice-orb-brand{
+    flex:1;min-width:0;gap:calc(8 * var(--voice-u));
+    font-size:calc(12 * var(--voice-u));letter-spacing:.055em;
+  }
+  .dz-voice-brandmark{
+    width:calc(28 * var(--voice-u));height:calc(28 * var(--voice-u));
+    flex-basis:calc(28 * var(--voice-u));
+  }
+  .dz-voice-orb-brand small{display:none}
+  .dz-voice-orb-connection{
+    font-size:calc(9 * var(--voice-u));letter-spacing:.08em;
+    padding:calc(8 * var(--voice-u)) calc(10 * var(--voice-u));
+    gap:calc(6 * var(--voice-u));
+  }
+  .dz-voice-orb-connection i{
+    width:calc(6 * var(--voice-u));height:calc(6 * var(--voice-u));
+    flex-basis:calc(6 * var(--voice-u));
+  }
+  .dz-voice-orb-main{gap:calc(6 * var(--voice-u))}
+  .dz-voice-orb-eyebrow{
+    margin:0;font-size:calc(9 * var(--voice-u));letter-spacing:.22em;
+  }
+  .dz-voice-orb-space{
+    width:100%;max-width:none;
+    height:min(40dvh,95vw);min-height:0;
+    flex:0 1 min(40dvh,95vw);
+  }
+  .dz-voice-orb-conversation{
+    max-width:calc(100% - 12 * var(--voice-u));
+    min-height:0;gap:calc(7 * var(--voice-u));
+  }
+  .dz-voice-orb-conversation h2{
+    font-size:calc(22 * var(--voice-u));line-height:1.25;
+  }
+  .dz-voice-orb-conversation #companion-status{
+    font-size:calc(12 * var(--voice-u));line-height:1.45;
+  }
+  .dz-voice-browser-notice{font-size:calc(11 * var(--voice-u))}
+  .dz-voice-live-caption{font-size:calc(19 * var(--voice-u));max-height:3em}
   .dz-voice-orb-footnote{display:none}
   .dz-voice-orb-footer{
     display:flex;flex-direction:column;align-items:center;
-    justify-content:center;gap:14px;
-    padding-bottom:max(6px,env(safe-area-inset-bottom));
+    justify-content:center;gap:calc(10 * var(--voice-u));
   }
+  .dz-voice-orb-controls{gap:calc(16 * var(--voice-u))}
+  .dz-voice-orb-circle{
+    width:calc(50 * var(--voice-u));height:calc(50 * var(--voice-u));
+  }
+  .dz-voice-orb-circle svg{width:calc(22 * var(--voice-u));height:calc(22 * var(--voice-u))}
+  .dz-voice-orb-mic{
+    width:calc(68 * var(--voice-u));height:calc(68 * var(--voice-u));
+  }
+  .dz-voice-orb-mic svg{width:calc(26 * var(--voice-u));height:calc(26 * var(--voice-u))}
   #companion-end.dz-voice-orb-end{
     position:static;right:auto;bottom:auto;
-    min-height:34px;padding:7px 13px;font-size:11px;
-    background:rgba(12,26,37,.50);border-color:rgba(98,127,143,.40);
+    min-height:calc(38 * var(--voice-u));
+    padding:calc(7 * var(--voice-u)) calc(13 * var(--voice-u));
+    border:1px solid rgba(98,127,143,.42);
+    border-radius:999px;background:rgba(12,26,37,.58);
+    font-size:calc(12 * var(--voice-u));
   }
-  .dz-voice-orb-transcript-panel{right:18px;bottom:150px}
-}
-@media (max-height:640px){
-  .dz-voice-orb-space{height:35vh;min-height:150px}
-  .dz-voice-art-svg{top:43%;max-height:112vh}
-}
-@media (prefers-reduced-motion:reduce){
-  .dz-voice-fluid-ribbons path,.dz-voice-fluid-filaments path,.dz-voice-orbit,
-  .dz-voice-ripple,.dz-voice-motes{animation:none!important}
-  .dz-voice-orb-circle,.dz-voice-sphere,.dz-voice-audio-wave{transition:none!important}
-}
-
-
-/*
- * Voice composition v2: artwork is part of the React main content grid.
- * Previously the SVG was positioned against the entire viewport while
- * headings followed a separately sized invisible spacer. That caused the
- * orb and status copy to collide, especially on narrow/short screens.
- */
-.dz-voice-orb-shell {
-  background:radial-gradient(ellipse 65% 55% at 50% 47%,#122333 0%,#090e16 58%,#08090d 100%);
-}
-.dz-voice-orb-ui {
-  display:grid;
-  grid-template-rows:auto minmax(0,1fr) auto;
-}
-.dz-voice-orb-main {
-  display:flex;
-  flex-direction:column;
-  justify-content:center;
-  align-items:center;
-  gap:clamp(8px,1.6dvh,17px);
-  padding:clamp(12px,2dvh,25px) 0;
-  min-width:0;
-  min-height:0;
-}
-.dz-voice-orb-space {
-  position:relative;
-  width:min(100%,640px);
-  height:min(44dvh,400px);
-  min-height:170px;
-  max-width:640px;
-  flex:0 0 auto;
-  isolation:isolate;
-}
-.dz-voice-artwork {
-  position:absolute;
-  inset:0;
-  overflow:visible;
-  z-index:0;
-}
-.dz-voice-atmosphere {
-  inset:-10%;
-  background:radial-gradient(ellipse 51% 52% at 50% 47%,rgba(42,60,96,.3),rgba(19,32,46,.10) 65%,transparent 100%);
-}
-.dz-voice-art-svg {
-  position:absolute;
-  left:50%;
-  top:50%;
-  width:min(115%,680px);
-  height:auto;
-  max-height:none;
-  transform:translate(-50%,-50%);
-  overflow:visible;
-}
-.dz-voice-orb-vignette {
-  z-index:0;
-  background:radial-gradient(ellipse 60% 50% at 50% 45%,transparent 22%,rgba(4,6,12,.22) 68%,rgba(3,5,10,.62) 100%);
-}
-.dz-voice-orb-conversation {
-  width:100%;
-  min-height:0;
-  gap:8px;
-  margin:0 auto;
-  max-width:min(540px,calc(100vw - 40px));
-  flex:0 0 auto;
-}
-.dz-voice-orb-conversation h2 {
-  font-size:clamp(20px,2.35vw,29px);
-  line-height:1.3;
-}
-.dz-voice-error-message {
-  display:flex;
-  flex-direction:column;
-  align-items:center;
-  justify-content:center;
-  gap:7px;
-  max-width:100%;
-  padding:11px 18px 0;
-  border-top:1px solid rgba(233,174,140,.24);
-}
-.dz-voice-error-message h2 {
-  color:#e9e7e5;
-  font-size:clamp(16px,2vw,20px);
-  font-weight:580;
-  letter-spacing:-.03em;
-}
-.dz-voice-error-message #companion-status {
-  font-size:12px;
-  color:#d7a49e;
-  line-height:1.45;
-  overflow-wrap:anywhere;
-}
-.dz-voice-orb-shell[data-session="error"] .dz-voice-orb-eyebrow {opacity:.6}
-.dz-voice-orb-shell[data-session="error"] .dz-voice-halo {opacity:.43}
-.dz-voice-orb-shell[data-session="error"] .dz-voice-ripple {animation:none}
-.dz-voice-orb-footer {position:relative;z-index:3}
-
-@media (max-width:680px) {
-  .dz-voice-orb-ui {
-    padding:18px 17px max(17px,env(safe-area-inset-bottom));
-    grid-template-rows:auto minmax(0,1fr) auto;
+  #companion-end.dz-voice-orb-end:hover{
+    background:rgba(30,54,66,.8);color:#e8f3f8;
   }
-  .dz-voice-orb-head {gap:9px}
-  .dz-voice-orb-brand {min-width:0;gap:8px;font-size:12px;letter-spacing:.04em}
-  .dz-voice-orb-brand small {font-size:9px;letter-spacing:.08em}
-  .dz-voice-orb-connection {font-size:8px;gap:6px;padding:8px 10px}
-  .dz-voice-orb-main {gap:8px;padding:10px 0 12px}
-  .dz-voice-orb-eyebrow {
-    font-size:8px;
-    letter-spacing:.22em;
-    line-height:1.6;
-  }
-  .dz-voice-orb-space {
-    width:100%;
-    height:min(38dvh,310px);
-    min-height:165px;
-    max-width:none;
-  }
-  .dz-voice-art-svg {
-    width:min(128vw,72dvh,520px);
-    top:calc(50% + 10px);
-    max-height:none;
-    transform:translate(-50%,-50%);
-  }
-  .dz-voice-orbit-field {opacity:.6}
-  .dz-voice-stars {opacity:.55}
-  /* The original bottom waveform intruded into the error message on mobile.
-   * Orb reactivity remains in the SVG sphere and its light/halo. */
-  .dz-voice-audio-wave {display:none}
-  .dz-voice-orb-conversation {max-width:min(340px,100%);min-height:0;gap:6px}
-  .dz-voice-orb-conversation h2 {
-    font-size:clamp(17px,4.45vw,20px);
-    line-height:1.26;
-    letter-spacing:-.025em;
-  }
-  .dz-voice-orb-conversation #companion-status {font-size:12px;line-height:1.45}
-  .dz-voice-error-message {padding:10px 8px 0;gap:5px}
-  .dz-voice-error-message h2 {font-size:16px}
-  .dz-voice-orb-footer {gap:8px;padding:0;align-items:center}
-  .dz-voice-orb-controls {gap:clamp(15px,5vw,23px)}
-  .dz-voice-orb-circle {width:48px;height:48px}
-  .dz-voice-orb-mic {width:64px;height:64px}
-  #companion-end.dz-voice-orb-end {
-    min-height:34px;
-    padding:7px 14px;
-    font-size:11px;
-  }
-  .dz-voice-orb-transcript-panel {
-    bottom:122px;
-    right:16px;
-    width:min(390px,calc(100vw - 32px));
+  .dz-voice-orb-transcript-panel{
+    right:calc(12 * var(--voice-u));bottom:calc(144 * var(--voice-u));
+    width:calc(100% - 24 * var(--voice-u));max-height:42dvh;
+    padding:calc(14 * var(--voice-u));
   }
 }
-@media(max-height:620px) {
-  .dz-voice-orb-ui{padding-top:10px;padding-bottom:max(9px,env(safe-area-inset-bottom))}
-  .dz-voice-orb-main{gap:5px;padding:5px 0}
-  .dz-voice-orb-space{height:min(33dvh,215px);min-height:112px}
-  .dz-voice-art-svg{width:min(120vw,70dvh,440px);top:calc(50% + 6px)}
-  .dz-voice-orb-footer{gap:5px}
-  .dz-voice-orb-conversation h2{font-size:16px}
-  .dz-voice-orb-circle{width:45px;height:45px}
-  .dz-voice-orb-mic{height:56px;width:56px}
+@media(max-height:620px) and (max-width:680px){
+  .dz-voice-orb-ui{padding-top:10px;padding-bottom:10px}
+  .dz-voice-orb-space{height:min(32dvh,78vw);flex-basis:min(32dvh,78vw)}
+  .dz-voice-orb-conversation{gap:4px}
+  .dz-voice-orb-footer{gap:6px}
 }
-
-
-/* Browser transcription is an explicitly separate mode, not an AI connection. */
-.dz-voice-orb-shell[data-voice-mode="browser"] .dz-voice-orb-connection i {
-  background:#e1b583;box-shadow:0 0 10px #e1b58355;
-}
-.dz-voice-orb-shell[data-voice-mode="browser"][data-session="transcribing"] .dz-voice-orb-connection i {
-  background:#95d5bc;box-shadow:0 0 10px #95d5bc55;
-}
-.dz-voice-browser-notice {
-  margin:0;font-size:11px;line-height:1.4;color:#afc1cf;
-}
-.dz-voice-live-caption {
-  width:min(100%,520px);max-height:4.5em;overflow-y:auto;
-  margin:6px 0 0;padding:0 8px;
-  font-size:clamp(15px,3.6vw,20px);line-height:1.5;
-  color:#f0e4d9;white-space:pre-wrap;overflow-wrap:anywhere;
-  pointer-events:auto;
-}
-.dz-voice-live-caption[data-interim="true"],.companion-transcript p[data-interim="true"] {opacity:.65}
-.dz-voice-orb-circle:disabled{opacity:.4;cursor:not-allowed}
-@media(max-width:680px){
-  .dz-voice-orb-shell[data-voice-mode="browser"] .dz-voice-orb-space{
-    height:min(30dvh,245px);min-height:130px;
-  }
-  .dz-voice-orb-shell[data-voice-mode="browser"] .dz-voice-art-svg{
-    width:min(106vw,58dvh,460px);
-  }
-  .dz-voice-live-caption{max-height:3em;font-size:15px;margin-top:3px}
-}
-@media(max-height:620px){
-  .dz-voice-orb-shell[data-voice-mode="browser"] .dz-voice-orb-space{
-    height:min(26dvh,180px);min-height:96px;
-  }
-  .dz-voice-orb-shell[data-voice-mode="browser"] .dz-voice-art-svg{
-    width:min(100vw,52dvh,420px);
-  }
-  .dz-voice-browser-notice{font-size:10px}
+@media(prefers-reduced-motion:reduce){
+  .dz-voice-orb-circle{transition:none}
 }

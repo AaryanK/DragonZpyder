@@ -28,3 +28,6 @@ PyJWT[crypto]>=2.15,<3
 
 # Verify Google login ID token signatures with trusted issuer/audience.
 google-auth[requests]>=2.40,<3
+
+# Standards-based authorization code/PKCE and OAuth token refresh for reviewed MCP providers.
+Authlib>=1.6,<2

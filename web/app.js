@@ -1,7 +1,11 @@
 import { renderMarkdown } from "./frontend/src/markdown.js";
 const state = {
   session: null,
+  firstParty: false,
+  selectedMcpConnections: [],
   conversationId: null,
+  archiveSelected: false,
+  selectionVersion: 0,
   conversations: [],
   approvals: [],
   sending: false,
@@ -76,7 +80,9 @@ function getCookie(name) {
 }
 
 function sessionCsrf() {
-  return getCookie("__Host-operly_csrf") || getCookie("operly_csrf") || null;
+  return state.firstParty
+    ? getCookie("__Host-dz_csrf")
+    : (getCookie("__Host-operly_csrf") || getCookie("operly_csrf") || null);
 }
 
 function errorDetail(payload, status) {
@@ -106,7 +112,10 @@ async function api(path, { method = "GET", body = undefined, csrf = true, csrfTo
   if (!["GET", "HEAD", "OPTIONS"].includes(upper) && csrf) {
     const token = csrfToken || sessionCsrf() || state.preauthCsrf;
     if (!token) throw new ApiError("Secure session token is missing. Sign in again.", { code: "CSRF_TOKEN_MISSING", status: 401 });
-    headers["X-CSRF-Token"] = token;
+    // The native identity issuer uses its own anti-CSRF header. Never mix
+    // the legacy Operly CSRF header with first-party DragonZpyder sessions.
+    headers[state.firstParty && path.startsWith("/dz/")
+      ? "X-DZ-CSRF" : "X-CSRF-Token"] = token;
   }
 
   let response;
@@ -180,6 +189,12 @@ function setSession(session) {
 }
 
 async function ensurePersonalSession() {
+  if (state.firstParty) {
+    await api("/dz/v2/personal/session", { csrf: false });
+    const session = { device: "DragonZpyder", scope: "personal" };
+    setSession(session);
+    return session;
+  }
   const rows = await api("/api/auth/sessions", { csrf: false });
   if (!Array.isArray(rows)) throw new ApiError("Operly returned an invalid session response.", { code: "INVALID_SESSION_RESPONSE" });
   let current = rows.find((row) => row && row.current);
@@ -197,9 +212,39 @@ async function ensurePersonalSession() {
   return current;
 }
 
+async function discoverCentralIdentity() {
+  const link = $("dragonzpyder-central-signin-modal");
+  if (!link) return;
+  try {
+    const config = await api("/api/auth/bootstrap", { csrf: false });
+    link.hidden = config?.dragonzpyder_web_sso_available !== true;
+  } catch {
+    link.hidden = true;
+  }
+}
+
 async function bootstrapAuth() {
   setRuntimeStatus(null, "Checking personal runtime…");
   try {
+    // This flag comes from our own Web service. If native cutover is on,
+    // never fall back to Operly when the DragonZpyder API is unavailable.
+    const routing = await api("/dz/status", { csrf: false });
+    state.firstParty = routing.web_cutover_enabled === true;
+    window.dragonzpyderNativeMode = state.firstParty;
+    window.dispatchEvent(new CustomEvent("dragonzpyder:runtime-mode", { detail: { firstParty: state.firstParty } }));
+    if (!state.firstParty) {
+      await discoverCentralIdentity();
+    }
+    if (state.firstParty) {
+      const obsolete = $("dragonzpyder-central-signin-modal");
+      if (obsolete) obsolete.hidden = true;
+      // Voice/Mesh still use the legacy Operly session verifier. Until those
+      // routes receive first-party identity, never expose that old path.
+      const mesh = $("mesh-switch");
+      if (mesh) mesh.hidden = true;
+      const voice = $("companion-open");
+      if (voice) voice.hidden = true;
+    }
     await ensurePersonalSession();
     hideAuth();
     setRuntimeStatus("online", "Personal runtime connected");
@@ -217,6 +262,16 @@ async function bootstrapAuth() {
 }
 
 async function login(email, password) {
+  if (state.firstParty) {
+    await api("/dz/identity/v1/password/login", {
+      method: "POST", body: { email, password }, csrf: false,
+    });
+    await ensurePersonalSession();
+    hideAuth();
+    setRuntimeStatus("online", "DragonZpyder agent connected");
+    await loadConversations({ restoreLatest: true });
+    return;
+  }
   const bootstrap = await api("/api/auth/bootstrap", { csrf: false });
   state.preauthCsrf = bootstrap && bootstrap.csrf_token ? String(bootstrap.csrf_token) : null;
   if (!state.preauthCsrf) throw new ApiError("Operly did not provide a login security token.", { code: "CSRF_BOOTSTRAP_FAILED" });
@@ -390,13 +445,24 @@ window.addEventListener("resize", syncComposerClearance);
 requestAnimationFrame(syncComposerClearance);
 
 function clearConversationSelection() {
+  state.selectionVersion++;
   state.conversationId = null;
+  setArchiveMode(false);
   for (const button of conversationList.querySelectorAll(".conversation-button")) button.classList.remove("active");
   showEmptyState();
   if(window.dragonzpyderMesh?.isActive())window.dragonzpyderMesh.clear();
   messageInput.focus();
   sidebar.classList.remove("open");
 }
+
+function setArchiveMode(active) {
+  state.archiveSelected = active;
+  messageInput.disabled = active || state.sending;
+  sendButton.disabled = active || state.sending;
+  messageInput.placeholder = active ? "Archived history · start a new chat to continue" : (messageInput.dataset.originalPlaceholder || "Message DragonZpyder");
+  syncComposerAction();
+}
+messageInput.dataset.originalPlaceholder = messageInput.placeholder;
 
 function renderConversations() {
   conversationList.replaceChildren();
@@ -439,24 +505,49 @@ function renderConversations() {
     }
     const button = document.createElement("button");
     button.type = "button";
-    button.className = `conversation-button${item.id === state.conversationId ? " active" : ""}`;
-    button.textContent = item.title || "Conversation";
-    button.title = item.title || "Conversation";
-    button.addEventListener("click", () => openConversation(item.id));
+    button.className = `conversation-button${item.id === state.conversationId && Boolean(item.archived) === state.archiveSelected ? " active" : ""}`;
+    button.textContent = (item.archived ? "Archive · " : "") + (item.title || "Conversation");
+    button.title = button.textContent;
+    button.addEventListener("click", () => openConversation(item.id, { archived: Boolean(item.archived) }));
     conversationList.appendChild(button);
   }
 }
 
 async function loadConversations({ restoreLatest = false } = {}) {
   try {
-    const rows = await api("/api/personal-agent/conversations", { csrf: false });
-    state.conversations = Array.isArray(rows) ? rows : [];
+    const rows = await api(state.firstParty
+      ? "/dz/v2/personal/conversations" : "/api/personal-agent/conversations", { csrf: false });
+    state.conversations = state.firstParty
+      ? (Array.isArray(rows.conversations) ? rows.conversations : [])
+      : (Array.isArray(rows) ? rows : []);
+    if (state.firstParty) {
+      const live = state.conversations;
+      try {
+        const archived = [];
+        let offset = 0;
+        // Bound the work and reject non-advancing pagination.
+        for (let page = 0; page < 101; page++) {
+          const result = await api("/dz/v2/personal/archive/conversations?offset=" + offset, { csrf: false });
+          if (!Array.isArray(result.conversations)) throw Error("Invalid archive response");
+          archived.push(...result.conversations.map(item => ({ ...item, archived: true })));
+          if (result.next_offset == null) break;
+          if (result.next_offset !== offset + 100 || page === 100) throw Error("Archive page limit reached");
+          offset = result.next_offset;
+        }
+        if (!state.session) return;
+        state.conversations = [...live, ...archived];
+      } catch (error) {
+        if (!state.session) return;
+        if (error.status === 401) return showAuth();
+        if (error.status !== 404) showToast("Archived history unavailable. Live chats are unaffected.", 5000);
+      }
+    }
     renderConversations();
     // Initial authentication populates the sidebar but otherwise leaves a
     // blank message pane. Restore the newest authorized Personal conversation.
     // Ordinary post-send refreshes must not change the current selection.
     if (restoreLatest && !state.conversationId && state.conversations.length) {
-      await openConversation(state.conversations[0].id);
+      await openConversation(state.conversations[0].id, { archived: Boolean(state.conversations[0].archived) });
     }
   } catch (error) {
     if (error instanceof ApiError && error.status === 401) return showAuth();
@@ -464,8 +555,10 @@ async function loadConversations({ restoreLatest = false } = {}) {
   }
 }
 
-async function openConversation(id) {
-  if (!id || state.sending) return;
+async function openConversation(id, { archived = false } = {}) {
+  if (!id || state.sending || (archived && !state.firstParty)) return;
+  const version = ++state.selectionVersion;
+  setArchiveMode(archived);
   if(window.dragonzpyderMesh?.isActive())window.dragonzpyderMesh.disable();
   state.conversationId = id;
   renderConversations();
@@ -474,17 +567,52 @@ async function openConversation(id) {
   messages.replaceChildren();
   const pending = appendMessage("assistant", "", { pending: true });
   try {
-    const rows = await api(`/api/personal-agent/conversations/${encodeURIComponent(id)}/messages`, { csrf: false });
+    if (archived) {
+      const notice = document.createElement("p");
+      notice.className = "message-meta";
+      notice.textContent = "Read-only Operly archive. Start a new chat to use DragonZpyder.";
+      messages.replaceChildren(notice);
+      let offset = 0;
+      for (let page = 0; page < 1000; page++) {
+        const rows = await api(`/dz/v2/personal/archive/conversations/${encodeURIComponent(id)}/messages?offset=${offset}`, { csrf: false });
+        if (version !== state.selectionVersion || !state.session) return;
+        if (!Array.isArray(rows.messages) || rows.archived !== true) throw Error("Invalid archive response");
+        for (const row of rows.messages) {
+          if (!["user", "assistant"].includes(row.role)) continue;
+          // Archived content is text only, not executable or interpreted markup.
+          const node = messageNode(row.role, "", { restoring: true });
+          node.value.textContent = row.content || "";
+          node.value.style.whiteSpace = "pre-wrap";
+          messages.appendChild(node.wrap);
+        }
+        if (rows.next_offset == null) { scrollToBottom(true); return; }
+        if (rows.next_offset !== offset + 10) throw Error("Invalid archive pagination");
+        offset = rows.next_offset;
+      }
+      throw Error("Archive display limit reached");
+    }
+    const rows = await api(state.firstParty
+      ? `/dz/v2/personal/conversations/${encodeURIComponent(id)}/messages`
+      : `/api/personal-agent/conversations/${encodeURIComponent(id)}/messages`, { csrf: false });
+    if (version !== state.selectionVersion || !state.session) return;
     messages.replaceChildren();
-    for (const row of Array.isArray(rows) ? rows : []) {
+    const history = state.firstParty ? rows.messages : rows;
+    for (const row of Array.isArray(history) ? history : []) {
       if (row.role !== "user" && row.role !== "assistant") continue;
       appendMessage(row.role === "user" ? "user" : "assistant", row.content || "", { restoring: true });
     }
     renderConversations();
     scrollToBottom(true);
   } catch (error) {
-    pending.value.textContent = error.message;
-    pending.value.classList.add("error");
+    if (version !== state.selectionVersion || !state.session) return;
+    if (archived) {
+      const warning = document.createElement("p");
+      warning.textContent = "Archive could not be fully loaded.";
+      messages.appendChild(warning);
+    } else {
+      pending.value.textContent = error.message;
+      pending.value.classList.add("error");
+    }
   }
 }
 
@@ -498,12 +626,18 @@ async function submitViaClientAdapter(message, requestId) {
   // Use the supported personal-agent chat API directly.
   const body = { message };
   if (state.conversationId) body.conversation_id = state.conversationId;
-  const result = await api("/api/personal-agent/chat", { method: "POST", body });
+  if (state.firstParty && state.selectedMcpConnections.length) {
+    body.mcp_connection_ids = [...state.selectedMcpConnections];
+  }
+  const result = await api(state.firstParty
+    ? "/dz/v2/personal/chat" : "/api/personal-agent/chat",
+    { method: "POST", body });
   result.client_request_id = requestId;
   return result;
 }
 
 async function sendMessage(message, { companion = false, fromComposer = false } = {}) {
+  if (state.archiveSelected) { showToast("Start a new chat to continue.", 4000); return; }
   const clean = String(message || "").trim();
   if (!clean || state.sending) { if (companion) throw Error("Personal agent is busy"); return; }
   if (!state.session) { showAuth(); if (companion) throw Error("Sign in first"); return; }
@@ -552,9 +686,13 @@ async function sendMessage(message, { companion = false, fromComposer = false } 
     }
     // The server chooses the trusted execution engine; the model cannot
     // declare itself a DragonZpyder harness run in the answer text.
-    if (result.dispatch === "dragonzpyder_personal_mcp") {
-      const tools = Array.isArray(result.capability_calls)
-        ? result.capability_calls.filter(name => typeof name === "string" && /^operly_[a-zA-Z0-9_-]{1,64}$/.test(name)).slice(0, 20)
+    if (result.dispatch === "dragonzpyder_personal_mcp"
+        || result.dispatch === "dragonzpyder_first_party") {
+      const rawTools = result.dispatch === "dragonzpyder_first_party"
+        ? result.execution_receipts?.tool_names : result.capability_calls;
+      const tools = Array.isArray(rawTools)
+        ? rawTools.filter(name => typeof name === "string"
+            && /^[A-Za-z_][A-Za-z0-9_-]{0,79}$/.test(name)).slice(0, 20)
         : [];
       const meta = document.createElement("div");
       meta.className = "message-meta";
@@ -663,6 +801,12 @@ async function sendMessage(message, { companion = false, fromComposer = false } 
 window.dragonzpyderDelegatePersonalTask = (request) => sendMessage(request, { companion: true });
 
 async function refreshApprovals() {
+  if (state.firstParty) {
+    // Never query Operly approval APIs with a first-party identity session.
+    state.approvals = [];
+    approvalCount.textContent = "0";
+    return;
+  }
   // Workspace provisioning uses Operly Kernel approvals, not the legacy
   // Personal-tools approvals table. Both are authenticated same-origin APIs.
   // No approval can be created or executed merely by rendering a card.
@@ -869,13 +1013,21 @@ async function approveAction(approval, button) {
 
 async function logout() {
   try {
-    await api("/api/auth/logout", { method: "POST", body: {} });
+    await api(state.firstParty ? "/dz/identity/v1/logout" : "/api/auth/logout",
+      { method: "POST", body: {} });
   } catch (error) {
+    if (state.firstParty) {
+      // Do not present a successful native sign-out if server revocation failed.
+      showToast("Sign-out could not be confirmed. Try again.", 7000);
+      return;
+    }
     if (!(error instanceof ApiError && [401, 409].includes(error.status))) console.warn("Logout failed", error);
   }
   window.dispatchEvent(new Event("dragonzpyder:logout"));
   setSession(null);
+  state.selectionVersion++;
   state.conversationId = null;
+  setArchiveMode(false);
   state.conversations = [];
   state.approvals = [];
   renderConversations();
@@ -892,11 +1044,17 @@ function syncComposerAction() {
   const pending = Boolean(messageInput.value.trim()) ||
     Boolean(window.dragonzpyderMesh?.hasAttachments?.());
   const voice = $("companion-open");
-  voice.hidden = pending;
+  voice.hidden = state.firstParty || pending;
   voice.disabled = state.sending || Boolean(window.dragonzpyderMesh?.isBusy?.());
-  sendButton.hidden = !pending;
+  sendButton.hidden = state.archiveSelected || !pending;
 }
 window.dragonzpyderComposerSync = syncComposerAction;
+window.addEventListener("dragonzpyder:mcp-selection", (event) => {
+  const ids = event.detail?.ids;
+  state.selectedMcpConnections = Array.isArray(ids)
+    ? [...new Set(ids.filter(id => typeof id === "string" && /^c[a-f0-9]{30}$/.test(id)))].slice(0, 10)
+    : [];
+});
 
 function autoSizeInput() {
   messageInput.style.height = "auto";
@@ -968,4 +1126,4 @@ window.addEventListener("offline", () => setRuntimeStatus("error", "Offline"));
 autoSizeInput();
 bootstrapAuth();
 
-window.addEventListener("dragonzpyder:mesh-disabled",()=>{ if(state.conversationId)openConversation(state.conversationId);else showEmptyState(); });
+window.addEventListener("dragonzpyder:mesh-disabled",()=>{ if(state.conversationId)openConversation(state.conversationId, { archived: state.archiveSelected });else showEmptyState(); });

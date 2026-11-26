@@ -6,6 +6,8 @@ No public unauthenticated code path may supply a subject or audience.
 """
 from __future__ import annotations
 
+import time
+
 from .grants import OAuthGrantDenied, redeem_code
 from .refresh import issue_refresh, rotate_refresh
 from .tokens import SigningIdentity
@@ -52,6 +54,7 @@ async def exchange_refresh(
     conn, signer: SigningIdentity, *, refresh_token: str,
     client_id: str, redirect_uri: str,
 ) -> dict[str, str | int]:
+    issued_before_rotation = int(time.time())
     rotated = await rotate_refresh(
         conn, token=refresh_token, client_id=client_id,
         redirect_uri=redirect_uri,
@@ -61,7 +64,7 @@ async def exchange_refresh(
         raise OAuthGrantDenied("Missing refresh permission")
     token = signer.issue_access_token(
         authenticated_subject=rotated.subject,
-        audience=rotated.audience, scope=rotated.scope,
+        audience=rotated.audience, scope=rotated.scope, now=issued_before_rotation,
     )
     # Do not issue an ID token without an explicitly remembered auth nonce.
     return {

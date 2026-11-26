@@ -7,6 +7,7 @@ Only the existing API host serves the page; scripts stay same-origin.
 from __future__ import annotations
 
 import html
+import os
 import re
 from pathlib import Path
 from urllib.parse import urlencode
@@ -18,6 +19,7 @@ from pydantic import ValidationError
 from . import http_bridge as bridge
 from .grants import OAuthGrantDenied, _registered_client, _validate_pkce_challenge
 from .sessions import SessionDenied, resolve_browser_session
+from .consent import issue_interaction
 
 router = APIRouter(prefix="/identity/v1", tags=["identity-browser"])
 _ROOT = Path(__file__).resolve().parent
@@ -71,10 +73,20 @@ async def interactive_authorization(request: Request):
             )
         except SessionDenied:
             authenticated_subject = None
+        ticket = (await issue_interaction(
+            db, subject=authenticated_subject,
+            session_secret=request.cookies.get("__Host-dz_identity", ""),
+            request=payload.model_dump(exclude={"consent_ticket"}),
+        )) if authenticated_subject else None
 
     client = html.escape(payload.client_id, quote=True)
     scope = html.escape(payload.scope, quote=True)
     authenticated = authenticated_subject is not None
+    ticket_meta = ('<meta name="dz-consent-ticket" content="'
+                   + html.escape(ticket, quote=True) + '">') if ticket else ""
+    google_link = ('<p><a href="/identity/v1/signin/google" target="_blank" rel="noopener noreferrer">'
+                   'Sign in with Google in a separate tab</a>. Return here and refresh after signing in.</p>'
+                   if not authenticated and _google_available() else "")
     # Render only validated registered metadata. Never render redirect_uri,
     # state or nonce in raw HTML; the external script uses URLSearchParams.
     content = f"""<!doctype html>
@@ -82,6 +94,7 @@ async def interactive_authorization(request: Request):
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+{ticket_meta}
 <title>Sign in · DragonZpyder</title>
 <link rel="stylesheet" href="/identity/v1/authorize/style.css">
 <script defer src="/identity/v1/authorize/interactive.js"></script>
@@ -92,11 +105,15 @@ async def interactive_authorization(request: Request):
 <p>Continue securely to <strong>{client}</strong>.</p>
 <section id="signin" {'hidden' if authenticated else ''}>
 <h2>Sign in</h2>
-<form id="login-form" autocomplete="on">
+<form id="login-form" method="post" action="/identity/v1/password/login" autocomplete="on">
+<fieldset id="login-fields" disabled>
 <label>Email <input name="email" type="email" autocomplete="username" required></label>
 <label>Password <input name="password" type="password" autocomplete="current-password" required></label>
 <button type="submit">Sign in</button>
+</fieldset>
 </form>
+{google_link}
+<noscript>JavaScript is required for secure sign-in. No credentials have been submitted.</noscript>
 </section>
 <section id="consent" {'' if authenticated else 'hidden'}>
 <h2>Authorize this application</h2>
@@ -128,3 +145,48 @@ async def interactive_styles():
         _ROOT.joinpath("authorize_ui.css").read_text("utf-8"),
         media_type="text/css", headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"},
     )
+
+
+def _google_available():
+    return (os.getenv("DRAGONZPYDER_IDENTITY_ISSUER_GOOGLE_ENABLED") == "1"
+            and bool(os.getenv("DRAGONZPYDER_IDENTITY_GOOGLE_CLIENT_ID")))
+
+
+@router.get("/signin/google", include_in_schema=False)
+async def issuer_google_signin(request: Request):
+    """Isolated issuer login page: never give third-party scripts OIDC state."""
+    bridge._enabled()
+    if not _google_available():
+        raise HTTPException(404, "Not found")
+    if request.url.query:
+        raise HTTPException(400, "Unexpected sign-in parameters")
+    headers = dict(_HEADERS)
+    headers["Content-Security-Policy"] = (
+        "default-src 'none'; script-src 'self' https://accounts.google.com/gsi/client; "
+        "style-src 'self' https://accounts.google.com/gsi/style; "
+        "connect-src 'self' https://accounts.google.com/gsi/; "
+        "frame-src https://accounts.google.com/gsi/; img-src 'self' data: https://*.googleusercontent.com; "
+        "form-action 'none'; base-uri 'none'; frame-ancestors 'none'"
+    )
+    return HTMLResponse("""<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Google sign-in · DragonZpyder</title>
+<link rel="stylesheet" href="/identity/v1/authorize/style.css">
+<script defer src="https://accounts.google.com/gsi/client"></script>
+<script defer src="/identity/v1/signin/google.js"></script>
+</head><body><main><h1>Sign in to DragonZpyder</h1>
+<p>Use the Google account already linked to your active DragonZpyder identity.</p>
+<div id="google-signin"></div><p id="status" role="status" aria-live="polite"></p>
+<noscript>JavaScript is required for Google sign-in.</noscript>
+</main></body></html>""", headers=headers)
+
+
+@router.get("/signin/google.js", include_in_schema=False)
+async def issuer_google_script():
+    bridge._enabled()
+    if not _google_available():
+        raise HTTPException(404, "Not found")
+    return Response(_ROOT.joinpath("issuer_google_ui.js").read_text("utf-8"),
+        media_type="text/javascript", headers={"Cache-Control":"no-store",
+        "X-Content-Type-Options":"nosniff"})

@@ -106,3 +106,6 @@ textarea{color:#f0f0e9}textarea::placeholder{color:#91998d}
 @media(prefers-reduced-motion:reduce){.dictation-button.listening svg{animation:none!important}}
 
 .menu-account-link{display:block;padding:10px;color:#e3c4a0;text-decoration:none;font-size:12px;border-radius:7px}.menu-account-link:hover{background:#252a22}
+
+/* A hidden native-only control must not be displayed by older Mesh/voice CSS. */
+#mesh-switch[hidden], #companion-open[hidden] { display: none !important; }
