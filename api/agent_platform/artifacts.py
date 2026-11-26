@@ -194,7 +194,7 @@ async def delete(db, *, owner, file_id):
     try:
         from .artifact_object_store import configured_store
         await configured_store().delete(key)
-        await db.execute("DELETE FROM dz_agent_artifacts WHERE owner_id=$1 AND id=$2 AND storage_state='deleting'",owner,file_id)
+        await db.execute("UPDATE dz_agent_artifacts SET storage_state='deleted' WHERE owner_id=$1 AND id=$2 AND storage_state='deleting'",owner,file_id)
     except Exception:
         raise HTTPException(503,"Artifact deletion unconfirmed") from None
 
