@@ -242,6 +242,20 @@ final class DragonApi {
             ensurePersonal();
         } catch(Exception e) { clear(); throw e; }
     }
+    synchronized boolean browserProviderAvailable(String provider) throws Exception {
+        ensureMode();
+        if(!firstParty)return false;
+        if(!Arrays.asList("google","discord").contains(provider))return false;
+        try{return ((JSONObject)call("/dz/identity/v1/mobile/capabilities",null)).optBoolean(provider,false);}
+        catch(ApiError e){if(e.status==404||e.status==503)return false;throw e;}
+    }
+    synchronized void redeemBrowserProvider(String provider,String ticket,String verifier) throws Exception {
+        ensureMode();
+        if(!firstParty||!Arrays.asList("google","discord").contains(provider))throw unsupported();
+        if(!ticket.matches("[A-Za-z0-9_-]{43,128}")||!verifier.matches("[A-Za-z0-9_-]{43,128}"))throw new IOException("Invalid device proof");
+        try{clear();call("/dz/identity/v1/mobile/"+provider+"/redeem",new JSONObject().put("ticket",ticket).put("verifier",verifier));ensurePersonal();}
+        catch(Exception failure){clear();throw failure;}
+    }
     synchronized boolean discordMobileAvailable() throws Exception {
         ensureMode();if(firstParty)return false;
         JSONObject response=(JSONObject)call("/api/auth/bootstrap",null);
