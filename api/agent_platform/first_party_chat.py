@@ -30,6 +30,7 @@ class ChatInput(BaseModel):
     message: str = Field(min_length=1, max_length=12000)
     attachment_ids: list[UUID] = Field(default_factory=list, max_length=5)
     allow_computer: bool = Field(default=False, strict=True)
+    allow_media: bool = Field(default=False, strict=True)
     conversation_id: UUID | None = None
     request_id: UUID | None = None
     # Aliases must belong to the authenticated user and are rechecked at use.
@@ -102,6 +103,7 @@ async def status():
                 "DRAGONZPYDER_COMPUTER_RUNNER_URL","DRAGONZPYDER_COMPUTER_RUNNER_TOKEN",
                 "DRAGONZPYDER_COMPUTER_RUNNER_SIGNING_KEY","DRAGONZPYDER_ARTIFACT_KEY_B64")),
             "voice_enabled": enabled and os.getenv("DRAGONZPYDER_NATIVE_VOICE_ENABLED") == "1" and bool(os.getenv("DRAGONZPYDER_NATIVE_VOICE_API_KEY")),
+            "media_enabled": enabled and os.getenv("DRAGONZPYDER_AGENT_MEDIA_ENABLED")=="1" and os.getenv("DRAGONZPYDER_AGENT_USE_GATEWAY")=="1" and os.getenv("DRAGONZPYDER_AGENT_ARTIFACTS_ENABLED")=="1" and bool(os.getenv("DRAGONZPYDER_ARTIFACT_KEY_B64")) and os.getenv("DRAGONZPYDER_FIRST_PARTY_REQUEST_LEDGER_ENABLED")=="1",
             "voice_agent_enabled": enabled and os.getenv("DRAGONZPYDER_NATIVE_VOICE_AGENT_ENABLED")=="1" and os.getenv("DRAGONZPYDER_NATIVE_VOICE_ENABLED")=="1" and bool(os.getenv("DRAGONZPYDER_NATIVE_VOICE_API_KEY")) and os.getenv("DRAGONZPYDER_FIRST_PARTY_REQUEST_LEDGER_ENABLED")=="1",
             "request_ledger_enabled": enabled and os.getenv("DRAGONZPYDER_FIRST_PARTY_REQUEST_LEDGER_ENABLED") == "1",
             "agent_stream_enabled": enabled and os.getenv("DRAGONZPYDER_FIRST_PARTY_REQUEST_LEDGER_ENABLED") == "1" and os.getenv("DRAGONZPYDER_FIRST_PARTY_STREAM_ENABLED") == "1",
@@ -236,6 +238,8 @@ def _fingerprint(payload: ChatInput) -> str:
         exclude.add("attachment_ids")  # preserve existing ledger fingerprints
     if not payload.allow_computer:
         exclude.add("allow_computer")
+    if not payload.allow_media:
+        exclude.add("allow_media")
     canonical = json.dumps(payload.model_dump(mode="json", exclude=exclude),
                            sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
@@ -361,6 +365,10 @@ async def _chat_owned(payload: ChatInput, request: Request, user: str, emit=None
             raise HTTPException(503,"Isolated computer execution unavailable")
         if payload.request_id is None:
             raise HTTPException(422,"Computer execution requires durable request identity")
+    if payload.allow_media:
+        from .media_tools import enabled as media_enabled
+        if not media_enabled() or payload.request_id is None:
+            raise HTTPException(503,"Authorized media execution unavailable")
     # Old clients remain compatible. New clients explicitly opt into durable
     # request identity; a missing migration fails closed before any model call.
     if payload.request_id is None:
@@ -567,6 +575,17 @@ async def _execute_chat(payload: ChatInput, request: Request, user: str, convers
         if attachments:
             message += "\n\nSelected attachment metadata (untrusted data): " + json.dumps(attachments,ensure_ascii=False)
         artifact_tools = artifacts.native_tools(_conversation_db,owner=user,allowed_ids=payload.attachment_ids,run_id=artifact_run)
+    media_run=None
+    if payload.allow_media:
+        from .media_tools import MediaRun
+        async def authorize_media():
+            if await _owner(request,changing=True)!=user:
+                raise PermissionError("Media authority revoked")
+        try:
+            media_run=MediaRun(owner=user,run_id=artifact_run,allowed_ids=payload.attachment_ids,
+                db_factory=_conversation_db,authorize=authorize_media,http=request.app.state.http)
+        except (ValueError,RuntimeError):
+            raise HTTPException(503,"Media execution unavailable") from None
     computer_run = None
     computer_artifacts = None
     if payload.allow_computer:
@@ -650,10 +669,25 @@ async def _execute_chat(payload: ChatInput, request: Request, user: str, convers
                     has_tools=bool(tools or computer_run or artifact_tools),
                     has_attachments=bool(payload.attachment_ids))
             selected_model = model_client(model_override=routing.model) if routing else model_client()
+            route_middleware=None
+            if routing and os.getenv("DRAGONZPYDER_AGENT_USE_GATEWAY")=="1":
+                from .adaptive_routing import recovery_middleware
+                from .runtime import configured_model
+                reasoning=os.getenv("DRAGONZPYDER_AGENT_REASONING_MODEL_ID","").strip()
+                if reasoning and reasoning!=routing.model:
+                    try:
+                        configured_model(reasoning)
+                    except RuntimeError:
+                        pass
+                    else:
+                        route_middleware=recovery_middleware(initial_model=selected_model,
+                            reasoning_model=model_client(model_override=reasoning))
             agent = build_frontier_agent(
                 selected_model, runtime._checkpointer,
                 delegated_tools=tools if tools else None,
                 **({"artifact_tools":artifact_tools} if artifact_tools else {}),
+                **({"media_run":media_run} if media_run else {}),
+                **({"routing_middleware":route_middleware} if route_middleware else {}),
                 **({"computer_run":computer_run,"computer_artifacts":computer_artifacts} if computer_run else {}),
             )
             config = {
