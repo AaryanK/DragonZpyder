@@ -170,11 +170,27 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                 token->{if(isDestroyed()||attempt!=googleAttempt||!googleSignInPending)return;googleSignInPending=false;busy=false;submit("Verifying Google account…",()->{
                     api.loginWithGoogle(token,signup);return Boolean.TRUE;
                 },result->authSuccess(),true);},
-                reason->{if(isDestroyed()||attempt!=googleAttempt||!googleSignInPending)return;googleSignInPending=false;busy=false;setStatus(reason);});
+                reason->{if(isDestroyed()||attempt!=googleAttempt||!googleSignInPending)return;googleSignInPending=false;busy=false;setStatus(reason);
+                    if(api.isFirstParty())alert().setTitle("Google sign-in did not complete").setMessage("Try signing in through your browser instead. Your Google credentials stay with Google.").setNegativeButton("Close",null).setPositiveButton("Use browser",(d,i)->startBrowserProvider("google",signup)).show();
+                });
+        },true);
+    }
+    private void startBrowserProvider(String provider,boolean signup){
+        if(busy||googleSignInPending||!api.isFirstParty())return;
+        submit("Checking secure "+provider+" sign-in…",()->api.browserProviderAvailable(provider),enabled->{
+            if(!Boolean.TRUE.equals(enabled)){setStatus("Browser sign-in for "+provider+" is not configured on DragonZpyder yet.");return;}
+            try{
+                String state=MobileOAuthStore.randomToken(),verifier=MobileOAuthStore.randomToken();
+                mobileOAuth.begin(state,verifier);
+                String url="https://dragonzpyder.xyz/dz/identity/v1/mobile/"+provider+"/start?state="+android.net.Uri.encode(state)+"&code_challenge="+android.net.Uri.encode(MobileOAuthStore.challenge(verifier))+(signup?"&register=true":"");
+                new androidx.browser.customtabs.CustomTabsIntent.Builder().setShowTitle(true).build().launchUrl(this,android.net.Uri.parse(url));
+                setStatus("Complete sign-in in your browser.");
+            }catch(Exception failure){mobileOAuth.clear();setStatus("Could not open secure browser sign-in.");}
         },true);
     }
     private void startDiscordSignIn(){
         if(busy||googleSignInPending)return;
+        if(api.isFirstParty()){startBrowserProvider("discord",false);return;}
         submit("Checking Discord sign-in…",()->api.discordMobileAvailable(),enabled->{
             if(!Boolean.TRUE.equals(enabled)){
                 setStatus(api.isFirstParty()?"Discord sign-in: first-party mobile OAuth is not available yet.":"Discord sign-in: the server does not advertise the required mobile OAuth endpoint.");
@@ -198,23 +214,31 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         },true);
     }
     private void processOAuthIntent(Intent intent){
-        if(intent==null||intent.getData()==null||signedIn||isDestroyed()||googleSignInPending||api.isFirstParty())return;
+        if(intent==null||intent.getData()==null||signedIn||isDestroyed()||googleSignInPending||!api.isModeKnown())return;
         android.net.Uri uri=intent.getData();
         if(!"dragonzpyder".equals(uri.getScheme())||!"auth".equals(uri.getHost())||
-            !"/discord".equals(uri.getPath()))return;
+            !Arrays.asList("/google","/discord").contains(uri.getPath()))return;
+        final String provider=uri.getPath().substring(1);
+        if(!api.isFirstParty()&&!"discord".equals(provider))return;
         if(busy){queuedOAuthIntent=intent;return;}
         queuedOAuthIntent=null;
         setIntent(new Intent(this,MainActivity.class));
         String ticket=uri.getQueryParameter("ticket");
         String state=uri.getQueryParameter("state");
+        if(uri.getQueryParameter("error")!=null){
+            if(mobileOAuth.take(state)!=null)setStatus("Sign-in did not complete. Verify the provider account is linked to your DragonZpyder identity.");
+            return;
+        }
         if(ticket==null||state==null||!ticket.matches("[A-Za-z0-9_-]{40,120}")){
             setStatus("Discord sign-in returned an invalid response.");return;
         }
         String[] proof=mobileOAuth.take(state);
         if(proof==null){setStatus("Discord device verification expired. Please start again.");return;}
         final String verifier=proof[1];
-        submit("Completing Discord sign-in…",()->{
-            api.redeemDiscordMobile(ticket,verifier);return Boolean.TRUE;
+        submit("Completing secure sign-in…",()->{
+            if(api.isFirstParty())api.redeemBrowserProvider(provider,ticket,verifier);
+            else api.redeemDiscordMobile(ticket,verifier);
+            return Boolean.TRUE;
         },result->authSuccess(),true);
     }
     @Override protected void onNewIntent(Intent intent){
@@ -242,8 +266,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         if(mode.equals("login")||mode.equals("signup")){
             card.addView(providerButton("G","Continue with Google",0xff4285f4,this::startGoogleSignIn));
             gap(card,10);
-            if(!api.isFirstParty())card.addView(providerButton("◈","Continue with Discord",0xff5865f2,this::startDiscordSignIn));
-            else card.addView(text("Discord mobile sign-in is not yet available for first-party identity.",13,MUTED));
+            card.addView(providerButton("◈","Continue with Discord",0xff5865f2,this::startDiscordSignIn));
             if(api.isFirstParty()&&mode.equals("signup")){gap(card,12);card.addView(text("Create a DragonZpyder account with Google verification.",14,TEXT));return;}
             gap(card,18);
             LinearLayout separator=row();View left=new View(this);left.setBackgroundColor(LINE);
