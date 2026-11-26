@@ -1,0 +1,38 @@
+name: Codebase documentation
+
+on:
+  pull_request:
+  push:
+    branches: [develop, master]
+
+permissions:
+  contents: read
+
+jobs:
+  navigation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Offline documentation tests
+        run: python -m unittest discover -s tests -p test_codebase_documentation.py -v
+      - name: Require change-specific documentation
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: python scripts/check_codebase_docs.py --base "$BASE_SHA" --head "$HEAD_SHA"
+      - name: Verify inventory on the checked-out tree
+        run: python scripts/check_codebase_docs.py
+      - name: Build checkout-specific folder and file pages
+        run: python scripts/build_codebase_index.py --directory "$RUNNER_TEMP/dragonzpyder-codebase"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: codebase-navigation
+          path: ${{ runner.temp }}/dragonzpyder-codebase
+          if-no-files-found: error
+          retention-days: 14
