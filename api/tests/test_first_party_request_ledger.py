@@ -91,3 +91,13 @@ def test_concurrent_and_uncertain_are_never_reexecuted(ledger, monkeypatch):
         assert retry.value.status_code == 409
         assert invocation.await_count == 1
     asyncio.run(scenario())
+
+
+def test_computer_opt_in_binds_durable_request_fingerprint():
+    from agent_platform.first_party_chat import ChatInput,_fingerprint
+    from uuid import uuid4
+    rid=uuid4()
+    legacy=ChatInput(message="compute",request_id=rid)
+    consent=ChatInput(message="compute",request_id=rid,allow_computer=True)
+    assert _fingerprint(legacy)!=_fingerprint(consent)
+    assert _fingerprint(legacy)==_fingerprint(ChatInput(message="compute",request_id=rid,allow_computer=False))
