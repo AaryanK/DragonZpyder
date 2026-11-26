@@ -30,7 +30,7 @@ STATIC = {
     "/mesh.js", "/mesh.css", "/workspace.css", "/ui-v1.css", "/chat.html", "/privacy.html",
     "/terms.html", "/robots.txt", "/sitemap.xml", "/script.js",
     "/app.webmanifest", "/app-icon-192.png", "/app-icon-512.png",
-    "/brand-icon.png", "/brand-logo.png", "/brand-operly.png",
+    "/brand-icon.png", "/brand-logo.png", "/brand-operly.png", "/dz-mark.svg", "/favicon-16.png", "/favicon-32.png",
 }
 HOP_HEADERS = {"connection", "transfer-encoding", "content-length", "host",
                "content-encoding", "keep-alive", "upgrade", "proxy-connection"}
@@ -413,7 +413,7 @@ async def dispatch(path: str, request: Request):
     if request.method in ("GET", "HEAD") and file_route in STATIC:
         if file_route in ("/index.html", "/app.html", "/account.html",
                           "/app.webmanifest", "/app-icon-192.png", "/app-icon-512.png",
-                          "/brand-icon.png", "/brand-logo.png", "/brand-operly.png"):
+                          "/brand-icon.png", "/brand-logo.png", "/brand-operly.png", "/dz-mark.svg", "/favicon-16.png", "/favicon-32.png"):
             target = DIST / file_route.lstrip("/")
             if not target.is_file():
                 return JSONResponse({"detail": {"code": "FRONTEND_UNAVAILABLE",
@@ -424,7 +424,7 @@ async def dispatch(path: str, request: Request):
         if target.is_file():
             media_types = {".html": "text/html", ".js": "text/javascript", ".css": "text/css",
                            ".xml": "application/xml", ".txt": "text/plain",
-                           ".webmanifest": "application/manifest+json", ".png": "image/png"}
+                           ".webmanifest": "application/manifest+json", ".png": "image/png", ".svg": "image/svg+xml"}
             return FileResponse(target, media_type=media_types.get(target.suffix),
                                 headers={"cache-control": "no-store" if target.suffix in
                                          (".html", ".js", ".css") else "public, max-age=300"})
