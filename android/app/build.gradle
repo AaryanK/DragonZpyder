@@ -1,11 +1,5 @@
 plugins { id 'com.android.application'; id 'org.jetbrains.kotlin.android'; id 'org.jetbrains.kotlin.plugin.compose' }
 android {
-    // Keep the required source navigation guides out of AAPT's resource inputs.
-    // Preserve the SDK's default ignore patterns and add only the guide filename.
-    androidResources {
-        ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:<dir>_*:!CVS:!thumbs.db:!picasa.ini:!*~:!README.md'
-    }
-
     namespace 'xyz.dragonzpyder.android'
     compileSdk 36
     buildFeatures { compose true }

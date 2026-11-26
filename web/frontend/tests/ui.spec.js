@@ -180,3 +180,35 @@ test("identical legacy and Kernel approval IDs render once with Kernel authority
   await page.locator("#approval-list .reject-btn").click();
   await expect.poll(() => decisionPath).toBe("/api/kernel/personal/approvals/" + approval.id + "/decision");
 });
+
+test("V2 phone shell has compact header, unique connections entry and profile appearance", async ({page}) => {
+  for (const theme of ["light","dark"]) {
+    await page.evaluate(mode=>document.documentElement.dataset.workspaceTheme=mode,theme);
+    await page.setViewportSize({width:360,height:640});
+    const header=await page.locator(".workspace-head").boundingBox();
+    expect(header.height).toBeLessThanOrEqual(60);
+    await expect(page.getByRole("button",{name:"New conversation"})).toBeVisible();
+    await expect(page.locator("#workspace-theme-toggle")).toBeHidden();
+    await expect(page.locator(".sidebar button").filter({hasText:"Connections & tools"})).toHaveCount(1);
+    await page.locator(".prompt-chip").last().scrollIntoViewIfNeeded();
+    const chip=await page.locator(".prompt-chip").last().boundingBox();
+    const composer=await page.locator(".composer-wrap").boundingBox();
+    expect(chip.y+chip.height).toBeLessThanOrEqual(composer.y+1);
+  }
+  await page.locator("#profile-button").click();
+  await expect(page.getByRole("button",{name:"Appearance"})).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#profile-menu")).toBeHidden();
+});
+
+test("versioned local appearance preferences use bounded size and motion settings",async({page})=>{
+  await page.evaluate(()=>{
+    localStorage.setItem("dragonzpyder:ui-preferences:v1",JSON.stringify({version:1,theme:"dark",density:"compact",textSize:"extra-large",reducedMotion:true,arbitraryCss:"body{display:none}"}));
+    localStorage.setItem("dragonzpyder:workspace-theme","dark");
+  });
+  await page.reload();
+  await expect(page.locator("html")).toHaveAttribute("data-dz-density","compact");
+  await expect(page.locator("html")).toHaveAttribute("data-dz-text-size","extra-large");
+  await expect(page.locator("html")).toHaveAttribute("data-dz-reduced-motion","true");
+  await expect(page.locator("#composer")).toBeVisible();
+});

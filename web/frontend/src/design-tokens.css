@@ -1,0 +1,16 @@
+/* V2 semantic palette. Shared by Personal, account, capability center and admin.
+   No feature flags or authorization are encoded in presentation tokens. */
+:root {
+ --dz-shell-bg:#141415;--dz-shell-surface:#1d1d20;--dz-shell-raised:#27272a;
+ --dz-shell-line:#38383d;--dz-shell-text:#f4f3f1;--dz-shell-muted:#a1a1aa;
+ --dz-shell-accent:#ee814d;--dz-shell-on-accent:#1b130e;--dz-shell-selected:#302621;
+}
+html[data-workspace-theme="light"] {
+ --dz-shell-bg:#fafaf9;--dz-shell-surface:#fff;--dz-shell-raised:#f0f0ee;
+ --dz-shell-line:#dcdcd9;--dz-shell-text:#202022;--dz-shell-muted:#64646b;
+ --dz-shell-accent:#b8431b;--dz-shell-on-accent:#fff;--dz-shell-selected:#f4e6dd;
+}
+
+:root {--dz-font:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;--dz-space:4px;--dz-radius-control:8px;--dz-radius-panel:16px;--dz-target:44px}
+html[data-dz-reduced-motion="true"] *,html[data-dz-reduced-motion="true"] *::before,html[data-dz-reduced-motion="true"] *::after {animation-duration:.01ms!important;transition-duration:.01ms!important;scroll-behavior:auto!important}
+@media(prefers-reduced-motion:reduce){html {scroll-behavior:auto}}

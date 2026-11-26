@@ -87,6 +87,24 @@ class DocumentationTests(unittest.TestCase):
         self.assertIn("api/new.py", gate.inventory_difference(self.root)[0])
         self.assertIn("api", gate.inventory_difference(self.root)[2])
 
+    def test_android_resource_directories_use_parent_guide(self):
+        resource = "android/app/src/main/res/drawable/icon.xml"
+        guide = "android/app/src/main/res/CODE_MAP.md"
+        self.write(resource, "<vector/>")
+        self.write(guide, "# Resource inventory")
+        inventory = "docs/codebase/FILE_INDEX.md"
+        paths = index.tracked(self.root)
+        self.write(inventory, "\n".join("[file](../../" + p + ")" for p in paths + [resource, guide, inventory]))
+        self.commit()
+        absent, stale, guides = gate.inventory_difference(self.root)
+        self.assertEqual(absent, [])
+        self.assertEqual(stale, [])
+        self.assertNotIn("android/app/src/main/res/drawable", guides)
+        self.assertIn("android/app/src/main", guides)
+        (self.root / guide).unlink()
+        self.commit()
+        self.assertIn("android/app/src/main/res/drawable", gate.inventory_difference(self.root)[2])
+
     def test_documentation_only(self):
         self.write("README.md", "# Updated fixture\n")
         self.commit()

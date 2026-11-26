@@ -1,3 +1,4 @@
+import { UiIcon } from "./UiIcon.jsx";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
@@ -26,6 +27,7 @@ const COMMANDS = [
   { title: "Open workspace navigation", hint: "Navigate", words: "agents jobs projects memory files automations", run: openWorkspace },
   { title: "Connected apps", hint: "Connections", words: "google canva account tools providers", run: () => openCenter("connections") },
   { title: "Discover personal tools", hint: "Capabilities", words: "functions tool catalog capabilities", run: () => openCenter("capabilities") },
+  { title: "Tasks and goals", hint: "Automation", words: "scheduled jobs goals execution", run: () => openCenter("tasks") },
   { title: "Your workspaces", hint: "Scopes", words: "workspace memberships business", run: () => openCenter("workspaces") },
   { title: "Account and sign-in", hint: "Settings", words: "account identity password settings", run: () => { window.location.href = "/account"; } },
 ];
@@ -140,7 +142,7 @@ export function SidebarToggle() {
   return <button className="dz-sidebar-toggle" type="button" onClick={toggle}
     aria-label={expanded ? "Collapse sidebar" : "Expand sidebar"}
     title={expanded ? "Hide sidebar" : "Show sidebar"} aria-expanded={expanded}
-    aria-controls="sidebar">☷</button>;
+    aria-controls="sidebar"><UiIcon name="panel"/></button>;
 }
 
 export function CommandPalette() {
@@ -302,7 +304,7 @@ export function QuickAddMenu({ camera }) {
   return <div ref={parent} className="dz-add-wrap">
     <button type="button" id="dz-add-toggle" className="dz-add-button" title="Add a file, photo, or screen"
       aria-expanded={open} aria-controls="dz-add-menu" aria-haspopup="true"
-      onClick={() => setOpen(value => !value)} aria-label="Open attachment and input menu">＋</button>
+      onClick={() => setOpen(value => !value)} aria-label="Open attachment and input menu"><UiIcon name="plus"/></button>
     <div className="dz-add-menu" id="dz-add-menu" role="group" aria-label="Input options" hidden={!open}>
       <div className="dz-menu-label">Add to this conversation</div>
       <label id="mesh-file-label" className="dz-menu-action" role="button" tabIndex={open ? 0 : -1}
@@ -330,7 +332,7 @@ const HUB_SECTIONS = [
   { title: "Business workspaces", icon: "▦", status: "Available", detail: "View the workspaces attached to your account.", action: () => openCenter("workspaces") },
   { title: "Models", icon: "✦", status: "Available in Mesh", detail: "Switch to AI Mesh to select a supported model and see its pricing.", action: () => document.getElementById("mesh-switch")?.focus() },
   { title: "Agents", icon: "◇", status: "Integration planned", detail: "Agent-team configuration and orchestration are not wired into this chat yet." },
-  { title: "Jobs & automations", icon: "◷", status: "Preview", detail: "See the status of Personal task UI integration without claiming unreleased execution.", action: () => openCenter("tasks") },
+  { title: "Jobs & automations", icon: "◷", status: "View status", detail: "Read your Personal goals and execution history where the current runtime supports them.", action: () => openCenter("tasks") },
   { title: "Projects & files", icon: "▤", status: "Planned", detail: "Permanent projects and a cross-chat artifact library are not yet released." },
   { title: "Memory", icon: "◈", status: "Planned", detail: "A dedicated memory review and controls page is not yet available." },
 ];

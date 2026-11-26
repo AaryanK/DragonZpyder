@@ -22,3 +22,13 @@ Read [repository instructions](../../../AGENTS.md) and [codebase navigation](../
 | [`voice-canvas-renderer.js`](voice-canvas-renderer.js) | Navigation hint: voice canvas renderer; source behavior not independently reviewed. | Indexed |
 | [`voice-orb.css`](voice-orb.css) | Stylesheet: voice orb; inspect selectors and importing page. | Indexed |
 | [`workspace-center.css`](workspace-center.css) | Stylesheet: workspace center; inspect selectors and importing page. | Indexed |
+
+## V2 foundation
+
+- `dz-mark.svg`: canonical monogram consumed by the desktop asset build and Android resource generation.
+- `UiIcon.jsx`: outline icon geometry, used by the Personal shell and workspace controls.
+- `PersonalTemplate.jsx`: compact shell; preserves controller IDs. `web/app.js` still owns identity and chat capability presentation.
+
+`NativeGoals.jsx` renders first-party goal list, wake counts, receipts and explicit cancellation through the existing owner-scoped API. `NativeMcpCenter.jsx` provides the native connections/goals navigation; no legacy execution fallback.
+
+V2 shared tokens live in `design-tokens.css`; `ui-preferences.js` defines a versioned allowlisted browser-local presentation contract and `AppearanceSettings.jsx` is its user-facing editor. Account synchronization and agent-mediated updates require a separate authenticated API, preview/approval and rollback contract.

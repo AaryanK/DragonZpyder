@@ -7,7 +7,7 @@ Source baseline: [d38aa819af86](https://github.com/AaryanK/DragonZpyder/tree/d38
 - [web/Dockerfile](../../web/Dockerfile) builds and tests React/Vite with Node 22, then serves it through Python FastAPI. [web/main.py](../../web/main.py) owns dispatch, security headers, native API forwarding, compatibility Operly forwarding and admin access. [web/frontend/src/main.jsx](../../web/frontend/src/main.jsx) hydrates or mounts the React app; [pages.jsx](../../web/frontend/src/pages.jsx) selects page and compatibility controllers. [web/app.js](../../web/app.js) still owns important transitional chat state and request logic.
 - [api/Dockerfile](../../api/Dockerfile) starts the non-root Uvicorn service. [api/main.py](../../api/main.py) registers identity, first-party chat/history/voice, MCP and Operly bridge routers. Its lifespan owns service state, including gated runtime and MCP manager initialization. [provider_gateway.py](../../api/provider_gateway.py) handles provider transport; the gateway is not a client-side agent.
 - [worker.py](../../api/agent_platform/worker.py) is a separate Hatchet process. It checks enablement and worker approval, registers ping and bounded job tasks, plus conditional monitor, Personal wake, execution graph, native canary, goal controller and Operly dispatch tasks. Import/registration does not create a user schedule.
-- [src/dragonzpyder](../../src/dragonzpyder/) is a thin packaged CLI/client, not the FastAPI harness. The root pyproject registers its CLI. Android was absent from the original baseline but is now tracked in [android/](../../android/), as of the synchronization below.
+- [src/dragonzpyder](../../src/dragonzpyder/) is a thin packaged CLI/client, not the FastAPI harness. The root pyproject registers its CLI. No Android source tree appears in this baseline; do not assume its implementation is here.
 
 ## 2. Personal chat, from request to result
 
@@ -69,10 +69,9 @@ The file inventory now records source-inspected cross-cutting modules for artifa
 
 The checkout-specific generated directory contains an index, a page for every tracked file, folder indexes, and a flat symbol map. Static references and related tests are candidates, not exhaustive dynamic dependencies. Use human-maintained change records and curated summaries to explain actual behavior.
 
+## Frontend V2 foundation
 
-## Native Android synchronization (2026-11-26)
-
-The native client is now in [android/](../../android/); see [Android code map](../../android/CODE_MAP.md) for source-level entrypoints, test references, and capability boundaries. It is an Activity/Compose client of the shared DragonZpyder API, not a separate harness. The first-party route policy, cookie isolation, credential challenge flow, request ledger/streaming, file receipt validation and foreground voice lifecycle must be verified against their actual server endpoints. The older Android README does not establish current rollout; build metadata currently declares 0.9.2. The API and web authentication/capability contracts continue to evolve; inspect actual flags and deployed SHA before claims.
+`web/frontend/src/dz-mark.svg` is the local brand master. `web/frontend/scripts/prepare-desktop.mjs` produces web/installation rasters; `android/prepare-brand.sh` produces the native vector. The Personal React shell uses `UiIcon.jsx` and V2 semantic shell tokens in `web/ui-v1.css`. The existing `web/app.js` adapter requests authenticated `/dz/identity/v1/me` for optional display name metadata and never uses it to grant authorization. Native chat capability remains backend-owned; unavailable chat retains drafts and disables send. No provider avatar claim, runtime flag changes or deployment implied.
 
 ## Integrated V4 candidate paths
 

@@ -7,6 +7,7 @@ test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
     Object.defineProperty(navigator, "mediaDevices", { configurable:true, value:{getUserMedia:() => new Promise(() => {})} });
   });
+  await page.route("**/dz/status", route=>route.fulfill({json:{web_cutover_enabled:false}}));
   await page.route("**/api/**", async route => {
     const path = new URL(route.request().url()).pathname;
     let body = {};
@@ -20,6 +21,7 @@ test.beforeEach(async ({ page }) => {
   }));
   await page.goto("/app");
   await expect(page.locator("#app-shell")).toBeVisible();
+  await expect(page.locator("#companion-open")).toBeVisible();
 });
 
 test("React voice controls surround the original uploaded fluid canvas, not a copied iframe", async ({ page }) => {

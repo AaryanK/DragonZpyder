@@ -1,22 +1,17 @@
 /**
- * Build authentic brand assets directly from the published DragonZpyder-Landing
- * repository, pinned to a reviewed commit and checked against Git blob hashes.
- *
- * No generated replacement spider/logo, and no offline service worker.
- * The exact same brand assets are served by FastAPI after the Vite build.
+ * Generate DragonZpyder icons from the local SVG master.
+ * Operly retains its independently pinned image. No offline service worker.
  */
 import { createHash } from "node:crypto";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { mkdirSync, writeFileSync, copyFileSync } from "node:fs";
+import { mkdirSync, writeFileSync, copyFileSync, readFileSync } from "node:fs";
 import { PNG } from "pngjs";
 
 const dist = resolve(dirname(fileURLToPath(import.meta.url)), "../../dist");
 const commit = "76009b2b88c46ae2e9e1d0cb543345a19f2ef71c";
 const base = "https://raw.githubusercontent.com/AaryanK/DragonZpyder-Landing/"+commit+"/";
 const assets = [
-  { name: "favicon.png", dest: "brand-icon.png", sha: "0c0c18b561ea8ed2dcfc57328d62e6bba69d247d", maxBytes: 700_000 },
-  { name: "logo.png", dest: "brand-logo.png", sha: "507747470707d1d2b821ea91538c14125f3ea257", maxBytes: 3_000_000 },
   { name: "operly_logo.png", dest: "brand-operly.png", sha: "46d62298df18aecc16aac9caf4e17475d080db5d", maxBytes: 2_000_000 },
 ];
 const PNG_SIGNATURE = Buffer.from([137,80,78,71,13,10,26,10]);
@@ -40,23 +35,39 @@ async function download(asset) {
   }
   throw lastError;
 }
-function resizedPng(bytes, size) {
-  const source = PNG.sync.read(bytes);
-  if (!(source.width>0 && source.height>0) || source.width>4096 || source.height>4096) {
-    throw new Error("Unsupported official favicon dimensions");
+// Constrained vector master: straight polygon subpaths, even-odd holes, solid fill.
+const master = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), "../src/dz-mark.svg"), "utf8");
+const fill = master.match(/fill="#([0-9a-fA-F]{6})"/)?.[1];
+const paths = [...master.matchAll(/<path\s+[^>]*?\bd="([^"]+)"/g)].map(match => {
+  if (!/^[MLZ0-9. -]+$/.test(match[1])) throw Error("Unsupported DZ vector command");
+  return [...match[1].matchAll(/M\s+([^Z]+)Z/g)].map(part => {
+    const n = part[1].match(/-?\d+(?:\.\d+)?/g)?.map(Number) || [];
+    if(n.length < 6 || n.length % 2) throw Error("Invalid DZ polygon");
+    return Array.from({length:n.length/2},(_,i)=>[n[i*2],n[i*2+1]]);
+  });
+});
+if (!fill || paths.length !== 2 || paths[0].length !== 2 || paths[1].length !== 1) throw Error("Invalid DZ master");
+const rgb = [0,2,4].map(i=>parseInt(fill.slice(i,i+2),16));
+function contains(poly,x,y) {
+  let inside=false;
+  for(let i=0,j=poly.length-1;i<poly.length;j=i++){
+    const [a,b]=poly[i], [c,d]=poly[j];
+    if((b>y)!==(d>y) && x<(c-a)*(y-b)/(d-b)+a) inside=!inside;
   }
-  // Preserve aspect ratio on a transparent square background; do not crop the logo.
-  const out = new PNG({ width:size, height:size, colorType:6 });
-  out.data.fill(0);
-  const factor = Math.min(size/source.width,size/source.height);
-  const width = Math.round(source.width*factor), height=Math.round(source.height*factor);
-  const xoff=Math.floor((size-width)/2),yoff=Math.floor((size-height)/2);
-  for(let y=0;y<height;y++)for(let x=0;x<width;x++){
-    const srcX=Math.min(source.width-1,Math.floor((x+0.5)*source.width/width));
-    const srcY=Math.min(source.height-1,Math.floor((y+0.5)*source.height/height));
-    const src=(srcY*source.width+srcX)*4;
-    const dst=((y+yoff)*size+x+xoff)*4;
-    for(let c=0;c<4;c++)out.data[dst+c]=source.data[src+c];
+  return inside;
+}
+function monogramPng(size, opaque=false) {
+  const out = new PNG({width:size,height:size,colorType:6});
+  const samples=4;
+  for(let y=0;y<size;y++)for(let x=0;x<size;x++){
+    let count=0;
+    for(let dy=0;dy<samples;dy++)for(let dx=0;dx<samples;dx++){
+      const px=(x+(dx+.5)/samples)*64/size, py=(y+(dy+.5)/samples)*64/size;
+      if(paths.some(polys=>polys.reduce((inside,poly)=>inside!==contains(poly,px,py),false)))count++;
+    }
+    const alpha=count/(samples*samples), i=(y*size+x)*4;
+    for(let c=0;c<3;c++)out.data[i+c]=opaque?Math.round(rgb[c]*alpha+[20,20,21][c]*(1-alpha)):rgb[c];
+    out.data[i+3]=opaque?255:Math.round(255*alpha);
   }
   return PNG.sync.write(out);
 }
@@ -70,8 +81,11 @@ for (const name of ["app.css","mesh.css","workspace.css","ui-v1.css","account.cs
 }
 const data = await Promise.all(assets.map(download));
 for(let i=0;i<assets.length;i++) writeFileSync(resolve(dist,assets[i].dest),data[i]);
-const favicon=data[0];
-for(const size of [192,512])writeFileSync(resolve(dist,"app-icon-"+size+".png"),resizedPng(favicon,size));
+writeFileSync(resolve(dist,"dz-mark.svg"),master);
+writeFileSync(resolve(dist,"brand-icon.png"),monogramPng(128));
+writeFileSync(resolve(dist,"brand-logo.png"),monogramPng(512));
+for(const size of [16,32])writeFileSync(resolve(dist,"favicon-"+size+".png"),monogramPng(size));
+for(const size of [192,512])writeFileSync(resolve(dist,"app-icon-"+size+".png"),monogramPng(size,true));
 const manifest = {
   id:"/app",name:"DragonZpyder Personal AI",short_name:"DragonZpyder",
   description:"Your DragonZpyder workspace for conversations, tools and voice.",
@@ -84,4 +98,4 @@ const manifest = {
   ]
 };
 writeFileSync(resolve(dist,"app.webmanifest"),JSON.stringify(manifest,null,2)+"\n");
-console.log("Verified official DragonZpyder and Operly logos and Windows install icons.");
+console.log("Generated local DZ vector and raster sizes; verified pinned Operly asset.");

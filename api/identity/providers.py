@@ -16,6 +16,7 @@ from typing import Any
 import httpx
 
 from .passwords import normalize_email
+from .profile_avatar import verified_avatar_url
 
 
 class ProviderProofDenied(PermissionError):
@@ -27,6 +28,7 @@ class ProviderProof:
     provider: str
     provider_subject: str
     verified_email: str | None = None
+    profile_picture: str | None = None
 
 
 def verify_google_identity_token(credential: str, *, expected_nonce: str) -> ProviderProof:
@@ -60,7 +62,8 @@ def verify_google_identity_token(credential: str, *, expected_nonce: str) -> Pro
         email = normalize_email(claims["email"])
     except (KeyError, ValueError, TypeError) as exc:
         raise ProviderProofDenied("Invalid verified Google email") from exc
-    return ProviderProof(provider="google", provider_subject=sub, verified_email=email)
+    return ProviderProof(provider="google", provider_subject=sub, verified_email=email,
+                         profile_picture=verified_avatar_url(claims.get("picture")))
 
 
 async def exchange_discord_oauth_code(

@@ -9,6 +9,104 @@ For each implementation change, add a new bullet beginning with the exact reposi
 - `tests/test_codebase_documentation.py`: Offline temporary-repository fixtures for extraction, reference hints, generated pages and change-record validation.
 - `.github/workflows/codebase-docs.yml`: Read-only CI builds/uploads the index and checks path-specific records on PRs; no deployment or automatic branch writes.
 
+## 2026-11-26 — Frontend V2 foundation
+
+- `web/frontend/src/dz-mark.svg`: Canonical flat DZ geometric monogram; two closed paths, even-odd D counter, transparent background, 64-unit viewBox; read by web and Android build scripts. Source inspection and regression coverage added where applicable; full CI, device and production checks pending.
+- `web/frontend/src/UiIcon.jsx`: Presentation-only 24-unit vector icon component; accessible names belong to controls; used by PersonalTemplate and WorkspaceControls. Source inspection and regression coverage added where applicable; full CI, device and production checks pending.
+- `web/frontend/src/PersonalTemplate.jsx`: React Personal shell: vector controls, one connections entry, mobile new chat, account appearance and unavailable-runtime notice; preserves existing adapter IDs and authorization. Source inspection and regression coverage added where applicable; full CI, device and production checks pending.
+- `web/frontend/src/WorkspaceControls.jsx`: Uses outline vector sidebar and add-menu controls; existing modal focus and permissions remain. Source inspection and regression coverage added where applicable; full CI, device and production checks pending.
+- `web/app.js`: Loads authenticated first-party display name via /me with stale-response guard, derives initials, exposes disabled-chat state while preserving drafts and existing native guard; no provider-image support yet. Source inspection and regression coverage added where applicable; full CI, device and production checks pending.
+- `web/ui-v1.css`: V2 semantic shell color tokens, compact responsive layout, theme-specific icons and composer clearance; legacy secondary surfaces not yet migrated. Source inspection and regression coverage added where applicable; full CI, device and production checks pending.
+- `web/frontend/scripts/prepare-desktop.mjs`: Reads local SVG master and generates transparent favicon/logo rasters plus opaque PWA icons; Operly asset remains pinned and hash-verified. Source inspection and regression coverage added where applicable; full CI, device and production checks pending.
+- `web/frontend/scripts/test-desktop.mjs`: Checks generated monogram vector, transparent favicon sizes and opaque installation icons; maintains manifest and pinned Operly checks. Source inspection and regression coverage added where applicable; full CI, device and production checks pending.
+- `web/main.py`: Adds exact SVG and favicon allowlist routes and SVG media type; no arbitrary static directory exposure. Source inspection and regression coverage added where applicable; full CI, device and production checks pending.
+- `web/frontend/tests/ui.spec.js`: Adds compact mobile dark/light layout, deduplicated navigation, composer clearance and profile menu checks. Source inspection and regression coverage added where applicable; full CI, device and production checks pending.
+- `web/frontend/tests/native-routing.spec.js`: Adds native identity initials and unavailable-chat submission regression with mock routes. Source inspection and regression coverage added where applicable; full CI, device and production checks pending.
+- `android/prepare-brand.sh`: Generates native Android VectorDrawable from canonical web SVG using Python stdlib; removes stale generated PNG, retains resource identifier. Source inspection and regression coverage added where applicable; full CI, device and production checks pending.
+- `android/.gitignore`: Excludes generated Android vector asset, keeping SVG as versioned source. Source inspection and regression coverage added where applicable; full CI, device and production checks pending.
+- `web/frontend/index.html`: Advertises canonical SVG and explicit 16/32 px favicon fallbacks; existing route and metadata retained. Source inspection and regression coverage added where applicable; full CI, device and production checks pending.
+- `web/frontend/app.html`: Advertises canonical SVG and explicit 16/32 px favicon fallbacks; existing route and metadata retained. Source inspection and regression coverage added where applicable; full CI, device and production checks pending.
+- `web/frontend/account.html`: Advertises canonical SVG and explicit 16/32 px favicon fallbacks; existing route and metadata retained. Source inspection and regression coverage added where applicable; full CI, device and production checks pending.
+
+## 2026-11-26 — V2 regression and history-state corrections
+
+- `web/ui-v1.css`: Restores the connections/navigation rows hidden by UI1 light-theme CSS; compact sidebar controls in both themes. Previous Chromium native-routing test failed on the hidden button; rerun pending.
+- `scripts/check_codebase_docs.py`: Android AAPT resource directories use their parent res guide; every file still requires exact inventory coverage. Narrow exception avoids invalid Markdown resource files.
+- `tests/test_codebase_documentation.py`: Fixture verifies resource parent guide requirement and normal directory coverage.
+- `web/app.js`: Distinguishes unavailable/loading/failed history from genuinely empty history, rejects stale session list responses; does not bypass backend feature gates or use Operly fallback.
+- `web/frontend/tests/native-routing.spec.js`: Asserts unavailable history is not mislabeled as empty when chat capability is gated. Existing native authorization fixture retained.
+
+Removed the three Markdown guides from Android drawable, values and xml resource folders because AAPT rejects them; their parent guide now documents the resource paths.
+
+## 2026-11-26 — V2 native tasks and capability center
+
+- `web/frontend/src/NativeGoals.jsx`: First-party goal list/detail/receipts and explicitly confirmed cancellation using owner-scoped native routes and CSRF; progress counts are service-reported, no guessed titles or scheduler creation. CI and live qualification pending.
+- `web/frontend/src/NativeMcpCenter.jsx`: Native capability center switches between connections and first-party goals, focus containment and honest loading/empty states; retains authorized MCP aliases. CI and live qualification pending.
+- `web/frontend/src/WorkspaceCenter.jsx`: Uses shared outline icons and delegates focus ownership to native center in first-party mode. CI and live qualification pending.
+- `web/frontend/src/WorkspaceControls.jsx`: Adds Tasks and goals command and accurate workflow navigation copy. CI and live qualification pending.
+- `web/frontend/src/UiIcon.jsx`: Adds tasks and tool vector geometry. CI and live qualification pending.
+- `web/frontend/src/PersonalTemplate.jsx`: Direct Personal tasks navigation opens capability center. CI and live qualification pending.
+- `web/frontend/src/workspace-center.css`: Semantic V2 surface/text/accent palette and responsive controls across native/legacy capability centers. CI and live qualification pending.
+- `web/account.js`: Broadcasts resolved native routing mode to React capability center before profile use, avoiding obsolete Operly connector routes for native accounts. CI and live qualification pending.
+- `web/frontend/tests/native-routing.spec.js`: Mock goal readback checks real wake counts, receipts, cancellation confirmation and absence of legacy requests. CI and live qualification pending.
+
+## 2026-11-26 — V2 shared design and appearance configuration
+
+- `web/frontend/src/ui-preferences.js`: Versioned, allowlisted browser-local theme, density, text size and reduced motion configuration; rejects arbitrary CSS and authority fields, preserves existing theme key. CI and production qualification pending.
+- `web/frontend/src/AppearanceSettings.jsx`: Account appearance controls apply validated local preferences immediately and expose storage failures; no account or agent permission mutation. CI and production qualification pending.
+- `web/frontend/src/design-tokens.css`: Shared neutral/accent semantic tokens and bounded motion override, imported by Personal, account and admin entrypoints. CI and production qualification pending.
+- `web/frontend/src/pages.jsx`: Applies validated browser preferences before compatibility controllers; imports shared design tokens. CI and production qualification pending.
+- `web/frontend/src/AccountTemplate.jsx`: Adds Appearance section and shared outline account icons; retains login/profile controller IDs and clarifies ownership. CI and production qualification pending.
+- `web/frontend/src/admin.jsx`: Uses shared logo and design tokens while retaining protected admin API. CI and production qualification pending.
+- `web/frontend/src/admin.css`: Applies shared semantic palette and accessible mobile controls. CI and production qualification pending.
+- `web/account.css`: Responsive V2 identity/account UI and appearance settings using the shared palette; preserves auth forms. CI and production qualification pending.
+- `web/ui-v1.css`: Moves palette definitions to shared design-token module and applies bounded chat density/text-size settings. CI and production qualification pending.
+- `web/frontend/tests/ui.spec.js`: Regression verifies validated presentation settings after reload without arbitrary styling injection. CI and production qualification pending.
+- `web/frontend/account.html`: Declares consistent default light appearance for server prerender before browser preferences load. CI and production qualification pending.
+
+## 2026-11-26 — optional native profile avatar contract
+
+- `api/identity/profile_avatar.py`: Optional Google picture URL validation, verified-provider/owner-scoped storage and bounded same-origin image readback; no arbitrary URLs, redirects or user credentials sent upstream. Offline regression coverage added; production migration and qualification pending.
+- `api/identity/schema_google_avatar_manual.sql`: Operator-only nullable profile picture column and column-level update grant; no account activation or provider authority changes. Offline regression coverage added; production migration and qualification pending.
+- `api/identity/providers.py`: Captures only allowlisted Google picture claim after signed ID token validation. Offline regression coverage added; production migration and qualification pending.
+- `api/identity/provider_http.py`: Refreshes optional avatar only after verified provider resolves an active account; gate off by default. Offline regression coverage added; production migration and qualification pending.
+- `api/identity/mobile_provider.py`: Refreshes optional avatar after verified provider account resolution; does not change ticket or session authority. Offline regression coverage added; production migration and qualification pending.
+- `api/identity/login_http.py`: Advertises avatar availability and authenticated owner-only image endpoint with private no-store policy. Offline regression coverage added; production migration and qualification pending.
+- `web/main.py`: Exact allowlist entry for native avatar endpoint; no new general proxy. Offline regression coverage added; production migration and qualification pending.
+- `api/tests/test_identity_providers.py`: Verifies trusted picture claim is retained and untrusted claims rejected. Offline regression coverage added; production migration and qualification pending.
+- `api/tests/test_identity_profile_avatar.py`: Offline tests for exact URL allowlist, no redirects, MIME/signature/byte bounds, flag and owner-link predicate. Offline regression coverage added; production migration and qualification pending.
+
+## 2026-11-26 — V2 web and Android avatar presentation
+
+- `web/app.js`: Loads the same-origin owner-scoped avatar only when authenticated profile metadata says available, resets image on account replacement and retains initials on error. Runtime migration remains gated; browser and Android qualification pending.
+- `web/account.js`: Renders owner profile avatar and identity initials, avoids inferring no memberships from native endpoint absence. Runtime migration remains gated; browser and Android qualification pending.
+- `web/frontend/src/PersonalTemplate.jsx`: Adds accessible profile image element with initial fallback. Runtime migration remains gated; browser and Android qualification pending.
+- `web/frontend/src/AccountTemplate.jsx`: Adds profile photo and initials element in account settings. Runtime migration remains gated; browser and Android qualification pending.
+- `web/ui-v1.css`: Sizes circular header profile photo and hides fallback correctly. Runtime migration remains gated; browser and Android qualification pending.
+- `web/account.css`: Styles circular account profile avatar and fallback. Runtime migration remains gated; browser and Android qualification pending.
+- `web/frontend/tests/native-routing.spec.js`: Mock image route success and failure verify owner-scoped photo and initials fallback. Runtime migration remains gated; browser and Android qualification pending.
+- `android/app/src/main/java/xyz/dragonzpyder/android/DragonApi.java`: Bounded native photo fetch from fixed first-party route, authenticated cookies only and no redirects or cache. Runtime migration remains gated; browser and Android qualification pending.
+- `android/app/src/main/java/xyz/dragonzpyder/android/MainActivity.java`: Loads optional profile name/photo on worker; checks session binding before UI publication, limits image dimensions, clears on account reset, keeps no persistent photo cache. Runtime migration remains gated; browser and Android qualification pending.
+- `android/app/src/main/java/xyz/dragonzpyder/android/NativeChatView.kt`: Displays current profile name and photo or initials in native drawer; keeps account action and theme controls. Runtime migration remains gated; browser and Android qualification pending.
+
+## 2026-11-26 — preserve live voice in V2
+
+- `web/companion.js`: Preserves existing canvas event lifecycle and browser fallback for legacy sessions; native authenticated WebRTC uses first-party JSON start/end, native CSRF, session-bound cleanup, expiry and no legacy tool delegation or automatic paid retries. CI and real audio qualification pending.
+- `web/app.js`: Enables native Live voice only for authenticated capability-bearing sessions, guards composer and keyboard launch, retains Mesh isolation. CI and real audio qualification pending.
+- `api/agent_platform/first_party_chat.py`: Adds existing voice capability signal to authenticated session response without expanding its authority. CI and real audio qualification pending.
+- `api/tests/test_first_party_chat.py`: Verifies disabled chat session also reports voice unavailable. CI and real audio qualification pending.
+- `web/frontend/src/VoiceOrb.jsx`: Retains artwork and controls unchanged; clarifies first-party audio-only conversation limitations. CI and real audio qualification pending.
+- `web/frontend/playwright.config.mjs`: Runs original orb and browser-transcription regression suites on Linux and Windows. CI and real audio qualification pending.
+- `web/frontend/tests/voice-orb.spec.js`: Explicit legacy route fixture and readiness assertion for original renderer tests. CI and real audio qualification pending.
+- `web/frontend/tests/voice-browser-fallback.spec.js`: Explicit legacy route fixture and readiness assertion for fallback regression tests. CI and real audio qualification pending.
+- `web/frontend/tests/native-routing.spec.js`: Tests native start/owner CSRF/SDP/voice orb/mute/end and absence of legacy calls using mocked transport. CI and real audio qualification pending.
+- `.github/workflows/web.yml`: Checks companion transport JavaScript syntax as part of web validation. CI and real audio qualification pending.
+
+## 2026-11-26 — short portrait voice correction
+
+- `web/frontend/src/voice-canvas-renderer.js`: Windows restored voice suite reported 33/34 passes; 360×600 captions overlapped the globe by 61px versus 36px allowed. Raise only the short portrait orb center, retaining radius, waveform energy, original art, and normal viewport geometry. The existing failure assertion is unchanged; rerun pending.
+- `web/companion.js`: Prevent a second native start while a previously submitted WebRTC reservation is settling after the UI was closed; retain server-side expiry and explicit hangup handling.
+
 ## 2026-11-26 — integrated harness reconciliation
 
 - `.github/workflows/dragonzpyder-api.yml`: Run combined graph, media, recovery, and PostgreSQL integration tests, with agent-stack dependencies for actual checkpoints. Integrated revision requires fresh CI; no live provider, storage or sandbox qualification asserted.
@@ -80,4 +178,3 @@ For each implementation change, add a new bullet beginning with the exact reposi
 - `web/mesh.css`: Honor hidden capability controls despite switch styling. Integrated revision requires fresh CI; no live provider, storage or sandbox qualification asserted.
 - `web/mesh.js`: Route native attachment drafts to the canonical chat adapter instead of legacy Mesh. Integrated revision requires fresh CI; no live provider, storage or sandbox qualification asserted.
 
-- `android/app/build.gradle`: Preserve standard Android resource exclusions and exclude only README.md navigation guides from AAPT resource processing; fixes CI resource merger errors. Fresh APK and benchmark checks required.

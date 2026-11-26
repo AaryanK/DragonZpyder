@@ -142,3 +142,114 @@ test("dedicated native login works before global web cutover", async ({page}) =>
     expect(logins).toEqual([{email:"test@example.test",password:"test-password"}]);
     expect(legacy).toEqual([]);
 });
+
+test("native identity initials are not the device name and unavailable chat cannot submit", async ({page}) => {
+  let submissions=0;
+  await page.route("**/dz/status",r=>r.fulfill({json:{web_cutover_enabled:true}}));
+  await page.route("**/dz/v2/personal/session",r=>r.fulfill({json:{authenticated:true,native_chat_enabled:false}}));
+  await page.route("**/dz/identity/v1/me",r=>r.fulfill({json:{display_name:"Ada Lovelace"}}));
+  await page.route("**/dz/v2/personal/chat",r=>{submissions++;return r.fulfill({json:{}})});
+  await page.goto("/app");
+  await expect(page.locator("#profile-initial")).toHaveText("AL");
+  await expect(page.locator("#dz-runtime-notice")).toBeVisible();
+  await expect(page.getByText("Conversation history is unavailable while the runtime is offline.")).toBeVisible();
+  await page.locator("#message-input").fill("Preserve this draft");
+  await expect(page.locator("#send-button")).toBeDisabled();
+  await expect(page.locator(".prompt-chip").first()).toBeDisabled();
+  await page.locator("#composer").evaluate(form=>form.requestSubmit());
+  await expect(page.locator("#message-input")).toHaveValue("Preserve this draft");
+  expect(submissions).toBe(0);
+});
+
+test("native Personal goals show server receipts without legacy execution", async ({page}) => {
+  const id="00000000-0000-4000-8000-000000000042",legacy=[];
+  await page.route("**/api/**",r=>{legacy.push(r.request().url());return r.fulfill({status:410,body:"legacy retired"})});
+  await page.route("**/dz/status",r=>r.fulfill({json:{web_cutover_enabled:true}}));
+  await page.route("**/dz/v2/personal/session",r=>r.fulfill({json:{authenticated:true,native_chat_enabled:true}}));
+  await page.route("**/dz/identity/v1/me",r=>r.fulfill({json:{display_name:"Ada Lovelace"}}));
+  await page.route("**/dz/v2/personal/conversations",r=>r.fulfill({json:{conversations:[]}}));
+  await page.route("**/dz/v2/personal/archive/conversations?*",r=>r.fulfill({json:{conversations:[],next_offset:null}}));
+  await page.route("**/dz/v2/personal/goals",r=>r.fulfill({json:{goals:[{goal_id:id,state:"active",completed_wakes:2,total_wakes:5,updated_at:"2026-11-26T00:00:00Z"}]}}));
+  await page.route("**/dz/v2/personal/goals/"+id,r=>r.fulfill({json:{goal_id:id,state:"active",receipts:[{sequence:1,status:"completed",tool_names:["tasks.list"],at:"2026-11-26T00:00:00Z"}]}}));
+  await page.goto("/app");
+  await page.locator(".sidebar").getByRole("button",{name:"Tasks & goals"}).click();
+  const dialog=page.getByRole("dialog",{name:"DragonZpyder Personal goals"});
+  await expect(dialog.getByText("2 of 5 scheduled wakes")).toBeVisible();
+  await dialog.getByRole("button",{name:"Details",exact:true}).click();
+  await expect(dialog.getByText("tasks.list",{exact:true})).toBeVisible();
+  await dialog.getByRole("button",{name:"Cancel goal",exact:true}).click();
+  await expect(dialog.getByRole("button",{name:"Confirm cancellation"})).toBeVisible();
+  await dialog.getByRole("button",{name:"Keep goal"}).click();
+  await expect(dialog.getByRole("button",{name:"Confirm cancellation"})).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  expect(legacy).toEqual([]);
+});
+
+test("verified avatar uses only the owner-scoped image route and falls back when unavailable",async({page})=>{
+  let missing=false,requests=0;
+  await page.route("**/dz/status",r=>r.fulfill({json:{web_cutover_enabled:true}}));
+  await page.route("**/dz/v2/personal/session",r=>r.fulfill({json:{authenticated:true,native_chat_enabled:false}}));
+  await page.route("**/dz/identity/v1/me",r=>r.fulfill({json:{display_name:"Ada Lovelace",avatar_available:true}}));
+  await page.route("**/dz/identity/v1/avatar",r=>{
+    requests++;return missing?r.fulfill({status:404,body:"unavailable"}):r.fulfill({contentType:"image/png",body:Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a8R0AAAAASUVORK5CYII=","base64")});
+  });
+  await page.goto("/app");
+  await expect(page.locator("#profile-avatar")).toBeVisible();
+  await expect(page.locator("#profile-initial")).toBeHidden();
+  expect(requests).toBe(1);
+  missing=true;await page.reload();
+  await expect(page.locator("#profile-initial")).toHaveText("AL");
+  await expect(page.locator("#profile-initial")).toBeVisible();
+  await expect(page.locator("#profile-avatar")).toBeHidden();
+});
+
+test("native realtime voice preserves orb and uses owner-scoped start and hangup",async({page})=>{
+  const starts=[],ends=[],legacy=[];
+  await page.context().addCookies([{name:"__Host-dz_csrf",value:"native-voice-csrf",secure:true,sameSite:"Lax",url:"https://127.0.0.1:5189"}]);
+  await page.addInitScript(()=>{
+    window.__voiceNative={closed:0,stopped:0};
+    const track={enabled:true,stop(){window.__voiceNative.stopped++}};
+    Object.defineProperty(navigator,"mediaDevices",{configurable:true,value:{getUserMedia:async()=>({getTracks:()=>[track],getAudioTracks:()=>[track]})}});
+    class Peer {
+      addTrack(){}
+      createDataChannel(){return {readyState:"open",close(){},send(){}}}
+      async createOffer(){return {type:"offer",sdp:"v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\n"}}
+      async setLocalDescription(o){this.localDescription=o}
+      async setRemoteDescription(a){window.__voiceNative.answer=a.sdp}
+      close(){window.__voiceNative.closed++}
+    }
+    Object.defineProperty(window,"RTCPeerConnection",{configurable:true,value:Peer});
+  });
+  await page.route("**/api/**",r=>{legacy.push(r.request().url());return r.fulfill({status:410})});
+  await page.route("**/companion/realtime",r=>{legacy.push(r.request().url());return r.fulfill({status:410})});
+  await page.route("**/dz/status",r=>r.fulfill({json:{web_cutover_enabled:true}}));
+  await page.route("**/dz/v2/personal/session",r=>r.fulfill({json:{authenticated:true,native_chat_enabled:true,voice_enabled:true}}));
+  await page.route("**/dz/identity/v1/me",r=>r.fulfill({json:{display_name:"Test User"}}));
+  await page.route("**/dz/v2/personal/conversations",r=>r.fulfill({json:{conversations:[]}}));
+  await page.route("**/dz/v2/personal/archive/conversations?*",r=>r.fulfill({json:{conversations:[],next_offset:null}}));
+  await page.route("**/dz/v2/personal/voice/start",r=>{
+    expect(r.request().headers()["x-dz-csrf"]).toBe("native-voice-csrf");
+    expect(r.request().headers()["x-csrf-token"]).toBeUndefined();
+    const body=r.request().postDataJSON();starts.push(body);
+    return r.fulfill({json:{session_id:body.session_id,sdp:body.sdp,duration_seconds:60,expires_at:new Date(Date.now()+60000).toISOString()}});
+  });
+  await page.route("**/dz/v2/personal/voice/*/end",r=>{
+    const id=new URL(r.request().url()).pathname.split("/").at(-2);ends.push(id);
+    expect(r.request().headers()["x-dz-csrf"]).toBe("native-voice-csrf");
+    return r.fulfill({json:{session_id:id,state:"closed"}});
+  });
+  await page.goto("/app");
+  await page.locator("#companion-open").click();
+  const panel=page.getByRole("dialog",{name:"Live companion"});
+  await expect(panel.locator("canvas.dz-voice-original-canvas")).toBeVisible();
+  await expect(panel.getByText("VOICE CONNECTED")).toBeVisible();
+  await panel.getByRole("button",{name:"Mute microphone"}).click();
+  await expect(panel.getByRole("button",{name:"Unmute microphone"})).toBeEnabled();
+  await panel.getByRole("button",{name:"End conversation"}).click();
+  await expect(panel).toBeHidden();
+  await expect.poll(()=>ends.length).toBe(1);
+  expect(starts.length).toBe(1);expect(ends[0]).toBe(starts[0].session_id);
+  expect(await page.evaluate(()=>window.__voiceNative.stopped)).toBe(1);
+  expect(legacy).toEqual([]);
+});

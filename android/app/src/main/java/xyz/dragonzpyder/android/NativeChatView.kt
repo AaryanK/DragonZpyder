@@ -17,6 +17,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -126,6 +130,8 @@ class NativeChatView(context: Context, private val dark: Boolean, private val ac
     var profileInitial:String
         get()=presentation.snapshot.profileInitial
         set(value){presentation.update{it.copy(profileInitial=value)}}
+    var profileName by mutableStateOf("")
+    var profilePhoto by mutableStateOf<android.graphics.Bitmap?>(null)
     private val tokens=DragonDesignTokens.of(dark)
     private val bg=tokens.background
     private val panel=tokens.surface
@@ -247,7 +253,16 @@ class NativeChatView(context: Context, private val dark: Boolean, private val ac
             }
             HorizontalDivider(color=line.copy(alpha=.55f))
             Row(Modifier.fillMaxWidth().heightIn(min=52.dp),verticalAlignment=Alignment.CenterVertically){
-                Box(Modifier.weight(1f)){DragonNavigationRow("Account","account",dark,enabled=!busy){select(actions::account)}}
+                val photo=profilePhoto
+                Box(Modifier.size(36.dp).clip(CircleShape).background(panel),contentAlignment=Alignment.Center){
+                    if(photo!=null)Image(photo.asImageBitmap(),null,Modifier.fillMaxSize(),contentScale=ContentScale.Crop)
+                    else Text(profileInitial,color=ink,fontSize=12.sp,fontWeight=FontWeight.SemiBold)
+                }
+                Spacer(Modifier.width(8.dp))
+                Column(Modifier.weight(1f)){
+                    if(profileName.isNotBlank())Text(profileName,color=ink,fontSize=12.sp,maxLines=1,overflow=TextOverflow.Ellipsis)
+                    DragonNavigationRow("Account",null,dark,enabled=!busy){select(actions::account)}
+                }
                 IconButton(onClick={select(actions::theme)},enabled=!busy,modifier=Modifier.size(DragonSizes.touch).semantics{contentDescription="Switch appearance"}){NavigationGlyph(if(dark)"sun" else "moon",ink)}
 
             }

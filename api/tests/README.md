@@ -112,6 +112,8 @@ Read [repository instructions](../../AGENTS.md) and [codebase navigation](../../
 | [`test_workflow_catalog_100.py`](test_workflow_catalog_100.py) | Test target: workflow catalog 100; inspect assertions and fixtures for the exact contract. | Indexed |
 | [`test_workspace_bridge.py`](test_workspace_bridge.py) | Test target: workspace bridge; inspect assertions and fixtures for the exact contract. | Indexed |
 
+`test_identity_profile_avatar.py`: offline verified-profile URL, bounded fetch and owner-linked persistence tests. No real Google requests.
+
 ## Integrated harness changes
 
 - [test_agent_platform_contract.py](test_agent_platform_contract.py): Check agent contract and scoped runner/gateway compatibility.

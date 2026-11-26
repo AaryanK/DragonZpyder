@@ -20,6 +20,7 @@ from .providers import (ProviderProofDenied, verify_google_identity_token,
                         exchange_discord_oauth_code, find_login_account)
 from .sessions import create_browser_session
 from .native_signup import register_native_google_account
+from .profile_avatar import save_google_avatar
 
 router = APIRouter(prefix="/identity/v1/provider", tags=["identity-provider"])
 
@@ -89,6 +90,7 @@ async def _google_login_or_signup(payload: GoogleComplete, request: Request, *, 
         async with _identity_db() as conn:
             subject = (await register_native_google_account(conn, proof)
                        if register else await find_login_account(conn, proof))
+            await save_google_avatar(conn, subject, proof)
             session = await create_browser_session(conn, authenticated_subject=subject)
     except ProviderProofDenied:
         raise HTTPException(401, "Provider authentication rejected") from None

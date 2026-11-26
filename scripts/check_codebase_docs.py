@@ -30,6 +30,14 @@ def inventory_difference(root, head="HEAD"):
     missing_guides = []
     for d in directories:
         prefix = "" if d == "." else d + "/"
+        # Android resource subdirectories accept compiled resources only, not
+        # Markdown. Require their parent res guide instead; the exact path
+        # inventory still covers every resource file.
+        resource = re.fullmatch(r"android/(?:app|benchmark)/src/[^/]+/res/[^/]+", d)
+        if resource:
+            parent = str(PurePosixPath(d).parent)
+            if {parent + "/README.md", parent + "/CODE_MAP.md"} & paths:
+                continue
         if not ({prefix + "README.md", prefix + "CODE_MAP.md"} & paths):
             missing_guides.append(d)
     return sorted(paths - indexed), sorted(indexed - paths), sorted(missing_guides)

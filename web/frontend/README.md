@@ -39,3 +39,7 @@ Do not expose provider credentials via `VITE_` variables or browser bundles.
 `/admin` is a React page but the FastAPI server refuses to serve it without a
 verified Operly account whose email is included in `DRAGONZPYDER_ADMIN_EMAILS`.
 It does **not** expose the gateway's private admin token to the browser.
+
+## Frontend V2 (first increment)
+
+The local `src/dz-mark.svg` defines the shared DZ mark. The desktop preparation script generates favicon, logo and PWA icon sizes; Android derives its vector from the same master. The compact shell uses semantic light/dark tokens and outline icons. Keep compatibility IDs until controllers are migrated. Future increments: authenticated provider avatars (requires identity contract and safe image serving), React-owned state, remaining secondary surfaces, accessible responsive and visual regression qualification. Do not enable production capability flags in a presentation PR.

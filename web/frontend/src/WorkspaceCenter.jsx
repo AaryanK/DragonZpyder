@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useModalFocus } from "./WorkspaceControls.jsx";
+import { UiIcon } from "./UiIcon.jsx";
 import { NativeMcpCenter } from "./NativeMcpCenter.jsx";
 
 /**
@@ -45,12 +46,12 @@ async function request(path, options = {}) {
   return body;
 }
 const pages = [
-  { id: "connections", label: "Connections", glyph: "⌘" },
-  { id: "capabilities", label: "Tools", glyph: "✦" },
-  { id: "approvals", label: "Approvals", glyph: "◉" },
-  { id: "workspaces", label: "Workspaces", glyph: "▦" },
-  { id: "identity", label: "Identity", glyph: "◎" },
-  { id: "tasks", label: "Tasks", glyph: "◷" },
+  { id: "connections", label: "Connections", glyph: "plug" },
+  { id: "capabilities", label: "Tools", glyph: "tools" },
+  { id: "approvals", label: "Approvals", glyph: "shield" },
+  { id: "workspaces", label: "Workspaces", glyph: "panel" },
+  { id: "identity", label: "Identity", glyph: "user" },
+  { id: "tasks", label: "Tasks", glyph: "tasks" },
 ];
 const userToolName = tool => asString(tool.display_name || tool.name || tool.id || tool.capability_id) || "Unnamed tool";
 const providerName = provider => ({google:"Google",canva:"Canva",discord:"Discord"})[provider] || provider || "Service";
@@ -79,7 +80,7 @@ export function WorkspaceCenter() {
   const [workspaceName, setWorkspaceName] = useState("");
   const [sessions, setSessions] = useState([]);
   const dialogRef = useRef(null);
-  useModalFocus(dialogRef, open);
+  useModalFocus(dialogRef, open&&!native);
 
   const routes = {
     connections: "/api/personal-connectors",
@@ -389,10 +390,10 @@ export function WorkspaceCenter() {
   if (native) return <NativeMcpCenter onClose={() => setOpen(false)} page={page}/>;
   return createPortal(<div className="dz-center-scrim" onMouseDown={e=>{if(e.target===e.currentTarget)setOpen(false);}}>
     <section ref={dialogRef} className="dz-center-shell" role="dialog" aria-modal="true" aria-labelledby="dz-center-title">
-      <aside className="dz-center-rail"><div className="dz-center-brand"><span className="dz-center-mark">✳</span><strong id="dz-center-title">Your DragonZpyder</strong></div>
+      <aside className="dz-center-rail"><div className="dz-center-brand"><img src="/brand-icon.png" alt="" width="32" height="32"/><strong id="dz-center-title">Your DragonZpyder</strong></div>
         <p className="dz-center-rail-caption">PERSONAL WORKSPACE</p>
         <nav aria-label="Capability center">{pages.map(item => <button key={item.id} className={page===item.id?"selected":""} aria-current={page===item.id?"page":undefined} onClick={()=>choose(item.id)}>
-          <span aria-hidden="true">{item.glyph}</span>{item.label}</button>)}</nav>
+          <UiIcon name={item.glyph}/>{item.label}</button>)}</nav>
         <div className="dz-center-rail-foot">Everything here is scoped to your signed-in account.</div>
       </aside>
       <div className="dz-center-content"><header className="dz-center-top"><span>Personal <span aria-hidden="true">/</span> {current?.label}</span><button type="button" onClick={()=>setOpen(false)} aria-label="Close capability center">Close <span aria-hidden="true">×</span></button></header>
