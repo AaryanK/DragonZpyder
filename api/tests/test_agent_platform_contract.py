@@ -86,3 +86,54 @@ def test_memory_search_uses_v3_scoped_filters():
     instance = PersonalMemory.__new__(PersonalMemory)
     instance._memory = Store()
     assert instance.search(user_id="synthetic-test", query="test lighthouse") == {"results": []}
+
+
+def test_versioned_agent_api_operator_pilot(monkeypatch):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from agent_platform.router import router
+
+    calls = []
+    class FakeRuntime:
+        async def run_report(self, **kwargs):
+            calls.append(kwargs)
+            return {
+                "status": "completed", "answer": "result",
+                "successful_tools": ["read_file"],
+                "objective_verified": True, "private_trace": "not exposed",
+            }
+
+    app = FastAPI()
+    app.include_router(router)
+    app.state.agent_runtime = FakeRuntime()
+    client = TestClient(app)
+    headers = {"Authorization": "Bearer " + "a" * 44}
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_SERVICE_TOKEN", "a" * 44)
+    monkeypatch.setenv("DRAGONZPYDER_AGENTS_ENABLED", "1")
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_USE_GATEWAY", "1")
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_TOOL_CALLS_ENABLED", "1")
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_PAID_TEST_MAX_KEY_LIMIT_USD", "0.50")
+    monkeypatch.delenv("DRAGONZPYDER_VERSIONED_AGENT_API_ENABLED", raising=False)
+    url = "/v1/agents/run"
+    assert client.post(url, headers=headers, json={"prompt": "hello"}).status_code == 404
+    monkeypatch.setenv("DRAGONZPYDER_VERSIONED_AGENT_API_ENABLED", "1")
+    assert client.post(url, json={"prompt": "hello"}).status_code == 401
+    assert client.post(url, headers={"Authorization": "Bearer " + "b" * 44},
+                       json={"prompt": "hello"}).status_code == 401
+    assert client.post(url, headers=headers, json={"prompt": "hello", "user_id": "other"}).status_code == 422
+    assert client.post(url, headers=headers, json={"prompt": "  "}).status_code == 422
+    assert not calls
+    monkeypatch.delenv("DRAGONZPYDER_AGENT_PAID_TEST_MAX_KEY_LIMIT_USD")
+    assert client.post(url, headers=headers, json={"prompt": "hello"}).status_code == 503
+    assert not calls
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_PAID_TEST_MAX_KEY_LIMIT_USD", "0.50")
+    first = client.post(url, headers=headers, json={"prompt": "hello"})
+    second = client.post(url, headers=headers, json={"prompt": "hello"})
+    assert first.status_code == second.status_code == 200
+    assert first.json()["id"] != second.json()["id"]
+    assert first.json()["objective_verified"] is False
+    assert "private_trace" not in first.json()
+    assert first.json()["successful_tools"] == ["read_file"]
+    assert calls[0]["service_id"] == "agent-smoke"
+    assert calls[0]["thread_id"] != calls[1]["thread_id"]
+    assert calls[0]["recover_partial_on_failure"] is True
