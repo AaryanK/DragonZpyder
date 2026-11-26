@@ -42,6 +42,8 @@ const composerWrap = document.querySelector(".composer-wrap");
 const messageInput = $("message-input");
 const sendButton = $("send-button");
 const computerConsent = $("native-computer-consent");
+const mediaConsent=$("native-media-consent"),durableConsent=$("native-durable-consent");
+function clearCapabilityConsent(){for(const item of [computerConsent,mediaConsent,durableConsent])if(item)item.checked=false;}
 const statusDot = $("status-dot");
 const statusText = $("status-text");
 const approvalCount = $("approval-count");
@@ -184,7 +186,7 @@ function setSession(session) {
   state.session = session;
   if (!session) {
     state.agentFiles=[]; renderAgentFiles();
-    if(computerConsent)computerConsent.checked=false;
+    clearCapabilityConsent();
     sessionLabel.textContent = "Personal session";
     profileInitial.textContent = "D";
     return;
@@ -242,6 +244,8 @@ async function bootstrapAuth() {
       try{state.nativeCapabilities=await api("/dz/v2/personal/status",{csrf:false});}catch{}
     }
     if(computerConsent) computerConsent.closest("label").hidden = state.nativeCapabilities.computer_enabled!==true;
+    if(mediaConsent) mediaConsent.closest("label").hidden=state.nativeCapabilities.media_enabled!==true;
+    if(durableConsent) durableConsent.closest("label").hidden=state.nativeCapabilities.durable_workflows_enabled!==true;
     window.dragonzpyderNativeMode = state.firstParty;
     window.dispatchEvent(new CustomEvent("dragonzpyder:runtime-mode", { detail: { firstParty: state.firstParty } }));
     if (!state.firstParty) {
@@ -459,7 +463,7 @@ requestAnimationFrame(syncComposerClearance);
 function clearConversationSelection() {
   if(state.sending)return;
   state.agentFiles=[]; renderAgentFiles();
-  if(computerConsent)computerConsent.checked=false;
+  clearCapabilityConsent();
   state.selectionVersion++;
   state.conversationId = null;
   setArchiveMode(false);
@@ -573,7 +577,7 @@ async function loadConversations({ restoreLatest = false } = {}) {
 async function openConversation(id, { archived = false } = {}) {
   if (!id || state.sending || (archived && !state.firstParty)) return;
   state.agentFiles=[]; renderAgentFiles();
-  if(computerConsent)computerConsent.checked=false;
+  clearCapabilityConsent();
   const version = ++state.selectionVersion;
   setArchiveMode(archived);
   if(window.dragonzpyderMesh?.isActive())window.dragonzpyderMesh.disable();
@@ -756,7 +760,7 @@ async function streamNativeRequest(body,requestId,onEvent){
   return await recoverNativeRequest(requestId);
 }
 
-async function submitViaClientAdapter(message,requestId,{files=[],allowComputer=false,onEvent}={}){
+async function submitViaClientAdapter(message,requestId,{files=[],allowComputer=false,allowMedia=false,allowDurable=false,onEvent}={}){
   const body={message};
   if(state.conversationId)body.conversation_id=state.conversationId;
   if(state.firstParty){
@@ -768,6 +772,8 @@ async function submitViaClientAdapter(message,requestId,{files=[],allowComputer=
         throw new ApiError("Isolated computer execution unavailable.",{status:503});
       body.allow_computer=true;
     }
+    if(allowMedia){if(!body.request_id||!state.nativeCapabilities.media_enabled)throw new ApiError("Media execution unavailable",{status:503});body.allow_media=true;}
+    if(allowDurable){if(!body.request_id||!state.nativeCapabilities.durable_workflows_enabled)throw new ApiError("Durable workflows unavailable",{status:503});body.allow_durable=true;}
     if(body.request_id&&state.nativeCapabilities.agent_stream_enabled)
       return await streamNativeRequest(body,requestId,onEvent);
     try{return await api("/dz/v2/personal/chat",{method:"POST",body});}
@@ -784,6 +790,8 @@ async function sendMessage(message, { companion = false, fromComposer = false, v
   if (state.archiveSelected) { showToast("Start a new chat to continue.", 4000); return; }
   const selectedFiles=state.firstParty&&fromComposer?[...state.agentFiles]:[];
   const allowComputer=Boolean(state.firstParty&&fromComposer&&computerConsent?.checked);
+  const allowMedia=Boolean(state.firstParty&&fromComposer&&mediaConsent?.checked);
+  const allowDurable=Boolean(state.firstParty&&fromComposer&&durableConsent?.checked);
   const clean = String(message || "").trim() || (selectedFiles.length?"Inspect the attached files.":"");
   if (!clean || state.sending) { if (companion) throw Error("Personal agent is busy"); return; }
   if (!state.session) { showAuth(); if (companion) throw Error("Sign in first"); return; }
@@ -806,12 +814,12 @@ async function sendMessage(message, { companion = false, fromComposer = false, v
 
   try {
     let preview="";
-    const result = voiceTurn ? await api("/dz/v2/personal/voice/"+encodeURIComponent(voiceTurn.sessionId)+"/turn",{method:"POST",body:{event_id:voiceTurn.eventId,transcript:clean}}) : await submitViaClientAdapter(clean, requestId,{files:selectedFiles,allowComputer,onEvent:event=>{
+    const result = voiceTurn ? await api("/dz/v2/personal/voice/"+encodeURIComponent(voiceTurn.sessionId)+"/turn",{method:"POST",body:{event_id:voiceTurn.eventId,transcript:clean}}) : await submitViaClientAdapter(clean, requestId,{files:selectedFiles,allowComputer,allowMedia,allowDurable,onEvent:event=>{
       if(event.type==="reset"){preview="";pending.value.textContent="";}
       if(event.type==="delta"&&typeof event.text==="string"){preview=(preview+event.text).slice(0,16000);pending.value.textContent=preview;}
       if(event.type==="phase"&&!preview&&typeof event.message==="string")pending.value.textContent=event.message.slice(0,300);
     }});
-    if(fromComposer){state.agentFiles=[];renderAgentFiles();if(computerConsent)computerConsent.checked=false;}
+    if(fromComposer){state.agentFiles=[];renderAgentFiles();clearCapabilityConsent();}
     if (result.conversation_id) state.conversationId = String(result.conversation_id);
     const blocker = result.error_code ? String(result.error_code) : "";
     const text = runtimeMessage(result);
@@ -927,7 +935,7 @@ async function sendMessage(message, { companion = false, fromComposer = false, v
       autoSizeInput();
     }
     if (error instanceof ApiError && error.code === "execution_outcome_uncertain") {
-      if(fromComposer){state.agentFiles=[];renderAgentFiles();if(computerConsent)computerConsent.checked=false;}
+      if(fromComposer){state.agentFiles=[];renderAgentFiles();clearCapabilityConsent();}
       const stable = error.details?.rfc822_message_id ? ` Stable message identity: ${error.details.rfc822_message_id}.` : "";
       pending.value.textContent = `Delivery may already have happened. Do not send again until it is reconciled.${stable}`;
     } else if (error instanceof ApiError && error.status === 401) {
