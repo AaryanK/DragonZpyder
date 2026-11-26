@@ -28,6 +28,7 @@ from identity.http_bridge import router as identity_http_bridge_router
 from identity.browser_authorize import router as identity_browser_authorize_router
 from identity.login_http import router as identity_login_router
 from identity.provider_http import router as identity_provider_router
+from identity.mobile_provider import router as identity_mobile_router
 from identity.pending_proof_http import router as identity_pending_proof_router
 from identity.native_recovery_http import router as native_recovery_router
 from identity.active_recovery_http import router as active_recovery_router
@@ -157,6 +158,7 @@ app.include_router(identity_http_bridge_router)
 app.include_router(identity_browser_authorize_router)
 app.include_router(identity_login_router)
 app.include_router(identity_provider_router)
+app.include_router(identity_mobile_router)
 app.include_router(identity_pending_proof_router)
 app.include_router(native_recovery_router)
 app.include_router(active_recovery_router)
