@@ -67,10 +67,20 @@ async def password_login(conn, *, email: str, password: str) -> BrowserSession:
     result = await asyncio.to_thread(verify_and_update_password, password, stored or DUMMY_PASSWORD_HASH)
     if not result.valid or row is None or not stored:
         raise LoginDenied("Invalid credentials")
-    if result.upgraded_hash:
-        await conn.execute(
-            """UPDATE identity_accounts SET password_hash=$1
-               WHERE subject=$2 AND password_hash=$3 AND status='active' AND source_active=TRUE""",
-            result.upgraded_hash, row["subject"], stored,
+    # Serialize credential acceptance with recovery. A hash verified before a
+    # concurrent reset is not sufficient to mint a new browser session.
+    async with conn.transaction():
+        current = await conn.fetchrow(
+            """SELECT subject,password_hash FROM identity_accounts
+               WHERE email=$1 AND status='active' AND source_active
+               AND email_verified_at IS NOT NULL FOR UPDATE""", normalized,
         )
-    return await create_browser_session(conn, authenticated_subject=row["subject"])
+        if current is None or current["subject"] != row["subject"] or current["password_hash"] != stored:
+            raise LoginDenied("Invalid credentials")
+        if result.upgraded_hash:
+            await conn.execute(
+                """UPDATE identity_accounts SET password_hash=$1
+                   WHERE subject=$2 AND password_hash=$3 AND status='active' AND source_active=TRUE""",
+                result.upgraded_hash, row["subject"], stored,
+            )
+        return await create_browser_session(conn, authenticated_subject=row["subject"])
