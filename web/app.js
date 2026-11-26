@@ -48,6 +48,7 @@ const approvalList = $("approval-list");
 const profileMenu = $("profile-menu");
 const sessionLabel = $("session-label");
 const profileInitial = $("profile-initial");
+const profileAvatar = $("profile-avatar");
 const sidebar = $("sidebar");
 const toast = $("toast");
 
@@ -180,6 +181,15 @@ function initials(value) {
 
 function setSession(session) {
   state.session = session;
+  // Clear any previous account image before requesting the current owner\x27s.
+  profileAvatar.onload = null; profileAvatar.onerror = null;
+  profileAvatar.hidden = true; profileAvatar.removeAttribute("src");
+  profileInitial.hidden = false;
+  if (session?.avatarAvailable === true) {
+    profileAvatar.onload = () => { if (state.session === session) { profileAvatar.hidden=false; profileInitial.hidden=true; } };
+    profileAvatar.onerror = () => { if (state.session === session) { profileAvatar.hidden=true; profileInitial.hidden=false; } };
+    profileAvatar.src = "/dz/identity/v1/avatar";
+  }
   if (!session) {
     sessionLabel.textContent = "Personal session";
     profileInitial.textContent = "?";
@@ -202,6 +212,7 @@ async function ensurePersonalSession() {
     void api("/dz/identity/v1/me", { csrf: false }).then(profile => {
       if (state.session !== session) return;
       session.displayName = typeof profile.display_name === "string" ? profile.display_name : "";
+      session.avatarAvailable = profile.avatar_available === true;
       setSession(session);
     }).catch(() => {});
     return session;

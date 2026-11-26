@@ -75,3 +75,16 @@ Removed the three Markdown guides from Android drawable, values and xml resource
 - `web/main.py`: Exact allowlist entry for native avatar endpoint; no new general proxy. Offline regression coverage added; production migration and qualification pending.
 - `api/tests/test_identity_providers.py`: Verifies trusted picture claim is retained and untrusted claims rejected. Offline regression coverage added; production migration and qualification pending.
 - `api/tests/test_identity_profile_avatar.py`: Offline tests for exact URL allowlist, no redirects, MIME/signature/byte bounds, flag and owner-link predicate. Offline regression coverage added; production migration and qualification pending.
+
+## 2026-11-26 — V2 web and Android avatar presentation
+
+- `web/app.js`: Loads the same-origin owner-scoped avatar only when authenticated profile metadata says available, resets image on account replacement and retains initials on error. Runtime migration remains gated; browser and Android qualification pending.
+- `web/account.js`: Renders owner profile avatar and identity initials, avoids inferring no memberships from native endpoint absence. Runtime migration remains gated; browser and Android qualification pending.
+- `web/frontend/src/PersonalTemplate.jsx`: Adds accessible profile image element with initial fallback. Runtime migration remains gated; browser and Android qualification pending.
+- `web/frontend/src/AccountTemplate.jsx`: Adds profile photo and initials element in account settings. Runtime migration remains gated; browser and Android qualification pending.
+- `web/ui-v1.css`: Sizes circular header profile photo and hides fallback correctly. Runtime migration remains gated; browser and Android qualification pending.
+- `web/account.css`: Styles circular account profile avatar and fallback. Runtime migration remains gated; browser and Android qualification pending.
+- `web/frontend/tests/native-routing.spec.js`: Mock image route success and failure verify owner-scoped photo and initials fallback. Runtime migration remains gated; browser and Android qualification pending.
+- `android/app/src/main/java/xyz/dragonzpyder/android/DragonApi.java`: Bounded native photo fetch from fixed first-party route, authenticated cookies only and no redirects or cache. Runtime migration remains gated; browser and Android qualification pending.
+- `android/app/src/main/java/xyz/dragonzpyder/android/MainActivity.java`: Loads optional profile name/photo on worker; checks session binding before UI publication, limits image dimensions, clears on account reset, keeps no persistent photo cache. Runtime migration remains gated; browser and Android qualification pending.
+- `android/app/src/main/java/xyz/dragonzpyder/android/NativeChatView.kt`: Displays current profile name and photo or initials in native drawer; keeps account action and theme controls. Runtime migration remains gated; browser and Android qualification pending.

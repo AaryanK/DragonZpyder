@@ -185,3 +185,21 @@ test("native Personal goals show server receipts without legacy execution", asyn
   await expect(dialog).toHaveCount(0);
   expect(legacy).toEqual([]);
 });
+
+test("verified avatar uses only the owner-scoped image route and falls back when unavailable",async({page})=>{
+  let missing=false,requests=0;
+  await page.route("**/dz/status",r=>r.fulfill({json:{web_cutover_enabled:true}}));
+  await page.route("**/dz/v2/personal/session",r=>r.fulfill({json:{authenticated:true,native_chat_enabled:false}}));
+  await page.route("**/dz/identity/v1/me",r=>r.fulfill({json:{display_name:"Ada Lovelace",avatar_available:true}}));
+  await page.route("**/dz/identity/v1/avatar",r=>{
+    requests++;return missing?r.fulfill({status:404,body:"unavailable"}):r.fulfill({contentType:"image/png",body:Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a8R0AAAAASUVORK5CYII=","base64")});
+  });
+  await page.goto("/app");
+  await expect(page.locator("#profile-avatar")).toBeVisible();
+  await expect(page.locator("#profile-initial")).toBeHidden();
+  expect(requests).toBe(1);
+  missing=true;await page.reload();
+  await expect(page.locator("#profile-initial")).toHaveText("AL");
+  await expect(page.locator("#profile-initial")).toBeVisible();
+  await expect(page.locator("#profile-avatar")).toBeHidden();
+});

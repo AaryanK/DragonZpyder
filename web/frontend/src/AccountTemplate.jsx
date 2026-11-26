@@ -69,7 +69,7 @@ export function AccountTemplate() {
 <nav className="dz-account-shortcuts" aria-label="Account sections">
 <a href="#dz-profile">Profile</a><a href="#dz-appearance">Appearance</a><a href="#dz-identities">Sign-in methods</a><a href="#dz-connections">Connections</a><a href="#dz-workspaces">Workspaces</a>
 </nav>
-<section className="dz-account-group" id="dz-profile"><div className="dz-account-group-heading"><div><span className="eyebrow">01 / IDENTITY</span><h3>Your profile</h3><p id="profile-email" className="muted small"></p></div><span className="dz-account-symbol"><UiIcon name="user"/></span></div>
+<section className="dz-account-group" id="dz-profile"><div className="dz-account-group-heading"><div><span className="eyebrow">01 / IDENTITY</span><h3>Your profile</h3><p id="profile-email" className="muted small"></p></div><span className="dz-account-symbol dz-account-avatar"><span id="account-profile-fallback">?</span><img id="account-profile-avatar" alt="" hidden referrerPolicy="no-referrer"/></span></div>
 <form id="profile-form" className="dz-account-form"><label htmlFor="profile-name">Display name</label><input id="profile-name" required maxLength="200" autoComplete="name"/><button className="submit" type="submit">Save changes</button></form></section>
 <AppearanceSettings/>
 <section className="dz-account-group" id="dz-identities"><div className="dz-account-group-heading"><div><span className="eyebrow">02 / ACCESS</span><h3>Sign-in methods</h3><p className="muted small">How you prove your identity when signing in.</p></div><span className="dz-account-symbol"><UiIcon name="shield"/></span></div>

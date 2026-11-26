@@ -157,11 +157,16 @@ $("profile-form").addEventListener("submit",e=>{e.preventDefault();submitAction(
 $("account-logout").addEventListener("click",async()=>{try{await request(nativeMode?"/dz/identity/v1/logout":"/api/auth/logout",{method:"POST",body:{}});window.location.replace(nativeMode?"/login":"/account")}catch(e){report(e.message,true)}});
 async function profile(){
  const p=await request(nativeMode?"/dz/identity/v1/me":"/api/auth/me");$("profile-email").textContent=p.email||"";$("profile-name").value=p.display_name||"";
+ const avatar=$("account-profile-avatar"), fallback=$("account-profile-fallback");
+ avatar.onload=null;avatar.onerror=null;avatar.hidden=true;avatar.removeAttribute("src");fallback.hidden=false;
+ const parts=String(p.display_name||"").trim().split(/\s+/).filter(Boolean);
+ fallback.textContent=parts.length?parts.slice(0,2).map(part=>Array.from(part)[0]).join("").toUpperCase():"?";
+ if(nativeMode&&p.avatar_available===true){avatar.onload=()=>{avatar.hidden=false;fallback.hidden=true;};avatar.onerror=()=>{avatar.hidden=true;fallback.hidden=false;};avatar.src="/dz/identity/v1/avatar";}
  const identities=$("linked-identities");identities.replaceChildren();
  for(const identity of (nativeMode?[{provider:p.identity_origin||"DragonZpyder"}]:(p.auth_identities||[]))){const chip=document.createElement("span");chip.className="identity";chip.textContent=identity.provider+(identity.account?" · "+identity.account:"");identities.append(chip)}
  const host=$("workspace-list");host.replaceChildren();
  const spaces=nativeMode?[]:await request("/api/auth/workspaces").catch(()=>[]);
- if(!Array.isArray(spaces)||spaces.length===0){const p=document.createElement("p");p.className="muted small";p.textContent="No business workspaces attached to this account.";host.append(p)}
+ if(!Array.isArray(spaces)||spaces.length===0){const p=document.createElement("p");p.className="muted small";p.textContent=nativeMode?"Business membership is managed separately through authorized workspace access.":"No business workspaces attached to this account.";host.append(p)}
  else for(const w of spaces){const item=document.createElement("div");item.className="workspace-line";item.textContent=w.name+" · "+w.role;host.append(item)}
  show("profile");
 }

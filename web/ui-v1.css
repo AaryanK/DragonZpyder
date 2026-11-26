@@ -1001,3 +1001,7 @@ html[data-dz-density="compact"] .sidebar-navigation {gap:2px}
 html[data-workspace-theme] .message.assistant .message-content {color:var(--dz-shell-text)}
 html[data-workspace-theme] .message.user .message-body {background:var(--dz-shell-raised);border-color:var(--dz-shell-line)}
 html[data-workspace-theme] .message.user .message-content {color:var(--dz-shell-text)}
+
+html[data-workspace-theme] #profile-button{padding:0;overflow:hidden}
+html[data-workspace-theme] #profile-avatar{width:100%;height:100%;object-fit:cover;border-radius:50%}
+html[data-workspace-theme] #profile-avatar[hidden],html[data-workspace-theme] #profile-initial[hidden]{display:none!important}
