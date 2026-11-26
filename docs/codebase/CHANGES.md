@@ -193,6 +193,52 @@ Removed the three Markdown guides from Android drawable, values and xml resource
 
 - `web/frontend/scripts/check-build.mjs`: Replaces obsolete workspace-switcher presence assertion with new-chat navigation and explicit checks that the duplicate credential form and marketing intro are absent; preserves all voice, composer, and account controller assertions. Rerun pending.
 
+## Modular voice transport
+
+- `api/agent_platform/modular_voice.py`: Room-scoped voice admission, expiry, participant token and authenticated worker turn dispatch. No live rollout or paid audio qualification performed.
+- `api/agent_platform/migrations/20261126_modular_voice.sql`: Extend native voice session ledger for modular transport, hashed room nonce and original session authority. No live rollout or paid audio qualification performed.
+- `api/agent_platform/first_party_chat.py`: Recheck scoped voice authority during canonical turns; advertise modular transport without granting extra computer, media or durable privileges. No live rollout or paid audio qualification performed.
+- `api/main.py`: Register modular voice endpoints and bounded room expiry cleanup. No live rollout or paid audio qualification performed.
+- `api/requirements.txt`: Add LiveKit server API dependency for room and token operations. No live rollout or paid audio qualification performed.
+- `api/requirements-voice.txt`: Separate streaming speech worker dependencies, no reasoning provider. No live rollout or paid audio qualification performed.
+- `api/voice_worker.py`: LiveKit worker with Deepgram Flux STT, Aura TTS and local VAD; confirmed turns delegated to canonical harness; no local LLM. No live rollout or paid audio qualification performed.
+- `api/Dockerfile.voice`: Separate streaming audio worker image with predownloaded VAD model. No live rollout or paid audio qualification performed.
+- `web/frontend/package.json`: Add LiveKit client dependency. No live rollout or paid audio qualification performed.
+- `web/frontend/src/modular-voice.js`: Connect and publish microphone, attach remote audio, receive room-scoped result events. No live rollout or paid audio qualification performed.
+- `web/companion.js`: Choose modular voice when gated; preserve existing realtime lifecycle as optional path. No live rollout or paid audio qualification performed.
+- `web/app.js`: Expose modular capability and refresh canonical chat history on returned voice results without resubmission. No live rollout or paid audio qualification performed.
+- `api/tests/test_modular_voice.py`: Offline config, token restriction and authorization regression tests. No live rollout or paid audio qualification performed.
+- `.github/workflows/dragonzpyder-api.yml`: Run modular voice contracts and separate SDK import smoke checks without paid requests. No live rollout or paid audio qualification performed.
+- `api/agent_platform/first_party_voice.py`: Require an actual realtime provider call ID before admitting browser-submitted realtime transcripts; modular voice rooms exclusively use their dedicated worker authorization. Existing schema compatible; regression CI pending.
+
+## OpenRouter-only voice default candidate
+
+- `api/agent_platform/openrouter_voice.py`: Browser-owned session admission, bounded mono PCM utterances, canonical chat ledger handoff, exact committed answer segments and replay fences. OpenRouter Whisper Turbo and Kokoro are reviewed fixed defaults. Live provider and device qualification pending.
+- `api/agent_platform/migrations/20261126_openrouter_voice.sql`: Durable turn and per-segment attempt fences; no recordings or duplicated transcript storage. Live provider and device qualification pending.
+- `api/provider_gateway.py`: Trusted internal speech payloads use the existing separately capped OpenRouter media key, existing admission and redacted accounting, including generation IDs. Live provider and device qualification pending.
+- `api/main.py`: Register OpenRouter voice router and share existing provider runtime. Live provider and device qualification pending.
+- `api/agent_platform/first_party_chat.py`: Expose independent OpenRouter-only voice capability and session availability. Live provider and device qualification pending.
+- `web/main.py`: Limit utterance JSON body to 1.3 MB before native proxy buffers it. Live provider and device qualification pending.
+- `web/companion.js`: Prefer OpenRouter-only voice when enabled; preserve optional LiveKit/realtime transport and lifecycle. Live provider and device qualification pending.
+- `web/app.js`: Expose OpenRouter voice capability to existing voice UI. Live provider and device qualification pending.
+- `web/frontend/src/openrouter-voice.js`: Local AudioWorklet microphone capture, energy VAD with pre-roll, 16 kHz WAV resampling, bounded one-at-a-time turns, prefetch one committed speech segment and stop audio on interruption. Live provider and device qualification pending.
+- `api/tests/test_openrouter_voice.py`: Offline WAV, modality, session authority, capped key and redacted metering contracts. Live provider and device qualification pending.
+- `web/frontend/scripts/test-openrouter-voice.mjs`: Offline WAV encoding, silence/pause and short-noise detector checks. Live provider and device qualification pending.
+- `web/frontend/package.json`: Run local speech detector and WAV tests with frontend test suite. Live provider and device qualification pending.
+- `.github/workflows/dragonzpyder-api.yml`: Run OpenRouter-only voice tests with offline API contracts. Live provider and device qualification pending.
+- `api/tests/test_openrouter_voice.py`: Exercise actual PostgreSQL migration, duplicate utterance identity, no paid replay, segment claim, cross-owner denial and session closure with scripted gateway/harness.
+- `.github/workflows/dragonzpyder-api.yml`: Include OpenRouter voice PostgreSQL fixture in disposable database integration job.
+
+## Transport-independent voice session contract
+
+- `api/agent_platform/openrouter_voice.py`: Introduce provider-neutral session endpoints, explicit bridge delegation and PCM/G.711 normalization; reuse existing speech providers and canonical request ledger. Offline CI pending; no live transport proof.
+- `api/agent_platform/migrations/20261126_openrouter_voice.sql`: Persist source metadata and unique hashed session-bound bridge grants; revoke on closure. Offline CI pending; no live transport proof.
+- `api/main.py`: Require bounded length-framed direct voice input before JSON parsing. Offline CI pending; no live transport proof.
+- `web/main.py`: Bound provider-neutral and legacy utterance proxy bodies to accommodate 48 kHz stereo PCM. Offline CI pending; no live transport proof.
+- `web/companion.js`: Use neutral session admission and closure endpoints. Offline CI pending; no live transport proof.
+- `web/frontend/src/openrouter-voice.js`: Use shared neutral turn and speech endpoint. Offline CI pending; no live transport proof.
+- `api/tests/test_openrouter_voice.py`: Add native PCM/telephone codec fixtures and bridge grant ownership and authority tests. Offline CI pending; no live transport proof.
+
 ## 2026-11-26 — Android harness and appearance parity
 
 - `android/app/src/main/java/xyz/dragonzpyder/android/DragonApi.java`: Reads computer/media/durable/voice-agent capability flags without legacy fallback; ledger and streaming prerequisites. CI/device qualification pending.

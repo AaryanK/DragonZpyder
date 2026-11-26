@@ -831,3 +831,25 @@ These entries reconcile paths added after the documented baseline; Indexed descr
 | [`apps/sandbox_runner/server.mjs`](../../apps/sandbox_runner/server.mjs) | Authenticate signed scoped VM requests, isolate networking, transfer bounded result files and serialize operations. | Reviewed source; pending integrated validation |
 | [`apps/sandbox_runner/server_ready.mjs`](../../apps/sandbox_runner/server_ready.mjs) | Start and warm runner with readiness checks. | Reviewed source; pending integrated validation |
 | [`apps/README.md`](../../apps/README.md) | Navigation guide for isolated execution service and its gated protocol. | Reviewed source; pending integrated validation |
+
+## Modular voice additions
+
+| File | Purpose | Evidence |
+| --- | --- | --- |
+| [`api/agent_platform/modular_voice.py`](../../api/agent_platform/modular_voice.py) | Room-scoped voice admission, expiry, participant token and authenticated worker turn dispatch. | Reviewed |
+| [`api/agent_platform/migrations/20261126_modular_voice.sql`](../../api/agent_platform/migrations/20261126_modular_voice.sql) | Extend native voice session ledger for modular transport, hashed room nonce and original session authority. | Reviewed |
+| [`api/requirements-voice.txt`](../../api/requirements-voice.txt) | Separate streaming speech worker dependencies, no reasoning provider. | Reviewed |
+| [`api/voice_worker.py`](../../api/voice_worker.py) | LiveKit worker with Deepgram Flux STT, Aura TTS and local VAD; confirmed turns delegated to canonical harness; no local LLM. | Reviewed |
+| [`api/Dockerfile.voice`](../../api/Dockerfile.voice) | Separate streaming audio worker image with predownloaded VAD model. | Reviewed |
+| [`web/frontend/src/modular-voice.js`](../../web/frontend/src/modular-voice.js) | Connect and publish microphone, attach remote audio, receive room-scoped result events. | Reviewed |
+| [`api/tests/test_modular_voice.py`](../../api/tests/test_modular_voice.py) | Offline config, token restriction and authorization regression tests. | Reviewed |
+
+## OpenRouter-only voice additions
+
+| File | Purpose | Evidence |
+| --- | --- | --- |
+| [`api/agent_platform/openrouter_voice.py`](../../api/agent_platform/openrouter_voice.py) | Browser-owned session admission, bounded mono PCM utterances, canonical chat ledger handoff, exact committed answer segments and replay fences. OpenRouter Whisper Turbo and Kokoro are reviewed fixed defaults. | Reviewed |
+| [`api/agent_platform/migrations/20261126_openrouter_voice.sql`](../../api/agent_platform/migrations/20261126_openrouter_voice.sql) | Durable turn and per-segment attempt fences; no recordings or duplicated transcript storage. | Reviewed |
+| [`web/frontend/src/openrouter-voice.js`](../../web/frontend/src/openrouter-voice.js) | Local AudioWorklet microphone capture, energy VAD with pre-roll, 16 kHz WAV resampling, bounded one-at-a-time turns, prefetch one committed speech segment and stop audio on interruption. | Reviewed |
+| [`api/tests/test_openrouter_voice.py`](../../api/tests/test_openrouter_voice.py) | Offline WAV, modality, session authority, capped key and redacted metering contracts. | Reviewed |
+| [`web/frontend/scripts/test-openrouter-voice.mjs`](../../web/frontend/scripts/test-openrouter-voice.mjs) | Offline WAV encoding, silence/pause and short-noise detector checks. | Reviewed |

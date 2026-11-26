@@ -1,0 +1,2 @@
+livekit-agents[deepgram,silero]>=1.8.12,<2
+httpx>=0.28,<1
