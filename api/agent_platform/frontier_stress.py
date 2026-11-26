@@ -230,6 +230,13 @@ STARTUP_TIMEOUT_S = 30
 CLEANUP_TIMEOUT_S = 15
 
 
+def case_thread_id(case_id: str) -> str:
+    """Unique, case-identifiable checkpoint thread; never reuse between trials."""
+    if case_id not in {case["id"] for case in load_suite()}:
+        raise ValueError("Unknown long-horizon case")
+    return case_id.lower() + "-" + uuid4().hex[:20]
+
+
 async def run_live_case(case_id: str) -> dict:
     """Operator-triggered ONE-case diagnostic, never automated by CI or boot."""
     if not live_eval_enabled():
@@ -265,7 +272,7 @@ async def run_live_case(case_id: str) -> dict:
             # Executing them can still measure *honesty* and partial progress.
             report = await asyncio.wait_for(runtime.run_report(
                 service_id="frontier-stress",
-                thread_id="f10-" + uuid4().hex[:20],
+                thread_id=case_thread_id(case_id),
                 prompt=case["prompt"],
                 recover_partial_on_failure=True,
             ), timeout=240)
