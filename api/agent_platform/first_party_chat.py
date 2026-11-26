@@ -475,13 +475,67 @@ async def _invoke_cancellable(agent, inputs, config, db, user, request_id, emit)
                 pass
 
 
+# Graph supersteps include middleware overhead, not just model calls.
+# Match the workspace repair while retaining model/tool/time/spend limits.
+NATIVE_RECURSION_LIMIT = 128
+
+
+def _exact_turn_state(values, turn_id, prompt, *, require_answer):
+    from .execution_contract import exact_turn_state
+    try:
+        return exact_turn_state(values,turn_id=turn_id,prompt=prompt,require_answer=require_answer)
+    except ValueError as exc:
+        raise RuntimeError("Current turn unavailable") from exc
+
+
+async def _run_checkpointed_turn(agent, prompt, config, db, user, request_id, emit):
+    """Recover bounded failures without executing the request twice."""
+    from .runtime import (controlled_termination_reason, summarize_agent_result,
+                          summarize_checkpoint_evidence)
+    from .personal_bridge import inference_failure_code
+
+    turn_id = str(uuid4())
+    reason = None
+    try:
+        result = await _invoke_cancellable(agent, {
+            "messages": [{"role": "user", "content": prompt, "id": turn_id}],
+        }, config, db, user, request_id, emit)
+        _exact_turn_state(result, turn_id, prompt, require_answer=True)
+    except HTTPException:
+        # Explicit cancellation and authorization errors are not resumptions.
+        raise
+    except Exception as error:
+        reason = controlled_termination_reason(error)
+        if reason is None and isinstance(error, TimeoutError):
+            reason = "execution_deadline"
+        if reason is None and inference_failure_code(error) == "INFERENCE_LIMIT_REACHED":
+            reason = "inference_limit_reached"
+        if reason is None:
+            raise HTTPException(503, "DragonZpyder agent execution unavailable; outcome unconfirmed") from None
+
+    try:
+        readback = await asyncio.wait_for(agent.aget_state(config), timeout=10)
+        current = _exact_turn_state(readback.values, turn_id, prompt,
+                                    require_answer=reason is None)
+        report = (summarize_checkpoint_evidence(current, termination_reason=reason)
+                  if reason else summarize_agent_result(current))
+    except Exception:
+        raise HTTPException(503, "Current agent checkpoint unavailable; outcome unconfirmed") from None
+
+    if reason and emit is not None:
+        # Remove any unfinished streamed text before sending the durable result.
+        emit({"type": "reset"})
+        emit({"type": "phase", "message": "Execution stopped; recovering checkpoint"})
+    return report
+
+
 async def _execute_chat(payload: ChatInput, request: Request, user: str, conversation_id: UUID, emit=None):
     runtime = getattr(request.app.state, "agent_runtime", None)
     if runtime is None or runtime._checkpointer is None:
         raise HTTPException(503, "Agent checkpoints unavailable")
 
     from .personal_bridge import personal_thread, execution_receipt_report
-    from .runtime import model_client, summarize_agent_result
+    from .runtime import model_client
     from .harness import build_frontier_agent
 
     from . import artifacts
@@ -510,7 +564,7 @@ async def _execute_chat(payload: ChatInput, request: Request, user: str, convers
         try:
             tools = await managed_catalog_tools(
                 manager=manager, owner=user, selected_account_ids=chosen,
-                scheduled=False,
+                scheduled=False, objective=payload.message,
             )
         except (ConnectionDenied, ValueError, RuntimeError):
             raise HTTPException(403, "MCP connection not authorized") from None
@@ -556,20 +610,11 @@ async def _execute_chat(payload: ChatInput, request: Request, user: str, convers
                 "configurable": {
                     "thread_id": personal_thread(user, str(conversation_id)),
                 },
-                "recursion_limit": 48,
+                "recursion_limit": NATIVE_RECURSION_LIMIT,
             }
-            try:
-                result = await _invoke_cancellable(agent, {
-                    "messages": [{"role": "user", "content": message}],
-                }, config, db, user, payload.request_id, emit)
-                report = summarize_agent_result(result)
-                readback = await agent.aget_state(config)
-                if not (readback.values or {}).get("messages"):
-                    raise RuntimeError("Missing durable checkpoint")
-            except HTTPException:
-                raise
-            except Exception:
-                raise HTTPException(503, "DragonZpyder agent execution unavailable") from None
+            report = await _run_checkpointed_turn(
+                agent, message, config, db, user, payload.request_id, emit,
+            )
             await db.execute(
                 """UPDATE dz_first_party_conversations SET updated_at=now()
                    WHERE id=$1 AND owner_id=$2""", conversation_id, user,
@@ -586,6 +631,8 @@ async def _execute_chat(payload: ChatInput, request: Request, user: str, convers
         "conversation_id": str(conversation_id),
         "message": report["answer"][:16000],
         "dispatch": "dragonzpyder_first_party",
+        "status": report["status"],
+        "termination_reason": report.get("termination_reason"),
         "execution_receipts": execution_receipt_report(report),
         "thread_checkpointed": True,
         "objective_verified": False,
