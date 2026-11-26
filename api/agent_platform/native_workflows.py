@@ -335,7 +335,7 @@ async def execute_phase(goal_id,app_state):
     from .harness import build_frontier_agent
     from .execution_contract import exact_turn_state
     from .personal_bridge import personal_thread
-    from .adaptive_routing import select_model
+    from .adaptive_routing import routed_model
     async with _conversation_db() as db:
         key="dz-native-workflow:"+str(goal_id)
         if not await db.fetchval("SELECT pg_try_advisory_lock(hashtextextended($1,0))",key):
@@ -399,9 +399,9 @@ async def execute_phase(goal_id,app_state):
                 return await stop("checkpoint_service_unavailable")
             recovering=row["state"]=="inflight"
             try:
-                route=select_model(phase.objective,has_tools=bool(plan.mcp_connection_ids),
-                    has_attachments=bool(attachments),durable=True)
-                model=model_client(model_override=route.model,parent_job_id=str(goal_id))
+                model,route,route_middleware=routed_model(phase.objective,model_factory=model_client,
+                    has_tools=bool(plan.mcp_connection_ids),has_attachments=bool(attachments),
+                    durable=True,parent_job_id=str(goal_id))
                 if recovering:
                     # Never dispatch a paid model or external tool after an
                     # uncertain in-flight step. Exact persisted answer only.
@@ -449,7 +449,8 @@ async def execute_phase(goal_id,app_state):
                             owner=owner,run_id=run_id,allowed_ids=selected)
                     agent=build_frontier_agent(model,runtime._checkpointer,
                         delegated_tools=delegated or None,artifact_tools=native_artifacts,
-                        computer_run=run,computer_artifacts=computer_binding)
+                        computer_run=run,computer_artifacts=computer_binding,
+                        routing_middleware=route_middleware)
                     task=asyncio.create_task(agent.ainvoke({"messages":[{"role":"user","content":prompt,"id":str(run_id)}]},config=config))
                     try:
                         deadline=asyncio.get_running_loop().time()+(180 if run else 90)
