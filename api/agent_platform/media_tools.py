@@ -154,7 +154,9 @@ def media_tools(run):
                 {"type":"image_url","image_url":{"url":"data:"+mime+";base64,"+base64.b64encode(raw).decode()}}]}],"max_tokens":768})
             return {"observation":text,"receipt":receipt,"objective_verified":False}
         except Exception:
-            raise ToolException("Vision observation unavailable or unconfirmed") from None
+            if run.blocked:
+                return {"status":"outcome_unconfirmed","objective_verified":False}
+            raise ToolException("Vision observation unavailable") from None
 
     @tool
     async def transcribe_audio(file_id:str) -> dict:
@@ -166,7 +168,9 @@ def media_tools(run):
             _,text,receipt=await run.invoke("transcribe",{"input_audio":{"data":base64.b64encode(raw).decode(),"format":fmt}})
             return {"transcript":text,"receipt":receipt,"objective_verified":False}
         except Exception:
-            raise ToolException("Transcription unavailable or unconfirmed") from None
+            if run.blocked:
+                return {"status":"outcome_unconfirmed","objective_verified":False}
+            raise ToolException("Transcription unavailable") from None
 
     @tool
     async def generate_image(prompt:str) -> dict:
@@ -175,9 +179,15 @@ def media_tools(run):
             oid,raw,receipt=await run.invoke("image",{"prompt":bounded_text(prompt,1600),"n":1})
             mime=image_mime(raw)
             ext={"image/png":"png","image/jpeg":"jpg","image/webp":"webp"}[mime]
-            return await run.publish(oid,raw,"generated-image."+ext,mime,receipt)
+            try:
+                return await run.publish(oid,raw,"generated-image."+ext,mime,receipt)
+            except Exception:
+                run.blocked=True
+                raise
         except Exception:
-            raise ToolException("Image generation or publication unconfirmed; do not blindly retry") from None
+            if run.blocked:
+                return {"status":"outcome_unconfirmed","objective_verified":False}
+            raise ToolException("Image generation unavailable; do not blindly retry") from None
 
     @tool
     async def generate_speech(text:str) -> dict:
@@ -186,9 +196,15 @@ def media_tools(run):
             payload={"input":bounded_text(text,1200),"response_format":"mp3"}
             if run.operations["speech"][1].startswith("openai/"):payload["voice"]="alloy"
             oid,raw,receipt=await run.invoke("speech",payload)
-            return await run.publish(oid,raw,"generated-speech.mp3","audio/mpeg",receipt)
+            try:
+                return await run.publish(oid,raw,"generated-speech.mp3","audio/mpeg",receipt)
+            except Exception:
+                run.blocked=True
+                raise
         except Exception:
-            raise ToolException("Speech generation or publication unconfirmed; do not blindly retry") from None
+            if run.blocked:
+                return {"status":"outcome_unconfirmed","objective_verified":False}
+            raise ToolException("Speech generation unavailable; do not blindly retry") from None
 
     items={"vision":inspect_image,"transcribe":transcribe_audio,"image":generate_image,"speech":generate_speech}
     selected=[items[k] for k in run.operations]
