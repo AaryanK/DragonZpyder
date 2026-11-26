@@ -11,8 +11,9 @@ import asyncio
 import base64
 import hashlib
 import json
+import re
 from time import monotonic
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 
 def fixture():
@@ -82,6 +83,10 @@ async def verify_computer_objective(*, model, checkpointer, run, publish_and_rea
         required = {"computer_write_file","computer_python","computer_read_file"}
         if report["status"] != "completed" or not required <= set(report["successful_tools"]):
             raise ValueError("Required actual native operations missing")
+        answer = report.get("answer", "")
+        if not isinstance(answer,str) or not re.search(
+                r"(?<![0-9])" + re.escape(expected.decode().strip()) + r"(?![0-9])", answer):
+            raise ValueError("Final answer does not report the verified integer")
         result["graph_completed"] = True
         # A model-generated assertion or earlier file read is NOT the oracle.
         exported = await run.execute("artifact.export", {"path":output_path,"max_bytes":1024})
@@ -113,3 +118,29 @@ async def verify_computer_objective(*, model, checkpointer, run, publish_and_rea
         "checkpoint_verified","cleanup_confirmed"))
     result["status"] = "verified_slice" if result["objective_verified"] else "incomplete"
     return result
+
+
+def artifact_publication_adapter(db_factory, *, owner):
+    """Adapter for the reviewed shared-artifacts service (PR #142).
+
+    Owner is fixed by authenticated operator/service context. The caller must
+    bind it to the computer grant's principal and authorize publication.
+    Separate DB leases ensure readback is an independent storage operation.
+    Fails closed until shared-artifacts integration and migration are present.
+    """
+    if not isinstance(owner,str) or not owner:
+        raise ValueError("Authenticated artifact owner required")
+
+    async def publish_and_readback(case_id, name, data):
+        from .artifacts import put, get
+        run_id = UUID(case_id)
+        async with db_factory() as db:
+            item = await put(db,owner=owner,name=name,mime="text/plain",
+                             data=data,direction="generated",run_id=run_id)
+        artifact_id = UUID(item["id"])
+        async with db_factory() as db:
+            meta, actual = await get(db,owner=owner,file_id=artifact_id)
+        if meta.get("id") != str(artifact_id) or meta.get("sha256") != hashlib.sha256(data).hexdigest():
+            raise ValueError("Stored artifact identity or digest mismatch")
+        return str(artifact_id), actual
+    return publish_and_readback
