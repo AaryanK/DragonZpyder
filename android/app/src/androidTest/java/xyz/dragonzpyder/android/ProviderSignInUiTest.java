@@ -34,7 +34,7 @@ public final class ProviderSignInUiTest {
         }
     }
 
-    @Test public void providerChoicesPresentInSignInAndSignup(){
+    @Test public void onlyGoogleProviderVisibleInSignInAndSignup(){
         try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)){
             scenario.onActivity(activity->{
                 try{
@@ -45,7 +45,7 @@ public final class ProviderSignInUiTest {
                         Set<String> labels=new HashSet<>();
                         collect(activity.getWindow().getDecorView(),labels);
                         assertTrue(labels.toString(),labels.stream().anyMatch(x->x.contains("Continue with Google")));
-                        assertTrue(labels.toString(),labels.stream().anyMatch(x->x.contains("Continue with Discord")));
+                        assertFalse(labels.toString(),labels.stream().anyMatch(x->x.contains("Continue with Discord")));
                     }
                 }catch(ReflectiveOperationException e){throw new AssertionError(e);}
             });
