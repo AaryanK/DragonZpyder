@@ -46,6 +46,57 @@ configuration is introduced. The registry is intentionally partial.
 7. Implement a native Android Compose renderer for the same portable contract.
    Preserve native controls, and do not replace Android with a WebView.
 
+## Shared UI references and live agent context
+Every shipped component should be registered, even if it is read-only or
+protected. Separate component type IDs from stable instance IDs, and use
+semantic property/action IDs rather than DOM selectors, screen coordinates
+or translated labels. Generated surfaces and repeated items require distinct
+instance IDs. References include a schema version, authorized surface/device
+scope and observed revision; identities are resolved by the trusted client
+and server, never supplied as authority by the model.
+
+The user can explicitly select or attach a component, region, message,
+artifact or authorized record as a typed reference to their next prompt.
+Support an accessible selection mode as well as pointer selection, and later
+evaluate drag-to-composer and @mention search. References are opaque handles,
+not automatic copies of underlying content or permission grants. Resolve
+their current existence, scope and authorization on each use; stale,
+ambiguous, deleted or unsupported targets produce explicit errors. Preserve
+selection meaning across layout changes and localization.
+
+Expose a compact, redacted current-surface context (route, active view,
+selected handles, device capabilities, revision and relevant layout state)
+to the existing harness at turn start. Supply scoped catalog/search and
+inspect operations for the full authorized component/property/action tree
+and on-demand details. Do not inject the entire UI tree, hidden app data or
+continuous screenshots into every model call. Send bounded, coalesced
+revision notifications while a turn is active; require readback or fresh
+inspection when a referenced revision changes. Reconnect using authoritative
+snapshots, not blind replay. Use AG-UI where its verified contract fits;
+keep reference resolution independent of the rendering transport.
+
+Proposed operations (not yet registered tools): ui.context, ui.search,
+ui.inspect, ui.preview, ui.apply and ui.readback. A patch may atomically
+address several registered instances/properties, with expected revisions.
+A single registered property is not necessarily mutable; action binding
+always uses existing capability policy and approval rules. User edits during
+execution must not be silently overwritten. Acknowledgement identifies
+the actual rendered surface/revision and applied changes, not just server
+acceptance. A disconnected device must not be reported as updated.
+
+Never serialize credential fields, auth tokens, private inputs, hidden
+records, or raw third-party markup into agent context. Treat displayed
+content and tool-provided UI descriptions as untrusted data, not privileged
+instructions. Screenshots and detailed content reads require their own
+scope/consent and redaction. Test cross-user and cross-device isolation,
+same-label repeated components, stale/deleted references, selection via
+keyboard, translated labels, concurrent edits, reconnect, multi-target
+atomic validation, protected fields and false success prevention.
+
+This section is a target contract; the initial preference registry does
+not yet provide live agent context, selection references or authenticated
+transport.
+
 ## Security boundaries
 Identity, permissions, approvals, execution receipts and reset affordances
 are not removable or agent-editable. No arbitrary HTML, CSS, JavaScript,
