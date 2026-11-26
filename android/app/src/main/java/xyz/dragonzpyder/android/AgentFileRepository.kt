@@ -15,7 +15,7 @@ internal class AgentFileRepository(private val resolver:ContentResolver,private 
             !name.isNullOrBlank() && name.length<=180 && name!="." && name!=".." &&
             name.none{it=='/'||it=='\\'||it.code<32||it.code==127||it.code in 0x202a..0x202e||it.code in 0x2066..0x2069}
         @JvmStatic fun validReceipt(file:JSONObject):Boolean =
-            file.optString("id").matches(Regex("[0-9a-f-]{36}")) &&
+            file.optString("id").matches(Regex("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")) &&
             file.optString("sha256").matches(Regex("[0-9a-f]{64}")) &&
             safeFilename(file.optString("filename"))
     }
