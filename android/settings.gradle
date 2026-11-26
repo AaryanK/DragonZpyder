@@ -7,3 +7,6 @@ dependencyResolutionManagement {
 }
 rootProject.name = 'DragonZpyder'
 include ':app'
+
+// Opt in to performance tooling; normal APK builds do not resolve benchmark dependencies.
+if (providers.gradleProperty('dzBenchmark').isPresent()) include ':benchmark'
