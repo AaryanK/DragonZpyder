@@ -13,29 +13,29 @@ Read [repository instructions](../../AGENTS.md) and [codebase navigation](../../
 | [`authorize_ui.js`](authorize_ui.js) | Navigation hint: authorize ui; source behavior not independently reviewed. | Indexed |
 | [`browser_authorize.py`](browser_authorize.py) | Browser authorization and consent UI, same-origin assets and Google sign-in page. | Reviewed |
 | [`common_passwords.txt`](common_passwords.txt) | Navigation hint: common passwords; source behavior not independently reviewed. | Indexed |
-| [`consent.py`](consent.py) | Navigation hint: consent; source behavior not independently reviewed. | Indexed |
-| [`exchange.py`](exchange.py) | Navigation hint: exchange; source behavior not independently reviewed. | Indexed |
+| [`consent.py`](consent.py) | Session-bound single-use consent interaction for the exact registered OAuth request fields. | Reviewed |
+| [`exchange.py`](exchange.py) | Atomic authorization-code and refresh exchange with OIDC nonce; consumes code and creates refresh in one transaction. | Reviewed |
 | [`grants.py`](grants.py) | Server-side authorization-code and S256 PKCE grant validation and redemption. | Reviewed |
 | [`http_bridge.py`](http_bridge.py) | Identity database/gate helpers, POST authorization and token HTTP bridge. | Reviewed |
-| [`importer.py`](importer.py) | Navigation hint: importer; source behavior not independently reviewed. | Indexed |
+| [`importer.py`](importer.py) | Strict authorized staging account/provider snapshot preparation and all-or-nothing import; no API or agent entrypoint. | Reviewed |
 | [`issuer_google_ui.js`](issuer_google_ui.js) | Navigation hint: issuer google ui; source behavior not independently reviewed. | Indexed |
 | [`login_http.py`](login_http.py) | Password login, logout, native profile lookup/update HTTP adapters. | Reviewed |
 | [`mobile_provider.py`](mobile_provider.py) | Native browser-provider start/callback/redeem with PKCE and ticket binding; provider capabilities. | Reviewed |
 | [`native_recovery_http.py`](native_recovery_http.py) | Navigation hint: native recovery http; source behavior not independently reviewed. | Indexed |
 | [`native_signup.py`](native_signup.py) | Explicit verified Google signup, without email-based linking of Operly identities. | Reviewed |
-| [`offline_transfer.py`](offline_transfer.py) | Navigation hint: offline transfer; source behavior not independently reviewed. | Indexed |
-| [`password_login.py`](password_login.py) | Navigation hint: password login; source behavior not independently reviewed. | Indexed |
-| [`passwords.py`](passwords.py) | Navigation hint: passwords; source behavior not independently reviewed. | Indexed |
+| [`offline_transfer.py`](offline_transfer.py) | Operator-only sealed encrypted packages across isolated production DB networks; private file handling and migration-role checks. | Reviewed |
+| [`password_login.py`](password_login.py) | Database-backed password login, indistinguishable failures, shared PostgreSQL rate limiting and PBKDF2-to-Argon2 upgrade. | Reviewed |
+| [`passwords.py`](passwords.py) | Pure email normalization, password policy, legacy PBKDF2 compatibility and Argon2id hash/verification. | Reviewed |
 | [`pending_proof_http.py`](pending_proof_http.py) | Navigation hint: pending proof http; source behavior not independently reviewed. | Indexed |
-| [`pending_proofs.py`](pending_proofs.py) | Navigation hint: pending proofs; source behavior not independently reviewed. | Indexed |
-| [`pending_reconciliation.py`](pending_reconciliation.py) | Navigation hint: pending reconciliation; source behavior not independently reviewed. | Indexed |
-| [`production_import.py`](production_import.py) | Navigation hint: production import; source behavior not independently reviewed. | Indexed |
-| [`provider_challenges.py`](provider_challenges.py) | Navigation hint: provider challenges; source behavior not independently reviewed. | Indexed |
-| [`provider_http.py`](provider_http.py) | Navigation hint: provider http; source behavior not independently reviewed. | Indexed |
-| [`providers.py`](providers.py) | Navigation hint: providers; source behavior not independently reviewed. | Indexed |
-| [`reconciliation.py`](reconciliation.py) | Navigation hint: reconciliation; source behavior not independently reviewed. | Indexed |
-| [`recovery_delta.py`](recovery_delta.py) | Navigation hint: recovery delta; source behavior not independently reviewed. | Indexed |
-| [`refresh.py`](refresh.py) | Navigation hint: refresh; source behavior not independently reviewed. | Indexed |
+| [`pending_proofs.py`](pending_proofs.py) | Checks migrated pending identity password or Google proof without granting session or activation. | Reviewed |
+| [`pending_reconciliation.py`](pending_reconciliation.py) | Operator-only read-only source/target reconciliation with keyed full-field snapshot receipts, not just counts. | Reviewed |
+| [`production_import.py`](production_import.py) | Operator-only scoped pending production identity import with independently approved inventory and count validation. | Reviewed |
+| [`provider_challenges.py`](provider_challenges.py) | Creates and consumes one-time browser-bound provider challenge state, binding and nonce. | Reviewed |
+| [`provider_http.py`](provider_http.py) | Browser Google/Discord challenge initiation and completion; explicit Google signup path; verifies state/nonce/binding before session. | Reviewed |
+| [`providers.py`](providers.py) | Validates Google ID tokens and Discord OAuth code exchange, looks up verified provider subject, never merges accounts by email. | Reviewed |
+| [`reconciliation.py`](reconciliation.py) | Fail-closed validation and reconciliation of authorized Operly identity exports; no database mutation or authentication. | Reviewed |
+| [`recovery_delta.py`](recovery_delta.py) | Plans and applies reviewed pending recovery additions; requires source-authority handoff/freeze before writes. | Reviewed |
+| [`refresh.py`](refresh.py) | Opaque hashed single-use refresh tokens, atomic rotation and family replay revocation. | Reviewed |
 | [`relying_party_status.py`](relying_party_status.py) | Navigation hint: relying party status; source behavior not independently reviewed. | Indexed |
 | [`router.py`](router.py) | JWKS and OIDC discovery routes. | Reviewed |
 | [`schema_active_recovery_review.sql`](schema_active_recovery_review.sql) | SQL named for schema active recovery review; inspect statements, transaction requirements and target database before use. | Indexed |
@@ -58,4 +58,4 @@ Read [repository instructions](../../AGENTS.md) and [codebase navigation](../../
 | [`sessions.py`](sessions.py) | Opaque host-only browser sessions, active-account checks, CSRF validation and revocation. | Reviewed |
 | [`source_inventory_manual.sql`](source_inventory_manual.sql) | SQL named for source inventory manual; inspect statements, transaction requirements and target database before use. | Indexed |
 | [`source_recovery_inventory_manual.sql`](source_recovery_inventory_manual.sql) | SQL named for source recovery inventory manual; inspect statements, transaction requirements and target database before use. | Indexed |
-| [`tokens.py`](tokens.py) | Navigation hint: tokens; source behavior not independently reviewed. | Indexed |
+| [`tokens.py`](tokens.py) | RS256 SigningIdentity, PKCE helpers and issuer/token signing primitives; private signing keys never reach agent context. | Reviewed |

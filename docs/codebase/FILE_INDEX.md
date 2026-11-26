@@ -204,29 +204,29 @@ First-party identity HTTP handlers, auth/session/token primitives, account migra
 | [`authorize_ui.js`](../../api/identity/authorize_ui.js) | Navigation hint: authorize ui; source behavior not independently reviewed. | Indexed |
 | [`browser_authorize.py`](../../api/identity/browser_authorize.py) | Browser authorization and consent UI, same-origin assets and Google sign-in page. | Reviewed |
 | [`common_passwords.txt`](../../api/identity/common_passwords.txt) | Navigation hint: common passwords; source behavior not independently reviewed. | Indexed |
-| [`consent.py`](../../api/identity/consent.py) | Navigation hint: consent; source behavior not independently reviewed. | Indexed |
-| [`exchange.py`](../../api/identity/exchange.py) | Navigation hint: exchange; source behavior not independently reviewed. | Indexed |
+| [`consent.py`](../../api/identity/consent.py) | Session-bound single-use consent interaction for the exact registered OAuth request fields. | Reviewed |
+| [`exchange.py`](../../api/identity/exchange.py) | Atomic authorization-code and refresh exchange with OIDC nonce; consumes code and creates refresh in one transaction. | Reviewed |
 | [`grants.py`](../../api/identity/grants.py) | Server-side authorization-code and S256 PKCE grant validation and redemption. | Reviewed |
 | [`http_bridge.py`](../../api/identity/http_bridge.py) | Identity database/gate helpers, POST authorization and token HTTP bridge. | Reviewed |
-| [`importer.py`](../../api/identity/importer.py) | Navigation hint: importer; source behavior not independently reviewed. | Indexed |
+| [`importer.py`](../../api/identity/importer.py) | Strict authorized staging account/provider snapshot preparation and all-or-nothing import; no API or agent entrypoint. | Reviewed |
 | [`issuer_google_ui.js`](../../api/identity/issuer_google_ui.js) | Navigation hint: issuer google ui; source behavior not independently reviewed. | Indexed |
 | [`login_http.py`](../../api/identity/login_http.py) | Password login, logout, native profile lookup/update HTTP adapters. | Reviewed |
 | [`mobile_provider.py`](../../api/identity/mobile_provider.py) | Native browser-provider start/callback/redeem with PKCE and ticket binding; provider capabilities. | Reviewed |
 | [`native_recovery_http.py`](../../api/identity/native_recovery_http.py) | Navigation hint: native recovery http; source behavior not independently reviewed. | Indexed |
 | [`native_signup.py`](../../api/identity/native_signup.py) | Explicit verified Google signup, without email-based linking of Operly identities. | Reviewed |
-| [`offline_transfer.py`](../../api/identity/offline_transfer.py) | Navigation hint: offline transfer; source behavior not independently reviewed. | Indexed |
-| [`password_login.py`](../../api/identity/password_login.py) | Navigation hint: password login; source behavior not independently reviewed. | Indexed |
-| [`passwords.py`](../../api/identity/passwords.py) | Navigation hint: passwords; source behavior not independently reviewed. | Indexed |
+| [`offline_transfer.py`](../../api/identity/offline_transfer.py) | Operator-only sealed encrypted packages across isolated production DB networks; private file handling and migration-role checks. | Reviewed |
+| [`password_login.py`](../../api/identity/password_login.py) | Database-backed password login, indistinguishable failures, shared PostgreSQL rate limiting and PBKDF2-to-Argon2 upgrade. | Reviewed |
+| [`passwords.py`](../../api/identity/passwords.py) | Pure email normalization, password policy, legacy PBKDF2 compatibility and Argon2id hash/verification. | Reviewed |
 | [`pending_proof_http.py`](../../api/identity/pending_proof_http.py) | Navigation hint: pending proof http; source behavior not independently reviewed. | Indexed |
-| [`pending_proofs.py`](../../api/identity/pending_proofs.py) | Navigation hint: pending proofs; source behavior not independently reviewed. | Indexed |
-| [`pending_reconciliation.py`](../../api/identity/pending_reconciliation.py) | Navigation hint: pending reconciliation; source behavior not independently reviewed. | Indexed |
-| [`production_import.py`](../../api/identity/production_import.py) | Navigation hint: production import; source behavior not independently reviewed. | Indexed |
-| [`provider_challenges.py`](../../api/identity/provider_challenges.py) | Navigation hint: provider challenges; source behavior not independently reviewed. | Indexed |
-| [`provider_http.py`](../../api/identity/provider_http.py) | Navigation hint: provider http; source behavior not independently reviewed. | Indexed |
-| [`providers.py`](../../api/identity/providers.py) | Navigation hint: providers; source behavior not independently reviewed. | Indexed |
-| [`reconciliation.py`](../../api/identity/reconciliation.py) | Navigation hint: reconciliation; source behavior not independently reviewed. | Indexed |
-| [`recovery_delta.py`](../../api/identity/recovery_delta.py) | Navigation hint: recovery delta; source behavior not independently reviewed. | Indexed |
-| [`refresh.py`](../../api/identity/refresh.py) | Navigation hint: refresh; source behavior not independently reviewed. | Indexed |
+| [`pending_proofs.py`](../../api/identity/pending_proofs.py) | Checks migrated pending identity password or Google proof without granting session or activation. | Reviewed |
+| [`pending_reconciliation.py`](../../api/identity/pending_reconciliation.py) | Operator-only read-only source/target reconciliation with keyed full-field snapshot receipts, not just counts. | Reviewed |
+| [`production_import.py`](../../api/identity/production_import.py) | Operator-only scoped pending production identity import with independently approved inventory and count validation. | Reviewed |
+| [`provider_challenges.py`](../../api/identity/provider_challenges.py) | Creates and consumes one-time browser-bound provider challenge state, binding and nonce. | Reviewed |
+| [`provider_http.py`](../../api/identity/provider_http.py) | Browser Google/Discord challenge initiation and completion; explicit Google signup path; verifies state/nonce/binding before session. | Reviewed |
+| [`providers.py`](../../api/identity/providers.py) | Validates Google ID tokens and Discord OAuth code exchange, looks up verified provider subject, never merges accounts by email. | Reviewed |
+| [`reconciliation.py`](../../api/identity/reconciliation.py) | Fail-closed validation and reconciliation of authorized Operly identity exports; no database mutation or authentication. | Reviewed |
+| [`recovery_delta.py`](../../api/identity/recovery_delta.py) | Plans and applies reviewed pending recovery additions; requires source-authority handoff/freeze before writes. | Reviewed |
+| [`refresh.py`](../../api/identity/refresh.py) | Opaque hashed single-use refresh tokens, atomic rotation and family replay revocation. | Reviewed |
 | [`relying_party_status.py`](../../api/identity/relying_party_status.py) | Navigation hint: relying party status; source behavior not independently reviewed. | Indexed |
 | [`router.py`](../../api/identity/router.py) | JWKS and OIDC discovery routes. | Reviewed |
 | [`schema_active_recovery_review.sql`](../../api/identity/schema_active_recovery_review.sql) | SQL named for schema active recovery review; inspect statements, transaction requirements and target database before use. | Indexed |
@@ -249,7 +249,7 @@ First-party identity HTTP handlers, auth/session/token primitives, account migra
 | [`sessions.py`](../../api/identity/sessions.py) | Opaque host-only browser sessions, active-account checks, CSRF validation and revocation. | Reviewed |
 | [`source_inventory_manual.sql`](../../api/identity/source_inventory_manual.sql) | SQL named for source inventory manual; inspect statements, transaction requirements and target database before use. | Indexed |
 | [`source_recovery_inventory_manual.sql`](../../api/identity/source_recovery_inventory_manual.sql) | SQL named for source recovery inventory manual; inspect statements, transaction requirements and target database before use. | Indexed |
-| [`tokens.py`](../../api/identity/tokens.py) | Navigation hint: tokens; source behavior not independently reviewed. | Indexed |
+| [`tokens.py`](../../api/identity/tokens.py) | RS256 SigningIdentity, PKCE helpers and issuer/token signing primitives; private signing keys never reach agent context. | Reviewed |
 
 ## api/personal_core
 
@@ -631,3 +631,48 @@ Web proxy, security, mesh and compatibility backend tests.
 | [`test_mesh_image_generation.py`](../../web/tests/test_mesh_image_generation.py) | Test target: mesh image generation; inspect assertions and fixtures for the exact contract. | Indexed |
 | [`test_mesh_model_catalogue.py`](../../web/tests/test_mesh_model_catalogue.py) | Test target: mesh model catalogue; inspect assertions and fixtures for the exact contract. | Indexed |
 | [`test_native_first_party_proxy.py`](../../web/tests/test_native_first_party_proxy.py) | Test target: native first party proxy; inspect assertions and fixtures for the exact contract. | Indexed |
+
+## Documentation infrastructure introduced after the baseline
+
+These paths are additional to the original 427 tracked files; the generated index enumerates the exact checkout rather than relying on this baseline.
+
+- [`.github/README.md`](../../.github/README.md) — Local directory guide.
+- [`.github/workflows/README.md`](../../.github/workflows/README.md) — Local directory guide.
+- [`.github/workflows/codebase-docs.yml`](../../.github/workflows/codebase-docs.yml) — Documentation CI workflow.
+- [`CODEBASE.md`](../../CODEBASE.md) — Codebase navigation documentation.
+- [`api/README.md`](../../api/README.md) — Local directory guide.
+- [`api/agent_platform/CODE_MAP.md`](../../api/agent_platform/CODE_MAP.md) — Local directory guide.
+- [`api/agent_platform/benchmarks/README.md`](../../api/agent_platform/benchmarks/README.md) — Local directory guide.
+- [`api/agent_platform/evals/README.md`](../../api/agent_platform/evals/README.md) — Local directory guide.
+- [`api/agent_platform/migrations/README.md`](../../api/agent_platform/migrations/README.md) — Local directory guide.
+- [`api/agent_platform/reports/README.md`](../../api/agent_platform/reports/README.md) — Local directory guide.
+- [`api/identity/README.md`](../../api/identity/README.md) — Local directory guide.
+- [`api/personal_core/CODE_MAP.md`](../../api/personal_core/CODE_MAP.md) — Local directory guide.
+- [`api/tests/README.md`](../../api/tests/README.md) — Local directory guide.
+- [`docs/README.md`](../../docs/README.md) — Local directory guide.
+- [`docs/codebase/CHANGES.md`](../../docs/codebase/CHANGES.md) — Codebase navigation documentation.
+- [`docs/codebase/FILE_INDEX.md`](../../docs/codebase/FILE_INDEX.md) — Codebase navigation documentation.
+- [`docs/codebase/IMPLEMENTATION.md`](../../docs/codebase/IMPLEMENTATION.md) — Codebase navigation documentation.
+- [`docs/codebase/README.md`](../../docs/codebase/README.md) — Local directory guide.
+- [`engineering-reports/README.md`](../../engineering-reports/README.md) — Local directory guide.
+- [`evals/README.md`](../../evals/README.md) — Local directory guide.
+- [`evals/real_world_intents/CODE_MAP.md`](../../evals/real_world_intents/CODE_MAP.md) — Local directory guide.
+- [`identity/CODE_MAP.md`](../../identity/CODE_MAP.md) — Local directory guide.
+- [`identity/contracts/README.md`](../../identity/contracts/README.md) — Local directory guide.
+- [`identity/migrations/README.md`](../../identity/migrations/README.md) — Local directory guide.
+- [`legacy/CODE_MAP.md`](../../legacy/CODE_MAP.md) — Local directory guide.
+- [`scripts/README.md`](../../scripts/README.md) — Local directory guide.
+- [`scripts/build_codebase_index.py`](../../scripts/build_codebase_index.py) — Documentation generation, enforcement or offline fixtures.
+- [`scripts/check_codebase_docs.py`](../../scripts/check_codebase_docs.py) — Documentation generation, enforcement or offline fixtures.
+- [`src/README.md`](../../src/README.md) — Local directory guide.
+- [`src/dragonzpyder/README.md`](../../src/dragonzpyder/README.md) — Local directory guide.
+- [`tests/README.md`](../../tests/README.md) — Local directory guide.
+- [`tests/test_codebase_documentation.py`](../../tests/test_codebase_documentation.py) — Documentation generation, enforcement or offline fixtures.
+- [`web/CODE_MAP.md`](../../web/CODE_MAP.md) — Local directory guide.
+- [`web/backend/README.md`](../../web/backend/README.md) — Local directory guide.
+- [`web/backend/static/README.md`](../../web/backend/static/README.md) — Local directory guide.
+- [`web/frontend/CODE_MAP.md`](../../web/frontend/CODE_MAP.md) — Local directory guide.
+- [`web/frontend/scripts/README.md`](../../web/frontend/scripts/README.md) — Local directory guide.
+- [`web/frontend/src/README.md`](../../web/frontend/src/README.md) — Local directory guide.
+- [`web/frontend/tests/README.md`](../../web/frontend/tests/README.md) — Local directory guide.
+- [`web/tests/README.md`](../../web/tests/README.md) — Local directory guide.
