@@ -20,7 +20,7 @@ public final class ApiRoutePolicyTest {
         require(!ApiRoutePolicy.nativePreauth(false,"/dz/identity/v1/password/login"));
         require("X-DZ-CSRF".equals(ApiRoutePolicy.csrfHeader(true)));
         require("X-CSRF-Token".equals(ApiRoutePolicy.csrfHeader(false)));
-        for(String provider:new String[]{"google","discord"}){
+        for(String provider:new String[]{"discord"}){
             String redeem="/dz/identity/v1/mobile/"+provider+"/redeem";
             require(redeem.equals(ApiRoutePolicy.route(true,redeem)));
             require(ApiRoutePolicy.nativePreauth(true,redeem));
@@ -31,6 +31,10 @@ public final class ApiRoutePolicyTest {
             require(ApiRoutePolicy.route(true,redeem+"#fragment")==null);
             require(ApiRoutePolicy.route(true,redeem.replace("/redeem","/callback"))==null);
         }
+        require(ApiRoutePolicy.route(true,"/dz/identity/v1/mobile/google/redeem")==null);
+        require(!ApiRoutePolicy.nativePreauth(true,"/dz/identity/v1/mobile/google/redeem"));
+        require(ApiRoutePolicy.nativePreauth(true,"/dz/identity/v1/provider/google/start"));
+        require(ApiRoutePolicy.nativePreauth(true,"/dz/identity/v1/provider/google/signup"));
         require("/dz/identity/v1/mobile/capabilities".equals(ApiRoutePolicy.route(true,"/dz/identity/v1/mobile/capabilities")));
         require(!ApiRoutePolicy.nativePreauth(true,"/dz/identity/v1/mobile/capabilities"));
         require(ApiRoutePolicy.route(true,"/dz/identity/v1/mobile/unknown/redeem")==null);
