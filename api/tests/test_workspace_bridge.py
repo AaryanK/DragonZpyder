@@ -130,3 +130,83 @@ def test_workspace_checkpoint_rejects_old_or_unanswered_identical_prompt():
     assert workspace_turn_persisted(snap(old, answer, new, answer), turn_id="new", prompt="same")
     assert not workspace_turn_persisted(NS(values={}), turn_id="new", prompt="same")
     assert not workspace_turn_persisted(snap(new, answer, new, answer), turn_id="new", prompt="same")
+
+
+def test_real_workspace_graph_budget_allows_multiple_tool_rounds(monkeypatch):
+    import asyncio
+    from uuid import uuid4
+    from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
+    from langchain_core.messages import AIMessage
+    from langchain_core.tools import tool
+    from langgraph.checkpoint.memory import MemorySaver
+    from agent_platform.harness import build_frontier_agent
+    from agent_platform.runtime import summarize_agent_result
+    from agent_platform.workspace_bridge import WORKSPACE_RECURSION_LIMIT, workspace_turn_persisted
+
+    class Script(FakeMessagesListChatModel):
+        def bind_tools(self, tools, **kwargs):
+            return self
+    seen = []
+    @tool
+    def operly_workflow_list(page: int) -> str:
+        """Read one synthetic workflow page."""
+        seen.append(page)
+        return f"synthetic page {page}"
+    monkeypatch.setenv("DRAGONZPYDER_OPERLY_TOOLS_ENABLED", "1")
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_QUICKJS_ENABLED", "0")
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_WEB_SEARCH_ENABLED", "0")
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_STRESS_EVAL_ENABLED", "0")
+    responses = [AIMessage(content="", tool_calls=[{
+        "name":"operly_workflow_list", "args":{"page":i},
+        "id":"call_" + uuid4().hex, "type":"tool_call"}]) for i in range(5)]
+    responses.append(AIMessage(content="Five pages read."))
+    turn_id = str(uuid4())
+    async def run():
+        graph = build_frontier_agent(Script(responses=responses), MemorySaver(),
+                                     delegated_tools=[operly_workflow_list], product_surface="operly")
+        config = {"configurable":{"thread_id":str(uuid4())},
+                  "recursion_limit":WORKSPACE_RECURSION_LIMIT}
+        state = await graph.ainvoke({"messages":[{"role":"user","content":"Read five pages","id":turn_id}]}, config=config)
+        assert seen == list(range(5))
+        report = summarize_agent_result(state)
+        assert report["status"] == "completed"
+        assert report["successful_tools"].count("operly_workflow_list") == 5
+        assert workspace_turn_persisted(await graph.aget_state(config),
+                                        turn_id=turn_id, prompt="Read five pages")
+    asyncio.run(run())
+
+
+def test_partial_workspace_checkpoint_only_credits_current_turn():
+    from types import SimpleNamespace as NS
+    from agent_platform.workspace_bridge import workspace_turn_persisted
+    from agent_platform.runtime import summarize_checkpoint_evidence
+    old = NS(type="human", id="old", content="same")
+    old_tool = NS(type="tool", name="operly_old", status="success")
+    new = NS(type="human", id="new", content="same")
+    current = NS(type="tool", name="operly_workflow_list", status="success")
+    snap = NS(values={"messages":[old, old_tool, new, current]})
+    assert workspace_turn_persisted(snap, turn_id="new", prompt="same", require_answer=False)
+    assert not workspace_turn_persisted(snap, turn_id="new", prompt="same")
+    assert not workspace_turn_persisted(snap, turn_id="old", prompt="same", require_answer=False)
+    report = summarize_checkpoint_evidence(snap.values, termination_reason="graph_recursion_limit")
+    assert report["status"] == "incomplete"
+    assert report["successful_tools"] == ["operly_workflow_list"]
+    assert not report["objective_verified"]
+
+
+def test_workspace_trace_is_current_turn_only_and_never_records_arguments():
+    from types import SimpleNamespace as NS
+    from agent_platform.workspace_bridge import workspace_trace_evidence
+    old = NS(type="human", id="old", content="private old")
+    old_tool = NS(type="tool", name="operly_old", content="private output")
+    new = NS(type="human", id="new", content="private prompt")
+    call = NS(type="ai", tool_calls=[{"name":"operly_workflow_list","args":{"secret":"sensitive"}},
+                                    {"name":"private-user-supplied-name","args":{}}])
+    reply = NS(type="tool", name="operly_workflow_list", status="error", content="private reply")
+    snap = NS(values={"messages":[old, old_tool, new, call, reply]})
+    evidence = workspace_trace_evidence(snap, turn_id="new", allowed_names={"operly_workflow_list"})
+    assert evidence["persisted_ai_messages"] == 1
+    assert evidence["tool_attempts"] == ["operly_workflow_list", "other"]
+    assert evidence["tool_returns"] == [{"name":"operly_workflow_list","status":"error"}]
+    assert "private" not in str(evidence) and "sensitive" not in str(evidence)
+    assert not workspace_trace_evidence(snap, turn_id="old", allowed_names=set())["current_turn_seen"]
