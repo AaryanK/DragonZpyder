@@ -624,3 +624,60 @@ def test_direct_binding_real_graph_executes_one_reviewed_read_and_keeps_catalog(
                     "DRAGONZPYDER_AGENT_WEB_SEARCH_ENABLED":"0",
                     "DRAGONZPYDER_AGENT_QUICKJS_ENABLED":"0"}):
         asyncio.run(run())
+
+
+def test_programmatic_mcp_reads_use_real_quickjs_graph_and_shared_quota(monkeypatch):
+    """The actual interpreter calls reviewed tools; no model/provider spend."""
+    import re
+    from langchain_core.messages import ToolMessage
+    from langchain_core.tools import tool
+    from agent_platform.mcp_managed_catalog import ManagedMcpRunCatalog,_direct_read_tool
+    from agent_platform.mcp_broker import CatalogGrant,McpGrant
+
+    catalog=ManagedMcpRunCatalog([CatalogGrant(
+        McpGrant("archive","https://archive.example.com/mcp",
+                 frozenset({"archive.example.com"}),{},frozenset({"lookup"})),
+        frozenset({"lookup"}),"Search documents")],
+        owner="test-owner",manager=object(),scheduled=False)
+    calls=[]
+    async def fake_read(provider,capability,arguments,digest):
+        calls.append(arguments["q"])
+        return {"receipt":{"status":"completed"},"result":{"query":arguments["q"]}}
+    monkeypatch.setattr(catalog,"_invoke",fake_read)
+    catalog._remaining["invoke"]=2
+    read=_direct_read_tool(catalog,{
+        "provider_id":"archive","tool_name":"lookup","schema_sha256":"a"*64,
+        "input_schema":{"type":"object","properties":{"q":{"type":"string"}},"required":["q"]},
+        "description":"Read matching documents"})
+    @tool
+    def forbidden_write(text:str)->str:
+        """An unrelated test capability that must never enter QuickJS."""
+        raise AssertionError("Unauthorized programmatic write")
+    # Upstream QuickJS exposes camelCase host names. Access the one
+    # allowlisted name dynamically to avoid depending on alias casing.
+    code = (
+        'const names = Object.keys(tools); '
+        'if (names.length !== 1 || names.includes("forbiddenWrite")) throw Error("bad allowlist"); '
+        'const read = tools[names[0]]; '
+        'const a = await read({q:"alpha"}); const b = await read({q:"beta"}); '
+        'JSON.stringify([a,b]);'
+    )
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_QUICKJS_ENABLED","1")
+    monkeypatch.setenv("DRAGONZPYDER_MCP_PROGRAMMATIC_READS_ENABLED","1")
+    monkeypatch.setenv("DRAGONZPYDER_MCP_USER_CONNECTIONS_ENABLED","1")
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_WEB_SEARCH_ENABLED","0")
+    async def run():
+        graph=build_frontier_agent(ToolScript(responses=[
+            scripted_call("eval",{"code":code}),
+            AIMessage(content="Two reads returned."),
+        ]),MemorySaver(),delegated_tools=[read,forbidden_write])
+        state=await graph.ainvoke(
+            {"messages":[{"role":"user","content":"Compare alpha and beta"}]},
+            config={"configurable":{"thread_id":"programmatic-read-test"},"recursion_limit":128})
+        result=[m for m in state["messages"] if isinstance(m,ToolMessage) and m.name=="eval"]
+        assert len(result)==1
+        assert calls==["alpha","beta"],str(result[0].content)
+        assert "alpha" in str(result[0].content) and "beta" in str(result[0].content)
+        denied=await read.ainvoke({"type":"tool_call","id":"over-budget","name":read.name,"args":{"q":"gamma"}})
+        assert denied.status=="error" and calls==["alpha","beta"]
+    asyncio.run(run())
