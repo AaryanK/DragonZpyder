@@ -37,3 +37,5 @@ See [web frontend V2](web/frontend/README.md) and [Android implementation and re
 ## Integrated harness candidate
 
 See [adaptive routing](api/agent_platform/adaptive_routing.py), [media tools](api/agent_platform/media_tools.py), [durable workflows](api/agent_platform/native_workflows.py), [artifact service](api/agent_platform/artifacts.py) and [scoped VM runner](apps/sandbox_runner/README.md). These are gated implementation paths, not deployment evidence.
+
+Typed interaction ingress: [interaction.py](api/agent_platform/interaction.py), [contract tests](api/tests/test_interaction.py), and the existing first-party chat router. Initial slice only; no new media processing or external credentials.
