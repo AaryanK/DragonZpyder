@@ -81,7 +81,18 @@ final class DragonApi {
         ensureMode();
         path=ApiRoutePolicy.route(firstParty,path);
         if(path==null){if(firstParty)throw unsupported();throw new IOException("Unsupported compatibility API route");}
-        Object result=request(path,method,body,false);
+        Object result;
+        try { result=request(path,method,body,false); }
+        catch(ApiError failure) {
+            if(failure.status==410 && !firstParty && "LEGACY_OPERLY_ROUTE_RETIRED".equals(failure.code)){
+                // Never replay credentials or mutations across identity realms.
+                clear();
+                modeKnown=false;
+                throw new ApiError(410,"IDENTITY_CUTOVER_REAUTH_REQUIRED",
+                    "DragonZpyder account access has changed. Sign in again; if your imported account is not active, use account recovery at dragonzpyder.xyz/account.");
+            }
+            throw failure;
+        }
         if(firstParty&&path.equals("/dz/v2/personal/conversations")){if(!(result instanceof JSONObject)||((JSONObject)result).optJSONArray("conversations")==null)throw new IOException("Invalid conversation list");return ((JSONObject)result).getJSONArray("conversations");}
         if(firstParty&&path.startsWith("/dz/v2/personal/conversations/")&&path.endsWith("/messages")){if(!(result instanceof JSONObject)||((JSONObject)result).optJSONArray("messages")==null)throw new IOException("Invalid conversation history");return ((JSONObject)result).getJSONArray("messages");}
         return result;
