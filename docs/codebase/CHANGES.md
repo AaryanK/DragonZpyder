@@ -190,3 +190,5 @@ Removed the three Markdown guides from Android drawable, values and xml resource
 - `web/frontend/src/AppearanceSettings.jsx`: Concise appearance copy. CI and device verification pending.
 - `web/frontend/tests/ui.spec.js`: Checks transparent button styling, border reset and mobile targets in both themes. CI and device verification pending.
 - `web/frontend/tests/native-routing.spec.js`: Tests direct native redirect and failed-session retry without credential form. CI and device verification pending.
+
+- `web/frontend/scripts/check-build.mjs`: Replaces obsolete workspace-switcher presence assertion with new-chat navigation and explicit checks that the duplicate credential form and marketing intro are absent; preserves all voice, composer, and account controller assertions. Rerun pending.

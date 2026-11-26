@@ -22,10 +22,16 @@ for (const [name, markup] of [["home", home], ["app", app], ["account", account]
     name + ": found old static-template navigation");
 }
 assert.match(app, /id="composer"/);
-for (const section of ["workspace-switcher", "conversation-search", "workspace-breadcrumb", "welcome-section-title"]) {
+for (const section of ["new-chat", "conversation-search", "workspace-breadcrumb", "welcome-section-title"]) {
   assert.ok(app.includes('class="' + section + '"') || app.includes('id="' + section + '"'),
     "Redesigned Personal workspace missing: " + section);
 }
+// The old workspace switcher and duplicate login form are deliberately removed.
+assert.doesNotMatch(app, /class="workspace-switcher"/);
+assert.doesNotMatch(app, /id="login-form"/);
+assert.match(app, /id="retry-session"/);
+assert.match(account, /id="login-form"/);
+assert.doesNotMatch(account, /class="intro"/);
 assert.match(app, /workspace\.css/, "Personal workspace stylesheet missing");
 assert.match(app, /ui-v1\.css/, "UI 1.0 design-system stylesheet missing");
 const ui=readFileSync(resolve(dist,"ui-v1.css"),"utf8");
