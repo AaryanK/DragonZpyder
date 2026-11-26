@@ -154,7 +154,7 @@ def specialist_specs(models: dict | None = None, search_tools=None) -> list[dict
     return specs
 
 
-def build_frontier_agent(model, checkpointer, *, specialist_models=None, synthetic_tools=None, delegated_tools=None, computer_run=None, computer_artifacts=None, artifact_tools=None, media_run=None, routing_middleware=None, product_surface="dragonzpyder"):
+def build_frontier_agent(model, checkpointer, *, specialist_models=None, synthetic_tools=None, delegated_tools=None, computer_run=None, computer_artifacts=None, artifact_tools=None, media_run=None, workflow_tools=None, routing_middleware=None, product_surface="dragonzpyder"):
     """Compose real LangChain primitives without making a provider request."""
     virtual_state = StateBackend()
     # Explicit staging/test injection only. Never enable synthetic business tools
@@ -304,6 +304,14 @@ def build_frontier_agent(model, checkpointer, *, specialist_models=None, synthet
         "DRAGONZPYDER_AGENT_USE_GATEWAY",
         "DRAGONZPYDER_AGENT_PRODUCTION_MODE",
     ))
+    workflow_tools=list(workflow_tools or [])
+    if workflow_tools:
+        if os.getenv("DRAGONZPYDER_NATIVE_DURABLE_WORKFLOWS_ENABLED")!="1":
+            raise ValueError("Durable workflow tools disabled")
+        prompt += ("\nWhen the user explicitly requests later or staged work, use schedule_workflow "
+                   "to create a finite plan with clear objectives and earlier dependencies. "
+                   "It runs through Hatchet and this same harness. A schedule receipt is not completion; "
+                   "inspect_workflow reads actual phase receipts, stop_workflow requests cancellation.")
     native_media_tools=[]
     if media_run is not None:
         from .media_tools import MediaRun,media_tools
@@ -347,7 +355,7 @@ def build_frontier_agent(model, checkpointer, *, specialist_models=None, synthet
         ]
     return create_deep_agent(
         model=model,
-        tools=[*search_tools, *synthetic_tools, *delegated_tools, *native_computer_tools, *artifact_tools, *native_media_tools, check_quadratic_gradient_step, check_trilinear_interpolation],
+        tools=[*search_tools, *synthetic_tools, *delegated_tools, *native_computer_tools, *artifact_tools, *native_media_tools, *workflow_tools, check_quadratic_gradient_step, check_trilinear_interpolation],
         backend=virtual_state,
         checkpointer=checkpointer,
         # First match wins; default is otherwise permissive. These rules
