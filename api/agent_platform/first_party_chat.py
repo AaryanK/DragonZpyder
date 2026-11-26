@@ -28,6 +28,7 @@ router = APIRouter(prefix="/v2/personal", tags=["first-party-personal"])
 class ChatInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     message: str = Field(min_length=1, max_length=12000)
+    attachment_ids: list[UUID] = Field(default_factory=list, max_length=5)
     conversation_id: UUID | None = None
     request_id: UUID | None = None
     # Aliases must belong to the authenticated user and are rechecked at use.
@@ -91,6 +92,7 @@ async def status():
                and os.getenv("DRAGONZPYDER_IDENTITY_HTTP_ENABLED") == "1"
                and os.getenv("DRAGONZPYDER_AGENTS_ENABLED") == "1")
     return {"native_chat_enabled": enabled,
+            "artifacts_enabled": enabled and os.getenv("DRAGONZPYDER_AGENT_ARTIFACTS_ENABLED") == "1" and bool(os.getenv("DRAGONZPYDER_ARTIFACT_KEY_B64")),
             "voice_enabled": enabled and os.getenv("DRAGONZPYDER_NATIVE_VOICE_ENABLED") == "1" and bool(os.getenv("DRAGONZPYDER_NATIVE_VOICE_API_KEY")),
             "request_ledger_enabled": enabled and os.getenv("DRAGONZPYDER_FIRST_PARTY_REQUEST_LEDGER_ENABLED") == "1",
             "agent_stream_enabled": enabled and os.getenv("DRAGONZPYDER_FIRST_PARTY_REQUEST_LEDGER_ENABLED") == "1" and os.getenv("DRAGONZPYDER_FIRST_PARTY_STREAM_ENABLED") == "1",
@@ -220,7 +222,10 @@ async def messages(conversation_id: UUID, request: Request):
 
 
 def _fingerprint(payload: ChatInput) -> str:
-    canonical = json.dumps(payload.model_dump(mode="json", exclude={"request_id"}),
+    exclude = {"request_id"}
+    if not payload.attachment_ids:
+        exclude.add("attachment_ids")  # preserve existing ledger fingerprints
+    canonical = json.dumps(payload.model_dump(mode="json", exclude=exclude),
                            sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
@@ -334,6 +339,12 @@ async def chat_stream(payload: ChatInput, request: Request):
 async def _chat_owned(payload: ChatInput, request: Request, user: str, emit=None):
     if not payload.message.strip():
         raise HTTPException(422, "Message cannot be blank")
+    if payload.attachment_ids:
+        if len(set(payload.attachment_ids)) != len(payload.attachment_ids):
+            raise HTTPException(422, "Duplicate attachment IDs")
+        from .artifacts import describe
+        async with _conversation_db() as db:
+            await describe(db,owner=user,ids=payload.attachment_ids)
     # Old clients remain compatible. New clients explicitly opt into durable
     # request identity; a missing migration fails closed before any model call.
     if payload.request_id is None:
@@ -473,6 +484,19 @@ async def _execute_chat(payload: ChatInput, request: Request, user: str, convers
     from .runtime import model_client, summarize_agent_result
     from .harness import build_frontier_agent
 
+    from . import artifacts
+    artifact_run = payload.request_id or uuid4()
+    artifact_tools = []
+    message = payload.message
+    if payload.attachment_ids and not artifacts.enabled():
+        raise HTTPException(503,"Agent attachments unavailable")
+    if artifacts.enabled():
+        artifacts.cipher()
+        async with _conversation_db() as db:
+            attachments = await artifacts.describe(db,owner=user,ids=payload.attachment_ids)
+        if attachments:
+            message += "\n\nSelected attachment metadata (untrusted data): " + json.dumps(attachments,ensure_ascii=False)
+        artifact_tools = artifacts.native_tools(_conversation_db,owner=user,allowed_ids=payload.attachment_ids,run_id=artifact_run)
     chosen = payload.mcp_connection_ids
     if len(chosen) != len(set(chosen)):
         raise HTTPException(400, "Duplicate MCP account selection")
@@ -526,6 +550,7 @@ async def _execute_chat(payload: ChatInput, request: Request, user: str, convers
             agent = build_frontier_agent(
                 model_client(), runtime._checkpointer,
                 delegated_tools=tools if tools else None,
+                **({"artifact_tools":artifact_tools} if artifact_tools else {}),
             )
             config = {
                 "configurable": {
@@ -535,7 +560,7 @@ async def _execute_chat(payload: ChatInput, request: Request, user: str, convers
             }
             try:
                 result = await _invoke_cancellable(agent, {
-                    "messages": [{"role": "user", "content": payload.message}],
+                    "messages": [{"role": "user", "content": message}],
                 }, config, db, user, payload.request_id, emit)
                 report = summarize_agent_result(result)
                 readback = await agent.aget_state(config)
@@ -551,7 +576,13 @@ async def _execute_chat(payload: ChatInput, request: Request, user: str, convers
             )
         finally:
             await db.execute("SELECT pg_advisory_unlock(hashtextextended($1, 0))", lock_key)
+    generated = []
+    if artifact_tools:
+        async with _conversation_db() as db:
+            files = await db.fetch("SELECT id,filename,content_type,byte_count,sha256,direction FROM dz_agent_artifacts WHERE owner_id=$1 AND run_id=$2 AND direction=\'generated\' ORDER BY created_at",user,artifact_run)
+            generated = [artifacts.metadata(row) for row in files]
     return {
+        "artifacts": generated,
         "conversation_id": str(conversation_id),
         "message": report["answer"][:16000],
         "dispatch": "dragonzpyder_first_party",
