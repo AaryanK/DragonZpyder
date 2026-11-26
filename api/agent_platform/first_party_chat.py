@@ -556,7 +556,7 @@ async def _execute_chat(payload: ChatInput, request: Request, user: str, convers
         try:
             tools = await managed_catalog_tools(
                 manager=manager, owner=user, selected_account_ids=chosen,
-                scheduled=False,
+                scheduled=False, objective=payload.message,
             )
         except (ConnectionDenied, ValueError, RuntimeError):
             raise HTTPException(403, "MCP connection not authorized") from None

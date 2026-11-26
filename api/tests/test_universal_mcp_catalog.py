@@ -213,3 +213,30 @@ def test_actual_langchain_artifact_failure_is_not_success():
             tools=[tool], provider_id="archive", capability_id="lookup",
             approved_ids=frozenset({"lookup"}), arguments={"query": "test"},
         ))
+
+
+def test_normalized_ranker_handles_plural_camel_case_and_abstains_on_ambiguity():
+    from agent_platform.tool_relevance import rank_candidates, direct_candidates
+    entries = [("archive", "Document storage", ["listDocuments", "workflow.list"]),
+               ("calendar", "Calendar", ["listEvents"])]
+    assert rank_candidates("show my workflows", entries)[0].tool_name == "workflow.list"
+    assert direct_candidates("list documents", entries)[0].tool_name == "listDocuments"
+    assert direct_candidates("delete documents", entries) == []
+    assert direct_candidates("hello there", entries) == []
+    assert direct_candidates("list workflows", [
+        ("one", "", ["workflow.list"]), ("two", "", ["workflow.list"])]) == []
+
+
+def test_direct_prefetch_does_not_execute_or_remove_lazy_fallback():
+    from agent_platform.mcp_managed_catalog import direct_read_tools
+
+    class Catalog(McpRunCatalog):
+        async def describe(self, provider_id, tool_name):
+            raise RuntimeError("synthetic unavailable")
+        async def invoke(self, *args, **kwargs):
+            raise AssertionError("Prefetch must not execute")
+
+    catalog = Catalog([entry("archive", "document.list")])
+    assert asyncio.run(direct_read_tools(catalog, "list documents")) == []
+    assert [t.name for t in catalog_tools(catalog)] == [
+        "search_tools","describe_tool","invoke_tool"]
