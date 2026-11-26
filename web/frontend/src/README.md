@@ -8,11 +8,11 @@ Read [repository instructions](../../../AGENTS.md) and [codebase navigation](../
 | --- | --- | --- |
 | [`AccountTemplate.jsx`](AccountTemplate.jsx) | Navigation hint: AccountTemplate; source behavior not independently reviewed. | Indexed |
 | [`HomeTemplate.jsx`](HomeTemplate.jsx) | Navigation hint: HomeTemplate; source behavior not independently reviewed. | Indexed |
-| [`NativeMcpCenter.jsx`](NativeMcpCenter.jsx) | Navigation hint: NativeMcpCenter; source behavior not independently reviewed. | Indexed |
+| [`NativeMcpCenter.jsx`](NativeMcpCenter.jsx) | React first-party OAuth MCP connection UI; CSRF-protected requests and opaque selected aliases, never bearer credentials. | Reviewed |
 | [`PersonalTemplate.jsx`](PersonalTemplate.jsx) | Navigation hint: PersonalTemplate; source behavior not independently reviewed. | Indexed |
-| [`VoiceOrb.jsx`](VoiceOrb.jsx) | Navigation hint: VoiceOrb; source behavior not independently reviewed. | Indexed |
-| [`WorkspaceCenter.jsx`](WorkspaceCenter.jsx) | Navigation hint: WorkspaceCenter; source behavior not independently reviewed. | Indexed |
-| [`WorkspaceControls.jsx`](WorkspaceControls.jsx) | Navigation hint: WorkspaceControls; source behavior not independently reviewed. | Indexed |
+| [`VoiceOrb.jsx`](VoiceOrb.jsx) | React-owned voice interface/lifecycle and artwork renderer integration; visual canvas does not request microphone itself. | Reviewed |
+| [`WorkspaceCenter.jsx`](WorkspaceCenter.jsx) | React account-scoped workspace center and same-origin API requests; includes native MCP UI. | Reviewed |
+| [`WorkspaceControls.jsx`](WorkspaceControls.jsx) | Accessible modal focus and progressive-disclosure chat controls, command palette, capture/add menus and desktop install; delegates to existing adapters. | Reviewed |
 | [`admin.css`](admin.css) | Stylesheet: admin; inspect selectors and importing page. | Indexed |
 | [`admin.jsx`](admin.jsx) | Navigation hint: admin; source behavior not independently reviewed. | Indexed |
 | [`main.jsx`](main.jsx) | React mount/hydrate entrypoint selecting page by route. | Reviewed |

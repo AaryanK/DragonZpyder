@@ -38,20 +38,20 @@ FastAPI inference/API composition, provider transport, ledgers, service images, 
 | [`Dockerfile.business-canary`](../../api/Dockerfile.business-canary) | Navigation hint: Dockerfile; source behavior not independently reviewed. | Indexed |
 | [`Dockerfile.personal`](../../api/Dockerfile.personal) | Navigation hint: Dockerfile; source behavior not independently reviewed. | Indexed |
 | [`Dockerfile.staging`](../../api/Dockerfile.staging) | Navigation hint: Dockerfile; source behavior not independently reviewed. | Indexed |
-| [`inference.mjs`](../../api/inference.mjs) | Navigation hint: inference; source behavior not independently reviewed. | Indexed |
+| [`inference.mjs`](../../api/inference.mjs) | Legacy Node private inference handler with backend bearer, model allowlist, bounded parsing and per-hour admission. | Reviewed |
 | [`main.py`](../../api/main.py) | FastAPI gateway composition root, lifespan, router registration, caller auth and catch-all inference dispatch. | Reviewed |
-| [`observability.py`](../../api/observability.py) | Navigation hint: observability; source behavior not independently reviewed. | Indexed |
+| [`observability.py`](../../api/observability.py) | Configures OpenTelemetry/Langfuse OTLP export and redacted inference spans; full encrypted payload storage is separate. | Reviewed |
 | [`package.json`](../../api/package.json) | Data/configuration fixture: package; inspect schema and consumers. | Indexed |
 | [`provider_gateway.py`](../../api/provider_gateway.py) | Scoped OpenRouter transport, operation classification, provider-key selection, metering and tracing. | Reviewed |
 | [`requirements-agent.txt`](../../api/requirements-agent.txt) | Navigation hint: requirements agent; source behavior not independently reviewed. | Indexed |
 | [`requirements-personal.txt`](../../api/requirements-personal.txt) | Navigation hint: requirements personal; source behavior not independently reviewed. | Indexed |
 | [`requirements.txt`](../../api/requirements.txt) | Navigation hint: requirements; source behavior not independently reviewed. | Indexed |
-| [`server.mjs`](../../api/server.mjs) | Navigation hint: server; source behavior not independently reviewed. | Indexed |
+| [`server.mjs`](../../api/server.mjs) | Legacy standalone Node HTTP API server; wraps internal inference with concurrency limits and headers. | Reviewed |
 | [`staging.css`](../../api/staging.css) | Stylesheet: staging; inspect selectors and importing page. | Indexed |
 | [`staging.js`](../../api/staging.js) | Navigation hint: staging; source behavior not independently reviewed. | Indexed |
-| [`staging_app.py`](../../api/staging_app.py) | Navigation hint: staging app; source behavior not independently reviewed. | Indexed |
+| [`staging_app.py`](../../api/staging_app.py) | Password-gated staging smoke lab for agent, search, memory and Hatchet diagnostics; no workspace/computer grants. | Reviewed |
 | [`staging_ui.html`](../../api/staging_ui.html) | Navigation hint: staging ui; source behavior not independently reviewed. | Indexed |
-| [`usage_ledger.py`](../../api/usage_ledger.py) | Navigation hint: usage ledger; source behavior not independently reviewed. | Indexed |
+| [`usage_ledger.py`](../../api/usage_ledger.py) | Append-only PostgreSQL metering, normalized token/cost usage and optional AES-GCM payload escrow; unknown cost is not zero. | Reviewed |
 
 ## api/agent_platform
 
@@ -93,7 +93,7 @@ Shared harness, runtime, capabilities, MCP, bridges, scheduling, budgets, memory
 | [`gateway_protocol.py`](../../api/agent_platform/gateway_protocol.py) | Validates bounded internal OpenAI-compatible tool-call request and response schemas; never executes tools. | Reviewed |
 | [`harness.py`](../../api/agent_platform/harness.py) | Deep Agents construction, specialist prompts/specifications, virtual StateBackend and call/progress limits; accepts explicitly delegated tools. | Reviewed |
 | [`jobs.py`](../../api/agent_platform/jobs.py) | Hatchet task factories and API delegation for bounded internal agent jobs and ping. | Reviewed |
-| [`key_budget.py`](../../api/agent_platform/key_budget.py) | Navigation hint: key budget; source behavior not independently reviewed. | Indexed |
+| [`key_budget.py`](../../api/agent_platform/key_budget.py) | Provider-enforced non-resetting OpenRouter per-key cap verification before paid staging tests. | Reviewed |
 | [`live_operly_mcp_smoke.py`](../../api/agent_platform/live_operly_mcp_smoke.py) | Navigation hint: live operly mcp smoke; source behavior not independently reviewed. | Indexed |
 | [`live_platform_tool_smoke.py`](../../api/agent_platform/live_platform_tool_smoke.py) | Navigation hint: live platform tool smoke; source behavior not independently reviewed. | Indexed |
 | [`local_monitor.py`](../../api/agent_platform/local_monitor.py) | Worker-health monitor with local tools, policy decisions and PostgreSQL deduplication/history; no model or remote accounts. | Reviewed |
@@ -109,7 +109,7 @@ Shared harness, runtime, capabilities, MCP, bridges, scheduling, budgets, memory
 | [`monitor.py`](../../api/agent_platform/monitor.py) | Deterministic staging web monitor: normalize snapshots, compare sources, fingerprint and persist state across wakes. | Reviewed |
 | [`monitor_admin.py`](../../api/agent_platform/monitor_admin.py) | Navigation hint: monitor admin; source behavior not independently reviewed. | Indexed |
 | [`native_canary.py`](../../api/agent_platform/native_canary.py) | Finite native-only scheduled LangChain tool canary with signed Personal scope and persisted receipts. | Reviewed |
-| [`openrouter_spend_guard.py`](../../api/agent_platform/openrouter_spend_guard.py) | Navigation hint: openrouter spend guard; source behavior not independently reviewed. | Indexed |
+| [`openrouter_spend_guard.py`](../../api/agent_platform/openrouter_spend_guard.py) | Strict provider cap preflight, rejecting missing, reset or excessive limits before model dispatch. | Reviewed |
 | [`operly_broker.py`](../../api/agent_platform/operly_broker.py) | Verifies Operly wrapper context and uses short-lived opaque leases for remote read-only tools. | Reviewed |
 | [`operly_mcp_client.py`](../../api/agent_platform/operly_mcp_client.py) | Upstream LangChain MCP adapter loads authorized Operly tools from validated URL, token and exact allowlist. | Reviewed |
 | [`operly_readonly_tools.py`](../../api/agent_platform/operly_readonly_tools.py) | Scoped LangChain adapter for Operly Kernel search/execute broker; broker rechecks live authority. | Reviewed |
@@ -128,7 +128,7 @@ Shared harness, runtime, capabilities, MCP, bridges, scheduling, budgets, memory
 | [`provider_pacing.py`](../../api/agent_platform/provider_pacing.py) | Gateway-local admission pacing and capped Retry-After parsing; not cross-replica accounting. | Reviewed |
 | [`router.py`](../../api/agent_platform/router.py) | Internal service-authenticated experimental /internal/agents/run route. | Reviewed |
 | [`runtime.py`](../../api/agent_platform/runtime.py) | Model selection, LangGraph checkpoint runtime, model client, telemetry and result/termination summaries. | Reviewed |
-| [`scientific_oracles.py`](../../api/agent_platform/scientific_oracles.py) | Navigation hint: scientific oracles; source behavior not independently reviewed. | Indexed |
+| [`scientific_oracles.py`](../../api/agent_platform/scientific_oracles.py) | Bounded deterministic Decimal numerical audits for quadratic gradient updates and trilinear interpolation; no dynamic code. | Reviewed |
 | [`staging_smokes.py`](../../api/agent_platform/staging_smokes.py) | Navigation hint: staging smokes; source behavior not independently reviewed. | Indexed |
 | [`subjective_monitoring.py`](../../api/agent_platform/subjective_monitoring.py) | Recommendation schema and provenance/approval validation; does not establish subjective correctness. | Reviewed |
 | [`synthetic_business_cron.py`](../../api/agent_platform/synthetic_business_cron.py) | Navigation hint: synthetic business cron; source behavior not independently reviewed. | Indexed |
@@ -534,10 +534,10 @@ Web backend handlers for mesh, voice, chat demo and security.
 | File | Purpose / navigation | Evidence |
 | --- | --- | --- |
 | [`__init__.py`](../../web/backend/__init__.py) | Navigation hint:   init  ; source behavior not independently reviewed. | Indexed |
-| [`chat_demo.py`](../../web/backend/chat_demo.py) | Navigation hint: chat demo; source behavior not independently reviewed. | Indexed |
-| [`mesh.py`](../../web/backend/mesh.py) | Navigation hint: mesh; source behavior not independently reviewed. | Indexed |
-| [`security.py`](../../web/backend/security.py) | Navigation hint: security; source behavior not independently reviewed. | Indexed |
-| [`voice.py`](../../web/backend/voice.py) | Navigation hint: voice; source behavior not independently reviewed. | Indexed |
+| [`chat_demo.py`](../../web/backend/chat_demo.py) | Password-gated multimodal Chat Lab: session, request limits, attachment processing and central inference calls. | Reviewed |
+| [`mesh.py`](../../web/backend/mesh.py) | Personal-only model catalog/chat, attachment parsing and gated image/audio/video operations; per-process quotas are not financial controls. | Reviewed |
+| [`security.py`](../../web/backend/security.py) | Shared same-origin, CSRF and Personal session checks for compatibility Mesh and realtime voice. | Reviewed |
+| [`voice.py`](../../web/backend/voice.py) | Compatibility WebRTC SDP exchange using server-side Personal authorization and CSRF checks. | Reviewed |
 
 ## web/backend/static
 
@@ -586,11 +586,11 @@ React source, UI components, runtime context, markdown and voice renderer.
 | --- | --- | --- |
 | [`AccountTemplate.jsx`](../../web/frontend/src/AccountTemplate.jsx) | Navigation hint: AccountTemplate; source behavior not independently reviewed. | Indexed |
 | [`HomeTemplate.jsx`](../../web/frontend/src/HomeTemplate.jsx) | Navigation hint: HomeTemplate; source behavior not independently reviewed. | Indexed |
-| [`NativeMcpCenter.jsx`](../../web/frontend/src/NativeMcpCenter.jsx) | Navigation hint: NativeMcpCenter; source behavior not independently reviewed. | Indexed |
+| [`NativeMcpCenter.jsx`](../../web/frontend/src/NativeMcpCenter.jsx) | React first-party OAuth MCP connection UI; CSRF-protected requests and opaque selected aliases, never bearer credentials. | Reviewed |
 | [`PersonalTemplate.jsx`](../../web/frontend/src/PersonalTemplate.jsx) | Navigation hint: PersonalTemplate; source behavior not independently reviewed. | Indexed |
-| [`VoiceOrb.jsx`](../../web/frontend/src/VoiceOrb.jsx) | Navigation hint: VoiceOrb; source behavior not independently reviewed. | Indexed |
-| [`WorkspaceCenter.jsx`](../../web/frontend/src/WorkspaceCenter.jsx) | Navigation hint: WorkspaceCenter; source behavior not independently reviewed. | Indexed |
-| [`WorkspaceControls.jsx`](../../web/frontend/src/WorkspaceControls.jsx) | Navigation hint: WorkspaceControls; source behavior not independently reviewed. | Indexed |
+| [`VoiceOrb.jsx`](../../web/frontend/src/VoiceOrb.jsx) | React-owned voice interface/lifecycle and artwork renderer integration; visual canvas does not request microphone itself. | Reviewed |
+| [`WorkspaceCenter.jsx`](../../web/frontend/src/WorkspaceCenter.jsx) | React account-scoped workspace center and same-origin API requests; includes native MCP UI. | Reviewed |
+| [`WorkspaceControls.jsx`](../../web/frontend/src/WorkspaceControls.jsx) | Accessible modal focus and progressive-disclosure chat controls, command palette, capture/add menus and desktop install; delegates to existing adapters. | Reviewed |
 | [`admin.css`](../../web/frontend/src/admin.css) | Stylesheet: admin; inspect selectors and importing page. | Indexed |
 | [`admin.jsx`](../../web/frontend/src/admin.jsx) | Navigation hint: admin; source behavior not independently reviewed. | Indexed |
 | [`main.jsx`](../../web/frontend/src/main.jsx) | React mount/hydrate entrypoint selecting page by route. | Reviewed |

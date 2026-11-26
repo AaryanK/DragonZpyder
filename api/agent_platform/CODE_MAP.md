@@ -49,7 +49,7 @@ Start at [CODEBASE.md](../../CODEBASE.md), [file inventory](../../docs/codebase/
 | [`gateway_protocol.py`](gateway_protocol.py) | Validates bounded internal OpenAI-compatible tool-call request and response schemas; never executes tools. | Reviewed |
 | [`harness.py`](harness.py) | Deep Agents construction, specialist prompts/specifications, virtual StateBackend and call/progress limits; accepts explicitly delegated tools. | Reviewed |
 | [`jobs.py`](jobs.py) | Hatchet task factories and API delegation for bounded internal agent jobs and ping. | Reviewed |
-| [`key_budget.py`](key_budget.py) | Navigation hint: key budget; source behavior not independently reviewed. | Indexed |
+| [`key_budget.py`](key_budget.py) | Provider-enforced non-resetting OpenRouter per-key cap verification before paid staging tests. | Reviewed |
 | [`live_operly_mcp_smoke.py`](live_operly_mcp_smoke.py) | Navigation hint: live operly mcp smoke; source behavior not independently reviewed. | Indexed |
 | [`live_platform_tool_smoke.py`](live_platform_tool_smoke.py) | Navigation hint: live platform tool smoke; source behavior not independently reviewed. | Indexed |
 | [`local_monitor.py`](local_monitor.py) | Worker-health monitor with local tools, policy decisions and PostgreSQL deduplication/history; no model or remote accounts. | Reviewed |
@@ -65,7 +65,7 @@ Start at [CODEBASE.md](../../CODEBASE.md), [file inventory](../../docs/codebase/
 | [`monitor.py`](monitor.py) | Deterministic staging web monitor: normalize snapshots, compare sources, fingerprint and persist state across wakes. | Reviewed |
 | [`monitor_admin.py`](monitor_admin.py) | Navigation hint: monitor admin; source behavior not independently reviewed. | Indexed |
 | [`native_canary.py`](native_canary.py) | Finite native-only scheduled LangChain tool canary with signed Personal scope and persisted receipts. | Reviewed |
-| [`openrouter_spend_guard.py`](openrouter_spend_guard.py) | Navigation hint: openrouter spend guard; source behavior not independently reviewed. | Indexed |
+| [`openrouter_spend_guard.py`](openrouter_spend_guard.py) | Strict provider cap preflight, rejecting missing, reset or excessive limits before model dispatch. | Reviewed |
 | [`operly_broker.py`](operly_broker.py) | Verifies Operly wrapper context and uses short-lived opaque leases for remote read-only tools. | Reviewed |
 | [`operly_mcp_client.py`](operly_mcp_client.py) | Upstream LangChain MCP adapter loads authorized Operly tools from validated URL, token and exact allowlist. | Reviewed |
 | [`operly_readonly_tools.py`](operly_readonly_tools.py) | Scoped LangChain adapter for Operly Kernel search/execute broker; broker rechecks live authority. | Reviewed |
@@ -84,7 +84,7 @@ Start at [CODEBASE.md](../../CODEBASE.md), [file inventory](../../docs/codebase/
 | [`provider_pacing.py`](provider_pacing.py) | Gateway-local admission pacing and capped Retry-After parsing; not cross-replica accounting. | Reviewed |
 | [`router.py`](router.py) | Internal service-authenticated experimental /internal/agents/run route. | Reviewed |
 | [`runtime.py`](runtime.py) | Model selection, LangGraph checkpoint runtime, model client, telemetry and result/termination summaries. | Reviewed |
-| [`scientific_oracles.py`](scientific_oracles.py) | Navigation hint: scientific oracles; source behavior not independently reviewed. | Indexed |
+| [`scientific_oracles.py`](scientific_oracles.py) | Bounded deterministic Decimal numerical audits for quadratic gradient updates and trilinear interpolation; no dynamic code. | Reviewed |
 | [`staging_smokes.py`](staging_smokes.py) | Navigation hint: staging smokes; source behavior not independently reviewed. | Indexed |
 | [`subjective_monitoring.py`](subjective_monitoring.py) | Recommendation schema and provenance/approval validation; does not establish subjective correctness. | Reviewed |
 | [`synthetic_business_cron.py`](synthetic_business_cron.py) | Navigation hint: synthetic business cron; source behavior not independently reviewed. | Indexed |
