@@ -1,0 +1,38 @@
+/* Customization is deliberately scoped to conversation content, never security UI. */
+html[data-workspace-theme] #app-shell[style*="--dz-adaptive-font"] .chat-main,
+html[data-workspace-theme] #app-shell[style*="--dz-adaptive-font"] .chat-main .empty-state h1,
+html[data-workspace-theme] #app-shell[style*="--dz-adaptive-font"] #message-input {
+  font-family:var(--dz-adaptive-font);
+}
+html[data-workspace-theme] #app-shell[style*="--dz-adaptive-message-size"] .message-content,
+html[data-workspace-theme] #app-shell[style*="--dz-adaptive-message-size"] #message-input {
+  font-size:var(--dz-adaptive-message-size);
+}
+html[data-workspace-theme] #app-shell[style*="--dz-adaptive-width"] .messages {
+  width:min(var(--dz-adaptive-width),calc(100% - 34px));
+}
+html[data-workspace-theme] #app-shell[style*="--dz-adaptive-width"] .unified-composer {
+  width:min(var(--dz-adaptive-width),100%);
+}
+html[data-workspace-theme] #app-shell[style*="--dz-adaptive-accent"] #send-button:not(:disabled) {
+  background:var(--dz-adaptive-accent);
+  color:#fff;
+}
+html[data-workspace-theme] #app-shell[data-dz-adaptive-motion="reduced"] .chat-main {
+  scroll-behavior:auto;
+}
+html[data-workspace-theme] #app-shell[data-dz-adaptive-motion="reduced"] .prompt-chip {
+  transition:none;
+  transform:none;
+}
+.dz-adaptive-control{position:relative;flex:none}
+.dz-adaptive-trigger,.dz-adaptive-panel button{font:inherit;cursor:pointer;border:1px solid var(--line2);background:var(--panel);color:var(--text);border-radius:8px;padding:8px 10px}
+.dz-adaptive-trigger{font-size:12px;min-height:36px}
+.dz-adaptive-panel{position:fixed;z-index:60;top:76px;right:12px;width:min(320px,calc(100vw - 24px));max-height:calc(100dvh - 100px);overflow:auto;padding:16px;display:grid;gap:12px;border:1px solid var(--line2);border-radius:12px;background:var(--panel);color:var(--text);box-shadow:0 12px 40px #0003}
+.dz-adaptive-panel h2{font-size:16px;margin:0}
+.dz-adaptive-panel p{font-size:12px;margin:0;line-height:1.5}
+.dz-adaptive-panel label{display:grid;gap:5px;font-size:13px}
+.dz-adaptive-panel select{font:inherit;min-height:36px;padding:6px;background:var(--panel);color:var(--text);border:1px solid var(--line2);border-radius:6px}
+.dz-adaptive-panel pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:11px;max-height:180px;overflow:auto}
+.dz-adaptive-control :focus-visible{outline:2px solid currentColor;outline-offset:2px}
+@media(max-width:480px){.dz-adaptive-trigger{padding:5px 7px;font-size:11px}.dz-adaptive-panel{top:64px;max-height:calc(100dvh - 84px)}}

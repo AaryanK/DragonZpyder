@@ -39,3 +39,7 @@ Do not expose provider credentials via `VITE_` variables or browser bundles.
 `/admin` is a React page but the FastAPI server refuses to serve it without a
 verified Operly account whose email is included in `DRAGONZPYDER_ADMIN_EMAILS`.
 It does **not** expose the gateway's private admin token to the browser.
+
+## Adaptive interface
+
+See [adaptive interface architecture](../../docs/adaptive-interface.md) for the versioned customization contract, frontend ownership, security boundaries and staged harness integration. The initial Personal controls are session-local, not an agent-connected production feature.
