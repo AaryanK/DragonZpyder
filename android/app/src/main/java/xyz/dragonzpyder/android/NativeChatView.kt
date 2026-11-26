@@ -68,6 +68,11 @@ class NativeChatView(context: Context, private val dark: Boolean, private val ac
     data class Message(val role: String, val content: String)
     private val rows = mutableStateListOf<Message>()
     private val presentation=ChatPresentationState()
+    private var commands by mutableStateOf<List<CommandItem>?>(null)
+    fun showCommands(names:Array<String>,icons:Array<String>,actions:Array<Runnable>){
+        require(names.size==icons.size&&names.size==actions.size)
+        commands=names.indices.map{CommandItem(names[it],icons[it],actions[it])}
+    }
     private data class Conversation(val id:String,val title:String)
     private var conversations by mutableStateOf(listOf<Conversation>())
     private var selectedConversation by mutableStateOf("")
@@ -133,6 +138,7 @@ class NativeChatView(context: Context, private val dark: Boolean, private val ac
 
     @Composable private fun Workspace() {
         DragonTheme(dark) {
+            commands?.let{NativeCommandPalette(it,dark){commands=null}}
             val drawer=rememberDrawerState(DrawerValue.Closed)
             val drawerScope=rememberCoroutineScope()
             LaunchedEffect(drawerRequest){if(drawerRequest>0)drawer.open()}
