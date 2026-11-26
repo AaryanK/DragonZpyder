@@ -46,12 +46,20 @@ class NativeNavigationDrawerTest {
                     override fun saveArtifact(metadata:String){}
                 })
                 ui.setConversationHistory(JSONArray().put(JSONObject().put("id","one").put("title","Physics research")).put(JSONObject().put("id","two").put("title","Travel planning")),"one")
+                ui.goalsAvailable=false
+                ui.legacyActionsAvailable=false
+                ui.filesAvailable=true
                 ui.view
             })
         }
         compose.onNodeWithContentDescription("Conversations").performClick()
         compose.waitForIdle()
         compose.onNodeWithText("Connections & tools").assertExists()
+        compose.onNodeWithText("Your files").assertExists()
+        compose.onNodeWithText("Tasks").assertDoesNotExist()
+        compose.onNodeWithText("Approvals").assertDoesNotExist()
+        compose.runOnIdle{ui.goalsAvailable=true}
+        compose.onNodeWithText("Tasks").assertExists()
         compose.onNodeWithContentDescription("Find conversations").performTextInput("Travel")
         compose.onNodeWithText("Physics research").assertDoesNotExist()
         compose.onNodeWithText("Travel planning").performClick()
