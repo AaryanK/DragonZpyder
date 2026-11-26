@@ -64,7 +64,7 @@ def verify_google_identity_token(credential: str, *, expected_nonce: str) -> Pro
 
 
 async def exchange_discord_oauth_code(
-    client: httpx.AsyncClient, *, code: str, redirect_uri: str,
+    client: httpx.AsyncClient, *, code: str, redirect_uri: str, mobile: bool = False,
 ) -> ProviderProof:
     """Backend-only authorization-code exchange; caller must consume OAuth state.
 
@@ -73,7 +73,7 @@ async def exchange_discord_oauth_code(
     """
     app_id = os.getenv("DRAGONZPYDER_IDENTITY_DISCORD_CLIENT_ID", "").strip()
     app_secret = os.getenv("DRAGONZPYDER_IDENTITY_DISCORD_CLIENT_SECRET", "")
-    configured_redirect = os.getenv("DRAGONZPYDER_IDENTITY_DISCORD_REDIRECT_URI", "")
+    configured_redirect = os.getenv("DRAGONZPYDER_IDENTITY_DISCORD_MOBILE_REDIRECT_URI" if mobile else "DRAGONZPYDER_IDENTITY_DISCORD_REDIRECT_URI", "")
     if (not app_id or len(app_secret) < 20 or not configured_redirect
             or not isinstance(code, str) or not 8 <= len(code) <= 2048
             or not isinstance(redirect_uri, str)
