@@ -14,3 +14,20 @@ CREATE TABLE IF NOT EXISTS dz_agent_artifacts (
     PRIMARY KEY(owner_id,id)
 );
 CREATE INDEX IF NOT EXISTS dz_agent_artifacts_run_idx ON dz_agent_artifacts(owner_id,run_id);
+
+-- Existing rows remain readable; new object-backed bytes use a durable
+-- pending reservation and only become visible after independent readback.
+ALTER TABLE dz_agent_artifacts ALTER COLUMN ciphertext DROP NOT NULL;
+ALTER TABLE dz_agent_artifacts ADD COLUMN IF NOT EXISTS object_key text;
+ALTER TABLE dz_agent_artifacts ADD COLUMN IF NOT EXISTS storage_state text NOT NULL DEFAULT 'ready';
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='dz_agent_artifacts_storage_contract'
+                  AND conrelid='dz_agent_artifacts'::regclass) THEN
+    ALTER TABLE dz_agent_artifacts ADD CONSTRAINT dz_agent_artifacts_storage_contract
+      CHECK (storage_state IN ('pending','ready','deleting') AND
+             ((object_key IS NULL AND ciphertext IS NOT NULL AND storage_state='ready') OR
+              (object_key IS NOT NULL AND ciphertext IS NULL)));
+  END IF;
+END $$;
+CREATE UNIQUE INDEX IF NOT EXISTS dz_agent_artifacts_object_key_idx
+  ON dz_agent_artifacts(object_key) WHERE object_key IS NOT NULL;
