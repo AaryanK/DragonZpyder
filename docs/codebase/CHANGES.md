@@ -238,3 +238,7 @@ Removed the three Markdown guides from Android drawable, values and xml resource
 - `web/companion.js`: Use neutral session admission and closure endpoints. Offline CI pending; no live transport proof.
 - `web/frontend/src/openrouter-voice.js`: Use shared neutral turn and speech endpoint. Offline CI pending; no live transport proof.
 - `api/tests/test_openrouter_voice.py`: Add native PCM/telephone codec fixtures and bridge grant ownership and authority tests. Offline CI pending; no live transport proof.
+
+## 2026-11-26 — Thanksgiving event
+
+- `web/main.py`: Adds three exact public GET/HEAD routes for the minimal TV display, QR platform selector and official APK release redirect. Inline static QR targets the canonical main-domain selector; no new dependency, identity access, or external image service. Android checks public GitHub release assets only, returns explicit 503 fallback when unavailable. Source inspection only; production smoke check and APK availability pending.
