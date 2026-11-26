@@ -223,7 +223,7 @@ class NativeChatView(context: Context, private val dark: Boolean, private val ac
                 Spacer(Modifier.width(10.dp));Text("New chat",fontWeight=FontWeight.Medium)
             }
             Spacer(Modifier.height(10.dp))
-            OutlinedTextField(value=query,onValueChange={query=it},singleLine=true,placeholder={Text("Search conversations",fontSize=13.sp)},leadingIcon={NavigationGlyph("search",muted,22.dp)},modifier=Modifier.fillMaxWidth().semantics{contentDescription="Find conversations"},shape=RoundedCornerShape(14.dp),colors=OutlinedTextFieldDefaults.colors(unfocusedBorderColor=line,focusedBorderColor=accent))
+            OutlinedTextField(value=query,onValueChange={query=it},singleLine=true,placeholder={Text("Search conversations",fontSize=13.sp)},leadingIcon={NavigationGlyph("search",muted,22.dp)},modifier=Modifier.fillMaxWidth().semantics{contentDescription="Find conversations"},shape=RoundedCornerShape(14.dp),colors=OutlinedTextFieldDefaults.colors(unfocusedBorderColor=tokens.outline,focusedBorderColor=accent))
             Spacer(Modifier.height(8.dp))
             LazyColumn(Modifier.weight(1f).fillMaxWidth(),contentPadding=PaddingValues(top=2.dp,bottom=12.dp)){
                 item{DrawerSection("Workspace")}
@@ -235,17 +235,15 @@ class NativeChatView(context: Context, private val dark: Boolean, private val ac
                 if(historyError)item{Text("Could not refresh history",color=muted,fontSize=12.sp,modifier=Modifier.padding(10.dp))}
                 if(filtered.isEmpty())item{Text(if(query.isBlank())"No conversations yet" else "No matching conversations",color=muted,fontSize=13.sp,modifier=Modifier.padding(10.dp))}
                 items(filtered,key={it.id}){item->
-                    NavigationDrawerItem(label={Text(item.title,maxLines=2,overflow=TextOverflow.Ellipsis,fontSize=14.sp,lineHeight=19.sp)},selected=item.id==selectedConversation,onClick={if(!busy)select{actions.openConversation(item.id)}},shape=RoundedCornerShape(10.dp),modifier=Modifier.heightIn(min=DragonSizes.touch),colors=NavigationDrawerItemDefaults.colors(selectedContainerColor=userBubble,unselectedContainerColor=Color.Transparent,selectedTextColor=ink,unselectedTextColor=ink))
+                    DragonNavigationRow(item.title,null,dark,selected=item.id==selectedConversation,enabled=!busy){select{actions.openConversation(item.id)}}
                 }
 
             }
             HorizontalDivider(color=line.copy(alpha=.55f))
             Row(Modifier.fillMaxWidth().heightIn(min=52.dp),verticalAlignment=Alignment.CenterVertically){
-                TextButton(onClick={select(actions::account)},enabled=!busy,modifier=Modifier.weight(1f).heightIn(min=DragonSizes.touch)){
-                    NavigationGlyph("account",ink);Spacer(Modifier.width(8.dp));Text("Account",color=ink,maxLines=1,overflow=TextOverflow.Ellipsis)
-                }
+                Box(Modifier.weight(1f)){DragonNavigationRow("Account","account",dark,enabled=!busy){select(actions::account)}}
                 IconButton(onClick={select(actions::theme)},enabled=!busy,modifier=Modifier.size(DragonSizes.touch).semantics{contentDescription="Switch appearance"}){NavigationGlyph(if(dark)"sun" else "moon",ink)}
-                IconButton(onClick={select(actions::commands)},enabled=!busy,modifier=Modifier.size(DragonSizes.touch).semantics{contentDescription="All commands"}){NavigationGlyph("more",ink)}
+
             }
         }
     }
@@ -253,7 +251,7 @@ class NativeChatView(context: Context, private val dark: Boolean, private val ac
         Text(title,color=muted,fontSize=11.sp,fontWeight=FontWeight.SemiBold,modifier=Modifier.padding(start=12.dp,top=14.dp,bottom=6.dp).semantics{heading()})
     }
     @Composable private fun DrawerRow(icon:String,label:String,selected:Boolean,click:()->Unit){
-        NavigationDrawerItem(label={Text(label,fontSize=14.sp,maxLines=2,overflow=TextOverflow.Ellipsis)},selected=selected,onClick={if(!busy)click()},icon={NavigationGlyph(icon,ink)},shape=RoundedCornerShape(10.dp),modifier=Modifier.heightIn(min=DragonSizes.touch),colors=NavigationDrawerItemDefaults.colors(selectedContainerColor=userBubble,unselectedContainerColor=Color.Transparent,selectedTextColor=ink,unselectedTextColor=ink))
+        DragonNavigationRow(label,icon,dark,selected=selected,enabled=!busy,onClick=click)
     }
     @Composable private fun Welcome() {
         Column(Modifier.fillMaxWidth().padding(horizontal=10.dp,vertical=22.dp),horizontalAlignment=Alignment.CenterHorizontally) {
