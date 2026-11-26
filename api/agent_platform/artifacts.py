@@ -64,13 +64,36 @@ def metadata(row):
             "download_path":"/v2/personal/files/"+str(row["id"])}
 
 
+def _storage_backend():
+    value=os.getenv("DRAGONZPYDER_ARTIFACT_STORAGE_BACKEND","postgres")
+    if value not in ("postgres","s3"):
+        raise HTTPException(503,"Artifact storage backend not configured")
+    return value
+
+
+def _verified_object_key(row, owner, file_id):
+    from .artifact_object_store import object_key
+    key=object_key(owner,file_id)
+    if row["object_key"]!=key:
+        raise ValueError("Artifact object identity mismatch")
+    return key
+
+
+def _decrypt(enc, row, owner, file_id, ciphertext):
+    data=enc.decrypt(bytes(row["nonce"]),bytes(ciphertext),
+        aad(owner,file_id,row["filename"],row["content_type"],row["sha256"],row["direction"],row["run_id"]))
+    if len(data)!=row["byte_count"] or hashlib.sha256(data).hexdigest()!=row["sha256"]:
+        raise ValueError("Artifact digest mismatch")
+    return data
+
+
 async def put(db, *, owner, name, mime, data, direction="upload", run_id=None, artifact_id=None):
     enc=cipher()
     name=filename(name)
     mime=media_type(mime)
-    if not 0<len(data)<=MAX_BYTES:
+    if type(data) is not bytes or not 0<len(data)<=MAX_BYTES:
         raise HTTPException(413,"Artifact size must be 1 byte to 10 MiB")
-    if direction not in ("upload","generated") or (direction=="generated" and run_id is None):
+    if direction not in ("upload","generated") or (direction=="generated" and not isinstance(run_id,UUID)):
         raise ValueError("Invalid artifact provenance")
     digest=hashlib.sha256(data).hexdigest()
     if artifact_id is not None and (direction != "generated" or not isinstance(artifact_id,UUID)):
@@ -78,41 +101,100 @@ async def put(db, *, owner, name, mime, data, direction="upload", run_id=None, a
     file_id=artifact_id or uuid4()
     nonce=os.urandom(12)
     encrypted=enc.encrypt(nonce,data,aad(owner,file_id,name,mime,digest,direction,run_id))
+    backend=_storage_backend()
+    from .artifact_object_store import object_key, configured_store
+    store=configured_store() if backend=="s3" else None
+    created=False
     async with db.transaction():
         await db.execute("SELECT pg_advisory_xact_lock(hashtextextended($1,0))","dz-artifacts:"+owner)
-        if artifact_id is not None:
-            existing=await db.fetchrow("SELECT * FROM dz_agent_artifacts WHERE owner_id=$1 AND id=$2",owner,file_id)
-            if existing is not None:
-                # Idempotent replay must match the same run, name, MIME and bytes.
-                if (existing["direction"]!=direction or existing["run_id"]!=run_id
-                        or existing["filename"]!=name or existing["content_type"]!=mime
-                        or existing["sha256"]!=digest or existing["byte_count"]!=len(data)):
-                    raise HTTPException(409,"Artifact publication identity conflict")
-                return metadata(existing)
-        usage=await db.fetchrow("SELECT count(*) AS files, COALESCE(sum(byte_count),0) AS bytes FROM dz_agent_artifacts WHERE owner_id=$1",owner)
-        if usage["files"]>=MAX_FILES or usage["bytes"]+len(data)>OWNER_QUOTA:
-            raise HTTPException(429,"Artifact storage quota reached; delete unused files")
-        row=await db.fetchrow("""INSERT INTO dz_agent_artifacts
-            (owner_id,id,filename,content_type,byte_count,sha256,nonce,ciphertext,direction,run_id)
-            VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-            RETURNING id,filename,content_type,byte_count,sha256,direction""",
-            owner,file_id,name,mime,len(data),digest,nonce,encrypted,direction,run_id)
-    return metadata(row)
+        row=await db.fetchrow("SELECT * FROM dz_agent_artifacts WHERE owner_id=$1 AND id=$2",owner,file_id)
+        if row is not None:
+            if (row["direction"]!=direction or row["run_id"]!=run_id
+                    or row["filename"]!=name or row["content_type"]!=mime
+                    or row["sha256"]!=digest or row["byte_count"]!=len(data)):
+                raise HTTPException(409,"Artifact publication identity conflict")
+            if row["storage_state"]=="deleting":
+                raise HTTPException(409,"Artifact deletion in progress")
+            if row["storage_state"]=="ready":
+                return metadata(row)
+            # Pending writes are reconciled by readback only, never overwritten.
+        else:
+            usage=await db.fetchrow("SELECT count(*) AS files, COALESCE(sum(byte_count),0) AS bytes FROM dz_agent_artifacts WHERE owner_id=$1",owner)
+            if usage["files"]>=MAX_FILES or usage["bytes"]+len(data)>OWNER_QUOTA:
+                raise HTTPException(429,"Artifact storage quota reached; delete unused files")
+            key=object_key(owner,file_id) if backend=="s3" else None
+            row=await db.fetchrow("""INSERT INTO dz_agent_artifacts
+                (owner_id,id,filename,content_type,byte_count,sha256,nonce,ciphertext,direction,run_id,object_key,storage_state)
+                VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *""",
+                owner,file_id,name,mime,len(data),digest,nonce,None if key else encrypted,
+                direction,run_id,key,"pending" if key else "ready")
+            created=True
+    if row["storage_state"]=="ready":
+        return metadata(row)
+    try:
+        key=_verified_object_key(row,owner,file_id)
+        store=store or configured_store()
+        if created:
+            await store.put_new(key,encrypted)
+        raw=await store.read(key,len(data)+16)
+        if _decrypt(enc,row,owner,file_id,raw)!=data:
+            raise ValueError("Object readback mismatch")
+        # A concurrent deletion must not resurrect a publication. Unknown
+        # storage effects leave a durable pending reservation in the quota.
+        ready=await db.fetchrow("""UPDATE dz_agent_artifacts SET storage_state='ready'
+            WHERE owner_id=$1 AND id=$2 AND storage_state='pending'
+            RETURNING *""",owner,file_id)
+        if ready is None:
+            ready=await db.fetchrow("""SELECT * FROM dz_agent_artifacts WHERE owner_id=$1
+                AND id=$2 AND storage_state='ready'""",owner,file_id)
+        if ready is None:
+            raise ValueError("Artifact no longer available")
+        return metadata(ready)
+    except Exception:
+        # No retry with a new object or deletion of an uncertain object.
+        raise HTTPException(503,"Artifact publication unconfirmed") from None
 
 
 async def get(db, *, owner, file_id):
     enc=cipher()
-    row=await db.fetchrow("SELECT * FROM dz_agent_artifacts WHERE owner_id=$1 AND id=$2",owner,file_id)
+    row=await db.fetchrow("SELECT * FROM dz_agent_artifacts WHERE owner_id=$1 AND id=$2 AND storage_state='ready'",owner,file_id)
     if row is None:
         raise HTTPException(404,"Artifact not found")
     try:
-        data=enc.decrypt(bytes(row["nonce"]),bytes(row["ciphertext"]),
-            aad(owner,file_id,row["filename"],row["content_type"],row["sha256"],row["direction"],row["run_id"]))
-        if len(data)!=row["byte_count"] or hashlib.sha256(data).hexdigest()!=row["sha256"]:
-            raise ValueError()
+        if row["object_key"] is not None:
+            from .artifact_object_store import configured_store
+            key=_verified_object_key(row,owner,file_id)
+            raw=await configured_store().read(key,row["byte_count"]+16)
+        else:
+            raw=row["ciphertext"]
+        data=_decrypt(enc,row,owner,file_id,raw)
     except Exception:
         raise HTTPException(503,"Artifact integrity check failed") from None
     return metadata(row),data
+
+
+async def delete(db, *, owner, file_id):
+    cipher()
+    async with db.transaction():
+        await db.execute("SELECT pg_advisory_xact_lock(hashtextextended($1,0))","dz-artifacts:"+owner)
+        row=await db.fetchrow("SELECT * FROM dz_agent_artifacts WHERE owner_id=$1 AND id=$2 FOR UPDATE",owner,file_id)
+        if row is None:
+            raise HTTPException(404,"Artifact not found")
+        if row["storage_state"]=="pending":
+            # A provider upload might still be running. Reconcile the pending
+            # operation before removing its quota reservation or object key.
+            raise HTTPException(409,"Pending artifact must be reconciled before deletion")
+        if row["object_key"] is None:
+            await db.execute("DELETE FROM dz_agent_artifacts WHERE owner_id=$1 AND id=$2",owner,file_id)
+            return
+        key=_verified_object_key(row,owner,file_id)
+        await db.execute("UPDATE dz_agent_artifacts SET storage_state='deleting' WHERE owner_id=$1 AND id=$2",owner,file_id)
+    try:
+        from .artifact_object_store import configured_store
+        await configured_store().delete(key)
+        await db.execute("DELETE FROM dz_agent_artifacts WHERE owner_id=$1 AND id=$2 AND storage_state='deleting'",owner,file_id)
+    except Exception:
+        raise HTTPException(503,"Artifact deletion unconfirmed") from None
 
 
 async def describe(db, *, owner, ids):
@@ -120,7 +202,7 @@ async def describe(db, *, owner, ids):
     if not ids:
         return []
     rows=await db.fetch("""SELECT id,filename,content_type,byte_count,sha256,direction
-        FROM dz_agent_artifacts WHERE owner_id=$1 AND id=ANY($2::uuid[])""",owner,list(ids))
+        FROM dz_agent_artifacts WHERE owner_id=$1 AND id=ANY($2::uuid[]) AND storage_state='ready'""",owner,list(ids))
     by_id={r["id"]:metadata(r) for r in rows}
     if any(i not in by_id for i in ids):
         raise HTTPException(404,"Artifact not found")
