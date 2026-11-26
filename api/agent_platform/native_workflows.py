@@ -325,8 +325,9 @@ async def execute_phase(goal_id,app_state):
             owner=row["owner_id"]
             async def authorize():
                 await verify_authority(owner,row["session_hash"])
-                allowed=await db.fetchval("""SELECT EXISTS(SELECT 1 FROM dz_native_workflows
-                    WHERE goal_id=$1 AND owner_id=$2 AND state IN ('active','inflight') AND NOT cancel_requested)""",goal_id,owner)
+                async with _conversation_db() as auth_db:
+                    allowed=await auth_db.fetchval("""SELECT EXISTS(SELECT 1 FROM dz_native_workflows
+                        WHERE goal_id=$1 AND owner_id=$2 AND state IN ('active','inflight') AND NOT cancel_requested)""",goal_id,owner)
                 if not allowed:raise PermissionError("Workflow cancelled or blocked")
             async def stop(reason,state="blocked"):
                 await db.execute("""UPDATE dz_native_workflows SET state=$2,blocked_reason=$3,
