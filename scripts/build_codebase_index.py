@@ -22,6 +22,12 @@ def python_symbols(source):
     for node in tree.body:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
             yield f"{type(node).__name__} {node.name}", node.lineno
+            for deco in node.decorator_list:
+                if (isinstance(deco, ast.Call) and isinstance(deco.func, ast.Attribute)
+                        and deco.func.attr in {"get", "post", "put", "patch", "delete", "api_route", "websocket"}
+                        and deco.args and isinstance(deco.args[0], ast.Constant)
+                        and isinstance(deco.args[0].value, str) and deco.args[0].value.startswith("/")):
+                    yield f"route {deco.func.attr.upper()} {deco.args[0].value}", deco.lineno
             if isinstance(node, ast.ClassDef):
                 for method in node.body:
                     if isinstance(method, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -53,7 +59,7 @@ def render():
     sha = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
     dirty = bool(subprocess.check_output(["git", "status", "--porcelain", "--untracked-files=no"], cwd=ROOT))
     lines = ["# Local codebase symbol index", "", f"HEAD: {sha}; tracked working tree modified: {dirty}", "",
-             "Python: AST declarations/imports. JS and SQL: lexical hints. No source bodies or configuration values.",
+             "Python: AST declarations/imports and literal route decorators. JS and SQL: lexical hints. No source bodies or configuration values.",
              "All tracked paths are listed, including files without supported symbol extraction.", ""]
     for name in sorted(filter(None, paths)):
         path = ROOT / name
@@ -62,7 +68,13 @@ def render():
             lines.extend(["", "Path only; no symbol extraction.", ""])
             continue
         try:
-            entries = list(symbols(path, path.read_text(encoding="utf-8")))
+            source = path.read_text(encoding="utf-8")
+            entries = list(symbols(path, source))
+            if path.suffix in PY:
+                module_doc = ast.get_docstring(ast.parse(source))
+                if module_doc:
+                    first_line = module_doc.splitlines()[0].strip()
+                    lines.extend(["", "Module docstring (source-authored; may be stale): " + first_line])
         except (OSError, UnicodeError, SyntaxError) as exc:
             lines.extend(["", f"Extraction unavailable: {type(exc).__name__}", ""])
             continue
