@@ -11,7 +11,7 @@ import hashlib
 import json
 import os
 import re
-from uuid import UUID, uuid4
+from uuid import UUID, uuid4, uuid5
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from fastapi import HTTPException
@@ -211,10 +211,14 @@ async def describe(db, *, owner, ids):
     return [by_id[i] for i in ids]
 
 
-def native_tools(db_factory, *, owner, allowed_ids, run_id):
+def native_tools(db_factory, *, owner, allowed_ids, run_id, authorize=None):
     """No model-selected owner, arbitrary path, network or execution authority."""
     from langchain_core.tools import tool
     allowed=set(allowed_ids)
+
+    async def check_authority():
+        if authorize is not None:
+            await authorize()
 
     @tool
     async def inspect_attachment(file_id: str, offset: int=0) -> str:
@@ -225,6 +229,7 @@ def native_tools(db_factory, *, owner, allowed_ids, run_id):
             return "Invalid attachment ID."
         if parsed not in allowed or offset<0:
             return "Attachment not selected for this request."
+        await check_authority()
         async with db_factory() as db:
             info,data=await get(db,owner=owner,file_id=parsed)
         scope="UTF-8 text"
@@ -250,8 +255,10 @@ def native_tools(db_factory, *, owner, allowed_ids, run_id):
         data=content.encode("utf-8")
         if len(data)>256*1024:
             return "Text generation limit exceeded."
+        await check_authority()
+        fid=uuid5(run_id,hashlib.sha256(data).hexdigest()+"\x00"+name+"\x00"+content_type)
         async with db_factory() as db:
-            info=await put(db,owner=owner,name=name,mime=content_type,data=data,direction="generated",run_id=run_id)
+            info=await put(db,owner=owner,name=name,mime=content_type,data=data,direction="generated",run_id=run_id,artifact_id=fid)
             # Verify decryption and byte equality before reporting delivery.
             _,readback=await get(db,owner=owner,file_id=UUID(info["id"]))
             if readback!=data:
@@ -271,8 +278,10 @@ def native_tools(db_factory, *, owner, allowed_ids, run_id):
             data=await asyncio.to_thread(render_document,kind,specification)
         except (ValueError, TypeError, UnicodeError, OverflowError):
             return "Invalid or unsupported document specification."
+        await check_authority()
+        fid=uuid5(run_id,hashlib.sha256(data).hexdigest()+"\x00"+name+"\x00"+MIME[kind])
         async with db_factory() as db:
-            info=await put(db,owner=owner,name=name,mime=MIME[kind],data=data,direction="generated",run_id=run_id)
+            info=await put(db,owner=owner,name=name,mime=MIME[kind],data=data,direction="generated",run_id=run_id,artifact_id=fid)
             _,readback=await get(db,owner=owner,file_id=UUID(info["id"]))
             if readback!=data:
                 raise RuntimeError("Artifact readback mismatch")
