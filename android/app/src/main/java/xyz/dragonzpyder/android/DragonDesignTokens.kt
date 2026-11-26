@@ -22,7 +22,7 @@ class DragonDesignTokens private constructor(val dark:Boolean) {
     val bubble=if(dark)Color(0xFF222922) else Color(0xFFEEEBE6)
     val code=if(dark)Color(0xFF353034) else Color(0xFFECE7E2)
     val danger=if(dark)Color(0xFFFFB4AB) else Color(0xFFB3261E)
-    fun legacyColors():IntArray=intArrayOf(background,surface,ink,muted,accent,divider,sidebar,chip,bubble,surface).map{it.toArgb()}.toIntArray()
+    fun legacyColors():IntArray=listOf(background,surface,ink,muted,accent,divider,sidebar,chip,bubble,surface).map{it.toArgb()}.toIntArray()
     companion object {
         private val lightTokens=DragonDesignTokens(false)
         private val darkTokens=DragonDesignTokens(true)
