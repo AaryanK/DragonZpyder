@@ -202,7 +202,7 @@ def build_frontier_agent(model, checkpointer, *, specialist_models=None, synthet
                    "idempotency remain mandatory.")
     if delegated_tools:
         prompt += (
-            "\nFor straightforward authorized reads, call the relevant bound tool directly "
+            "\nFor straightforward authorized reads, invoke the matching authorized tool directly "
             "and summarize the result. Do not plan, delegate or repeat a successful read "
             "unless the objective requires additional work."
         )
