@@ -201,6 +201,11 @@ def build_frontier_agent(model, checkpointer, *, specialist_models=None, synthet
                    "inventory, email or deployed changes. Tool-side approvals and "
                    "idempotency remain mandatory.")
     if delegated_tools:
+        prompt += (
+            "\nFor straightforward authorized reads, call the relevant bound tool directly "
+            "and summarize the result. Do not plan, delegate or repeat a successful read "
+            "unless the objective requires additional work."
+        )
         delegated_names = {getattr(item, "name", "") for item in delegated_tools}
         if {"search_tools", "describe_tool", "invoke_tool"}.issubset(delegated_names):
             prompt += (
