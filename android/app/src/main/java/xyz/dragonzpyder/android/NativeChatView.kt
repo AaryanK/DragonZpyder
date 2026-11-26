@@ -67,13 +67,18 @@ class NativeChatView(context: Context, private val dark: Boolean, private val ac
 
     data class Message(val role: String, val content: String)
     private val rows = mutableStateListOf<Message>()
+    private val presentation=ChatPresentationState()
     private data class Conversation(val id:String,val title:String)
     private var conversations by mutableStateOf(listOf<Conversation>())
     private var selectedConversation by mutableStateOf("")
     private var drawerRequest by mutableIntStateOf(0)
     private var historyError by mutableStateOf(false)
-    var voiceAvailable by mutableStateOf(false)
-    var filesAvailable by mutableStateOf(false)
+    var voiceAvailable:Boolean
+        get()=presentation.snapshot.voiceAvailable
+        set(value){presentation.update{it.copy(voiceAvailable=value)}}
+    var filesAvailable:Boolean
+        get()=presentation.snapshot.filesAvailable
+        set(value){presentation.update{it.copy(filesAvailable=value)}}
     fun openDrawer(){drawerRequest++;historyError=false}
     fun setConversationHistory(history:org.json.JSONArray,selected:String){
         conversations=(0 until history.length()).mapNotNull{history.optJSONObject(it)?.let{row->
@@ -83,15 +88,33 @@ class NativeChatView(context: Context, private val dark: Boolean, private val ac
         selectedConversation=selected
     }
     fun markHistoryError(){historyError=true}
-    var draft by mutableStateOf("")
-    var statusText by mutableStateOf("Personal agent")
-    var busy by mutableStateOf(false)
-    var streaming by mutableStateOf(false)
-    var partialReply by mutableStateOf("")
-    var modeLabel by mutableStateOf("Agent")
-    var modelLabel by mutableStateOf("")
-    var attachmentLabel by mutableStateOf("")
-    var profileInitial by mutableStateOf("D")
+    var draft:String
+        get()=presentation.snapshot.draft
+        set(value){presentation.update{it.copy(draft=value)}}
+    var statusText:String
+        get()=presentation.snapshot.statusText
+        set(value){presentation.update{it.copy(statusText=value)}}
+    var busy:Boolean
+        get()=presentation.snapshot.busy
+        set(value){presentation.update{it.copy(busy=value)}}
+    var streaming:Boolean
+        get()=presentation.snapshot.streaming
+        set(value){presentation.update{it.copy(streaming=value)}}
+    var partialReply:String
+        get()=presentation.snapshot.partialReply
+        set(value){presentation.update{it.copy(partialReply=value)}}
+    var modeLabel:String
+        get()=presentation.snapshot.modeLabel
+        set(value){presentation.update{it.copy(modeLabel=value)}}
+    var modelLabel:String
+        get()=presentation.snapshot.modelLabel
+        set(value){presentation.update{it.copy(modelLabel=value)}}
+    var attachmentLabel:String
+        get()=presentation.snapshot.attachmentLabel
+        set(value){presentation.update{it.copy(attachmentLabel=value)}}
+    var profileInitial:String
+        get()=presentation.snapshot.profileInitial
+        set(value){presentation.update{it.copy(profileInitial=value)}}
     private val tokens=DragonDesignTokens.of(dark)
     private val bg=tokens.background
     private val panel=tokens.surface
