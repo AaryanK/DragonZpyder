@@ -238,3 +238,8 @@ Removed the three Markdown guides from Android drawable, values and xml resource
 - `web/companion.js`: Use neutral session admission and closure endpoints. Offline CI pending; no live transport proof.
 - `web/frontend/src/openrouter-voice.js`: Use shared neutral turn and speech endpoint. Offline CI pending; no live transport proof.
 - `api/tests/test_openrouter_voice.py`: Add native PCM/telephone codec fixtures and bridge grant ownership and authority tests. Offline CI pending; no live transport proof.
+
+## Universal interaction ingress v1
+- `api/agent_platform/interaction.py`: strict typed text/artifact envelope, normalizes to canonical chat fields; no authority or provider processing.
+- `api/agent_platform/first_party_chat.py`: authenticated interaction and SSE routes reuse owner checks, ledger and existing chat execution; no new permissions.
+- `api/tests/test_interaction.py`: offline normalization and rejection tests; CI pending. No live deployment or provider testing.

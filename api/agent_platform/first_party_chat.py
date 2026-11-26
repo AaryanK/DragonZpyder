@@ -311,6 +311,25 @@ async def cancel_request(request_id: UUID, request: Request):
     return _ledger_response(row)
 
 
+from .interaction import InteractionInput
+
+
+@router.post("/interactions")
+async def interaction(payload: InteractionInput, request: Request):
+    """Typed ingress; reuse the canonical owner and request ledger."""
+    user = await _owner(request, changing=True)
+    if os.getenv("DRAGONZPYDER_FIRST_PARTY_REQUEST_LEDGER_ENABLED") != "1":
+        raise HTTPException(503, "Interaction request ledger unavailable")
+    result = await _chat_owned(ChatInput(**payload.chat_fields()), request, user)
+    return {"version": "1", "result": result}
+
+
+@router.post("/interactions/stream")
+async def interaction_stream(payload: InteractionInput, request: Request):
+    """Reuse existing SSE execution, cancellation and request recovery."""
+    return await chat_stream(ChatInput(**payload.chat_fields()), request)
+
+
 @router.post("/chat")
 async def chat(payload: ChatInput, request: Request):
     user = await _owner(request, changing=True)
