@@ -52,10 +52,12 @@ MODEL_PATTERN = re.compile(r"^[a-zA-Z0-9_.:/-]{3,100}$")
 
 
 class GatewayError(Exception):
-    def __init__(self, status: int, message: str, *, retry_after: int | None = None):
+    def __init__(self, status: int, message: str, *, retry_after: int | None = None,
+                 code: str | None = None):
         self.status = status
         self.message = message
         self.retry_after = retry_after
+        self.code = code
 
 
 class Runtime:
@@ -202,8 +204,8 @@ async def headers(request: Request, call_next):
     return response
 
 
-def denied(status: int, message: str) -> JSONResponse:
-    return JSONResponse({"error": {"message": message, "type": "dragonzpyder_inference_error", "code": status}}, status_code=status)
+def denied(status: int, message: str, *, code: str | None = None) -> JSONResponse:
+    return JSONResponse({"error": {"message": message, "type": "dragonzpyder_inference_error", "code": code if code is not None else status}}, status_code=status)
 
 
 def models() -> list[str]:
@@ -640,6 +642,10 @@ async def inference(prefix: str, request: Request):
                             bool(message.get("reasoning") or message.get("reasoning_details")),
                             request_id,
                         )
+                    # Only preserve a fixed, gateway-authored truncation label.
+                    from agent_platform.gateway_protocol import OUTPUT_LIMIT_CODE
+                    if agent_protocol and isinstance(error, AgentProtocolError) and error.code == OUTPUT_LIMIT_CODE:
+                        raise GatewayError(502, "Model response stopped at output limit", code=OUTPUT_LIMIT_CODE) from None
                     raise GatewayError(502, "Model provider returned unexpected content")
                 served_model = str(provider_response.get("model") or body["model"])
                 generation_id = str(provider_response.get("id") or "") or None
@@ -667,7 +673,7 @@ async def inference(prefix: str, request: Request):
                     # Only authored validation labels; never record prompts or schemas.
                     log.warning("Agent gateway request rejected status=%s reason=%s request_id=%s",
                                 error.status, error.message, request_id)
-                response = denied(error.status, error.message)
+                response = denied(error.status, error.message, code=error.code)
                 if error.retry_after is not None:
                     response.headers["retry-after"] = str(error.retry_after)
             except Exception as error:

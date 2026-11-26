@@ -88,6 +88,13 @@ def test_inference_failure_classification_only_trusts_sdk_exception_types():
             self.status_code = status_code
     assert inference_failure_code(FakeProviderError(429)) == "INFERENCE_LIMIT_REACHED"
     assert inference_failure_code(FakeProviderError(502)) == "INFERENCE_PROVIDER_UNAVAILABLE"
+    truncated = FakeProviderError(502)
+    truncated.body = {"error": {"type": "dragonzpyder_inference_error", "code": "agent_output_limit_reached"}}
+    assert inference_failure_code(truncated) == "INFERENCE_OUTPUT_LIMIT_REACHED"
+    truncated.body = truncated.body["error"]
+    assert inference_failure_code(truncated) == "INFERENCE_OUTPUT_LIMIT_REACHED"
+    truncated.body = {"type": "untrusted", "code": "agent_output_limit_reached"}
+    assert inference_failure_code(truncated) == "INFERENCE_PROVIDER_UNAVAILABLE"
     assert inference_failure_code(FakeProviderError(503)) == "INFERENCE_PROVIDER_UNAVAILABLE"
     assert inference_failure_code(FakeProviderError(400)) is None
 

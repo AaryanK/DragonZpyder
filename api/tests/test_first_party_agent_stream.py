@@ -54,7 +54,7 @@ def test_cancel_inflight_stops_local_agent_without_claiming_rollback():
     asyncio.run(scenario())
 
 
-@pytest.mark.parametrize("failure", ["recursion", "timeout", "unknown", "none"])
+@pytest.mark.parametrize("failure", ["recursion", "timeout", "output_limit", "unknown", "none"])
 def test_native_checkpoint_recovery_never_replays_or_credits_old_turn(failure):
     from types import SimpleNamespace
     from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
@@ -82,6 +82,12 @@ def test_native_checkpoint_recovery_never_replays_or_credits_old_turn(failure):
                 raise GraphRecursionError("bounded")
             if failure == "timeout":
                 raise TimeoutError("bounded")
+            if failure == "output_limit":
+                class GatewayFailure(Exception):
+                    __module__ = "openai._exceptions"
+                    status_code = 502
+                    body = {"type": "dragonzpyder_inference_error", "code": "agent_output_limit_reached"}
+                raise GatewayFailure("bounded")
             if failure == "unknown":
                 raise RuntimeError("ambiguous")
             self.values["messages"].append(AIMessage(content="new answer"))
@@ -102,7 +108,8 @@ def test_native_checkpoint_recovery_never_replays_or_credits_old_turn(failure):
         assert report["objective_verified"] is False
         assert report["status"] == ("completed" if failure == "none" else "incomplete")
         if failure != "none":
-            assert report["termination_reason"] in {"graph_recursion_limit", "execution_deadline"}
+            assert report["termination_reason"] == {"recursion":"graph_recursion_limit",
+                "timeout":"execution_deadline", "output_limit":"inference_output_limit_reached"}[failure]
     assert agent.calls == 1
 
 

@@ -23,3 +23,7 @@ Runner: DRAGONZPYDER_RUNNER_TOKEN, DRAGONZPYDER_RUNNER_SIGNING_KEY (different), 
 4. Review restart-durable nonce/idempotency and orphan cleanup before multi-replica or sustained autonomous use.
 
 Implementation uses the existing Railway Sandbox SDK, migrated Python helpers and the same Deep Agents graph. No competing host shell or sandbox orchestrator.
+
+## Production rollout evidence — 2026-11-26
+
+Railway runner deployment `6e4bbb6c-3cdc-4ee3-8d01-a84d91590af2` from `develop` SHA `1dbe06518850256fa8ebd054e137cc267e401d48` passed HTTP health. One private replica, separate runner credentials, port 3000. Template warm failed with `Missing Railway credential`; a DragonZpyder production-scoped Railway project token remains required. Do not reuse Operly's token. API deployment `6d6ce1f4-172e-404f-a569-bff6a8d78d17` passed healthz after runner and S3 bucket/encryption references were configured. Computer and artifact flags remain gated pending migration, budget, VM/isolation and encrypted-object readback tests. HTTP health is not VM readiness.

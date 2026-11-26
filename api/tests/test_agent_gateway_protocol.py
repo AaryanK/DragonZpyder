@@ -145,11 +145,14 @@ def test_model_tool_calls_must_match_requested_names_and_distinct_ids():
 
 
 def test_truncated_model_response_is_not_success():
-    with pytest.raises(AgentProtocolError, match="output limit"):
+    from agent_platform.gateway_protocol import OUTPUT_LIMIT_CODE
+    with pytest.raises(AgentProtocolError, match="output limit") as failure:
         validate_agent_response({"choices": [{
             "message": {"role": "assistant", "content": "unfinished"},
             "finish_reason": "length",
         }]}, MODEL)
+    assert failure.value.code == OUTPUT_LIMIT_CODE
+    assert failure.value.status == 502
 
 
 def test_reused_tool_call_id_across_completed_turns_is_rejected():

@@ -248,3 +248,15 @@ Removed the three Markdown guides from Android drawable, values and xml resource
 - `.github/workflows/thanksgiving-apk.yml`: One-off develop push trigger or manual dispatch downloads the most recent successful develop Android APK workflow artifact, verifies archive and manifest, records SHA256 and publishes a debug-signed prerelease asset; limited job token, no secrets or production signing. Public release and live download verification pending.
 
 - `web/main.py`: Android choice links directly to the named official Thanksgiving beta raw APK release asset, bypassing release page and release-feed lookup; old Android route remains compatible. Public asset must exist before distribution; live verification pending.
+
+## 2026-11-26 — P0 gateway output recovery
+
+- `api/agent_platform/gateway_protocol.py`: Preserve rejection of truncated completions with a fixed internal error code; never release partial tool calls. Offline protocol regression added; CI/live pending.
+- `api/main.py`: Propagate fixed truncation code through authenticated internal agent gateway, retain generic error handling and conservative cost settlement. Route-level qualification pending.
+- `api/agent_platform/runtime.py`: Opt-in 768–4096 token ceiling for metered gateway only, default unchanged; exact-turn incomplete recovery, no automatic paid retry. SDK regression added; CI/live pending.
+- `api/agent_platform/personal_bridge.py`: Classify typed internal gateway error in OpenAI SDK 502 envelope; untrusted error text remains generic. Offline classification regression added; CI/live pending.
+- `api/agent_platform/first_party_chat.py`: Recover typed truncation using existing exact-turn no-replay checkpoint mechanism; incomplete status remains nonverified. Offline regression added; CI/live pending.
+- `api/tests/test_agent_gateway_protocol.py`: Assert typed rejection of truncated output without accepting it. Offline test, CI pending.
+- `api/tests/test_agent_stack_integration.py`: Assert bounded opt-in output configuration, default ceiling and no automatic retry using SDK model construction. Offline test, CI pending.
+- `api/tests/test_personal_mcp_bridge.py`: Verify flattened and nested gateway error envelope and unrelated error type handling. Offline test, CI pending.
+- `api/tests/test_first_party_agent_stream.py`: Add output limit to exact-turn checkpoint recovery, verify no repeated invocation or historical receipt. Offline test, CI pending.
