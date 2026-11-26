@@ -382,6 +382,62 @@ export function DesktopInstallAction({ pendingPrompt, consumePrompt }) {
   </section>;
 }
 
+
+/**
+ * iOS/iPadOS has no beforeinstallprompt API. Show actionable Safari instructions
+ * instead of pretending the web app can be silently installed.
+ * Never cache account data or require permissions merely to install.
+ */
+export function IosInstallHint() {
+  const [platform, setPlatform] = useState("");
+  const [browser, setBrowser] = useState("");
+  const [installed, setInstalled] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  useEffect(() => {
+    const ua = navigator.userAgent || "";
+    const ipad = /iPad/i.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    const ios = ipad || /iPhone|iPod/i.test(ua);
+    setPlatform(ios ? (ipad ? "iPad" : "iPhone") : "");
+    setBrowser(/Safari/i.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS/i.test(ua) ? "safari" : "other");
+    const mode = window.matchMedia("(display-mode: standalone)");
+    const detect = () => setInstalled(mode.matches || navigator.standalone === true);
+    detect();
+    try { setDismissed(localStorage.getItem("dz:ios-install-dismissed") === "yes"); } catch {}
+    const onInstalled = () => setInstalled(true);
+    mode.addEventListener?.("change", detect);
+    window.addEventListener("appinstalled", onInstalled);
+    return () => {
+      mode.removeEventListener?.("change", detect);
+      window.removeEventListener("appinstalled", onInstalled);
+    };
+  }, []);
+  if (!platform || installed || dismissed) return null;
+  const dismiss = () => {
+    setDismissed(true);
+    try { localStorage.setItem("dz:ios-install-dismissed", "yes"); } catch {}
+  };
+  return <section className="dz-ios-install" aria-label={platform + " installation"}>
+    <div className="dz-ios-install-top">
+      <span className="dz-ios-install-glyph" aria-hidden="true">↗</span>
+      <div className="dz-ios-install-copy">
+        <strong>DragonZpyder on your {platform}</strong>
+        <span>Open it from your Home Screen, without an App Store download.</span>
+      </div>
+      <button type="button" className="dz-ios-install-close" aria-label="Dismiss installation tip" onClick={dismiss}>×</button>
+    </div>
+    <button type="button" className="dz-ios-install-toggle" aria-expanded={expanded}
+      onClick={() => setExpanded(value => !value)}>
+      {expanded ? "Hide installation steps" : "How to add to Home Screen"} <span aria-hidden="true">⌄</span>
+    </button>
+    {expanded && <div className="dz-ios-install-steps">
+      {browser !== "safari" && <p>First, open <strong>dragonzpyder.xyz/app</strong> in Safari.</p>}
+      <p>In Safari, tap <strong>Share</strong> (the square with an upward arrow), then <strong>Add to Home Screen</strong>. Enable <strong>Open as Web App</strong> if shown, and tap <strong>Add</strong>.</p>
+      <p className="dz-ios-install-disclaimer">The app uses an internet connection. Sign in again if Safari and the installed app do not share your session.</p>
+    </div>}
+  </section>;
+}
+
 export function WorkspaceHub() {
   const [open, setOpen] = useState(false);
   const dialogRef = useRef(null);
@@ -419,6 +475,7 @@ export function WorkspaceHub() {
           </button>;
         })}</div>
         <DesktopInstallAction pendingPrompt={pendingPrompt} consumePrompt={() => setPendingPrompt(null)} />
+        <IosInstallHint />
         <button type="button" className="dz-hub-command" onClick={() => { setOpen(false); window.dispatchEvent(new Event("dragonzpyder:command-open")); }}>⌘ Search all available commands</button>
       </aside>
     </div>, document.body)}

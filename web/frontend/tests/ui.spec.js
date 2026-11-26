@@ -180,3 +180,69 @@ test("identical legacy and Kernel approval IDs render once with Kernel authority
   await page.locator("#approval-list .reject-btn").click();
   await expect.poll(() => decisionPath).toBe("/api/kernel/personal/approvals/" + approval.id + "/decision");
 });
+
+
+test("iPhone Safari offers accessible Home Screen instructions without an install prompt", async ({page}) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "userAgent", { configurable:true, get: () =>
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1" });
+    Object.defineProperty(navigator, "platform", { configurable:true, get: () => "iPhone" });
+  });
+  await page.setViewportSize({width:390,height:844});
+  await page.reload();
+  const tip = page.locator(".empty-state .dz-ios-install");
+  await expect(tip).toBeVisible();
+  await tip.getByRole("button", {name:"How to add to Home Screen"}).click();
+  await expect(tip).toContainText("Add to Home Screen");
+  await expect(tip).toContainText("Share");
+  await tip.getByRole("button", {name:"Dismiss installation tip"}).click();
+  await expect(tip).toHaveCount(0);
+  await page.reload();
+  await expect(page.locator(".empty-state .dz-ios-install")).toHaveCount(0);
+});
+
+test("standalone iOS installation does not show the install tutorial", async ({page}) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "userAgent", {configurable:true, get: () =>
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"});
+    Object.defineProperty(navigator, "standalone", {configurable:true, get: () => true});
+  });
+  await page.reload();
+  await expect(page.locator(".empty-state .dz-ios-install")).toHaveCount(0);
+});
+
+test("small phones keep the chat composer visible and avoid horizontal scrolling", async ({page}) => {
+  for (const width of [320, 360, 375, 390, 430]) {
+    await page.setViewportSize({width,height:740});
+    const metrics = await page.evaluate(() => ({
+      overflow:document.documentElement.scrollWidth-window.innerWidth,
+      composer:getComputedStyle(document.querySelector("#message-input")).fontSize,
+      textarea:document.querySelector("#message-input").getBoundingClientRect().toJSON()
+    }));
+    expect(metrics.overflow, "document overflow at "+width+"px").toBeLessThanOrEqual(1);
+    expect(parseFloat(metrics.composer), "iOS text size at "+width+"px").toBeGreaterThanOrEqual(16);
+    expect(metrics.textarea.right, "composer right edge at "+width+"px").toBeLessThanOrEqual(width+1);
+    expect(metrics.textarea.left, "composer left edge at "+width+"px").toBeGreaterThanOrEqual(0);
+  }
+});
+
+test("public landing explains Safari install and fits phone/tablet widths", async ({page}) => {
+  await page.goto("/");
+  const section = page.locator("#install-ios");
+  await expect(section).toContainText("Add to Home Screen");
+  await expect(section.getByRole("link", {name:/Open DragonZpyder/})).toHaveAttribute("href","/app");
+  for (const width of [320,360,375,390,430,768]) {
+    await page.setViewportSize({width,height:812});
+    const bounds = await page.evaluate(() => ({
+      scrollWidth:document.documentElement.scrollWidth,
+      viewport:window.innerWidth,
+      offenders:[...document.querySelectorAll("body *")].map(el => ({
+        tag:el.tagName.toLowerCase(), className:typeof el.className === "string" ? el.className.slice(0,90) : "",
+        right:Math.round(el.getBoundingClientRect().right),
+        left:Math.round(el.getBoundingClientRect().left)
+      })).filter(el => el.right > window.innerWidth+2 || el.left < -2)
+        .sort((a,b) => b.right-a.right).slice(0,16),
+    }));
+    expect(bounds.scrollWidth, width+"px: "+JSON.stringify(bounds.offenders)).toBeLessThanOrEqual(bounds.viewport+1);
+  }
+});

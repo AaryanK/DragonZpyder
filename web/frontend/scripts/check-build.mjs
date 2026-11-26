@@ -14,8 +14,25 @@ for (const page of ["index", "app", "account", "admin"]) {
 const home = readFileSync(resolve(dist, "index.html"), "utf8");
 const app = readFileSync(resolve(dist, "app.html"), "utf8");
 const account = readFileSync(resolve(dist, "account.html"), "utf8");
+const manifest = JSON.parse(readFileSync(resolve(dist, "app.webmanifest"), "utf8"));
+assert.equal(manifest.start_url, "/app");
+assert.equal(manifest.scope, "/", "Standalone account navigation must remain inside app scope");
+assert.equal(manifest.display, "standalone");
+assert.equal(manifest.id, "/app");
+assert.ok(manifest.icons.some(icon => icon.src === "/app-icon-192.png"));
+assert.ok(manifest.icons.some(icon => icon.src === "/app-icon-512.png"));
+for (const file of ["app-icon-180.png", "app-icon-192.png", "app-icon-512.png"]) {
+  assert.ok(readFileSync(resolve(dist, file)).length > 100, file + ": generated icon unavailable");
+}
+for (const [page, html] of [["home", home], ["app", app], ["account", account]]) {
+  assert.match(html, /apple-mobile-web-app-capable/, page + ": missing Safari standalone metadata");
+  assert.match(html, /apple-touch-icon[^>]+app-icon-180\.png/, page + ": missing Apple touch icon");
+  assert.match(html, /rel="manifest" href="\/app\.webmanifest"/, page + ": missing PWA manifest");
+}
 assert.match(home, /Make progress|best of AI|All that intelligence/i);
 assert.match(home, /runtime-dot/);
+assert.match(home, /id="install-ios"/, "Public React landing needs an iPhone installation section");
+assert.match(home, /Add to Home Screen/, "Safari install directions missing from landing");
 assert.match(home, /href="\/app"/, "Marketing CTA must link to the canonical React page");
 for (const [name, markup] of [["home", home], ["app", app], ["account", account]]) {
   assert.doesNotMatch(markup, /href="\/(?:app|account)\.html(?:[?"#])/,
@@ -76,4 +93,4 @@ for (const id of ["login-form","mode-tabs","signup-panel","reset-panel",
   assert.ok(account.includes('id="' + id + '"'), "Lost account UI element: " + id);
 }
 assert.ok(readdirSync(resolve(dist, "assets")).some(name => name.endsWith(".js")));
-console.log("React JSX pages, prerendered SEO, legacy controller IDs and styles verified");
+console.log("React pages, Apple home-screen assets, PWA scope, and controller IDs verified");

@@ -71,11 +71,11 @@ for (const name of ["app.css","mesh.css","workspace.css","ui-v1.css","account.cs
 const data = await Promise.all(assets.map(download));
 for(let i=0;i<assets.length;i++) writeFileSync(resolve(dist,assets[i].dest),data[i]);
 const favicon=data[0];
-for(const size of [192,512])writeFileSync(resolve(dist,"app-icon-"+size+".png"),resizedPng(favicon,size));
+for(const size of [180,192,512])writeFileSync(resolve(dist,"app-icon-"+size+".png"),resizedPng(favicon,size));
 const manifest = {
   id:"/app",name:"DragonZpyder Personal AI",short_name:"DragonZpyder",
   description:"Your DragonZpyder workspace for conversations, tools and voice.",
-  start_url:"/app",scope:"/app",display:"standalone",
+  start_url:"/app",scope:"/",display:"standalone",
   background_color:"#faf9f7",theme_color:"#faf9f7",
   categories:["productivity","utilities"],
   icons:[
@@ -84,4 +84,4 @@ const manifest = {
   ]
 };
 writeFileSync(resolve(dist,"app.webmanifest"),JSON.stringify(manifest,null,2)+"\n");
-console.log("Verified official DragonZpyder and Operly logos and Windows install icons.");
+console.log("Verified official DragonZpyder brand and cross-platform home-screen icons.");
