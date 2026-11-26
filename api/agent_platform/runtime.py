@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
+import logging
 import os
 import re
 from uuid import UUID, uuid4
@@ -342,6 +344,17 @@ class AgentRuntime:
                  if parent_job_id is not None else model_client())
         from .delegation_trace import DelegationTrace
         delegation_trace = DelegationTrace()
+        from .run_telemetry import RunTelemetry
+        run_telemetry = RunTelemetry()
+
+        def emit_execution(status, reason=None):
+            evidence = run_telemetry.snapshot(status=status, termination_reason=reason)
+            # No prompt, account, conversation or tool arguments in production logs.
+            logging.getLogger(__name__).info("agent_execution_evidence %s",
+                json.dumps({"execution_id":delegation_trace.execution_id,
+                            "surface":"internal", **evidence},sort_keys=True))
+            return evidence
+
         try:
             agent = (
                 build_agent(model, self._checkpointer, parent_job_id=parent_job_id)
@@ -358,7 +371,7 @@ class AgentRuntime:
         config = {
             "configurable": {"thread_id": key},
             "recursion_limit": limits.graph_supersteps,
-            "callbacks": [delegation_trace, *langfuse_handlers],
+            "callbacks": [delegation_trace, run_telemetry, *langfuse_handlers],
             "metadata": {
                 "service_id": service_id,
                 "harness_version": "v2",
@@ -373,11 +386,15 @@ class AgentRuntime:
             ), timeout=limits.deadline_seconds)
             current = exact_turn_state(result, turn_id=turn_id, prompt=prompt,
                                        require_answer=True)
+        except asyncio.CancelledError:
+            emit_execution("cancelled","cancelled")
+            raise
         except Exception as exc:
             reason = controlled_termination_reason(exc)
             if isinstance(exc, TimeoutError):
                 reason = "execution_deadline"
             if not recover_partial_on_failure or not reason:
+                emit_execution("failed",reason or "unclassified_execution_failure")
                 raise AgentPipelineError("execution") from exc
             # Persisted checkpoints can survive a model-call / recursion
             # limit. A read failure degrades evidence; it does NOT certify
@@ -397,6 +414,7 @@ class AgentRuntime:
             report = summarize_agent_result(current)
         trace = delegation_trace.snapshot()
         report["execution_id"] = trace["execution_id"]
+        report["execution_telemetry"] = emit_execution(report["status"],report.get("termination_reason"))
         report["delegation_spans"] = trace["spans"]
         report["parallelism_observed"] = trace["parallelism_observed"]
         report["delegated_calls_observed"] = trace["delegated_calls_observed"]
