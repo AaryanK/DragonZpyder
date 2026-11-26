@@ -831,3 +831,15 @@ These entries reconcile paths added after the documented baseline; Indexed descr
 | [`apps/sandbox_runner/server.mjs`](../../apps/sandbox_runner/server.mjs) | Authenticate signed scoped VM requests, isolate networking, transfer bounded result files and serialize operations. | Reviewed source; pending integrated validation |
 | [`apps/sandbox_runner/server_ready.mjs`](../../apps/sandbox_runner/server_ready.mjs) | Start and warm runner with readiness checks. | Reviewed source; pending integrated validation |
 | [`apps/README.md`](../../apps/README.md) | Navigation guide for isolated execution service and its gated protocol. | Reviewed source; pending integrated validation |
+
+## Modular voice additions
+
+| File | Purpose | Evidence |
+| --- | --- | --- |
+| [`api/agent_platform/modular_voice.py`](../../api/agent_platform/modular_voice.py) | Room-scoped voice admission, expiry, participant token and authenticated worker turn dispatch. | Reviewed |
+| [`api/agent_platform/migrations/20261126_modular_voice.sql`](../../api/agent_platform/migrations/20261126_modular_voice.sql) | Extend native voice session ledger for modular transport, hashed room nonce and original session authority. | Reviewed |
+| [`api/requirements-voice.txt`](../../api/requirements-voice.txt) | Separate streaming speech worker dependencies, no reasoning provider. | Reviewed |
+| [`api/voice_worker.py`](../../api/voice_worker.py) | LiveKit worker with Deepgram Flux STT, Aura TTS and local VAD; confirmed turns delegated to canonical harness; no local LLM. | Reviewed |
+| [`api/Dockerfile.voice`](../../api/Dockerfile.voice) | Separate streaming audio worker image with predownloaded VAD model. | Reviewed |
+| [`web/frontend/src/modular-voice.js`](../../web/frontend/src/modular-voice.js) | Connect and publish microphone, attach remote audio, receive room-scoped result events. | Reviewed |
+| [`api/tests/test_modular_voice.py`](../../api/tests/test_modular_voice.py) | Offline config, token restriction and authorization regression tests. | Reviewed |

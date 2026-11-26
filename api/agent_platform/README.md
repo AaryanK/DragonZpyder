@@ -132,3 +132,7 @@ accounting boundary before multi-tenant release.
 - Add personal-computer authority separately; do NOT bypass workspace scope.
 - Keep old Node servers until the combined-project Railway services no
   longer depend on `npm start`; only then delete the obsolete runtime code.
+
+## Modular streaming voice
+
+The optional modular route uses LiveKit WebRTC, Deepgram Flux STT and Aura streaming TTS, with no separate reasoning model. The canonical chat ledger and owner-scoped harness execute completed transcripts; original session authority is checked repeatedly. The browser prefers modular when the operator flag is enabled. Existing realtime transport remains independently gated. The worker uses a dedicated internal service credential and room nonce, not user cookies. Configure LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET and DRAGONZPYDER_VOICE_WORKER_TOKEN; worker additionally needs DEEPGRAM_API_KEY and DRAGONZPYDER_VOICE_API_ORIGIN. Apply the modular voice session migration after the native voice migration before enabling DRAGONZPYDER_MODULAR_VOICE_ENABLED. The duration/session quotas are admission bounds, not a verified provider-dollar ceiling. No live call, production migration or deployment has been performed. Full confirmed answer playback is streamed by TTS, but agent generation is not yet streamed into TTS; interruption does not replay an accepted task. Android modular transport and latency benchmarks remain pending.

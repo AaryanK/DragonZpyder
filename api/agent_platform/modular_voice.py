@@ -90,8 +90,9 @@ def nonce_digest(value):
 @asynccontextmanager
 async def livekit_api():
     from livekit import api
+    from aiohttp import ClientTimeout
     url,key,secret,*_=config()
-    async with api.LiveKitAPI(url=url,api_key=key,api_secret=secret,timeout=10) as client:
+    async with api.LiveKitAPI(url=url,api_key=key,api_secret=secret,timeout=ClientTimeout(total=10)) as client:
         yield client
 
 

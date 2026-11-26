@@ -178,3 +178,19 @@ Removed the three Markdown guides from Android drawable, values and xml resource
 - `web/mesh.css`: Honor hidden capability controls despite switch styling. Integrated revision requires fresh CI; no live provider, storage or sandbox qualification asserted.
 - `web/mesh.js`: Route native attachment drafts to the canonical chat adapter instead of legacy Mesh. Integrated revision requires fresh CI; no live provider, storage or sandbox qualification asserted.
 
+## Modular voice transport
+
+- `api/agent_platform/modular_voice.py`: Room-scoped voice admission, expiry, participant token and authenticated worker turn dispatch. No live rollout or paid audio qualification performed.
+- `api/agent_platform/migrations/20261126_modular_voice.sql`: Extend native voice session ledger for modular transport, hashed room nonce and original session authority. No live rollout or paid audio qualification performed.
+- `api/agent_platform/first_party_chat.py`: Recheck scoped voice authority during canonical turns; advertise modular transport without granting extra computer, media or durable privileges. No live rollout or paid audio qualification performed.
+- `api/main.py`: Register modular voice endpoints and bounded room expiry cleanup. No live rollout or paid audio qualification performed.
+- `api/requirements.txt`: Add LiveKit server API dependency for room and token operations. No live rollout or paid audio qualification performed.
+- `api/requirements-voice.txt`: Separate streaming speech worker dependencies, no reasoning provider. No live rollout or paid audio qualification performed.
+- `api/voice_worker.py`: LiveKit worker with Deepgram Flux STT, Aura TTS and local VAD; confirmed turns delegated to canonical harness; no local LLM. No live rollout or paid audio qualification performed.
+- `api/Dockerfile.voice`: Separate streaming audio worker image with predownloaded VAD model. No live rollout or paid audio qualification performed.
+- `web/frontend/package.json`: Add LiveKit client dependency. No live rollout or paid audio qualification performed.
+- `web/frontend/src/modular-voice.js`: Connect and publish microphone, attach remote audio, receive room-scoped result events. No live rollout or paid audio qualification performed.
+- `web/companion.js`: Choose modular voice when gated; preserve existing realtime lifecycle as optional path. No live rollout or paid audio qualification performed.
+- `web/app.js`: Expose modular capability and refresh canonical chat history on returned voice results without resubmission. No live rollout or paid audio qualification performed.
+- `api/tests/test_modular_voice.py`: Offline config, token restriction and authorization regression tests. No live rollout or paid audio qualification performed.
+- `.github/workflows/dragonzpyder-api.yml`: Run modular voice contracts and separate SDK import smoke checks without paid requests. No live rollout or paid audio qualification performed.
