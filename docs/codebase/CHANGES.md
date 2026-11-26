@@ -242,3 +242,9 @@ Removed the three Markdown guides from Android drawable, values and xml resource
 ## 2026-11-26 — Thanksgiving event
 
 - `web/main.py`: Adds three exact public GET/HEAD routes for the minimal TV display, QR platform selector and official APK release redirect. Inline static QR targets the canonical main-domain selector; no new dependency, identity access, or external image service. Android checks public GitHub release assets only, returns explicit 503 fallback when unavailable. Source inspection only; production smoke check and APK availability pending.
+
+## Thanksgiving public beta APK
+
+- `.github/workflows/thanksgiving-apk.yml`: One-off develop push trigger or manual dispatch downloads the most recent successful develop Android APK workflow artifact, verifies archive and manifest, records SHA256 and publishes a debug-signed prerelease asset; limited job token, no secrets or production signing. Public release and live download verification pending.
+
+- `web/main.py`: Android choice links directly to the named official Thanksgiving beta raw APK release asset, bypassing release page and release-feed lookup; old Android route remains compatible. Public asset must exist before distribution; live verification pending.

@@ -111,3 +111,5 @@ The in-process call quota is *not* an enforced dollar budget. Create and monitor
 ### Thanksgiving display
 
 `/thanksgiving` serves a minimal TV display; its QR targets `/thanksgiving/start` with Website and Android choices. `/thanksgiving/android` redirects only to an APK asset from the official repository's public releases; otherwise returns an honest unavailable page. These exact public routes are implemented in `main.py` without affecting auth or runtime routing.
+
+The Thanksgiving platform selector links directly to the public `thanksgiving-2026-android-beta/DragonZpyder-beta.apk` GitHub release asset. The legacy `/thanksgiving/android` lookup remains available. The release is a debug-signed beta, not Play distribution.

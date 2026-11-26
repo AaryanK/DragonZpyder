@@ -1,0 +1,57 @@
+name: Thanksgiving public Android beta
+on:
+  push:
+    branches: [develop]
+    paths: [".github/workflows/thanksgiving-apk.yml"]
+  workflow_dispatch:
+permissions:
+  actions: read
+  contents: write
+concurrency:
+  group: thanksgiving-public-android-beta
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/develop'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Download latest successful develop Android debug APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/dz-apk
+          gh run list --workflow android-apk.yml --branch develop --status success --limit 20 --json databaseId,headSha,event --jq '.[] | select(.event == "push" or .event == "workflow_dispatch") | [.databaseId,.headSha] | @tsv' > /tmp/dz-runs
+          while IFS=$'\t' read -r run sha; do
+            if gh run download "$run" -n DragonZpyder-Android-debug -D /tmp/dz-apk; then
+              apk=$(find /tmp/dz-apk -type f -name app-debug.apk -print -quit)
+              if [ -n "$apk" ] && [ -s "$apk" ]; then
+                cp "$apk" /tmp/DragonZpyder-beta.apk
+                printf '%s\n' "$run" > /tmp/dz-run
+                printf '%s\n' "$sha" > /tmp/dz-sha
+                break
+              fi
+            fi
+          done < /tmp/dz-runs
+          test -s /tmp/DragonZpyder-beta.apk
+          unzip -tq /tmp/DragonZpyder-beta.apk
+          unzip -Z1 /tmp/DragonZpyder-beta.apk | grep -Fx AndroidManifest.xml
+          sha256sum /tmp/DragonZpyder-beta.apk | sed 's|/tmp/||' > /tmp/DragonZpyder-beta.sha256
+      - name: Publish public prerelease with raw APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag=thanksgiving-2026-android-beta
+          run=$(cat /tmp/dz-run)
+          sha=$(cat /tmp/dz-sha)
+          notes="Debug-signed Android beta from successful develop Android APK workflow run $run, commit $sha. Not a Play Store or production-signed release. Android may require permission to install from this source."
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" /tmp/DragonZpyder-beta.apk /tmp/DragonZpyder-beta.sha256 --clobber
+            gh release edit "$tag" --notes "$notes" --prerelease
+          else
+            gh release create "$tag" /tmp/DragonZpyder-beta.apk /tmp/DragonZpyder-beta.sha256 --target "$sha" --title "DragonZpyder Android Thanksgiving beta" --notes "$notes" --prerelease
+          fi
+          gh release view "$tag" --json assets,url,isPrerelease
