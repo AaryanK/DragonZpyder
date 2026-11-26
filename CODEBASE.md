@@ -9,7 +9,7 @@ Baseline: [develop at d38aa819af86](https://github.com/AaryanK/DragonZpyder/tree
 1. Read the goal and mandatory guardrails in [AGENTS.md](AGENTS.md).
 2. Find the relevant system and request path in [Implementation and execution flows](docs/codebase/IMPLEMENTATION.md).
 3. Locate individual paths in [the tracked file inventory](docs/codebase/FILE_INDEX.md). It indexes every baseline tracked file and identifies reviewed vs path-only entries.
-4. For source-derived folder and individual file pages, symbols, imports, routes and candidate references, run `python scripts/build_codebase_index.py --directory /tmp/dragonzpyder-codebase`. Start at `INDEX.md`. Use `--output /tmp/dragonzpyder-symbols.md` for one searchable file. This is static navigation, not behavioral verification. CI publishes the generated index.
+4. For source-derived folder and individual file pages, symbols, imports, routes and candidate references, run `python scripts/build_codebase_index.py --directory /tmp/dragonzpyder-codebase`. Start at `INDEX.md`. Use `--output /tmp/dragonzpyder-symbols.md` for one searchable file. This is static navigation, not behavioral verification. CI publishes the generated index and rejects missing or stale maintained inventory entries or directories without guides.
 5. Read the specific function and its tests before editing. Check current PRs, source SHA and actual deployment evidence when relevant. Do not rely on historical reports for current rollout.
 
 ## Where to start

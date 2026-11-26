@@ -26,6 +26,8 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: python scripts/check_codebase_docs.py --base "$BASE_SHA" --head "$HEAD_SHA"
+      - name: Verify inventory on the checked-out tree
+        run: python scripts/check_codebase_docs.py
       - name: Build checkout-specific folder and file pages
         run: python scripts/build_codebase_index.py --directory "$RUNNER_TEMP/dragonzpyder-codebase"
       - uses: actions/upload-artifact@v4

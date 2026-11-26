@@ -25,6 +25,19 @@ def python_symbols(source):
     for node in tree.body:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
             yield f"{type(node).__name__} {node.name}", node.lineno
+            doc = ast.get_docstring(node)
+            if doc:
+                yield f"{node.name} — {doc.splitlines()[0]}", node.lineno
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                args = node.args
+                names = [a.arg for a in args.posonlyargs + args.args + args.kwonlyargs]
+                yield f"parameters {node.name}: " + ", ".join(names), node.lineno
+                for call in ast.walk(node):
+                    if isinstance(call, ast.Call):
+                        if isinstance(call.func, ast.Name):
+                            yield f"{node.name} call candidate: {call.func.id}", call.lineno
+                        elif isinstance(call.func, ast.Attribute):
+                            yield f"{node.name} call candidate: .{call.func.attr}", call.lineno
             for deco in node.decorator_list:
                 if (isinstance(deco, ast.Call) and isinstance(deco.func, ast.Attribute)
                         and deco.func.attr in {"get", "post", "put", "patch", "delete", "api_route", "websocket"}
@@ -35,6 +48,9 @@ def python_symbols(source):
                 for method in node.body:
                     if isinstance(method, (ast.FunctionDef, ast.AsyncFunctionDef)):
                         yield f"method {node.name}.{method.name}", method.lineno
+                        doc = ast.get_docstring(method)
+                        if doc:
+                            yield f"{node.name}.{method.name} — {doc.splitlines()[0]}", method.lineno
         if isinstance(node, (ast.Import, ast.ImportFrom)):
             if isinstance(node, ast.ImportFrom):
                 yield "import " + "." * node.level + (node.module or ""), node.lineno
@@ -180,9 +196,23 @@ def file_page(name):
 def folder_page(name):
     return "folders/" + ("" if name == "." else name + "/") + "INDEX.md"
 
+def curated_notes(root):
+    """Read maintained purpose rows, without treating them as live evidence."""
+    path = root / "docs/codebase/FILE_INDEX.md"
+    if not path.is_file():
+        return {}
+    result = {}
+    pattern = re.compile(r"^\| \[\x60[^\x60]+\x60\]\(\.\./\.\./([^)]+)\) \| (.*) \| (Reviewed|Indexed) \|$")
+    for line in path.read_text(encoding="utf-8").splitlines():
+        match = pattern.match(line)
+        if match:
+            result[match.group(1)] = (match.group(2), match.group(3))
+    return result
+
 def render(root=ROOT):
     paths = tracked(root)
     info = {p: file_info(root, p) for p in paths}
+    curated = curated_notes(root)
     forward, reverse = graph(paths, info)
     dirs = {str(parent) for p in paths for parent in Path(p).parents}
     sha = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
@@ -198,13 +228,16 @@ def render(root=ROOT):
         body = [f"# {p}", "", f"[Parent directory]({link(folder_page(str(Path(p).parent)), current)})", "",
                 "Source summary: " + clean(summary), "", "## Symbols / structure", ""]
         declarations = [f"- L{n}: {clean(label)}" for label, n in sorted(set(entries), key=lambda e: (e[1], e[0]))]
+        if p in curated:
+            purpose, status = curated[p]
+            body[6:6] = ["Maintained purpose (" + status + "): " + clean(purpose), ""]
         body += declarations or ["- No symbols extracted."]
         body += ["", "## Import/reference names", ""] + [f"- {clean(m)}" for m in sorted(set(imports)) if not re.match(r"^(https?://|data:)", m)]
         body += ["", "## Candidate dependencies", ""] + links(forward[p], current)
         body += ["", "## Candidate reverse dependencies", ""] + links(reverse[p], current)
         body += ["", "## Candidate related tests", ""] + links(tests_for(p, paths, reverse), current)
         pages[current] = "\n".join(body + ["", caveat, ""])
-        flat += [f"## {p}", "", clean(summary), ""] + declarations + [""]
+        flat += [f"## {p}", "", clean(summary), ""] + (["Maintained purpose (" + curated[p][1] + "): " + clean(curated[p][0]), ""] if p in curated else []) + declarations + [""]
     for d in sorted(dirs):
         current = folder_page(d)
         children = [q for q in dirs if q != d and str(Path(q).parent) == d]

@@ -4,7 +4,7 @@ For each implementation change, add a new bullet beginning with the exact reposi
 
 ## 2026-11-26 — documentation infrastructure
 
-- `scripts/build_codebase_index.py`: Generates source-derived file and directory pages and flat navigation, extracts symbols, imports, routes and candidate references; no application execution. Full repository execution pending CI.
-- `scripts/check_codebase_docs.py`: Compares base and head; requires a new record naming every changed non-documentation path, including both old/new paths on rename. Structural check, not semantic certification.
+- `scripts/build_codebase_index.py`: Generates source-derived file and directory pages and flat navigation, extracts symbols, docstrings, parameters, call candidates, imports, routes and candidate references; includes curated purpose rows; no application execution. Initial generator and gate passed the codebase documentation CI; expanded coverage checks require their own run.
+- `scripts/check_codebase_docs.py`: Compares base and head; requires a new record naming every changed non-documentation path, including both old/new paths on rename; checks exact tracked inventory and folder guides. Structural check, not semantic certification.
 - `tests/test_codebase_documentation.py`: Offline temporary-repository fixtures for extraction, reference hints, generated pages and change-record validation.
 - `.github/workflows/codebase-docs.yml`: Read-only CI builds/uploads the index and checks path-specific records on PRs; no deployment or automatic branch writes.

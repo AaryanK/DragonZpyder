@@ -73,6 +73,20 @@ class DocumentationTests(unittest.TestCase):
         self.commit()
         self.assertEqual(gate.missing_records(self.root, self.base), ["api/helper.py", "api/new.py"])
 
+    def test_inventory_requires_exact_paths_and_folder_guides(self):
+        paths = index.tracked(self.root)
+        inventory = "docs/codebase/FILE_INDEX.md"
+        self.write(inventory, "\n".join("[file](../../" + p + ")" for p in paths + [inventory]))
+        self.commit()
+        absent, stale, guides = gate.inventory_difference(self.root)
+        self.assertEqual(absent, [])
+        self.assertEqual(stale, [])
+        self.assertIn("api", guides)
+        self.write("api/new.py", "x = 1\n")
+        self.commit()
+        self.assertIn("api/new.py", gate.inventory_difference(self.root)[0])
+        self.assertIn("api", gate.inventory_difference(self.root)[2])
+
     def test_documentation_only(self):
         self.write("README.md", "# Updated fixture\n")
         self.commit()
