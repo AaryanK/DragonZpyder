@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="DragonDialogLight" parent="android:style/Theme.Material.Light.Dialog.Alert">
+        <item name="android:colorAccent">#B94A21</item>
+        <item name="android:colorBackground">#FAF9F7</item>
+        <item name="android:windowBackground">#FAF9F7</item>
+        <item name="android:textColorPrimary">#24221F</item>
+        <item name="android:textColorSecondary">#70665F</item>
+    </style>
+    <style name="DragonDialogDark" parent="android:style/Theme.Material.Dialog.Alert">
+        <item name="android:colorAccent">#FF8A50</item>
+        <item name="android:colorBackground">#242124</item>
+        <item name="android:windowBackground">#242124</item>
+        <item name="android:textColorPrimary">#F6F4F1</item>
+        <item name="android:textColorSecondary">#C2B8B0</item>
+    </style>
+</resources>
