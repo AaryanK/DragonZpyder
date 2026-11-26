@@ -93,7 +93,8 @@ async def proxy(request: Request, destination: str, rewrite_origin=False, upstre
         # The migration verifier receives only its own challenge. Never relay
         # Operly credentials, active identity sessions, or bearer headers.
         headers = {k:v for k,v in headers.items() if k in ("accept","content-type","user-agent")}
-        challenge = request.cookies.get("__Host-dz_import_proof", "")
+        challenge = (request.cookies.get("__Host-dz_import_proof", "")
+                     if upstream_path.startswith("/identity/v1/import-proof/") else "")
         headers["cookie"] = ("__Host-dz_import_proof=" + challenge
                              if re.fullmatch(r"[A-Za-z0-9_-]{32,128}", challenge) else "")
     else:
@@ -151,7 +152,10 @@ async def proxy(request: Request, destination: str, rewrite_origin=False, upstre
     # Headers must retain repeated Set-Cookie values for secure sessions.
     for cookie in upstream.headers.get_list("set-cookie"):
         if proof_only and not cookie.startswith("__Host-dz_import_proof="):
-            continue
+            if not (upstream_path == "/identity/v1/recovery/complete"
+                    and cookie.startswith(("__Host-dz_identity=", "__Host-dz_csrf="))
+                    and "max-age=0" in cookie.lower()):
+                continue
         response.raw_headers.append((b"set-cookie", cookie.encode()))
     return response
 
@@ -283,6 +287,9 @@ async def dispatch(path: str, request: Request):
         return JSONResponse({"web_cutover_enabled":
             os.getenv("DRAGONZPYDER_FIRST_PARTY_WEB_CUTOVER_ENABLED") == "1"},
             headers={"Cache-Control": "no-store"})
+    if route == "/dz/recovery/status" and request.method == "GET":
+        return JSONResponse({"enabled": os.getenv("DRAGONZPYDER_ACTIVE_RECOVERY_WEB_ENABLED") == "1"},
+                            headers={"Cache-Control":"no-store"})
     if route == "/dz/import-proof/status" and request.method == "GET":
         return JSONResponse({"enabled": os.getenv("DRAGONZPYDER_IMPORT_PROOF_WEB_ENABLED") == "1"},
                             headers={"Cache-Control": "no-store"})
@@ -300,6 +307,15 @@ async def dispatch(path: str, request: Request):
         if os.getenv("DRAGONZPYDER_NATIVE_PENDING_RECOVERY_WEB_ENABLED") == "1":
             proof_routes.update({"/identity/v1/import-proof/recovery/start",
                                  "/identity/v1/import-proof/recovery/complete"})
+        if native.startswith("/identity/v1/recovery/"):
+            if (native not in {"/identity/v1/recovery/start","/identity/v1/recovery/complete"}
+                    or request.method != "POST" or os.getenv("DRAGONZPYDER_ACTIVE_RECOVERY_WEB_ENABLED") != "1"):
+                return JSONResponse({"detail":"Not found"},status_code=404,headers={"Cache-Control":"no-store"})
+            if request.headers.get("origin") != "https://" + (request.url.hostname or "").lower():
+                return JSONResponse({"detail":"Origin rejected"},status_code=403,headers={"Cache-Control":"no-store"})
+            if request.url.query:
+                return JSONResponse({"detail":"Unexpected query"},status_code=400,headers={"Cache-Control":"no-store"})
+            return await proxy(request, API, rewrite_origin=True, upstream_path=native, proof_only=True)
         if native.startswith("/identity/v1/import-proof/"):
             if (native not in proof_routes or request.method != "POST"
                     or os.getenv("DRAGONZPYDER_IMPORT_PROOF_WEB_ENABLED") != "1"):
