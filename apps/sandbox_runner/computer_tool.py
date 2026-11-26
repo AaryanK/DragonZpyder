@@ -7,6 +7,7 @@ import ipaddress
 import json
 import os
 import shutil
+import selectors
 import signal
 import socket
 import subprocess
@@ -60,10 +61,18 @@ def safe_path(raw: Any, default: str = '.') -> Path:
     value = str(raw if raw is not None else default).strip() or default
     if '\x00' in value or value.startswith('/'):
         raise ValueError('paths must be relative to the Computer workspace')
-    candidate = (ROOT / value).resolve()
-    if candidate != ROOT and ROOT not in candidate.parents:
+    lexical=Path(value)
+    if '..' in lexical.parts:
+        raise ValueError('parent traversal forbidden')
+    candidate=ROOT
+    for part in lexical.parts:
+        candidate=candidate / part
+        if candidate.is_symlink():
+            raise ValueError('symlink paths are not permitted')
+    resolved=candidate.resolve()
+    if resolved != ROOT and ROOT not in resolved.parents:
         raise ValueError('path escaped the Computer workspace')
-    return candidate
+    return resolved
 
 
 def rel(path: Path) -> str:
@@ -96,36 +105,63 @@ def clean_env(extra: dict[str, Any] | None = None) -> dict[str, str]:
 
 
 def run_process(argv: list[str], *, cwd: Path, timeout: int, env: dict[str, str] | None = None) -> dict[str, Any]:
+    # Never capture unbounded stdout/stderr in memory. Drain both pipes
+    # concurrently, keep only a fixed preview, and kill the process group
+    # on deadline (or after the leader exits with lingering child pipes).
+    process = subprocess.Popen(argv,cwd=str(cwd),env=env or clean_env(),
+        stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,
+        start_new_session=True,bufsize=0)
+    selector=selectors.DefaultSelector()
+    captures={"stdout":bytearray(),"stderr":bytearray()}
+    truncated={"stdout":False,"stderr":False}
+    deadline=time.monotonic()+max(1,min(timeout,60))
+    timed_out=False
     try:
-        result = subprocess.run(
-            argv,
-            cwd=str(cwd),
-            env=env or clean_env(),
-            capture_output=True,
-            timeout=timeout,
-            check=False,
-            start_new_session=True,
-        )
-    except subprocess.TimeoutExpired as error:
-        stdout, stdout_truncated = bounded_text(error.stdout or b'')
-        stderr, stderr_truncated = bounded_text(error.stderr or b'')
-        return {
-            'exit_code': None,
-            'timed_out': True,
-            'stdout': stdout,
-            'stderr': stderr,
-            'stdout_truncated': stdout_truncated,
-            'stderr_truncated': stderr_truncated,
-        }
-    stdout, stdout_truncated = bounded_text(result.stdout)
-    stderr, stderr_truncated = bounded_text(result.stderr)
+        for name,stream in (("stdout",process.stdout),("stderr",process.stderr)):
+            os.set_blocking(stream.fileno(),False)
+            selector.register(stream,selectors.EVENT_READ,name)
+        while selector.get_map() or process.poll() is None:
+            remaining=deadline-time.monotonic()
+            if remaining<=0:
+                timed_out=True
+                break
+            if not selector.get_map():
+                time.sleep(min(remaining,.02))
+                continue
+            for key,_ in selector.select(min(remaining,.1)):
+                try:
+                    chunk=os.read(key.fileobj.fileno(),65536)
+                except BlockingIOError:
+                    continue
+                if not chunk:
+                    selector.unregister(key.fileobj)
+                    continue
+                buf=captures[key.data]
+                available=MAX_STDIO-len(buf)
+                buf.extend(chunk[:available])
+                if len(chunk)>available:
+                    truncated[key.data]=True
+    finally:
+        # The root runner additionally terminates any agent-owned processes
+        # that escaped this process group before allowing another operation.
+        try:
+            os.killpg(process.pid,signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        selector.close()
+        for stream in (process.stdout,process.stderr):
+            stream.close()
+        try:
+            process.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            timed_out=True
     return {
-        'exit_code': result.returncode,
-        'timed_out': False,
-        'stdout': stdout,
-        'stderr': stderr,
-        'stdout_truncated': stdout_truncated,
-        'stderr_truncated': stderr_truncated,
+        "exit_code":None if timed_out else process.returncode,
+        "timed_out":timed_out,
+        "stdout":captures["stdout"].decode("utf-8","replace"),
+        "stderr":captures["stderr"].decode("utf-8","replace"),
+        "stdout_truncated":truncated["stdout"],
+        "stderr_truncated":truncated["stderr"],
     }
 
 
@@ -180,12 +216,13 @@ def files_list(args: dict[str, Any]) -> dict[str, Any]:
     recursive = bool(args.get('recursive'))
     paths = target.rglob('*') if target.is_dir() and recursive else target.iterdir() if target.is_dir() else [target]
     items = []
-    for path in paths:
-        if len(items) >= limit:
+    for examined,path in enumerate(paths):
+        if len(items)>=limit or examined>=20000:
             break
         try:
-            stat = path.stat()
-        except OSError:
+            path=safe_path(str(path.relative_to(ROOT)))
+            stat=path.stat()
+        except (OSError,ValueError):
             continue
         items.append({
             'path': rel(path),
@@ -201,9 +238,11 @@ def files_read(args: dict[str, Any]) -> dict[str, Any]:
     if not target.is_file():
         raise FileNotFoundError('file not found')
     maximum = max(1, min(int(args.get('max_bytes') or 2_000_000), MAX_FILE_BYTES))
-    raw = target.read_bytes()
-    content, truncated = bounded_text(raw, maximum)
-    return {'path': rel(target), 'content': content, 'size_bytes': len(raw), 'truncated': truncated}
+    with target.open('rb') as handle:
+        raw=handle.read(maximum+1)
+        size=os.fstat(handle.fileno()).st_size
+    content,truncated=bounded_text(raw,maximum)
+    return {'path':rel(target),'content':content,'size_bytes':size,'truncated':truncated or size>maximum}
 
 
 def files_write(args: dict[str, Any]) -> dict[str, Any]:
@@ -259,9 +298,13 @@ def files_search(args: dict[str, Any]) -> dict[str, Any]:
     matches: list[dict[str, Any]] = []
     candidates = target.rglob('*') if target.is_dir() else [target]
     needle = query.lower()
-    for path in candidates:
-        if len(matches) >= limit:
+    for examined,path in enumerate(candidates):
+        if len(matches)>=limit or examined>=20000:
             break
+        try:
+            path=safe_path(str(path.relative_to(ROOT)))
+        except (OSError,ValueError):
+            continue
         if not path.is_file() or not fnmatch.fnmatch(path.name, pattern):
             continue
         if needle in path.name.lower():
@@ -269,7 +312,8 @@ def files_search(args: dict[str, Any]) -> dict[str, Any]:
         try:
             if path.stat().st_size > 2_000_000:
                 continue
-            text = path.read_text('utf-8', errors='replace')
+            with path.open('rb') as handle:
+                text=handle.read(2_000_001).decode('utf-8','replace')
         except OSError:
             continue
         for number, line in enumerate(text.splitlines(), 1):
@@ -561,8 +605,11 @@ def artifact_export(args: dict[str, Any]) -> dict[str, Any]:
     target = safe_path(args.get('path'))
     if not target.is_file():
         raise FileNotFoundError('artifact file not found')
-    raw = target.read_bytes()
     maximum = max(1, min(int(args.get('max_bytes') or MAX_ARTIFACT_BYTES), MAX_ARTIFACT_BYTES))
+    with target.open('rb') as handle:
+        if os.fstat(handle.fileno()).st_size>maximum:
+            raise ValueError('artifact exceeds Computer export limit')
+        raw=handle.read(maximum+1)
     if len(raw) > maximum:
         raise ValueError('artifact exceeds Computer export limit')
     return {'path': rel(target), 'size_bytes': len(raw), 'sha256': hashlib.sha256(raw).hexdigest(), 'content_base64': base64.b64encode(raw).decode('ascii')}
