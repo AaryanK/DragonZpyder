@@ -235,8 +235,13 @@ async function bootstrapAuth() {
     // never fall back to Operly when the DragonZpyder API is unavailable.
     const routing = await api("/dz/status", { csrf: false });
     state.firstParty = routing.web_cutover_enabled === true;
-    state.nativeCapabilities = state.firstParty ? await api("/dz/v2/personal/status",{csrf:false}) : {};
-    if(computerConsent) computerConsent.closest("label").hidden = !state.nativeCapabilities.computer_enabled;
+    // Optional capabilities must never prevent the existing native text login.
+    // A failed capability lookup leaves every new capability disabled.
+    state.nativeCapabilities = {};
+    if(state.firstParty){
+      try{state.nativeCapabilities=await api("/dz/v2/personal/status",{csrf:false});}catch{}
+    }
+    if(computerConsent) computerConsent.closest("label").hidden = state.nativeCapabilities.computer_enabled!==true;
     window.dragonzpyderNativeMode = state.firstParty;
     window.dispatchEvent(new CustomEvent("dragonzpyder:runtime-mode", { detail: { firstParty: state.firstParty } }));
     if (!state.firstParty) {
