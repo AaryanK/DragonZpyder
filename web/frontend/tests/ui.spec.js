@@ -212,3 +212,19 @@ test("versioned local appearance preferences use bounded size and motion setting
   await expect(page.locator("html")).toHaveAttribute("data-dz-reduced-motion","true");
   await expect(page.locator("#composer")).toBeVisible();
 });
+
+test("sidebar rows use explicit neutral backgrounds and no native bevel",async({page})=>{
+  await page.setViewportSize({width:360,height:740});
+  await page.locator("#open-sidebar").click();
+  await page.mouse.move(350,700);
+  for(const theme of ["dark","light"]){
+    await page.evaluate(t=>document.documentElement.dataset.workspaceTheme=t,theme);
+    for(const name of ["Connections & tools","Tasks & goals"]){
+      const style=await page.locator("#sidebar").getByRole("button",{name}).evaluate(el=>{const c=getComputedStyle(el);return {background:c.backgroundColor,border:c.borderTopWidth,appearance:c.appearance,height:el.getBoundingClientRect().height}});
+      expect(style.background).toBe("rgba(0, 0, 0, 0)");
+      expect(style.border).toBe("0px");expect(style.appearance).toBe("none");expect(style.height).toBeGreaterThanOrEqual(44);
+    }
+  }
+  await expect(page.locator("#sidebar").getByRole("link",{name:"Settings"})).toBeVisible();
+  await expect(page.locator(".workspace-switcher")).toHaveCount(0);
+});

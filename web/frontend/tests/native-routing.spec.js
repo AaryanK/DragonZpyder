@@ -253,3 +253,32 @@ test("native realtime voice preserves orb and uses owner-scoped start and hangup
   expect(await page.evaluate(()=>window.__voiceNative.stopped)).toBe(1);
   expect(legacy).toEqual([]);
 });
+
+test("signed-out native chat goes directly to compact sign-in",async({page})=>{
+  const legacy=[];
+  await page.setViewportSize({width:360,height:740});
+  await page.route("**/api/**",r=>{legacy.push(r.request().url());return r.fulfill({status:410})});
+  await page.route("**/dz/status",r=>r.fulfill({json:{web_cutover_enabled:true}}));
+  await page.route("**/dz/v2/personal/status",r=>r.fulfill({json:{}}));
+  await page.route("**/dz/v2/personal/session",r=>r.fulfill({status:401,json:{detail:"Sign in required"}}));
+  await page.route("**/dz/identity/v1/me",r=>r.fulfill({status:401}));
+  await page.route("**/dz/recovery/status",r=>r.fulfill({json:{enabled:false}}));
+  await page.route("**/dz/identity/v1/provider/google/start",r=>r.fulfill({status:503}));
+  await page.goto("/app");
+  await expect(page).toHaveURL(/\/login$/);
+  await expect(page.getByRole("heading",{name:"Sign in",exact:true})).toBeVisible();
+  await expect(page.locator("#login-email")).toBeInViewport();
+  await expect(page.locator("#login-password")).toBeInViewport();
+  await expect(page.locator("#legacy-login-link")).toBeHidden();
+  await expect(page.locator(".intro")).toHaveCount(0);
+  expect(legacy).toEqual([]);
+});
+test("failed native session probe offers retry, not a duplicate credential form",async({page})=>{
+  await page.route("**/dz/status",r=>r.fulfill({json:{web_cutover_enabled:true}}));
+  await page.route("**/dz/v2/personal/status",r=>r.fulfill({json:{}}));
+  await page.route("**/dz/v2/personal/session",r=>r.fulfill({status:503,json:{detail:"Runtime unavailable"}}));
+  await page.goto("/app");
+  await expect(page.getByRole("dialog",{name:"Unable to connect"})).toBeVisible();
+  await expect(page.getByRole("button",{name:"Try again"})).toBeVisible();
+  await expect(page.locator("#login-form")).toHaveCount(0);
+});

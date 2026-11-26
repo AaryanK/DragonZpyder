@@ -96,7 +96,7 @@ function renderGoogle(clientId,nonce,hostId){
   const host=$(hostId);host.hidden=false;
   window.google.accounts.id.initialize({client_id:clientId,nonce,callback:result=>googleCredential(String(result?.credential||""),expectedMode),auto_select:false,cancel_on_tap_outside:true});
   host.replaceChildren();
-  window.google.accounts.id.renderButton(host,{theme:"filled_black",size:"large",text:"continue_with",shape:"rectangular",width:Math.min(360,Math.max(220,host.clientWidth||300))});
+  window.google.accounts.id.renderButton(host,{theme:"outline",size:"large",text:"continue_with",shape:"rectangular",width:Math.min(400,Math.max(200,Math.floor(host.clientWidth||300)))});
   initializedGoogle=true;googleRenderedMode=mode;
  };
  if(window.google?.accounts?.id){render();return;}
@@ -189,12 +189,13 @@ async function profile(){
   report("Account migration verification is not available. Return to /account for regular access.",true);
   return;
  }
- try{const route=await request("/dz/status");nativeMode=route.web_cutover_enabled===true||route.native_session_present===true||location.pathname==="/login";}catch{nativeMode=location.pathname==="/login";}
+ let legacyAvailable=false;
+ try{const route=await request("/dz/status");nativeMode=route.web_cutover_enabled===true||route.native_session_present===true||location.pathname==="/login";legacyAvailable=route.web_cutover_enabled===false&&route.native_session_present!==true;}catch{nativeMode=true;}
  window.dragonzpyderNativeMode=nativeMode;
  window.dispatchEvent(new CustomEvent("dragonzpyder:runtime-mode",{detail:{firstParty:nativeMode}}));
  if(nativeMode){
   $("dragonzpyder-central-signin").hidden=true;
-  $("legacy-login-link").hidden=location.pathname!=="/login";
+  $("legacy-login-link").hidden=location.pathname!=="/login"||!legacyAvailable;
   $("signup-form").hidden=true;
   activeRecoveryEnabled=(await request("/dz/recovery/status").catch(()=>({enabled:false}))).enabled===true;
   const forgotten=document.querySelector("[data-mode='forgot']");if(forgotten)forgotten.hidden=!activeRecoveryEnabled;
