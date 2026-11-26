@@ -175,6 +175,7 @@ export function PersonalTemplate() {
           <div className="composer-toolbar">
             <div className="composer-left">
               <QuickAddMenu camera={<CameraAttachment />} />
+              <label className="mesh-switch" hidden><input id="native-computer-consent" type="checkbox" /> Use isolated computer</label>
               <button type="button" id="mesh-switch" className="mesh-switch" aria-pressed="false" title="Switch between permissioned Agent and direct AI Mesh"><span aria-hidden="true">✦</span> Agent</button>
               <div id="mesh-controls" className="mesh-controls" hidden>
                 <select id="mesh-task" className="mesh-select task-select" aria-label="AI Mesh task">
