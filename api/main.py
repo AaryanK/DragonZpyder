@@ -38,6 +38,7 @@ from agent_platform.first_party_chat import router as first_party_chat_router
 from agent_platform.personal_history_http import router as personal_history_router
 from agent_platform.first_party_voice import router as first_party_voice_router, cleanup_expired_voice
 from agent_platform.modular_voice import router as modular_voice_router, cleanup_expired_modular
+from agent_platform.openrouter_voice import router as openrouter_voice_router
 from agent_platform.workspace_bridge import router as operly_workspace_bridge_router
 from agent_platform.mcp_connection_http import router as mcp_connection_router
 from agent_platform.openrouter_spend_guard import PaidTestBudgetError, require_paid_test_cap
@@ -174,6 +175,8 @@ app.include_router(artifact_router)
 app.include_router(personal_history_router)
 app.include_router(first_party_voice_router)
 app.include_router(modular_voice_router)
+app.include_router(openrouter_voice_router)
+app.state.provider_runtime = runtime
 from agent_platform.native_workflows import router as native_workflows_router
 app.include_router(native_workflows_router)
 app.include_router(operly_workspace_bridge_router)

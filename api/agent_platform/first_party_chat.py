@@ -95,8 +95,10 @@ async def status():
                and os.getenv("DRAGONZPYDER_IDENTITY_HTTP_ENABLED") == "1"
                and os.getenv("DRAGONZPYDER_AGENTS_ENABLED") == "1")
     from .modular_voice import enabled as modular_voice_enabled
+    from .openrouter_voice import enabled as openrouter_voice_enabled
     return {"native_chat_enabled": enabled,
             "modular_voice_enabled": enabled and modular_voice_enabled(),
+            "openrouter_voice_enabled": enabled and openrouter_voice_enabled(),
             "artifacts_enabled": enabled and os.getenv("DRAGONZPYDER_AGENT_ARTIFACTS_ENABLED") == "1" and bool(os.getenv("DRAGONZPYDER_ARTIFACT_KEY_B64")),
             "computer_enabled": enabled and all(os.getenv(flag) == "1" for flag in (
                 "DRAGONZPYDER_FIRST_PARTY_COMPUTER_ENABLED", "DRAGONZPYDER_AGENT_ARTIFACTS_ENABLED",
@@ -129,7 +131,7 @@ async def session(request: Request):
     capabilities = await status()
     return {"authenticated": True, "runtime": "dragonzpyder",
             "native_chat_enabled": capabilities["native_chat_enabled"],
-            "voice_enabled": capabilities["voice_enabled"] or capabilities["modular_voice_enabled"]}
+            "voice_enabled": capabilities["voice_enabled"] or capabilities["modular_voice_enabled"] or capabilities["openrouter_voice_enabled"]}
 
 
 def _goals_enabled():
