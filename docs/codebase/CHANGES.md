@@ -79,3 +79,5 @@ For each implementation change, add a new bullet beginning with the exact reposi
 - `web/main.py`: Register authenticated artifact and durable-workflow routes and scoped metered media dispatch; web proxy preserves native login and limits upload bodies. Integrated revision requires fresh CI; no live provider, storage or sandbox qualification asserted.
 - `web/mesh.css`: Honor hidden capability controls despite switch styling. Integrated revision requires fresh CI; no live provider, storage or sandbox qualification asserted.
 - `web/mesh.js`: Route native attachment drafts to the canonical chat adapter instead of legacy Mesh. Integrated revision requires fresh CI; no live provider, storage or sandbox qualification asserted.
+
+- `android/app/build.gradle`: Preserve standard Android resource exclusions and exclude only README.md navigation guides from AAPT resource processing; fixes CI resource merger errors. Fresh APK and benchmark checks required.
