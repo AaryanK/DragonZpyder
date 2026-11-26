@@ -57,7 +57,7 @@ function applyWorkspaceTheme(theme, { persist = true } = {}) {
   workspaceThemeToggle.setAttribute("aria-label", mode === "light" ? "Switch to dark appearance" : "Switch to light appearance");
   workspaceThemeToggle.setAttribute("aria-pressed", String(mode === "dark"));
   workspaceThemeToggle.title = mode === "light" ? "Dark mode" : "Light mode";
-  $("workspace-theme-icon").textContent = mode === "light" ? "☾" : "☀";
+  // Vector glyphs follow the root theme attribute.
   if (persist) {
     try { localStorage.setItem("dragonzpyder:workspace-theme", mode); } catch {}
   }
@@ -173,19 +173,23 @@ function hideAuth() {
 }
 
 function initials(value) {
-  const clean = String(value || "D").trim();
-  return (clean[0] || "D").toUpperCase();
+  const parts = String(value || "").trim().split(/\s+/).filter(Boolean);
+  return parts.length ? parts.slice(0, 2).map(part => Array.from(part)[0]).join("").toUpperCase() : "?";
 }
 
 function setSession(session) {
   state.session = session;
   if (!session) {
     sessionLabel.textContent = "Personal session";
-    profileInitial.textContent = "D";
+    profileInitial.textContent = "?";
+    $("dz-runtime-notice").hidden = true;
+    setArchiveMode(state.archiveSelected);
     return;
   }
-  sessionLabel.textContent = session.device || "Personal session";
-  profileInitial.textContent = initials(session.device || "D");
+  sessionLabel.textContent = session.displayName || "Personal account";
+  profileInitial.textContent = initials(session.displayName);
+  $("dz-runtime-notice").hidden = session.nativeChatEnabled !== false;
+  setArchiveMode(state.archiveSelected);
 }
 
 async function ensurePersonalSession() {
@@ -193,6 +197,12 @@ async function ensurePersonalSession() {
     const result = await api("/dz/v2/personal/session", { csrf: false });
     const session = { device: "DragonZpyder", scope: "personal", nativeChatEnabled: result.native_chat_enabled !== false };
     setSession(session);
+    // Optional identity presentation data; never use it to grant authority.
+    void api("/dz/identity/v1/me", { csrf: false }).then(profile => {
+      if (state.session !== session) return;
+      session.displayName = typeof profile.display_name === "string" ? profile.display_name : "";
+      setSession(session);
+    }).catch(() => {});
     return session;
   }
   const rows = await api("/api/auth/sessions", { csrf: false });
@@ -249,7 +259,7 @@ async function bootstrapAuth() {
     hideAuth();
     if (state.firstParty && state.session.nativeChatEnabled === false) {
       setRuntimeStatus("error", "Signed in · Agent runtime not enabled");
-      showToast("You are signed in. The native chat service is not enabled yet.", 7000);
+      renderConversations();
       return;
     }
     setRuntimeStatus("online", "Personal runtime connected");
@@ -467,7 +477,9 @@ function clearConversationSelection() {
 function setArchiveMode(active) {
   state.archiveSelected = active;
   messageInput.disabled = active || state.sending;
-  sendButton.disabled = active || state.sending;
+  const unavailable = state.firstParty && state.session?.nativeChatEnabled === false;
+  sendButton.disabled = active || state.sending || unavailable;
+  for (const chip of document.querySelectorAll(".prompt-chip")) chip.disabled = unavailable;
   messageInput.placeholder = active ? "Archived history · start a new chat to continue" : (messageInput.dataset.originalPlaceholder || "Message DragonZpyder");
   syncComposerAction();
 }
@@ -1061,6 +1073,7 @@ function syncComposerAction() {
   voice.hidden = state.firstParty || pending;
   voice.disabled = state.sending || Boolean(window.dragonzpyderMesh?.isBusy?.());
   sendButton.hidden = state.archiveSelected || !pending;
+  sendButton.disabled = state.archiveSelected || state.sending || (state.firstParty && state.session?.nativeChatEnabled === false);
 }
 window.dragonzpyderComposerSync = syncComposerAction;
 window.addEventListener("dragonzpyder:mcp-selection", (event) => {
@@ -1125,16 +1138,26 @@ $("approvals-button").addEventListener("click", openApprovals);
 $("approvals-top").addEventListener("click", openApprovals);
 $("close-approvals").addEventListener("click", closeApprovals);
 approvalsDrawer.addEventListener("click", (event) => { if (event.target === approvalsDrawer) closeApprovals(); });
-$("profile-button").addEventListener("click", () => { profileMenu.hidden = !profileMenu.hidden; });
+function setProfileMenu(open) {
+  profileMenu.hidden = !open;
+  $("profile-button").setAttribute("aria-expanded", String(open));
+}
+$("profile-button").addEventListener("click", () => setProfileMenu(profileMenu.hidden));
+document.addEventListener("keydown", event => {
+  if (event.key === "Escape" && !profileMenu.hidden) { setProfileMenu(false); $("profile-button").focus(); }
+});
 $("logout-button").addEventListener("click", logout);
 $("open-sidebar").addEventListener("click", () => sidebar.classList.add("open"));
 $("close-sidebar").addEventListener("click", () => sidebar.classList.remove("open"));
 
 document.addEventListener("click", (event) => {
-  if (!profileMenu.hidden && !profileMenu.contains(event.target) && !$("profile-button").contains(event.target)) profileMenu.hidden = true;
+  if (!profileMenu.hidden && !profileMenu.contains(event.target) && !$("profile-button").contains(event.target)) setProfileMenu(false);
 });
 
-window.addEventListener("online", () => setRuntimeStatus(state.session ? "online" : null, state.session ? "Personal runtime connected" : "Sign in required"));
+window.addEventListener("online", () => {
+  const unavailable=state.session?.nativeChatEnabled === false;
+  setRuntimeStatus(unavailable ? "error" : state.session ? "online" : null, unavailable ? "Signed in · Agent runtime not enabled" : state.session ? "Personal runtime connected" : "Sign in required");
+});
 window.addEventListener("offline", () => setRuntimeStatus("error", "Offline"));
 
 autoSizeInput();

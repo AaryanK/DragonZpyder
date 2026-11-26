@@ -4,6 +4,7 @@ import { CommandPalette, QuickAddMenu, WorkspaceHub, SidebarToggle, ModeSwitchCo
 import { WorkspaceCenter } from "./WorkspaceCenter.jsx";
 import { VoiceOrb } from "./VoiceOrb.jsx";
 import "./workspace-center.css";
+import { UiIcon } from "./UiIcon.jsx";
 
 
 /**
@@ -120,36 +121,36 @@ export function PersonalTemplate() {
     <aside className="sidebar" id="sidebar">
       <div className="sidebar-head">
         <a className="brand" href="/" aria-label="DragonZpyder home"><img src="/brand-icon.png" alt=""/><span>DragonZpyder</span></a>
-        <button className="icon-btn mobile-only" id="close-sidebar" aria-label="Close sidebar">×</button>
+        <button className="icon-btn mobile-only" id="close-sidebar" aria-label="Close sidebar"><UiIcon name="close"/></button>
       </div>
       <div className="workspace-switcher" aria-label="Current workspace">
-        <span className="workspace-switcher-icon" aria-hidden="true">✦</span>
+        <span className="workspace-switcher-icon"><UiIcon name="user"/></span>
         <span><strong>Personal</strong><small>Conversations & tools</small></span>
-        <span className="workspace-switcher-check" aria-hidden="true">✓</span>
+        <span className="workspace-switcher-check"><UiIcon name="check" size={16}/></span>
       </div>
       <div className="sidebar-navigation" aria-label="Navigation">
-        <a className="nav-link selected" href="/app" aria-current="page"><span className="nav-glyph" aria-hidden="true">▣</span> Conversations <span className="nav-current">Current</span></a>
-        <button type="button" className="nav-link dz-center-nav-link" onClick={() => window.dispatchEvent(new CustomEvent("dragonzpyder:center-open", { detail: { page: "connections" } }))}><span className="nav-glyph" aria-hidden="true">⌘</span> Connections &amp; tools</button>
-        <a className="nav-link" href="/account"><span className="nav-glyph" aria-hidden="true">◎</span> Account &amp; security</a>
+        <a className="nav-link selected" href="/app" aria-current="page"><span className="nav-glyph"><UiIcon name="chat"/></span> Conversations</a>
+        <button type="button" className="nav-link dz-center-nav-link" onClick={() => window.dispatchEvent(new CustomEvent("dragonzpyder:center-open", { detail: { page: "connections" } }))}><span className="nav-glyph"><UiIcon name="plug"/></span> Connections &amp; tools</button>
+        <a className="nav-link" href="/account"><span className="nav-glyph"><UiIcon name="user"/></span> Account &amp; security</a>
       </div>
-      <button className="new-chat" id="new-chat"><span aria-hidden="true">＋</span> New chat</button>
-      <div className="sidebar-search-wrap"><span aria-hidden="true">⌕</span><input type="search" id="conversation-search" placeholder="Find conversations" aria-label="Find conversations" autoComplete="off"/></div>
+      <button className="new-chat" id="new-chat"><UiIcon name="plus"/> New chat</button>
+      <div className="sidebar-search-wrap"><UiIcon name="search"/><input type="search" id="conversation-search" placeholder="Find conversations" aria-label="Find conversations" autoComplete="off"/></div>
       <div className="sidebar-label">Your conversations</div>
       <nav className="conversation-list" id="conversation-list" aria-label="Recent conversations"></nav>
       <div className="sidebar-spacer"></div>
       <div className="sidebar-footer-label">WORKSPACE</div>
       <WorkspaceHub />
-      <button className="side-action" type="button" onClick={() => window.dispatchEvent(new CustomEvent("dragonzpyder:center-open", { detail: { page: "connections" } }))}><span>Connections &amp; tools</span><span aria-hidden="true">⌘</span></button>
+      <button className="side-action dz-mobile-commands" type="button" onClick={() => { document.getElementById("close-sidebar")?.click(); window.dispatchEvent(new Event("dragonzpyder:command-open")); }}><span>Commands</span><UiIcon name="search"/></button>
       <button className="side-action" id="approvals-button"><span>Approvals</span><span className="badge-count" id="approval-count" hidden>0</span></button>
       <a className="side-action" href="https://operly.dragonzpyder.xyz/" target="_blank" rel="noreferrer"><span>Open Operly</span><span aria-hidden="true">↗</span></a>
       <a className="side-action" href="/"><span>About DragonZpyder</span><span aria-hidden="true">↗</span></a>
     </aside>
     <section className="workspace">
       <header className="workspace-head">
-        <button className="icon-btn mobile-only" id="open-sidebar" aria-label="Open sidebar">☰</button>
+        <button className="icon-btn mobile-only" id="open-sidebar" aria-label="Open sidebar"><UiIcon name="menu"/></button>
         <SidebarToggle />
         <div className="workspace-heading"><div className="workspace-breadcrumb"><strong>Personal</strong></div><div className="runtime-status"><span className="status-dot" id="status-dot"></span><span id="status-text">Checking runtime…</span></div></div>
-        <div className="head-actions"><button type="button" className="dz-command-trigger" id="dz-command-trigger" title="Search commands · Ctrl/⌘ K" aria-label="Open command palette" onClick={() => window.dispatchEvent(new Event("dragonzpyder:command-open"))}>⌘</button><button className="theme-toggle" id="workspace-theme-toggle" type="button" aria-label="Switch to dark appearance" title="Toggle appearance"><span id="workspace-theme-icon" aria-hidden="true">☾</span></button><span className="head-privacy"><span aria-hidden="true">◈</span> Your private workspace</span><button className="ghost-btn" id="approvals-top">Approvals</button><button className="profile-btn" id="profile-button" aria-label="Account menu"><span id="profile-initial">D</span></button></div>
+        <div className="head-actions"><button type="button" className="dz-command-trigger" id="dz-command-trigger" title="Search commands · Ctrl/⌘ K" aria-label="Open command palette" onClick={() => window.dispatchEvent(new Event("dragonzpyder:command-open"))}><UiIcon name="search"/></button><button className="theme-toggle" id="workspace-theme-toggle" type="button" aria-label="Switch to dark appearance" title="Toggle appearance"><span id="workspace-theme-icon" aria-hidden="true"><UiIcon name="moon" className="dz-theme-moon"/><UiIcon name="sun" className="dz-theme-sun"/></span></button><span className="head-privacy"><span aria-hidden="true">◈</span> Your private workspace</span><button className="ghost-btn" id="approvals-top">Approvals</button><button type="button" className="dz-mobile-new" aria-label="New conversation" onClick={() => document.getElementById("new-chat")?.click()}><UiIcon name="edit"/></button><button className="profile-btn" id="profile-button" aria-label="Account menu" aria-expanded="false"><span id="profile-initial">?</span></button></div>
       </header>
       <main className="chat-main" id="chat-main">
         <section className="empty-state" id="empty-state">
@@ -159,15 +160,16 @@ export function PersonalTemplate() {
           <p>From a quick question to a big idea. Start anywhere. We’ll find the way forward.</p>
           <div className="welcome-section-title">Start anywhere <span aria-hidden="true">↗</span></div>
           <div className="prompt-grid">
-            <button className="prompt-chip" data-prompt="Help me think through a new idea.">Explore an idea</button>
-            <button className="prompt-chip" data-prompt="Help me plan a project from scratch.">Plan a project</button>
-            <button className="prompt-chip" data-prompt="Help me turn my notes into a clear draft.">Write something</button>
+            <button className="prompt-chip" data-prompt="Help me think through a new idea."><UiIcon name="idea"/>Explore an idea</button>
+            <button className="prompt-chip" data-prompt="Help me plan a project from scratch."><UiIcon name="plan"/>Plan a project</button>
+            <button className="prompt-chip" data-prompt="Help me turn my notes into a clear draft."><UiIcon name="edit"/>Write something</button>
           </div>
         </section>
         <section className="messages" id="messages" aria-live="polite"></section>
       </main>
       <button type="button" id="dz-jump-latest" className="dz-jump-latest" aria-label="Jump to latest message" hidden><span aria-hidden="true">↓</span> Latest messages</button>
       <footer className="composer-wrap">
+        <div id="dz-runtime-notice" role="status" className="dz-runtime-notice" hidden>Chat is currently unavailable. You are signed in; you can edit your draft, but sending is disabled.</div>
         <span id="dictation-feedback" className="dictation-feedback" role="status" aria-live="polite" hidden></span>
         <form className="composer unified-composer" id="composer" aria-label="Chat message composer">
           <div id="mesh-attachments" className="mesh-attachments" hidden></div>
@@ -192,7 +194,7 @@ export function PersonalTemplate() {
                 <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"></rect><path d="M5 10a7 7 0 0 0 14 0M12 17v5m-4 0h8"></path></svg>
               </button>
               <button className="companion-launch composer-voice" id="companion-open" type="button" aria-haspopup="dialog" aria-controls="companion-panel" aria-expanded="false" aria-label="Start live AI voice conversation" title="Start a realtime two-way voice conversation"><span className="live-voice-bars" aria-hidden="true"><i></i><i></i><i></i></span><span>Live voice</span></button>
-              <button className="send-button" id="send-button" type="submit" aria-label="Send message" hidden>↑</button>
+              <button className="send-button" id="send-button" type="submit" aria-label="Send message" hidden><UiIcon name="send"/></button>
             </div>
           </div>
         </form>
@@ -209,7 +211,7 @@ export function PersonalTemplate() {
   </section>
   <div className="modal-backdrop" id="auth-modal" hidden><section className="modal auth-card" role="dialog" aria-modal="true" aria-labelledby="auth-title"><a className="brand auth-brand" href="/"><img src="/brand-icon.png" alt=""/><span>DragonZpyder</span></a><div className="eyebrow">Private personal runtime</div><h2 id="auth-title">Sign in to your Personal AI</h2><p className="modal-copy">Sign in with your DragonZpyder account. Existing accounts that have not yet migrated can use the legacy form below.</p><a id="dragonzpyder-central-signin-modal" className="primary-btn" href="/login">Sign in with DragonZpyder</a><form id="login-form" className="login-form"><label>Email<input id="login-email" type="email" autoComplete="email" required/></label><label>Password<input id="login-password" type="password" autoComplete="current-password" required/></label><button className="primary-btn" id="login-button" type="submit">Sign in</button></form><div className="form-error" id="login-error" hidden></div><p className="small-copy">New to DragonZpyder? <a href="/login?mode=signup">Create an account</a> · <a href="/login">Continue with Google</a> · <a href="/login?mode=forgot">Forgot password?</a></p></section></div>
   <div className="drawer-backdrop" id="approvals-drawer" hidden><aside className="drawer" role="dialog" aria-modal="true" aria-labelledby="approvals-title"><div className="drawer-head"><div><div className="eyebrow">Human boundary</div><h2 id="approvals-title">Pending approvals</h2></div><button className="icon-btn" id="close-approvals" aria-label="Close approvals">×</button></div><p className="modal-copy">Review the exact action and content before allowing DragonZpyder to execute it.</p><div id="approval-list" className="approval-list"></div></aside></div>
-  <div className="menu" id="profile-menu" hidden><div className="menu-title" id="session-label">Personal session</div><a className="menu-account-link" href="/account">My account & connections ↗</a><button id="logout-button">Sign out</button></div>
+  <div className="menu" id="profile-menu" hidden><div className="menu-title" id="session-label">Personal session</div><button type="button" onClick={() => document.getElementById("workspace-theme-toggle")?.click()}>Appearance</button><a className="menu-account-link" href="/account">My account & connections ↗</a><button id="logout-button">Sign out</button></div>
   <div className="toast" id="toast" hidden></div>
   
     </>

@@ -142,3 +142,20 @@ test("dedicated native login works before global web cutover", async ({page}) =>
     expect(logins).toEqual([{email:"test@example.test",password:"test-password"}]);
     expect(legacy).toEqual([]);
 });
+
+test("native identity initials are not the device name and unavailable chat cannot submit", async ({page}) => {
+  let submissions=0;
+  await page.route("**/dz/status",r=>r.fulfill({json:{web_cutover_enabled:true}}));
+  await page.route("**/dz/v2/personal/session",r=>r.fulfill({json:{authenticated:true,native_chat_enabled:false}}));
+  await page.route("**/dz/identity/v1/me",r=>r.fulfill({json:{display_name:"Ada Lovelace"}}));
+  await page.route("**/dz/v2/personal/chat",r=>{submissions++;return r.fulfill({json:{}})});
+  await page.goto("/app");
+  await expect(page.locator("#profile-initial")).toHaveText("AL");
+  await expect(page.locator("#dz-runtime-notice")).toBeVisible();
+  await page.locator("#message-input").fill("Preserve this draft");
+  await expect(page.locator("#send-button")).toBeDisabled();
+  await expect(page.locator(".prompt-chip").first()).toBeDisabled();
+  await page.locator("#composer").evaluate(form=>form.requestSubmit());
+  await expect(page.locator("#message-input")).toHaveValue("Preserve this draft");
+  expect(submissions).toBe(0);
+});

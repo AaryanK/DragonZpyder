@@ -1,3 +1,4 @@
+import { UiIcon } from "./UiIcon.jsx";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
@@ -140,7 +141,7 @@ export function SidebarToggle() {
   return <button className="dz-sidebar-toggle" type="button" onClick={toggle}
     aria-label={expanded ? "Collapse sidebar" : "Expand sidebar"}
     title={expanded ? "Hide sidebar" : "Show sidebar"} aria-expanded={expanded}
-    aria-controls="sidebar">☷</button>;
+    aria-controls="sidebar"><UiIcon name="panel"/></button>;
 }
 
 export function CommandPalette() {
@@ -302,7 +303,7 @@ export function QuickAddMenu({ camera }) {
   return <div ref={parent} className="dz-add-wrap">
     <button type="button" id="dz-add-toggle" className="dz-add-button" title="Add a file, photo, or screen"
       aria-expanded={open} aria-controls="dz-add-menu" aria-haspopup="true"
-      onClick={() => setOpen(value => !value)} aria-label="Open attachment and input menu">＋</button>
+      onClick={() => setOpen(value => !value)} aria-label="Open attachment and input menu"><UiIcon name="plus"/></button>
     <div className="dz-add-menu" id="dz-add-menu" role="group" aria-label="Input options" hidden={!open}>
       <div className="dz-menu-label">Add to this conversation</div>
       <label id="mesh-file-label" className="dz-menu-action" role="button" tabIndex={open ? 0 : -1}
