@@ -1,6 +1,7 @@
 const launch=document.getElementById("companion-open"),panel=document.getElementById("companion-panel"),end=document.getElementById("companion-end"),mute=document.getElementById("companion-mute"),audio=document.getElementById("companion-audio");
 let peer=null,channel=null,mic=null,controller=null,live=false,starting=false,silent=false,version=0;
 const calls=new Set();
+let nativeSessionId=null,nativeBusy=false,nativeTimer=null;
 // This is transcription only: browser speech recognition must not trigger agent calls.
 const SpeechApi=window.SpeechRecognition||window.webkitSpeechRecognition;
 let browserMode=false,recognition=null,recognitionRun=0,restartTimer=null;
@@ -97,6 +98,9 @@ function row(id,label,value,append=false){
 }
 function send(event){if(channel?.readyState==="open")channel.send(JSON.stringify(event))}
 function cleanup(){
+  clearTimeout(nativeTimer);nativeTimer=null;
+  if(nativeSessionId)window.dragonzpyderNativeVoiceEnd?.(nativeSessionId);
+  nativeSessionId=null;nativeBusy=false;
   version++;controller?.abort();controller=null;
   browserMode=false;stopRecognition();
   browserEvent("voice-mode",{mode:"realtime"});
@@ -110,6 +114,7 @@ function cleanup(){
 }
 function close(){cleanup();panel.hidden=true;setStatus("Ended");launch.focus()}
 async function handleTool(item,v){
+  if(nativeSessionId)return; // Provider function-call events never grant native execution.
   if(!item.call_id||calls.has(item.call_id))return;
   calls.add(item.call_id);
   let output;
@@ -117,12 +122,41 @@ async function handleTool(item,v){
     const input=JSON.parse(item.arguments||"{}"),request=String(input.request||"").trim();
     if(!request||request.length>12000)throw Error("Invalid Personal task");
     if(typeof window.dragonzpyderDelegatePersonalTask!=="function")throw Error("Personal agent unavailable");
-    setStatus("Working through Operly…","working");
+    setStatus("Working through the agent…","working");
     output=await window.dragonzpyderDelegatePersonalTask(request);
   }catch(error){output={error:String(error.message||error)}}
   if(v!==version)return;
   send({type:"conversation.item.create",item:{type:"function_call_output",call_id:item.call_id,output:JSON.stringify(output)}});
   send({type:"response.create"});setStatus("Listening — speak naturally","listening");
+}
+function finishNativePlayback(){
+  nativeBusy=false;
+  for(const t of mic?.getAudioTracks()||[])t.enabled=!silent;
+  setStatus(silent?"Microphone muted":"Listening — speak naturally","listening");
+}
+async function handleNativeTranscript(e,v){
+  const session=nativeSessionId,eventId=e.item_id,transcript=String(e.transcript||"").trim();
+  if(!session||!eventId||calls.has(eventId)||!transcript||silent||nativeBusy)return;
+  calls.add(eventId);
+  nativeBusy=true;
+  for(const t of mic?.getAudioTracks()||[])t.enabled=false;
+  setStatus("Working through DragonZpyder…","working");
+  try{
+    const result=await window.dragonzpyderNativeVoiceTurn(session,eventId,transcript);
+    if(v!==version||session!==nativeSessionId)return;
+    const answer=String(result?.message||"No confirmed agent response was returned.").slice(0,10000);
+    // The canonical written answer is rendered by the same chat adapter.
+    // Realtime receives only text to speak, not tools or extra authorization.
+    send({type:"response.create",response:{conversation:"none",
+      instructions:"Read the supplied answer naturally without adding facts, claims or actions.",
+      input:[{type:"message",role:"user",content:[{type:"input_text",text:answer}]}]}});
+    setStatus("Reading the agent result…","speaking");
+  }catch{
+    if(v===version&&session===nativeSessionId){
+      row("native-error-"+eventId,"DragonZpyder","The request outcome is unconfirmed. Check the conversation before repeating it.");
+      finishNativePlayback();
+    }
+  }
 }
 function onEvent(text,v){
   if(v!==version)return;
@@ -132,10 +166,14 @@ function onEvent(text,v){
   if(e.type==="response.created")setStatus("Speaking…","speaking");
   if(["response.output_audio_transcript.delta","response.audio_transcript.delta"].includes(e.type))row(e.item_id||e.response_id||"agent","DragonZpyder",e.delta,true);
   if(["response.output_audio_transcript.done","response.audio_transcript.done"].includes(e.type))row(e.item_id||e.response_id||"agent","DragonZpyder",e.transcript);
-  if(e.type==="conversation.item.input_audio_transcription.completed")row(e.item_id||"user","You",e.transcript);
+  if(e.type==="conversation.item.input_audio_transcription.completed"){
+    row(e.item_id||"user","You",e.transcript);
+    if(nativeSessionId)handleNativeTranscript(e,v);
+  }
   if(e.type==="response.output_item.done"&&e.item?.type==="function_call"&&e.item.name==="delegate_personal_task")handleTool(e.item,v);
-  if(e.type==="response.done")setStatus("Listening — speak naturally","listening");
-  if(e.type==="error")setStatus(String(e.error?.message||"Voice error"),"error");
+  if(nativeSessionId&&e.type==="output_audio_buffer.stopped")finishNativePlayback();
+  if(e.type==="response.done"&&!nativeSessionId)setStatus("Listening — speak naturally","listening");
+  if(e.type==="error"){if(nativeSessionId)finishNativePlayback();setStatus("Voice playback error","error");}
 }
 async function start(){
   if(live||starting||browserMode)return;
@@ -161,16 +199,28 @@ async function start(){
     channel=peer.createDataChannel("oai-events");channel.onmessage=e=>onEvent(e.data,v);
     channel.onclose=()=>{if(v===version&&live)close()};
     const offer=await peer.createOffer();await peer.setLocalDescription(offer);setStatus("Connecting live voice…","connecting");
-    const r=await fetch("/companion/realtime",{method:"POST",credentials:"same-origin",headers:{"content-type":"application/sdp","x-csrf-token":csrf()},body:peer.localDescription.sdp,signal:controller.signal});
-    if(!r.ok){
-      const data=await r.json().catch(()=>({}));
-      if(v!==version)return;
-      // Only provider availability failures can fall back; never bypass an
-      // authentication error, CSRF rejection, or the provider rate limit.
-      if((r.status===502||r.status===503)&&beginBrowserFallback())return;
-      throw Error(data.detail?.message||"Connection failed: "+r.status);
+    let answer;
+    if(window.dragonzpyderNativeMode===true){
+      if(typeof window.dragonzpyderNativeVoiceStart!=="function")throw Error("Native voice unavailable");
+      nativeSessionId=crypto.randomUUID();
+      const sid=nativeSessionId;
+      const data=await window.dragonzpyderNativeVoiceStart(sid,peer.localDescription.sdp);
+      if(v!==version){window.dragonzpyderNativeVoiceEnd?.(sid);return;}
+      if(data.session_id!==sid||data.agent_mode!==true||typeof data.sdp!=="string")
+        throw Error("Invalid native voice session");
+      answer=data.sdp;
+      nativeTimer=setTimeout(()=>{if(v===version)close()},Math.max(1000,Math.min(600000,Number(data.duration_seconds)*1000||1000)));
+    }else{
+      const r=await fetch("/companion/realtime",{method:"POST",credentials:"same-origin",headers:{"content-type":"application/sdp","x-csrf-token":csrf()},body:peer.localDescription.sdp,signal:controller.signal});
+      if(!r.ok){
+        const data=await r.json().catch(()=>({}));
+        if(v!==version)return;
+        if((r.status===502||r.status===503)&&beginBrowserFallback())return;
+        throw Error(data.detail?.message||"Connection failed: "+r.status);
+      }
+      answer=await r.text();
     }
-    const answer=await r.text();if(v!==version)return;
+    if(v!==version)return;
     await peer.setRemoteDescription({type:"answer",sdp:answer});live=true;starting=false;
     window.dispatchEvent(new CustomEvent("dragonzpyder:voice-session",{detail:{connected:true}}));
     setStatus("Listening — speak naturally","listening");
@@ -184,7 +234,7 @@ mute.addEventListener("click",()=>{
     return;
   }
   if(!mic||!live)return;
-  silent=!silent;mic.getAudioTracks().forEach(t=>t.enabled=!silent);
+  silent=!silent;mic.getAudioTracks().forEach(t=>t.enabled=!silent&&!nativeBusy);
   window.dispatchEvent(new CustomEvent("dragonzpyder:voice-mute",{detail:{muted:silent}}));
   setStatus(silent?"Microphone muted":"Listening — speak naturally","listening");
 });
