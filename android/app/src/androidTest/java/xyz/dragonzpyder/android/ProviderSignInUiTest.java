@@ -21,6 +21,19 @@ public final class ProviderSignInUiTest {
             for(int i=0;i<parent.getChildCount();i++)collect(parent.getChildAt(i),labels);
         }
     }
+    @Test public void onlyDiscordHasBrowserCallbackIntent(){
+        android.content.Context context=androidx.test.core.app.ApplicationProvider.getApplicationContext();
+        for(String provider:new String[]{"google","discord"}){
+            android.content.Intent intent=new android.content.Intent(android.content.Intent.ACTION_VIEW,
+                android.net.Uri.parse("dragonzpyder://auth/"+provider+"?state=synthetic&ticket=synthetic"));
+            intent.addCategory(android.content.Intent.CATEGORY_BROWSABLE);
+            intent.setPackage(context.getPackageName());
+            boolean resolves=!context.getPackageManager().queryIntentActivities(intent,
+                android.content.pm.PackageManager.MATCH_DEFAULT_ONLY).isEmpty();
+            assertEquals("Browser callback: "+provider,"discord".equals(provider),resolves);
+        }
+    }
+
     @Test public void providerChoicesPresentInSignInAndSignup(){
         try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)){
             scenario.onActivity(activity->{
