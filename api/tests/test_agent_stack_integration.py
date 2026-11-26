@@ -54,3 +54,45 @@ def test_metered_gateway_output_limit_is_bounded_and_opt_in(monkeypatch):
         monkeypatch.setenv("DRAGONZPYDER_AGENT_GATEWAY_OUTPUT_TOKENS", rejected)
         with pytest.raises(RuntimeError, match="output token ceiling"):
             model_client()
+
+
+def test_graph_message_stream_uses_nonstreaming_metered_model_transport(monkeypatch):
+    """Exercise actual SDK + LangGraph message stream against mocked HTTP gateway."""
+    import asyncio, json, httpx
+    from agent_platform.runtime import model_client
+    from agent_platform.gateway_protocol import validate_agent_body
+    from langgraph.graph import StateGraph, MessagesState, START, END
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_MODEL_ID", "openai/gpt-oss-120b")
+    monkeypatch.setenv("DRAGONZPYDER_RUNTIME_ALLOWED_MODELS", "openai/gpt-oss-120b")
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_USE_GATEWAY", "1")
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_GATEWAY_TOKEN", "t" * 44)
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_GATEWAY_BASE_URL", "https://gateway.example.org/internal/agent/v1")
+    model = model_client()
+    assert model.disable_streaming is True
+    calls = []
+    async def gateway(request):
+        body = json.loads(request.content)
+        assert body.get("stream", False) is False
+        validate_agent_body(body, ["openai/gpt-oss-120b"])
+        calls.append(body)
+        return httpx.Response(200, json={"id":"test-1","object":"chat.completion","created":1,
+            "model":"openai/gpt-oss-120b","choices":[{"index":0,"message":{"role":"assistant","content":"42"},
+            "finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":1,"total_tokens":11}})
+    async def scenario():
+        from openai import AsyncOpenAI
+        async with httpx.AsyncClient(transport=httpx.MockTransport(gateway)) as http:
+            sdk = AsyncOpenAI(api_key="test", base_url="https://gateway.example.org/internal/agent/v1", http_client=http, max_retries=0)
+            model.async_client = sdk.chat.completions
+            model.root_async_client = sdk
+            async def node(state):
+                return {"messages":[await model.ainvoke(state["messages"])]}
+            graph = StateGraph(MessagesState)
+            graph.add_node("model",node)
+            graph.add_edge(START,"model")
+            graph.add_edge("model",END)
+            values = []
+            async for mode, event in graph.compile().astream({"messages":[{"role":"user","content":"Return 42"}]},stream_mode=["messages","values"]):
+                if mode=="values": values.append(event)
+            assert values[-1]["messages"][-1].content == "42"
+            assert len(calls)==1
+    asyncio.run(scenario())

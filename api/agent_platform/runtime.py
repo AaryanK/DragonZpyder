@@ -155,6 +155,12 @@ def model_client(*, model_override: str | None = None,
             model=model,
             max_tokens=output_tokens,
             max_retries=retry_count,
+            # Graph SSE is independent of provider streaming. LangGraph message
+            # callbacks otherwise make ChatOpenAI send stream=true even when
+            # the caller uses ainvoke. The signed gateway accepts complete
+            # responses only; disable SDK auto-streaming at the model boundary.
+            disable_streaming=True,
+            streaming=False,
             timeout=60,
             default_headers=(
                 {"X-DragonZpyder-Parent-Job-Id":parent_job_id}
