@@ -230,3 +230,88 @@ def test_object_backed_artifacts_atomic_publication_and_owner_isolation(monkeypa
             await db.execute("DELETE FROM dz_agent_artifacts WHERE owner_id=$1",owner)
             await db.close()
     asyncio.run(exercise())
+
+
+def test_computer_admission_enforces_atomic_quota_and_revocation(monkeypatch):
+    from contextlib import asynccontextmanager
+    from agent_platform.computer_admission import admitted_run,ComputerAdmissionPolicy
+    dsn=os.environ.get("DRAGONZPYDER_BUDGET_TEST_DSN")
+    if not dsn:
+        pytest.skip("PostgreSQL integration DSN required")
+    owner="computer-"+uuid4().hex
+    @asynccontextmanager
+    async def db_factory():
+        db=await asyncpg.connect(dsn)
+        try:
+            yield db
+        finally:
+            await db.close()
+    class VM:
+        def __init__(self,uncertain=False):
+            self.calls=[]
+            self.uncertain=uncertain
+        async def create(self,**kw):
+            self.calls.append("create")
+            return {"id":"sandbox-"+uuid4().hex}
+        async def execute_authorized(self,**kw):
+            self.calls.append("execute")
+            return {"ok":True}
+        async def destroy_authorized(self,*a,**kw):
+            self.calls.append("destroy")
+            if self.uncertain:
+                raise TimeoutError()
+            return {"destroyed":True}
+    policy=ComputerAdmissionPolicy("0.01","0.02","0.03",owner_active=1,global_active=3)
+    async def exercise():
+        allowed=True
+        async def authorize():
+            if not allowed:
+                raise PermissionError("revoked")
+        async with db_factory() as db:
+            sql=Path(__file__).resolve().parents[1]/"agent_platform/migrations/20261126_computer_admission.sql"
+            await db.execute(sql.read_text())
+        vm1,vm2=VM(),VM()
+        runid1,runid2=uuid4(),uuid4()
+        first=admitted_run(db_factory=db_factory,owner=owner,run_id=runid1,
+                          policy=policy,transport=vm1,authorize=authorize)
+        second=admitted_run(db_factory=db_factory,owner=owner,run_id=runid2,
+                           policy=policy,transport=vm2,authorize=authorize)
+        try:
+            a,b=await asyncio.gather(first.execute("files.list",{}),second.execute("files.list",{}),
+                                     return_exceptions=True)
+            assert sum(isinstance(x,dict) for x in (a,b))==1
+            assert sum(isinstance(x,PermissionError) for x in (a,b))==1
+            winning,vm,winning_id=(first,vm1,runid1) if isinstance(a,dict) else (second,vm2,runid2)
+            assert vm.calls==["create","execute"]
+            allowed=False
+            with pytest.raises(PermissionError):
+                await winning.execute("files.list",{})
+            assert vm.calls==["create","execute"]
+            assert await winning.close()
+            async with db_factory() as db:
+                assert await db.fetchval("SELECT state FROM dz_computer_allocations WHERE run_id=$1",winning_id)=="destroyed"
+            allowed=True
+            replay=admitted_run(db_factory=db_factory,owner=owner,run_id=winning_id,
+                               policy=policy,transport=VM(),authorize=authorize)
+            with pytest.raises(PermissionError):
+                await replay.execute("files.list",{})
+            lost_vm=VM(uncertain=True)
+            lost_id=uuid4()
+            lost=admitted_run(db_factory=db_factory,owner=owner,run_id=lost_id,
+                             policy=policy,transport=lost_vm,authorize=authorize)
+            await lost.execute("files.list",{})
+            assert not await lost.close()
+            async with db_factory() as db:
+                assert await db.fetchval("SELECT state FROM dz_computer_allocations WHERE run_id=$1",lost_id)=="uncertain"
+            denied_vm=VM()
+            denied=admitted_run(db_factory=db_factory,owner=owner,run_id=uuid4(),
+                               policy=policy,transport=denied_vm,authorize=authorize)
+            with pytest.raises(PermissionError):
+                await denied.execute("files.list",{})
+            assert denied_vm.calls==[]
+        finally:
+            await first.close()
+            await second.close()
+            async with db_factory() as db:
+                await db.execute("DELETE FROM dz_computer_allocations WHERE owner_id=$1",owner)
+    asyncio.run(exercise())
