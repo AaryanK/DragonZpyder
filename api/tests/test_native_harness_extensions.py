@@ -126,3 +126,18 @@ def test_generic_workflow_plan_forward_dependencies_and_no_extra_authority():
         with pytest.raises(ValueError):validate_plan(WorkflowPlan(**fields,phases=phases))
     with pytest.raises(ValidationError):
         WorkflowPlan(**fields,phases=[a],owner_id="attacker")
+
+
+def test_native_control_unknown_outcome_stops_next_agent_step():
+    from langchain_core.messages import ToolMessage
+    from agent_platform.tool_outcomes import tool_outcome, unresolved_external_control
+    for name, payload in [
+        ("schedule_workflow", '{"state":"uncertain","objective_verified":false}'),
+        ("generate_image", '{"status":"outcome_unconfirmed","objective_verified":false}'),
+    ]:
+        msg = ToolMessage(content=payload, name=name, tool_call_id="test-call")
+        assert tool_outcome(msg) == "unknown"
+        assert unresolved_external_control([msg]) == "external_outcome_unconfirmed"
+    receipt = ToolMessage(content='{"state":"scheduled","objective_verified":false}',
+                          name="schedule_workflow",tool_call_id="test-schedule")
+    assert unresolved_external_control([receipt]) is None
