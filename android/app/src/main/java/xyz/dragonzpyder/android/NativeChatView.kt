@@ -320,12 +320,18 @@ class NativeChatView(context: Context, private val dark: Boolean, private val ac
                 BasicTextField(value=draft,onValueChange={draft=it},modifier=Modifier.fillMaxWidth().padding(horizontal=8.dp,vertical=9.dp).semantics { contentDescription="Message input"; testTag="message_input" },minLines=1,maxLines=5,textStyle=TextStyle(color=ink,fontSize=16.sp,lineHeight=23.sp),cursorBrush=SolidColor(accent),decorationBox={inner->Box{if(draft.isEmpty())Text("Ask anything, or give DragonZpyder a task…",color=muted,fontSize=14.sp,lineHeight=23.sp);inner()}})
                 if(draft.length>(if(modeLabel=="AI Mesh") 5000 else 12000)) Text("Message exceeds this mode’s input limit. Shorten it before sending.",color=MaterialTheme.colorScheme.error,fontSize=12.sp,modifier=Modifier.padding(horizontal=8.dp))
                 if(attachmentLabel.isNotBlank()) TextButton(onClick=actions::removeAttachment,enabled=!busy){Text("×  "+attachmentLabel)}
+                BoxWithConstraints(Modifier.fillMaxWidth()){
+                val compact=maxWidth<300.dp||LocalDensity.current.fontScale>=1.5f
+                Column {
+                if(compact)TextButton(onClick=actions::mode,enabled=!busy,modifier=Modifier.heightIn(min=DragonSizes.touch)){Text(modeLabel,color=ink)}
                 Row(verticalAlignment=Alignment.CenterVertically,modifier=Modifier.fillMaxWidth()) {
                     ToolButton("attach","Attach",actions::add)
-                    TextButton(onClick=actions::mode,enabled=!busy){Text(modeLabel,color=ink)}
+                    if(!compact)TextButton(onClick=actions::mode,enabled=!busy){Text(modeLabel,color=ink)}
                     Spacer(Modifier.weight(1f))
                     ToolButton("mic","Dictate",actions::dictate)
-                    if(voiceAvailable&&!busy&&draft.isBlank()&&attachmentLabel.isBlank()) ToolButton("voice","Live voice",actions::voice) else Button(onClick={if(streaming)actions.stop() else actions.send()},enabled=streaming||(!busy&&(draft.isNotBlank()||((modeLabel=="AI Mesh"||filesAvailable)&&attachmentLabel.isNotBlank()))&&draft.length<=(if(modeLabel=="AI Mesh") 5000 else 12000)),shape=RoundedCornerShape(50),contentPadding=PaddingValues(0.dp),modifier=Modifier.size(DragonSizes.touch).semantics{contentDescription=if(streaming)"Stop response" else "Send message"},colors=ButtonDefaults.buttonColors(containerColor=Color(0xFFB94A21),contentColor=Color.White,disabledContainerColor=line.copy(alpha=.35f),disabledContentColor=muted)) { NavigationGlyph(if(streaming)"stop" else "send",if(streaming||draft.isNotBlank()||attachmentLabel.isNotBlank())Color.White else muted) }
+                    if(voiceAvailable&&!busy&&draft.isBlank()&&attachmentLabel.isBlank()) ToolButton("voice","Live voice",actions::voice) else Button(onClick={if(streaming)actions.stop() else actions.send()},enabled=streaming||(!busy&&(draft.isNotBlank()||((modeLabel=="AI Mesh"||filesAvailable)&&attachmentLabel.isNotBlank()))&&draft.length<=(if(modeLabel=="AI Mesh") 5000 else 12000)),shape=RoundedCornerShape(50),contentPadding=PaddingValues(0.dp),modifier=Modifier.size(DragonSizes.touch).semantics{contentDescription=if(streaming)"Stop response" else "Send message"},colors=ButtonDefaults.buttonColors(containerColor=accent,contentColor=tokens.onAccent,disabledContainerColor=line.copy(alpha=.35f),disabledContentColor=muted)) { NavigationGlyph(if(streaming)"stop" else "send",if(streaming||draft.isNotBlank()||attachmentLabel.isNotBlank())tokens.onAccent else muted) }
+                }
+                }
                 }
             }
         }
