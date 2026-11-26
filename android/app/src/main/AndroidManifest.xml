@@ -24,7 +24,6 @@
                 <category android:name="android.intent.category.DEFAULT"/>
                 <category android:name="android.intent.category.BROWSABLE"/>
                 <data android:scheme="dragonzpyder" android:host="auth" android:path="/discord"/>
-                <data android:scheme="dragonzpyder" android:host="auth" android:path="/google"/>
             </intent-filter>
         </activity>
     </application>
