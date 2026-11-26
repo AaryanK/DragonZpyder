@@ -359,6 +359,7 @@ async def dispatch(path: str, request: Request):
                 "/identity/v1/password/login",
                 "/identity/v1/logout",
                 "/identity/v1/me",
+                "/identity/v1/avatar",
                 "/identity/v1/provider/google/start",
                 "/identity/v1/provider/google/complete",
                 "/identity/v1/provider/google/signup",

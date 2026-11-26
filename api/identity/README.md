@@ -59,3 +59,7 @@ Read [repository instructions](../../AGENTS.md) and [codebase navigation](../../
 | [`source_inventory_manual.sql`](source_inventory_manual.sql) | SQL named for source inventory manual; inspect statements, transaction requirements and target database before use. | Indexed |
 | [`source_recovery_inventory_manual.sql`](source_recovery_inventory_manual.sql) | SQL named for source recovery inventory manual; inspect statements, transaction requirements and target database before use. | Indexed |
 | [`tokens.py`](tokens.py) | RS256 SigningIdentity, PKCE helpers and issuer/token signing primitives; private signing keys never reach agent context. | Reviewed |
+
+## Optional Google profile pictures
+
+`profile_avatar.py` retains only verified canonical Google picture URLs on active linked accounts, and fetches bounded non-redirected raster images for the authenticated owner. `schema_google_avatar_manual.sql` must be reviewed/applied by the identity DB operator before enabling `DRAGONZPYDER_IDENTITY_PROFILE_AVATAR_ENABLED=1`. Disable the flag for rollback. Existing auth and account activation stay unchanged. No migration or live test is performed by this PR.

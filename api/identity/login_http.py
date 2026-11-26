@@ -3,14 +3,16 @@
 Production is expressly blocked until migration and auth security review.
 """
 import hmac
+import httpx
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field
 
 from .http_bridge import _enabled, _identity_db, _issuer
 from .password_login import password_login, LoginDenied
 from .sessions import SessionDenied, revoke_browser_session, resolve_browser_session
+from .profile_avatar import avatar_enabled, read_google_avatar, fetch_google_avatar
 
 router = APIRouter(prefix="/identity/v1", tags=["identity-bridge"])
 
@@ -82,13 +84,38 @@ async def native_profile(request: Request):
                    WHERE subject=$1 AND source_active=TRUE AND status='active'""",
                 owner,
             )
+            avatar = await read_google_avatar(db, owner) if row is not None else None
     except SessionDenied:
         raise HTTPException(401, "Active first-party session required") from None
     if row is None:
         raise HTTPException(401, "Active account required")
     return {"id": row["subject"], "email": row["email"],
             "display_name": row["display_name"],
-            "identity_origin": row["identity_origin"]}
+            "identity_origin": row["identity_origin"],
+            **({"avatar_available": True} if avatar else {})}
+
+
+@router.get("/avatar", include_in_schema=False)
+async def native_avatar(request: Request):
+    """Return only the current session owner\x27s verified Google image."""
+    _enabled()
+    if not avatar_enabled():
+        raise HTTPException(404, "Avatar unavailable")
+    try:
+        async with _identity_db() as db:
+            owner = await resolve_browser_session(db, secret=request.cookies.get("__Host-dz_identity", ""))
+            picture = await read_google_avatar(db, owner)
+    except SessionDenied:
+        raise HTTPException(401, "Active first-party session required") from None
+    if not picture:
+        raise HTTPException(404, "Avatar unavailable")
+    # Isolated client: no user cookies, authorization header or environment proxy.
+    async with httpx.AsyncClient(timeout=5.0, trust_env=False, follow_redirects=False) as client:
+        image = await fetch_google_avatar(client, picture)
+    if not image:
+        raise HTTPException(404, "Avatar unavailable")
+    mime, data = image
+    return Response(data, media_type=mime, headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff", "Cross-Origin-Resource-Policy": "same-origin"})
 
 
 @router.patch("/me", include_in_schema=False)

@@ -786,3 +786,7 @@ These entries reconcile paths added after the documented baseline; Indexed descr
 - [`web/frontend/src/ui-preferences.js`](../../web/frontend/src/ui-preferences.js) — Versioned, allowlisted browser-local theme, density, text size and reduced motion configuration; rejects arbitrary CSS and authority fields, preserves existing theme key.
 - [`web/frontend/src/AppearanceSettings.jsx`](../../web/frontend/src/AppearanceSettings.jsx) — Account appearance controls apply validated local preferences immediately and expose storage failures; no account or agent permission mutation.
 - [`web/frontend/src/design-tokens.css`](../../web/frontend/src/design-tokens.css) — Shared neutral/accent semantic tokens and bounded motion override, imported by Personal, account and admin entrypoints.
+
+- [`api/identity/profile_avatar.py`](../../api/identity/profile_avatar.py) — Optional Google picture URL validation, verified-provider/owner-scoped storage and bounded same-origin image readback; no arbitrary URLs, redirects or user credentials sent upstream.
+- [`api/identity/schema_google_avatar_manual.sql`](../../api/identity/schema_google_avatar_manual.sql) — Operator-only nullable profile picture column and column-level update grant; no account activation or provider authority changes.
+- [`api/tests/test_identity_profile_avatar.py`](../../api/tests/test_identity_profile_avatar.py) — Offline tests for exact URL allowlist, no redirects, MIME/signature/byte bounds, flag and owner-link predicate.

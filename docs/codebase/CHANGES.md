@@ -63,3 +63,15 @@ Removed the three Markdown guides from Android drawable, values and xml resource
 - `web/ui-v1.css`: Moves palette definitions to shared design-token module and applies bounded chat density/text-size settings. CI and production qualification pending.
 - `web/frontend/tests/ui.spec.js`: Regression verifies validated presentation settings after reload without arbitrary styling injection. CI and production qualification pending.
 - `web/frontend/account.html`: Declares consistent default light appearance for server prerender before browser preferences load. CI and production qualification pending.
+
+## 2026-11-26 — optional native profile avatar contract
+
+- `api/identity/profile_avatar.py`: Optional Google picture URL validation, verified-provider/owner-scoped storage and bounded same-origin image readback; no arbitrary URLs, redirects or user credentials sent upstream. Offline regression coverage added; production migration and qualification pending.
+- `api/identity/schema_google_avatar_manual.sql`: Operator-only nullable profile picture column and column-level update grant; no account activation or provider authority changes. Offline regression coverage added; production migration and qualification pending.
+- `api/identity/providers.py`: Captures only allowlisted Google picture claim after signed ID token validation. Offline regression coverage added; production migration and qualification pending.
+- `api/identity/provider_http.py`: Refreshes optional avatar only after verified provider resolves an active account; gate off by default. Offline regression coverage added; production migration and qualification pending.
+- `api/identity/mobile_provider.py`: Refreshes optional avatar after verified provider account resolution; does not change ticket or session authority. Offline regression coverage added; production migration and qualification pending.
+- `api/identity/login_http.py`: Advertises avatar availability and authenticated owner-only image endpoint with private no-store policy. Offline regression coverage added; production migration and qualification pending.
+- `web/main.py`: Exact allowlist entry for native avatar endpoint; no new general proxy. Offline regression coverage added; production migration and qualification pending.
+- `api/tests/test_identity_providers.py`: Verifies trusted picture claim is retained and untrusted claims rejected. Offline regression coverage added; production migration and qualification pending.
+- `api/tests/test_identity_profile_avatar.py`: Offline tests for exact URL allowlist, no redirects, MIME/signature/byte bounds, flag and owner-link predicate. Offline regression coverage added; production migration and qualification pending.
