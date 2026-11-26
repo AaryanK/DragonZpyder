@@ -37,6 +37,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private String activeRequestId="";
     private PendingAgentRequestStore pendingAgentStore;
     private static final DragonApi api=new DragonApi();
+    private AgentFileRepository fileRepository;
     private NativeVoiceSession nativeVoice;
     private android.app.Dialog voiceDialog;
     private boolean voiceStartOnResume;
@@ -71,6 +72,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         super.onCreate(b);
         agentRequests=new androidx.lifecycle.ViewModelProvider(this).get(AgentRequestViewModel.class);
         pendingAgentStore=new PendingAgentRequestStore(getApplicationContext());
+        fileRepository=new AgentFileRepository(getApplicationContext().getContentResolver(),api);
         mobileOAuth=new MobileOAuthStore(getApplicationContext());mcpOAuth=new MobileOAuthStore(getApplicationContext(),true);
         if(b!=null){
             restoredConversation=b.getString("dz.conversation","");
@@ -398,30 +400,22 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     }
     private void uploadAgentAttachment(android.net.Uri uri){
         if(busy||!signedIn||!api.supportsFiles())return;
-        submit("Uploading private attachment…",()->{
-            String name="attachment",mime=getContentResolver().getType(uri);
-            try(android.database.Cursor c=getContentResolver().query(uri,new String[]{android.provider.OpenableColumns.DISPLAY_NAME},null,null,null)){if(c!=null&&c.moveToFirst())name=c.getString(0);}
-            if(name==null||name.trim().isEmpty()||name.length()>180||name.contains("/")||name.contains("\\"))throw new Exception("Unsupported filename");
-            java.io.ByteArrayOutputStream bytes=new java.io.ByteArrayOutputStream();
-            try(java.io.InputStream in=getContentResolver().openInputStream(uri)){if(in==null)throw new Exception("Cannot read file");byte[] buffer=new byte[8192];int n;while((n=in.read(buffer))!=-1){if(bytes.size()+n>10*1024*1024)throw new Exception("File exceeds 10 MiB");bytes.write(buffer,0,n);}}
-            return api.uploadFile(name,mime,bytes.toByteArray());
-        },r->{JSONObject receipt=(JSONObject)r;attachment=receipt;attachmentName=receipt.getString("filename");if(chatUi!=null)chatUi.setAttachmentLabel(attachmentName);setStatus("File attached · send to include it in your request");},true);
+        submit("Uploading private attachment…",()->fileRepository.upload(uri),r->{JSONObject receipt=(JSONObject)r;attachment=receipt;attachmentName=receipt.getString("filename");if(chatUi!=null)chatUi.setAttachmentLabel(attachmentName);setStatus("File attached · send to include it in your request");},true);
     }
     private void showFiles(){
         if(!signedIn||!api.supportsFiles()){setStatus("Shared file storage is not enabled for this session.");return;}
-        submit("Loading files…",()->api.call("/dz/v2/personal/files",null),r->{
-            JSONArray items=((JSONObject)r).optJSONArray("files");
-            if(items==null||items.length()==0){alert().setTitle("Your files").setMessage("No files uploaded or generated yet.").setPositiveButton("Close",null).show();return;}
-            ArrayList<JSONObject> valid=new ArrayList<>();ArrayList<String> labels=new ArrayList<>();
-            for(int i=0;i<items.length();i++){JSONObject file=items.optJSONObject(i);if(file==null)continue;valid.add(file);labels.add(file.optString("filename","File")+" · "+Math.max(1,(file.optInt("size")+1023)/1024)+" KB");}
+        submit("Loading files…",()->fileRepository.inventory(),r->{
+            @SuppressWarnings("unchecked") List<JSONObject> valid=(List<JSONObject>)r;
+            if(valid.isEmpty()){alert().setTitle("Your files").setMessage("No files uploaded or generated yet.").setPositiveButton("Close",null).show();return;}
+            ArrayList<String> labels=new ArrayList<>();
+            for(JSONObject file:valid)labels.add(file.optString("filename")+" · "+Math.max(1,(file.optInt("size")+1023)/1024)+" KB");
             alert().setTitle("Your files").setItems(labels.toArray(new String[0]),(d,i)->chooseFileDestination(valid.get(i))).setNegativeButton("Close",null).show();
         },true);
     }
     private void chooseFileDestination(JSONObject file){
         if(busy||!signedIn||!api.supportsFiles())return;
-        if(!file.optString("id").matches("[0-9a-f-]{36}")||!file.optString("sha256").matches("[0-9a-f]{64}")){setStatus("Invalid file receipt.");return;}
+        if(!AgentFileRepository.validReceipt(file)){setStatus("Invalid file receipt.");return;}
         String name=file.optString("filename","download");
-        if(name.contains("/")||name.contains("\\")||name.length()>180){setStatus("Invalid filename.");return;}
         pendingFileDownload=file;
         Intent picker=new Intent(Intent.ACTION_CREATE_DOCUMENT);picker.addCategory(Intent.CATEGORY_OPENABLE);picker.setType("application/octet-stream");picker.putExtra(Intent.EXTRA_TITLE,name);
         try{startActivityForResult(picker,48);}catch(Exception unavailable){pendingFileDownload=null;setStatus("File destination picker unavailable.");}
@@ -429,15 +423,14 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private void saveAgentFile(android.net.Uri uri,JSONObject file){
         if(busy||!signedIn||!api.supportsFiles()||file==null)return;
         submit("Downloading verified file…",()->{
-            byte[] data=api.downloadFile(file.getString("id"),file.getString("sha256"));
-            try(java.io.OutputStream out=getContentResolver().openOutputStream(uri,"w")){if(out==null)throw new Exception("Cannot open destination");out.write(data);}
+            fileRepository.save(uri,file);
             return Boolean.TRUE;
         },r->setStatus("File saved"),true);
     }
     private void appendGeneratedFiles(JSONObject answer){
         JSONArray files=answer.optJSONArray("artifacts");
         if(files==null)return;
-        for(int i=0;i<Math.min(files.length(),20);i++){JSONObject file=files.optJSONObject(i);if(file!=null&&file.optString("id").matches("[0-9a-f-]{36}")&&file.optString("sha256").matches("[0-9a-f]{64}"))append("artifact",file.toString());}
+        for(int i=0;i<Math.min(files.length(),20);i++){JSONObject file=files.optJSONObject(i);if(file!=null&&AgentFileRepository.validReceipt(file))append("artifact",file.toString());}
     }
     private void discardCamera(){
         if(cameraCapture!=null){
