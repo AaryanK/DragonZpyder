@@ -109,8 +109,10 @@ async def session(request: Request):
             await resolve_browser_session(conn, secret=request.cookies.get("__Host-dz_identity", ""))
     except SessionDenied:
         raise HTTPException(401, "Active DragonZpyder session required") from None
+    capabilities = await status()
     return {"authenticated": True, "runtime": "dragonzpyder",
-            "native_chat_enabled": (await status())["native_chat_enabled"]}
+            "native_chat_enabled": capabilities["native_chat_enabled"],
+            "voice_enabled": capabilities["voice_enabled"]}
 
 
 def _goals_enabled():

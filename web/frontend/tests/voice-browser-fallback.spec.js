@@ -51,6 +51,7 @@ async function prepare(page, status = 503, {meter = false} = {}) {
     }
     Object.defineProperty(window,"RTCPeerConnection",{configurable:true,value:Peer});
   }, {meter});
+  await page.route("**/dz/status", route=>route.fulfill({json:{web_cutover_enabled:false}}));
   await page.route("**/api/**", async route => {
     const path = new URL(route.request().url()).pathname;
     let body = {};
@@ -62,6 +63,7 @@ async function prepare(page, status = 503, {meter = false} = {}) {
   await page.route("**/companion/realtime", route => route.fulfill({status,contentType:"application/json",body:JSON.stringify({detail:{message:status===503?"Live voice is not configured":"Access denied"}})}));
   await page.goto("/app");
   await expect(page.locator("#app-shell")).toBeVisible();
+  await expect(page.locator("#companion-open")).toBeVisible();
 }
 test("provider unavailable falls back to browser captions, with pause and cleanup", async ({page}) => {
   await page.setViewportSize({width:390,height:750});

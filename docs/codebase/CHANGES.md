@@ -88,3 +88,16 @@ Removed the three Markdown guides from Android drawable, values and xml resource
 - `android/app/src/main/java/xyz/dragonzpyder/android/DragonApi.java`: Bounded native photo fetch from fixed first-party route, authenticated cookies only and no redirects or cache. Runtime migration remains gated; browser and Android qualification pending.
 - `android/app/src/main/java/xyz/dragonzpyder/android/MainActivity.java`: Loads optional profile name/photo on worker; checks session binding before UI publication, limits image dimensions, clears on account reset, keeps no persistent photo cache. Runtime migration remains gated; browser and Android qualification pending.
 - `android/app/src/main/java/xyz/dragonzpyder/android/NativeChatView.kt`: Displays current profile name and photo or initials in native drawer; keeps account action and theme controls. Runtime migration remains gated; browser and Android qualification pending.
+
+## 2026-11-26 — preserve live voice in V2
+
+- `web/companion.js`: Preserves existing canvas event lifecycle and browser fallback for legacy sessions; native authenticated WebRTC uses first-party JSON start/end, native CSRF, session-bound cleanup, expiry and no legacy tool delegation or automatic paid retries. CI and real audio qualification pending.
+- `web/app.js`: Enables native Live voice only for authenticated capability-bearing sessions, guards composer and keyboard launch, retains Mesh isolation. CI and real audio qualification pending.
+- `api/agent_platform/first_party_chat.py`: Adds existing voice capability signal to authenticated session response without expanding its authority. CI and real audio qualification pending.
+- `api/tests/test_first_party_chat.py`: Verifies disabled chat session also reports voice unavailable. CI and real audio qualification pending.
+- `web/frontend/src/VoiceOrb.jsx`: Retains artwork and controls unchanged; clarifies first-party audio-only conversation limitations. CI and real audio qualification pending.
+- `web/frontend/playwright.config.mjs`: Runs original orb and browser-transcription regression suites on Linux and Windows. CI and real audio qualification pending.
+- `web/frontend/tests/voice-orb.spec.js`: Explicit legacy route fixture and readiness assertion for original renderer tests. CI and real audio qualification pending.
+- `web/frontend/tests/voice-browser-fallback.spec.js`: Explicit legacy route fixture and readiness assertion for fallback regression tests. CI and real audio qualification pending.
+- `web/frontend/tests/native-routing.spec.js`: Tests native start/owner CSRF/SDP/voice orb/mute/end and absence of legacy calls using mocked transport. CI and real audio qualification pending.
+- `.github/workflows/web.yml`: Checks companion transport JavaScript syntax as part of web validation. CI and real audio qualification pending.

@@ -1,6 +1,31 @@
 const launch=document.getElementById("companion-open"),panel=document.getElementById("companion-panel"),end=document.getElementById("companion-end"),mute=document.getElementById("companion-mute"),audio=document.getElementById("companion-audio");
 let peer=null,channel=null,mic=null,controller=null,live=false,starting=false,silent=false,version=0;
 const calls=new Set();
+// Native voice reservations belong to the authenticated session, not the
+// legacy companion. Let a submitted start settle even if the UI closes,
+// so a late accepted provider call can be ended rather than orphaned.
+let nativeCall=null,nativeClosing=null,expiryTimer=null;
+function voiceContext(){return window.dragonzpyderVoiceContext?.()||{available:false,native:false}}
+function endNative(call){
+  if(!call||call.ending)return call?.ending;
+  call.ending=(async()=>{
+    try{
+      const res=await fetch("/dz/v2/personal/voice/"+call.id+"/end",{
+        method:"POST",credentials:"same-origin",headers:{"X-DZ-CSRF":call.csrf},cache:"no-store",keepalive:true,redirect:"error"
+      });
+      if(!res.ok)throw Error("Voice hangup unconfirmed");
+      const body=await res.json();
+      if(body.session_id!==call.id||body.state!=="closed")throw Error("Voice hangup unconfirmed");
+    }catch{
+      // The server retains uncertain calls and reconciles expired sessions.
+      // Never silently start another provider call to recover this one.
+      browserEvent("voice-hangup-unconfirmed",{session_id:call.id});
+    }
+  })();
+  nativeClosing=call.ending;
+  void call.ending.finally(()=>{if(nativeClosing===call.ending)nativeClosing=null;});
+  return call.ending;
+}
 // This is transcription only: browser speech recognition must not trigger agent calls.
 const SpeechApi=window.SpeechRecognition||window.webkitSpeechRecognition;
 let browserMode=false,recognition=null,recognitionRun=0,restartTimer=null;
@@ -88,7 +113,7 @@ function setStatus(message,kind="idle"){
   panel.dataset.state=kind;
   window.dispatchEvent(new CustomEvent("dragonzpyder:voice-state",{detail:{kind,message}}));
 }
-function csrf(){for(const k of ["__Host-operly_csrf","operly_csrf"]){const c=document.cookie.split(";").map(s=>s.trim()).find(s=>s.startsWith(k+"="));if(c)return decodeURIComponent(c.slice(k.length+1))}return ""}
+function csrf(native=false){for(const k of (native?["__Host-dz_csrf"]:["__Host-operly_csrf","operly_csrf"])){const c=document.cookie.split(";").map(s=>s.trim()).find(s=>s.startsWith(k+"="));if(c)return decodeURIComponent(c.slice(k.length+1))}return ""}
 function row(id,label,value,append=false){
   if(!value)return;
   window.dispatchEvent(new CustomEvent("dragonzpyder:voice-transcript",{
@@ -97,7 +122,11 @@ function row(id,label,value,append=false){
 }
 function send(event){if(channel?.readyState==="open")channel.send(JSON.stringify(event))}
 function cleanup(){
-  version++;controller?.abort();controller=null;
+  version++;clearTimeout(expiryTimer);expiryTimer=null;
+  const closing=nativeCall;nativeCall=null;
+  if(closing){closing.closed=true;if(closing.settled)void endNative(closing);}
+  else controller?.abort();
+  controller=null;
   browserMode=false;stopRecognition();
   browserEvent("voice-mode",{mode:"realtime"});
   for(const t of mic?.getTracks()||[])t.stop();mic=null;
@@ -124,7 +153,7 @@ async function handleTool(item,v){
   send({type:"conversation.item.create",item:{type:"function_call_output",call_id:item.call_id,output:JSON.stringify(output)}});
   send({type:"response.create"});setStatus("Listening — speak naturally","listening");
 }
-function onEvent(text,v){
+function onEvent(text,v,native=false){
   if(v!==version)return;
   let e;try{e=JSON.parse(text)}catch{return}
   if(e.type==="input_audio_buffer.speech_started")setStatus("Listening…","listening");
@@ -133,17 +162,20 @@ function onEvent(text,v){
   if(["response.output_audio_transcript.delta","response.audio_transcript.delta"].includes(e.type))row(e.item_id||e.response_id||"agent","DragonZpyder",e.delta,true);
   if(["response.output_audio_transcript.done","response.audio_transcript.done"].includes(e.type))row(e.item_id||e.response_id||"agent","DragonZpyder",e.transcript);
   if(e.type==="conversation.item.input_audio_transcription.completed")row(e.item_id||"user","You",e.transcript);
-  if(e.type==="response.output_item.done"&&e.item?.type==="function_call"&&e.item.name==="delegate_personal_task")handleTool(e.item,v);
+  if(!native&&e.type==="response.output_item.done"&&e.item?.type==="function_call"&&e.item.name==="delegate_personal_task")handleTool(e.item,v);
   if(e.type==="response.done")setStatus("Listening — speak naturally","listening");
   if(e.type==="error")setStatus(String(e.error?.message||"Voice error"),"error");
 }
 async function start(){
   if(live||starting||browserMode)return;
+  const context=voiceContext();
+  if(!context.available||launch.disabled||nativeClosing)return;
+  const native=context.native===true;
   window.dispatchEvent(new Event("dragonzpyder:live-start"));
   panel.hidden=false;launch.setAttribute("aria-expanded","true");
   window.dispatchEvent(new Event("dragonzpyder:voice-open"));
   if(!navigator.mediaDevices?.getUserMedia||!window.RTCPeerConnection){
-    if(!beginBrowserFallback())setStatus("This browser cannot stream live audio or transcribe speech.","error");
+    if(native||!beginBrowserFallback())setStatus("This browser cannot stream live audio. Use chat dictation instead.","error");
     return;
   }
   const v=++version;starting=true;controller=new AbortController();calls.clear();setStatus("Requesting microphone…","connecting");
@@ -153,25 +185,46 @@ async function start(){
     mic=acquired;
     window.dispatchEvent(new CustomEvent("dragonzpyder:voice-input",{detail:{stream:mic}}));
     peer=new RTCPeerConnection();peer.ontrack=e=>{
+      if(v!==version)return;
       audio.srcObject=e.streams[0];
       window.dispatchEvent(new CustomEvent("dragonzpyder:voice-output",{detail:{stream:e.streams[0]}}));
       audio.play().catch(()=>setStatus("Tap to enable audio playback","error"));
     };
     for(const t of mic.getAudioTracks())peer.addTrack(t,mic);
-    channel=peer.createDataChannel("oai-events");channel.onmessage=e=>onEvent(e.data,v);
+    channel=peer.createDataChannel("oai-events");channel.onmessage=e=>onEvent(e.data,v,native);
     channel.onclose=()=>{if(v===version&&live)close()};
-    const offer=await peer.createOffer();await peer.setLocalDescription(offer);setStatus("Connecting live voice…","connecting");
-    const r=await fetch("/companion/realtime",{method:"POST",credentials:"same-origin",headers:{"content-type":"application/sdp","x-csrf-token":csrf()},body:peer.localDescription.sdp,signal:controller.signal});
+    const offer=await peer.createOffer();if(v!==version)return;
+    await peer.setLocalDescription(offer);if(v!==version)return;
+    setStatus("Connecting live voice…","connecting");
+    let r,call;
+    if(native){
+      const token=csrf(true);if(!token)throw Error("Secure session missing. Sign in again.");
+      if(!window.crypto?.randomUUID)throw Error("Secure browser context required.");
+      call={id:crypto.randomUUID(),csrf:token,settled:false,closed:false,ending:null};nativeCall=call;
+      try{r=await fetch("/dz/v2/personal/voice/start",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json","X-DZ-CSRF":token},body:JSON.stringify({session_id:call.id,sdp:peer.localDescription.sdp}),cache:"no-store",redirect:"error"});}
+      catch(err){call.settled=true;void endNative(call);throw err;}
+      call.settled=true;
+      if(v!==version||call.closed){if(r.ok||r.status>=500)void endNative(call);return;}
+    }else r=await fetch("/companion/realtime",{method:"POST",credentials:"same-origin",headers:{"content-type":"application/sdp","x-csrf-token":csrf()},body:peer.localDescription.sdp,signal:controller.signal});
     if(!r.ok){
       const data=await r.json().catch(()=>({}));
       if(v!==version)return;
       // Only provider availability failures can fall back; never bypass an
       // authentication error, CSRF rejection, or the provider rate limit.
-      if((r.status===502||r.status===503)&&beginBrowserFallback())return;
-      throw Error(data.detail?.message||"Connection failed: "+r.status);
+      if(!native&&(r.status===502||r.status===503)&&beginBrowserFallback())return;
+      if(native&&r.status<500)nativeCall=null;
+      throw Error(typeof data.detail==="string"?data.detail:data.detail?.message||"Connection failed: "+r.status);
     }
-    const answer=await r.text();if(v!==version)return;
-    await peer.setRemoteDescription({type:"answer",sdp:answer});live=true;starting=false;
+    let answer;
+    if(native){
+      const result=await r.json();if(v!==version)return;
+      if(result.session_id!==call.id||typeof result.sdp!=="string"||!result.sdp.startsWith("v=0")||result.sdp.length>65536||!Number.isFinite(result.duration_seconds)||result.duration_seconds<=0||result.duration_seconds>600)throw Error("Invalid native voice response.");
+      answer=result.sdp;
+      const expires=Date.parse(result.expires_at),duration=result.duration_seconds*1000;
+      expiryTimer=setTimeout(()=>{if(v===version){cleanup();panel.hidden=false;setStatus("Voice session allowance reached. Return to chat to continue.","error");}},Number.isFinite(expires)?Math.max(0,Math.min(duration,expires-Date.now())):duration);
+    }else answer=await r.text();
+    if(v!==version)return;
+    await peer.setRemoteDescription({type:"answer",sdp:answer});if(v!==version)return;live=true;starting=false;
     window.dispatchEvent(new CustomEvent("dragonzpyder:voice-session",{detail:{connected:true}}));
     setStatus("Listening — speak naturally","listening");
   }catch(e){if(v!==version)return;cleanup();panel.hidden=false;setStatus(e.name==="NotAllowedError"?"Microphone permission denied":String(e.message||"Connection failed"),"error")}
@@ -188,5 +241,5 @@ mute.addEventListener("click",()=>{
   window.dispatchEvent(new CustomEvent("dragonzpyder:voice-mute",{detail:{muted:silent}}));
   setStatus(silent?"Microphone muted":"Listening — speak naturally","listening");
 });
-window.addEventListener("keydown",e=>{if(e.ctrlKey&&e.code==="Space"&&!e.repeat&&!e.altKey&&!e.metaKey){e.preventDefault();if(panel.hidden)start();else close()}else if(e.key==="Escape"&&!panel.hidden)close()});
+window.addEventListener("keydown",e=>{if(e.ctrlKey&&e.code==="Space"&&!e.repeat&&!e.altKey&&!e.metaKey){e.preventDefault();if(panel.hidden){if(voiceContext().available&&!launch.disabled)start()}else close()}else if(e.key==="Escape"&&!panel.hidden)close()});
 window.addEventListener("pagehide",cleanup);window.addEventListener("dragonzpyder:logout",close);

@@ -203,3 +203,53 @@ test("verified avatar uses only the owner-scoped image route and falls back when
   await expect(page.locator("#profile-initial")).toBeVisible();
   await expect(page.locator("#profile-avatar")).toBeHidden();
 });
+
+test("native realtime voice preserves orb and uses owner-scoped start and hangup",async({page})=>{
+  const starts=[],ends=[],legacy=[];
+  await page.context().addCookies([{name:"__Host-dz_csrf",value:"native-voice-csrf",secure:true,sameSite:"Lax",url:"https://127.0.0.1:5189"}]);
+  await page.addInitScript(()=>{
+    window.__voiceNative={closed:0,stopped:0};
+    const track={enabled:true,stop(){window.__voiceNative.stopped++}};
+    Object.defineProperty(navigator,"mediaDevices",{configurable:true,value:{getUserMedia:async()=>({getTracks:()=>[track],getAudioTracks:()=>[track]})}});
+    class Peer {
+      addTrack(){}
+      createDataChannel(){return {readyState:"open",close(){},send(){}}}
+      async createOffer(){return {type:"offer",sdp:"v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\n"}}
+      async setLocalDescription(o){this.localDescription=o}
+      async setRemoteDescription(a){window.__voiceNative.answer=a.sdp}
+      close(){window.__voiceNative.closed++}
+    }
+    Object.defineProperty(window,"RTCPeerConnection",{configurable:true,value:Peer});
+  });
+  await page.route("**/api/**",r=>{legacy.push(r.request().url());return r.fulfill({status:410})});
+  await page.route("**/companion/realtime",r=>{legacy.push(r.request().url());return r.fulfill({status:410})});
+  await page.route("**/dz/status",r=>r.fulfill({json:{web_cutover_enabled:true}}));
+  await page.route("**/dz/v2/personal/session",r=>r.fulfill({json:{authenticated:true,native_chat_enabled:true,voice_enabled:true}}));
+  await page.route("**/dz/identity/v1/me",r=>r.fulfill({json:{display_name:"Test User"}}));
+  await page.route("**/dz/v2/personal/conversations",r=>r.fulfill({json:{conversations:[]}}));
+  await page.route("**/dz/v2/personal/archive/conversations?*",r=>r.fulfill({json:{conversations:[],next_offset:null}}));
+  await page.route("**/dz/v2/personal/voice/start",r=>{
+    expect(r.request().headers()["x-dz-csrf"]).toBe("native-voice-csrf");
+    expect(r.request().headers()["x-csrf-token"]).toBeUndefined();
+    const body=r.request().postDataJSON();starts.push(body);
+    return r.fulfill({json:{session_id:body.session_id,sdp:body.sdp,duration_seconds:60,expires_at:new Date(Date.now()+60000).toISOString()}});
+  });
+  await page.route("**/dz/v2/personal/voice/*/end",r=>{
+    const id=new URL(r.request().url()).pathname.split("/").at(-2);ends.push(id);
+    expect(r.request().headers()["x-dz-csrf"]).toBe("native-voice-csrf");
+    return r.fulfill({json:{session_id:id,state:"closed"}});
+  });
+  await page.goto("/app");
+  await page.locator("#companion-open").click();
+  const panel=page.getByRole("dialog",{name:"Live companion"});
+  await expect(panel.locator("canvas.dz-voice-original-canvas")).toBeVisible();
+  await expect(panel.getByText("VOICE CONNECTED")).toBeVisible();
+  await panel.getByRole("button",{name:"Mute microphone"}).click();
+  await expect(panel.getByRole("button",{name:"Unmute microphone"})).toBeEnabled();
+  await panel.getByRole("button",{name:"End conversation"}).click();
+  await expect(panel).toBeHidden();
+  await expect.poll(()=>ends.length).toBe(1);
+  expect(starts.length).toBe(1);expect(ends[0]).toBe(starts[0].session_id);
+  expect(await page.evaluate(()=>window.__voiceNative.stopped)).toBe(1);
+  expect(legacy).toEqual([]);
+});

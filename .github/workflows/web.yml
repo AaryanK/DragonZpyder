@@ -26,6 +26,7 @@ jobs:
         working-directory: web
         run: |
           node --check app.js
+          node --check companion.js
           node --check mesh.js
           node --check mesh-picker.js
           node --check script.js

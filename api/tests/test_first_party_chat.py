@@ -94,4 +94,5 @@ def test_identity_session_independent_of_native_chat_gate(monkeypatch):
     result = asyncio.run(native.session(request))
     assert result["authenticated"] is True
     assert result["native_chat_enabled"] is False
+    assert result["voice_enabled"] is False
     resolver.assert_awaited_once()

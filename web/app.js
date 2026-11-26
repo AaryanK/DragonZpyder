@@ -206,7 +206,7 @@ function setSession(session) {
 async function ensurePersonalSession() {
   if (state.firstParty) {
     const result = await api("/dz/v2/personal/session", { csrf: false });
-    const session = { device: "DragonZpyder", scope: "personal", nativeChatEnabled: result.native_chat_enabled !== false };
+    const session = { device: "DragonZpyder", scope: "personal", nativeChatEnabled: result.native_chat_enabled !== false, voiceEnabled: result.voice_enabled === true };
     setSession(session);
     // Optional identity presentation data; never use it to grant authority.
     void api("/dz/identity/v1/me", { csrf: false }).then(profile => {
@@ -260,8 +260,8 @@ async function bootstrapAuth() {
     if (state.firstParty) {
       const obsolete = $("dragonzpyder-central-signin-modal");
       if (obsolete) obsolete.hidden = false;
-      // Voice/Mesh still use the legacy Operly session verifier. Until those
-      // routes receive first-party identity, never expose that old path.
+      // Mesh remains legacy-only; voice is independently capability-gated
+      // by the authenticated first-party session below.
       const mesh = $("mesh-switch");
       if (mesh) mesh.hidden = true;
       const voice = $("companion-open");
@@ -1095,12 +1095,16 @@ function syncComposerAction() {
   const pending = Boolean(messageInput.value.trim()) ||
     Boolean(window.dragonzpyderMesh?.hasAttachments?.());
   const voice = $("companion-open");
-  voice.hidden = state.firstParty || pending;
-  voice.disabled = state.sending || Boolean(window.dragonzpyderMesh?.isBusy?.());
+  const available = Boolean(state.session) && (!state.firstParty || state.session.voiceEnabled === true);
+  voice.hidden = !available || pending || state.archiveSelected;
+  voice.disabled = !available || state.archiveSelected || state.sending || Boolean(window.dragonzpyderMesh?.isBusy?.());
   sendButton.hidden = state.archiveSelected || !pending;
   sendButton.disabled = state.archiveSelected || state.sending || (state.firstParty && state.session?.nativeChatEnabled === false);
 }
 window.dragonzpyderComposerSync = syncComposerAction;
+// UI visibility is advisory; native API independently verifies owner, CSRF,
+// provider allowance and feature gate. Keyboard shortcuts use the same check.
+window.dragonzpyderVoiceContext = () => ({native:state.firstParty,available:Boolean(state.session)&&!state.archiveSelected&&(!state.firstParty||state.session.voiceEnabled===true)&&!state.sending&&!window.dragonzpyderMesh?.isBusy?.()});
 window.addEventListener("dragonzpyder:mcp-selection", (event) => {
   const ids = event.detail?.ids;
   state.selectedMcpConnections = Array.isArray(ids)

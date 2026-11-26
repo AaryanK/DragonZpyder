@@ -142,7 +142,7 @@ export function VoiceOrb() {
         <div className="companion-transcript" id="companion-transcript" aria-label="Live transcript">
           {transcripts.length ? transcripts.map(item => <p key={item.id} data-interim={Boolean(item.interim)}><strong>{item.label}: </strong><span>{item.value}</span></p>) : <p className="dz-voice-transcript-empty">Spoken words will appear here when transcription is available.</p>}
         </div>
-        <p>{browserOnly ? "Speech recognition is provided by your browser and may use an online service. Transcriptions are not automatically sent to the agent." : "Voice is streamed to the provider. Connected actions still require your Personal permissions and approvals."}</p>
+        <p>{browserOnly ? "Speech recognition is provided by your browser and may use an online service. Transcriptions are not automatically sent to the agent." : "Voice is streamed to the provider. In first-party voice mode, this is conversation only; use chat for agent actions."}</p>
       </section>
     </div>
     <audio ref={audioRef} id="companion-audio" autoPlay playsInline />
