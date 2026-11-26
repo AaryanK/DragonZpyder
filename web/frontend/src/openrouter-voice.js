@@ -85,7 +85,7 @@ export async function connectOpenRouterVoice({stream,sessionId,csrf,onData,onSta
   onRemote(sink.stream);
   let closed=false,muted=false,busy=false,speech=null,playing=null,speechVersion=0;
   const life=new AbortController();
-  const root="/dz/v2/personal/voice/openrouter/"+sessionId;
+  const root="/dz/v2/personal/voice/sessions/"+sessionId;
   async function post(path,body,signal){
     const response=await fetch(root+path,{method:"POST",credentials:"same-origin",redirect:"error",cache:"no-store",
       headers:{"Content-Type":"application/json","X-DZ-CSRF":csrf},body:JSON.stringify(body),signal});

@@ -10,7 +10,7 @@ function endNative(call){
   if(!call||call.ending)return call?.ending;
   call.ending=(async()=>{
     try{
-      const res=await fetch("/dz/v2/personal/voice/"+(call.openrouter?"openrouter/":call.modular?"modular/":"")+call.id+"/end",{
+      const res=await fetch("/dz/v2/personal/voice/"+(call.openrouter?"sessions/":call.modular?"modular/":"")+call.id+"/end",{
         method:"POST",credentials:"same-origin",headers:{"X-DZ-CSRF":call.csrf},cache:"no-store",keepalive:true,redirect:"error"
       });
       if(!res.ok)throw Error("Voice hangup unconfirmed");
@@ -217,7 +217,7 @@ async function start(){
       const call={id:crypto.randomUUID(),csrf:token,settled:false,closed:false,ending:null,openrouter:true};
       nativeCall=call;nativePending=call;
       let response;
-      try{response=await fetch("/dz/v2/personal/voice/openrouter/start",{method:"POST",credentials:"same-origin",
+      try{response=await fetch("/dz/v2/personal/voice/sessions",{method:"POST",credentials:"same-origin",
         headers:{"Content-Type":"application/json","X-DZ-CSRF":token},cache:"no-store",redirect:"error",
         body:JSON.stringify({session_id:call.id,conversation_id:context.conversationId,mcp_connection_ids:context.mcpConnectionIds})});}
       catch(error){call.settled=true;void endNative(call);throw error;}
