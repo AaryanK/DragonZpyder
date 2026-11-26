@@ -1,0 +1,7 @@
+FROM python:3.12-slim
+WORKDIR /app
+COPY requirements-voice.txt .
+RUN pip install --no-cache-dir -r requirements-voice.txt
+COPY voice_worker.py .
+RUN python voice_worker.py download-files
+CMD ["python", "voice_worker.py", "start"]

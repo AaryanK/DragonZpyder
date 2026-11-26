@@ -20,7 +20,7 @@ jobs:
       - name: Validate Python source
         run: python -m compileall -q api/main.py api/provider_gateway.py api/usage_ledger.py api/observability.py api/agent_platform api/tests
       - name: Run FastAPI contract checks
-        run: pytest -q api/tests/test_fastapi_gateway.py api/tests/test_usage_audit.py api/tests/test_provider_gateway.py api/tests/test_agent_platform_contract.py api/tests/test_agent_gateway_protocol.py api/tests/test_first_party_chat.py api/tests/test_first_party_request_ledger.py api/tests/test_first_party_voice.py api/tests/test_first_party_goal_management.py
+        run: pytest -q api/tests/test_fastapi_gateway.py api/tests/test_usage_audit.py api/tests/test_provider_gateway.py api/tests/test_agent_platform_contract.py api/tests/test_agent_gateway_protocol.py api/tests/test_first_party_chat.py api/tests/test_first_party_request_ledger.py api/tests/test_first_party_voice.py api/tests/test_first_party_goal_management.py api/tests/test_modular_voice.py api/tests/test_openrouter_voice.py
   agent-stack-imports:
     runs-on: ubuntu-latest
     permissions:
@@ -67,7 +67,7 @@ jobs:
       - name: Install test-only dependencies
         run: pip install -r api/requirements-agent.txt pytest
       - name: Verify real PostgreSQL concurrency, restart and isolation
-        run: pytest -q api/tests/test_persistent_graph_postgres.py api/tests/test_native_canary_postgres.py api/tests/test_budget_postgres_integration.py api/tests/test_local_monitor_postgres.py api/tests/test_long_horizon_monitoring_acceptance.py api/tests/test_local_autonomy_100_postgres.py api/tests/test_persistent_tool_canary_postgres.py api/tests/test_personal_mcp_wake_postgres.py api/tests/test_personal_mcp_checkpoint_postgres.py api/tests/test_first_party_request_ledger_postgres.py api/tests/test_shared_artifacts_postgres.py api/tests/test_native_workflows_postgres.py
+        run: pytest -q api/tests/test_persistent_graph_postgres.py api/tests/test_native_canary_postgres.py api/tests/test_budget_postgres_integration.py api/tests/test_local_monitor_postgres.py api/tests/test_long_horizon_monitoring_acceptance.py api/tests/test_local_autonomy_100_postgres.py api/tests/test_persistent_tool_canary_postgres.py api/tests/test_personal_mcp_wake_postgres.py api/tests/test_personal_mcp_checkpoint_postgres.py api/tests/test_first_party_request_ledger_postgres.py api/tests/test_shared_artifacts_postgres.py api/tests/test_native_workflows_postgres.py api/tests/test_openrouter_voice.py
 
   personal-core-contracts:
     runs-on: ubuntu-latest
@@ -143,3 +143,15 @@ jobs:
         run: pip install asyncpg fastapi pydantic httpx "cryptography>=44,<50" "PyJWT[crypto]>=2.15,<3" pytest pytest-asyncio
       - name: Verify PostgreSQL nonce, atomic code redemption, and family replay
         run: pytest -q api/tests/test_identity_offline_transfer.py api/tests/test_identity_production_import.py api/tests/test_identity_pending_reconciliation.py api/tests/test_identity_recovery_delta.py api/tests/test_identity_native_recovery_postgres.py api/tests/test_identity_personal_history_import.py api/tests/test_identity_activation_postgres.py api/tests/test_identity_postgres_integration.py api/tests/test_identity_bootstrap_postgres.py api/tests/test_identity_role_postgres.py
+
+  modular-voice-import:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r api/requirements-voice.txt
+      - run: cd api && python -c "import voice_worker; from livekit.plugins import deepgram; assert hasattr(deepgram, 'STTv2')"

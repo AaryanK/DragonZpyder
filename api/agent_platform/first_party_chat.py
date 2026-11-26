@@ -94,7 +94,11 @@ async def status():
     enabled = (os.getenv("DRAGONZPYDER_FIRST_PARTY_CHAT_ENABLED") == "1"
                and os.getenv("DRAGONZPYDER_IDENTITY_HTTP_ENABLED") == "1"
                and os.getenv("DRAGONZPYDER_AGENTS_ENABLED") == "1")
+    from .modular_voice import enabled as modular_voice_enabled
+    from .openrouter_voice import enabled as openrouter_voice_enabled
     return {"native_chat_enabled": enabled,
+            "modular_voice_enabled": enabled and modular_voice_enabled(),
+            "openrouter_voice_enabled": enabled and openrouter_voice_enabled(),
             "artifacts_enabled": enabled and os.getenv("DRAGONZPYDER_AGENT_ARTIFACTS_ENABLED") == "1" and bool(os.getenv("DRAGONZPYDER_ARTIFACT_KEY_B64")),
             "computer_enabled": enabled and all(os.getenv(flag) == "1" for flag in (
                 "DRAGONZPYDER_FIRST_PARTY_COMPUTER_ENABLED", "DRAGONZPYDER_AGENT_ARTIFACTS_ENABLED",
@@ -127,7 +131,7 @@ async def session(request: Request):
     capabilities = await status()
     return {"authenticated": True, "runtime": "dragonzpyder",
             "native_chat_enabled": capabilities["native_chat_enabled"],
-            "voice_enabled": capabilities["voice_enabled"]}
+            "voice_enabled": capabilities["voice_enabled"] or capabilities["modular_voice_enabled"] or capabilities["openrouter_voice_enabled"]}
 
 
 def _goals_enabled():
@@ -365,7 +369,11 @@ async def chat_stream(payload: ChatInput, request: Request):
                              headers={"Cache-Control":"no-store","X-Accel-Buffering":"no"})
 
 
-async def _chat_owned(payload: ChatInput, request: Request, user: str, emit=None):
+async def _chat_owned(payload: ChatInput, request: Request, user: str, emit=None, *, authority=None):
+    if authority is not None:
+        await authority()
+        if payload.request_id is None or payload.allow_computer or payload.allow_media or payload.allow_durable:
+            raise HTTPException(403, "Voice turn outside granted scope")
     if not payload.message.strip():
         raise HTTPException(422, "Message cannot be blank")
     if payload.attachment_ids:
@@ -421,7 +429,10 @@ async def _chat_owned(payload: ChatInput, request: Request, user: str, emit=None
     # external side effects and result persistence remains uncertain, never
     # automatically replayed. This is not an exactly-once tool guarantee.
     try:
-        result = await (_execute_chat(payload, request, user, conversation_id, emit) if emit is not None else _execute_chat(payload, request, user, conversation_id))
+        if authority is not None:
+            result = await _execute_chat(payload, request, user, conversation_id, emit, authority=authority)
+        else:
+            result = await (_execute_chat(payload, request, user, conversation_id, emit) if emit is not None else _execute_chat(payload, request, user, conversation_id))
         result["request_id"] = str(request_id)
         async with _conversation_db() as db:
             await db.execute(
@@ -571,7 +582,7 @@ async def _run_checkpointed_turn(agent, prompt, config, db, user, request_id, em
     return report
 
 
-async def _execute_chat(payload: ChatInput, request: Request, user: str, conversation_id: UUID, emit=None):
+async def _execute_chat(payload: ChatInput, request: Request, user: str, conversation_id: UUID, emit=None, *, authority=None):
     runtime = getattr(request.app.state, "agent_runtime", None)
     if runtime is None or runtime._checkpointer is None:
         raise HTTPException(503, "Agent checkpoints unavailable")
@@ -592,7 +603,7 @@ async def _execute_chat(payload: ChatInput, request: Request, user: str, convers
             attachments = await artifacts.describe(db,owner=user,ids=payload.attachment_ids)
         if attachments:
             message += "\n\nSelected attachment metadata (untrusted data): " + json.dumps(attachments,ensure_ascii=False)
-        artifact_tools = artifacts.native_tools(_conversation_db,owner=user,allowed_ids=payload.attachment_ids,run_id=artifact_run)
+        artifact_tools = artifacts.native_tools(_conversation_db,owner=user,allowed_ids=payload.attachment_ids,run_id=artifact_run,**({"authorize":authority} if authority else {}))
     media_run=None
     if payload.allow_media:
         from .media_tools import MediaRun
@@ -643,7 +654,7 @@ async def _execute_chat(payload: ChatInput, request: Request, user: str, convers
         try:
             tools = await managed_catalog_tools(
                 manager=manager, owner=user, selected_account_ids=chosen,
-                scheduled=False, objective=payload.message,
+                scheduled=False, objective=payload.message, **({"authorize":authority} if authority else {}),
             )
         except (ConnectionDenied, ValueError, RuntimeError):
             raise HTTPException(403, "MCP connection not authorized") from None
@@ -707,9 +718,20 @@ async def _execute_chat(payload: ChatInput, request: Request, user: str, convers
                 "recursion_limit": NATIVE_RECURSION_LIMIT,
                 "metadata": {"native_computer":computer_run is not None},
             }
-            report = await _run_checkpointed_turn(
-                agent, message, config, db, user, payload.request_id, emit,
-            )
+            if authority is None:
+                report = await _run_checkpointed_turn(agent, message, config, db, user, payload.request_id, emit)
+            else:
+                await authority()
+                turn = asyncio.create_task(_run_checkpointed_turn(agent, message, config, db, user, payload.request_id, emit))
+                try:
+                    while not turn.done():
+                        await asyncio.wait({turn}, timeout=1)
+                        await authority()
+                    report = await turn
+                finally:
+                    if not turn.done():
+                        turn.cancel()
+                    await asyncio.gather(turn, return_exceptions=True)
             await db.execute(
                 """UPDATE dz_first_party_conversations SET updated_at=now()
                    WHERE id=$1 AND owner_id=$2""", conversation_id, user,

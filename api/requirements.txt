@@ -41,3 +41,4 @@ python-pptx>=1,<2
 
 # Private S3-compatible artifact storage
 boto3>=1.40,<2
+livekit-api>=1,<2

@@ -7,11 +7,12 @@
     "dev": "vite --host 0.0.0.0",
     "build": "vite build && node scripts/prerender.mjs && node scripts/prepare-desktop.mjs",
     "preview": "vite preview --host 0.0.0.0",
-    "test": "node scripts/check-build.mjs && node --test scripts/test-markdown.mjs scripts/test-desktop.mjs",
+    "test": "node scripts/check-build.mjs && node --test scripts/test-markdown.mjs scripts/test-desktop.mjs scripts/test-openrouter-voice.mjs",
     "test:markdown": "node --test scripts/test-markdown.mjs",
     "test:e2e": "playwright test"
   },
   "dependencies": {
+    "livekit-client": "2.22.4",
     "react": "19.2.0",
     "react-dom": "19.2.0",
     "marked": "^15.0.12",

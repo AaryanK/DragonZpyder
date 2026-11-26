@@ -261,7 +261,7 @@ async function bootstrapAuth() {
       const mesh = $("mesh-switch");
       if (mesh) mesh.hidden = true;
       const voice = $("companion-open");
-      if (voice) voice.hidden = state.nativeCapabilities.voice_agent_enabled!==true;
+      if (voice) voice.hidden = state.nativeCapabilities.voice_agent_enabled!==true && state.nativeCapabilities.modular_voice_enabled!==true && state.nativeCapabilities.openrouter_voice_enabled!==true;
     }
     await ensurePersonalSession();
     hideAuth();
@@ -961,6 +961,12 @@ window.dragonzpyderNativeVoiceStart=async(sessionId,sdp)=>{
     conversation_id:state.conversationId||null,mcp_connection_ids:[...state.selectedMcpConnections]
   }});
 };
+window.dragonzpyderModularVoiceResult=async(data,initialId)=>{
+  const session=state.session;
+  if(!state.firstParty||!session||!data.conversation_id)return;
+  await loadConversations();
+  if(state.session===session&&!state.sending&&!state.archiveSelected&&(state.conversationId===data.conversation_id||(!state.conversationId&&!initialId)))await openConversation(data.conversation_id);
+};
 window.dragonzpyderNativeVoiceTurn=(sessionId,eventId,transcript)=>
   sendMessage(transcript,{companion:true,voiceTurn:{sessionId,eventId}});
 window.dragonzpyderNativeVoiceEnd=(sessionId)=>{
@@ -1227,7 +1233,7 @@ function syncComposerAction() {
 window.dragonzpyderComposerSync = syncComposerAction;
 // UI visibility is advisory; native API independently verifies owner, CSRF,
 // provider allowance and feature gate. Keyboard shortcuts use the same check.
-window.dragonzpyderVoiceContext = () => ({native:state.firstParty,agentMode:state.nativeCapabilities.voice_agent_enabled===true,conversationId:state.conversationId||null,mcpConnectionIds:[...state.selectedMcpConnections],available:Boolean(state.session)&&!state.archiveSelected&&(!state.firstParty||state.session.voiceEnabled===true)&&!state.sending&&!window.dragonzpyderMesh?.isBusy?.()});
+window.dragonzpyderVoiceContext = () => ({native:state.firstParty,openrouterVoice:state.nativeCapabilities.openrouter_voice_enabled===true,modularVoice:state.nativeCapabilities.modular_voice_enabled===true,agentMode:state.nativeCapabilities.voice_agent_enabled===true,conversationId:state.conversationId||null,mcpConnectionIds:[...state.selectedMcpConnections],available:Boolean(state.session)&&!state.archiveSelected&&(!state.firstParty||state.session.voiceEnabled===true)&&!state.sending&&!window.dragonzpyderMesh?.isBusy?.()});
 window.addEventListener("dragonzpyder:mcp-selection", (event) => {
   const ids = event.detail?.ids;
   state.selectedMcpConnections = Array.isArray(ids)
