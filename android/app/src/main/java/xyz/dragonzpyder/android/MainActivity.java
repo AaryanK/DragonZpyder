@@ -366,15 +366,13 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private void confirmSignOut(){alert().setTitle("Sign out of DragonZpyder?").setMessage("You’ll need to sign in again to access your Personal workspace on this device.").setNegativeButton("Cancel",null).setPositiveButton("Sign out",(d,i)->signOut()).show();}
     private void showCommands(){
         if(chatUi==null||busy)return;
-        String[] names={"New chat","Find conversations","Switch mode","Approvals","Dictate a message","Live voice","Toggle appearance","Connections & tools","Personal tasks","AI Mesh media","Account & security","Your tools"};
-        String[] icons={"new","search","more","approvals","mic","voice","moon","connections","tasks","attach","account","connections"};
-        Runnable[] actions={this::newChat,this::showMenu,this::showModes,this::approvals,this::dictate,this::showVoice,this::toggleTheme,this::showConnections,this::showTasks,this::showMedia,this::showAccount,this::showTools};
         ArrayList<String> availableNames=new ArrayList<>(),availableIcons=new ArrayList<>();ArrayList<Runnable> availableActions=new ArrayList<>();
-        for(int i=0;i<names.length;i++){
-            if(i==5&&!api.supportsVoice())continue;
-            if(i==9&&api.isFirstParty())continue;
-            availableNames.add(names[i]);availableIcons.add(icons[i]);availableActions.add(actions[i]);
-        }
+        // Primary navigation lives in the drawer, not in a duplicate command list.
+        availableNames.add("Switch mode");availableIcons.add("more");availableActions.add(this::showModes);
+        availableNames.add("Dictate a message");availableIcons.add("mic");availableActions.add(this::dictate);
+        if(api.supportsVoice()){availableNames.add("Live voice");availableIcons.add("voice");availableActions.add(this::showVoice);}
+        if(!api.isFirstParty()){availableNames.add("AI Mesh media");availableIcons.add("attach");availableActions.add(this::showMedia);}
+        availableNames.add("Your tools");availableIcons.add("connections");availableActions.add(this::showTools);
         chatUi.showCommands(availableNames.toArray(new String[0]),availableIcons.toArray(new String[0]),availableActions.toArray(new Runnable[0]));
     }
     private void showAdd(){
