@@ -27,3 +27,13 @@ For each implementation change, add a new bullet beginning with the exact reposi
 - `web/frontend/index.html`: Advertises canonical SVG and explicit 16/32 px favicon fallbacks; existing route and metadata retained. Source inspection and regression coverage added where applicable; full CI, device and production checks pending.
 - `web/frontend/app.html`: Advertises canonical SVG and explicit 16/32 px favicon fallbacks; existing route and metadata retained. Source inspection and regression coverage added where applicable; full CI, device and production checks pending.
 - `web/frontend/account.html`: Advertises canonical SVG and explicit 16/32 px favicon fallbacks; existing route and metadata retained. Source inspection and regression coverage added where applicable; full CI, device and production checks pending.
+
+## 2026-11-26 — V2 regression and history-state corrections
+
+- `web/ui-v1.css`: Restores the connections/navigation rows hidden by UI1 light-theme CSS; compact sidebar controls in both themes. Previous Chromium native-routing test failed on the hidden button; rerun pending.
+- `scripts/check_codebase_docs.py`: Android AAPT resource directories use their parent res guide; every file still requires exact inventory coverage. Narrow exception avoids invalid Markdown resource files.
+- `tests/test_codebase_documentation.py`: Fixture verifies resource parent guide requirement and normal directory coverage.
+- `web/app.js`: Distinguishes unavailable/loading/failed history from genuinely empty history, rejects stale session list responses; does not bypass backend feature gates or use Operly fallback.
+- `web/frontend/tests/native-routing.spec.js`: Asserts unavailable history is not mislabeled as empty when chat capability is gated. Existing native authorization fixture retained.
+
+Removed the three Markdown guides from Android drawable, values and xml resource folders because AAPT rejects them; their parent guide now documents the resource paths.

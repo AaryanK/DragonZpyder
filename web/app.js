@@ -7,6 +7,7 @@ const state = {
   archiveSelected: false,
   selectionVersion: 0,
   conversations: [],
+  historyState: "loading",
   approvals: [],
   sending: false,
   preauthCsrf: null,
@@ -259,6 +260,7 @@ async function bootstrapAuth() {
     hideAuth();
     if (state.firstParty && state.session.nativeChatEnabled === false) {
       setRuntimeStatus("error", "Signed in · Agent runtime not enabled");
+      state.historyState = "unavailable";
       renderConversations();
       return;
     }
@@ -285,6 +287,8 @@ async function login(email, password) {
     hideAuth();
     if (state.session.nativeChatEnabled === false) {
       setRuntimeStatus("error", "Signed in · Agent runtime not enabled");
+      state.historyState = "unavailable";
+      renderConversations();
       return;
     }
     setRuntimeStatus("online", "DragonZpyder agent connected");
@@ -489,8 +493,8 @@ function renderConversations() {
   conversationList.replaceChildren();
   if (!state.conversations.length) {
     const empty = document.createElement("div");
-    empty.className = "conversation-button";
-    empty.textContent = "No conversations yet";
+    empty.className = "conversation-empty";
+    empty.textContent = state.historyState === "unavailable" ? "Conversation history is unavailable while the runtime is offline." : state.historyState === "error" ? "Could not load conversations. Try refreshing." : state.historyState === "loading" ? "Loading conversations…" : "No conversations yet";
     empty.style.cursor = "default";
     conversationList.appendChild(empty);
     return;
@@ -535,9 +539,13 @@ function renderConversations() {
 }
 
 async function loadConversations({ restoreLatest = false } = {}) {
+  const session = state.session;
+  state.historyState = "loading";
+  renderConversations();
   try {
     const rows = await api(state.firstParty
       ? "/dz/v2/personal/conversations" : "/api/personal-agent/conversations", { csrf: false });
+    if (!session || state.session !== session) return;
     state.conversations = state.firstParty
       ? (Array.isArray(rows.conversations) ? rows.conversations : [])
       : (Array.isArray(rows) ? rows : []);
@@ -555,14 +563,16 @@ async function loadConversations({ restoreLatest = false } = {}) {
           if (result.next_offset !== offset + 100 || page === 100) throw Error("Archive page limit reached");
           offset = result.next_offset;
         }
-        if (!state.session) return;
+        if (state.session !== session) return;
         state.conversations = [...live, ...archived];
       } catch (error) {
-        if (!state.session) return;
+        if (state.session !== session) return;
         if (error.status === 401) return showAuth();
         if (error.status !== 404) showToast("Archived history unavailable. Live chats are unaffected.", 5000);
       }
     }
+    if (state.session !== session) return;
+    state.historyState = "ready";
     renderConversations();
     // Initial authentication populates the sidebar but otherwise leaves a
     // blank message pane. Restore the newest authorized Personal conversation.
@@ -572,6 +582,9 @@ async function loadConversations({ restoreLatest = false } = {}) {
     }
   } catch (error) {
     if (error instanceof ApiError && error.status === 401) return showAuth();
+    if (state.session !== session) return;
+    state.historyState = "error";
+    renderConversations();
     console.warn("Could not load conversations", error);
   }
 }
@@ -1054,6 +1067,7 @@ async function logout() {
   state.conversationId = null;
   setArchiveMode(false);
   state.conversations = [];
+  state.historyState = "loading";
   state.approvals = [];
   renderConversations();
   showEmptyState();

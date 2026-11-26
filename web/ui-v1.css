@@ -990,3 +990,13 @@ html[data-workspace-theme] .menu {background:var(--dz-shell-surface);border-colo
  html[data-workspace-theme] .unified-composer #message-input {min-height:36px;font-size:16px}
 }
 @media(max-width:340px) {html[data-workspace-theme] .prompt-grid {grid-template-columns:1fr}}
+
+/* V2 navigation must be reachable in both themes; UI1 hid these rows in light. */
+html[data-workspace-theme] .workspace-switcher {display:flex}
+html[data-workspace-theme] .sidebar-navigation {display:grid}
+html[data-workspace-theme] .sidebar-head {margin-bottom:4px}
+html[data-workspace-theme] .sidebar-footer-label {display:block}
+html[data-workspace-theme] .conversation-button {color:var(--dz-shell-text)}
+html[data-workspace-theme] .conversation-button.active {background:var(--dz-shell-selected);color:var(--dz-shell-text)}
+html[data-workspace-theme] .conversation-empty {color:var(--dz-shell-muted);padding:8px 10px;font-size:12px;line-height:1.5}
+html[data-workspace-theme] .workspace-head .profile-btn {min-width:44px;min-height:44px}

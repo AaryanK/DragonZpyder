@@ -152,6 +152,7 @@ test("native identity initials are not the device name and unavailable chat cann
   await page.goto("/app");
   await expect(page.locator("#profile-initial")).toHaveText("AL");
   await expect(page.locator("#dz-runtime-notice")).toBeVisible();
+  await expect(page.getByText("Conversation history is unavailable while the runtime is offline.")).toBeVisible();
   await page.locator("#message-input").fill("Preserve this draft");
   await expect(page.locator("#send-button")).toBeDisabled();
   await expect(page.locator(".prompt-chip").first()).toBeDisabled();
