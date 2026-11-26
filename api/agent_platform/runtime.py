@@ -6,7 +6,10 @@ execution or workspace operations from agent prompts.
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
+import json
+import logging
 import os
 import re
 from uuid import UUID, uuid4
@@ -183,10 +186,11 @@ def summarize_checkpoint_evidence(values: Any, *, termination_reason: str) -> di
     messages = current_turn_messages(messages)
     successful: list[str] = []
     failed = 0
+    from .tool_outcomes import tool_outcome
     for msg in messages:
         if getattr(msg, "type", None) != "tool":
             continue
-        if getattr(msg, "status", "success") == "error":
+        if tool_outcome(msg) != "returned":
             failed += 1
         else:
             name = getattr(msg, "name", "")
@@ -241,10 +245,18 @@ def summarize_agent_result(result: dict) -> dict:
     turn_messages = current_turn_messages(messages)
     successful = []
     failures = 0
+    from .tool_outcomes import tool_outcome, unresolved_external_control
+    external_blocker = unresolved_external_control(turn_messages)
+    incomplete = incomplete or external_blocker is not None
+    if external_blocker and not content.startswith(STOP_PREFIX):
+        # The model's prose cannot override an observed pending/unknown effect.
+        content = ("An external action requires approval; review the pending action."
+                   if external_blocker == "external_approval_required" else
+                   "An external action has an unconfirmed outcome; reconcile before retrying.")
     for message in turn_messages:
         if getattr(message, "type", None) != "tool":
             continue
-        if getattr(message, "status", "success") == "error":
+        if tool_outcome(message) != "returned":
             failures += 1
             continue
         name = getattr(message, "name", "")
@@ -262,8 +274,8 @@ def summarize_agent_result(result: dict) -> dict:
         "answer": content,
         "status": "incomplete" if incomplete else "completed",
         "termination_reason": (
-            content[len(STOP_PREFIX):].split(";", 1)[0].strip()
-            if incomplete else None
+            external_blocker or (content[len(STOP_PREFIX):].split(";", 1)[0].strip()
+                                 if content.startswith(STOP_PREFIX) else None)
         ),
         "successful_tools": successful[:80],
         "failed_tool_count": failures,
@@ -332,6 +344,17 @@ class AgentRuntime:
                  if parent_job_id is not None else model_client())
         from .delegation_trace import DelegationTrace
         delegation_trace = DelegationTrace()
+        from .run_telemetry import RunTelemetry
+        run_telemetry = RunTelemetry()
+
+        def emit_execution(status, reason=None):
+            evidence = run_telemetry.snapshot(status=status, termination_reason=reason)
+            # No prompt, account, conversation or tool arguments in production logs.
+            logging.getLogger(__name__).info("agent_execution_evidence %s",
+                json.dumps({"execution_id":delegation_trace.execution_id,
+                            "surface":"internal", **evidence},sort_keys=True))
+            return evidence
+
         try:
             agent = (
                 build_agent(model, self._checkpointer, parent_job_id=parent_job_id)
@@ -340,20 +363,15 @@ class AgentRuntime:
             )
         except Exception as exc:
             raise AgentPipelineError("construction") from exc
+        from .execution_contract import (execution_limits, exact_turn_state,
+                                         RECOVERY_TIMEOUT_SECONDS)
+        limits = execution_limits(parent_job=parent_job_id is not None)
+        turn_id = str(uuid4())
         langfuse_handlers = telemetry_callbacks(service_id)
         config = {
             "configurable": {"thread_id": key},
-            "recursion_limit": (
-                96 if all(os.getenv(flag) == "1" for flag in (
-                    "DRAGONZPYDER_AGENT_HARNESS_V2",
-                    "DRAGONZPYDER_AGENT_STRESS_EVAL_ENABLED",
-                    "DRAGONZPYDER_AGENT_EVAL_ALLOW_PAID",
-                    "DRAGONZPYDER_AGENT_USE_GATEWAY",
-                    "DRAGONZPYDER_AGENT_PRODUCTION_MODE",
-                )) else
-                32
-            ),
-            "callbacks": [delegation_trace, *langfuse_handlers],
+            "recursion_limit": limits.graph_supersteps,
+            "callbacks": [delegation_trace, run_telemetry, *langfuse_handlers],
             "metadata": {
                 "service_id": service_id,
                 "harness_version": "v2",
@@ -362,29 +380,41 @@ class AgentRuntime:
             },
         }
         try:
-            result = await agent.ainvoke(
-                {"messages": [{"role": "user", "content": prompt}]},
+            result = await asyncio.wait_for(agent.ainvoke(
+                {"messages": [{"role": "user", "content": prompt, "id": turn_id}]},
                 config=config,
-            )
+            ), timeout=limits.deadline_seconds)
+            current = exact_turn_state(result, turn_id=turn_id, prompt=prompt,
+                                       require_answer=True)
+        except asyncio.CancelledError:
+            emit_execution("cancelled","cancelled")
+            raise
         except Exception as exc:
             reason = controlled_termination_reason(exc)
+            if isinstance(exc, TimeoutError):
+                reason = "execution_deadline"
             if not recover_partial_on_failure or not reason:
+                emit_execution("failed",reason or "unclassified_execution_failure")
                 raise AgentPipelineError("execution") from exc
             # Persisted checkpoints can survive a model-call / recursion
             # limit. A read failure degrades evidence; it does NOT certify
             # failure as success or trigger another paid model request.
             try:
-                snapshot = await agent.aget_state(config)
-                state = getattr(snapshot, "values", None)
+                snapshot = await asyncio.wait_for(agent.aget_state(config),
+                                                  timeout=RECOVERY_TIMEOUT_SECONDS)
+                state = exact_turn_state(getattr(snapshot, "values", None),
+                                         turn_id=turn_id, prompt=prompt,
+                                         require_answer=False)
             except Exception:
                 state = None
             report = summarize_checkpoint_evidence(
                 state, termination_reason=reason
             )
         else:
-            report = summarize_agent_result(result)
+            report = summarize_agent_result(current)
         trace = delegation_trace.snapshot()
         report["execution_id"] = trace["execution_id"]
+        report["execution_telemetry"] = emit_execution(report["status"],report.get("termination_reason"))
         report["delegation_spans"] = trace["spans"]
         report["parallelism_observed"] = trace["parallelism_observed"]
         report["delegated_calls_observed"] = trace["delegated_calls_observed"]
