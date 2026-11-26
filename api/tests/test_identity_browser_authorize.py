@@ -37,6 +37,7 @@ def app(monkeypatch):
     monkeypatch.setenv("RAILWAY_ENVIRONMENT_NAME", "staging")
     monkeypatch.setenv("DRAGONZPYDER_IDENTITY_HTTP_ENABLED", "1")
     class FakeDB:
+        async def fetchval(self,query,*args): return 1
         @asynccontextmanager
         async def transaction(self):
             yield self
@@ -133,3 +134,28 @@ def test_discovery_off_by_default_and_lists_actual_routes(monkeypatch, app):
     assert config["token_endpoint"] == ISSUER + "/identity/v1/token"
     assert config["jwks_uri"] == ISSUER + "/.well-known/jwks.json"
     assert config["code_challenge_methods_supported"] == ["S256"]
+
+
+def test_google_issuer_login_isolated_from_consent(app,monkeypatch):
+    monkeypatch.delenv("DRAGONZPYDER_IDENTITY_ISSUER_GOOGLE_ENABLED",raising=False)
+    monkeypatch.setenv("DRAGONZPYDER_IDENTITY_GOOGLE_CLIENT_ID","synthetic-client")
+    with TestClient(app,base_url=ISSUER) as c:
+        url="/identity/v1/authorize?"+urlencode(query())
+        assert c.get("/identity/v1/signin/google").status_code==404
+        assert "/identity/v1/signin/google" not in c.get(url).text
+        monkeypatch.setenv("DRAGONZPYDER_IDENTITY_ISSUER_GOOGLE_ENABLED","1")
+        consent=c.get(url)
+        assert 'href="/identity/v1/signin/google"' in consent.text
+        assert "accounts.google.com" not in consent.headers["content-security-policy"]
+        assert "accounts.google.com" not in consent.text
+        assert c.get("/identity/v1/signin/google?state=secret").status_code==400
+        page=c.get("/identity/v1/signin/google")
+        assert page.status_code==200
+        assert "https://accounts.google.com/gsi/client" in page.text
+        assert "dz-consent-ticket" not in page.text
+        assert page.headers["referrer-policy"]=="no-referrer"
+        assert "frame-ancestors 'none'" in page.headers["content-security-policy"]
+        script=c.get("/identity/v1/signin/google.js")
+        assert script.status_code==200
+        assert "/identity/v1/provider/google/complete" in script.text
+        assert "location.assign" not in script.text

@@ -45,7 +45,7 @@ async def issue_refresh(conn, *, subject: str, client_id: str, redirect_uri: str
             conn, client_id=client_id, redirect_uri=redirect_uri, scope=scope,
         )
         active = await conn.fetchval(
-            "SELECT 1 FROM identity_accounts WHERE subject=$1 AND status='active' AND source_active=TRUE",
+            "SELECT 1 FROM identity_accounts WHERE subject=$1 AND status='active' AND source_active=TRUE FOR UPDATE",
             subject,
         )
         if active != 1:
@@ -73,8 +73,13 @@ async def rotate_refresh(conn, *, token: str, client_id: str, redirect_uri: str)
             """SELECT subject,client_id,family_id,scope,audience,expires_at,consumed_at,revoked_at
                FROM identity_refresh_grants WHERE refresh_hash=$1""", digest,
         )
-        if row is None:
+        if row is None or row["client_id"] != client_id:
             raise OAuthGrantDenied("Refresh token rejected")
+        if await conn.fetchval(
+            "SELECT 1 FROM identity_accounts WHERE subject=$1 AND status='active' AND source_active=TRUE FOR UPDATE",
+            row["subject"],
+        ) != 1:
+            raise OAuthGrantDenied("Account unavailable")
         await conn.execute(
             "SELECT pg_advisory_xact_lock(hashtext($1))",
             row["family_id"],

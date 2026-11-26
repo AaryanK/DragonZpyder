@@ -123,7 +123,7 @@ async def authorize_code(conn, *, authenticated_subject: str, client_id: str,
     async with conn.transaction():
         client = await _registered_client(conn, client_id=client_id, redirect_uri=redirect_uri, scope=scope)
         active = await conn.fetchval(
-            "SELECT 1 FROM identity_accounts WHERE subject=$1 AND status='active' AND source_active=TRUE",
+            "SELECT 1 FROM identity_accounts WHERE subject=$1 AND status='active' AND source_active=TRUE FOR UPDATE",
             authenticated_subject,
         )
         if active != 1:
@@ -148,6 +148,16 @@ async def redeem_code(conn, *, code: str, client_id: str, redirect_uri: str,
     _validate_client_id(client_id)
     _validate_redirect(redirect_uri)
     async with _transaction(conn, inside=in_transaction):
+        # Account first, then grant row: same lock order as credential reset.
+        candidate = await conn.fetchrow(
+            "SELECT subject FROM identity_authorization_codes WHERE code_hash=$1",
+            _secret_digest(code),
+        )
+        if candidate is None or await conn.fetchval(
+            "SELECT 1 FROM identity_accounts WHERE subject=$1 AND status='active' AND source_active=TRUE FOR UPDATE",
+            candidate["subject"],
+        ) != 1:
+            raise OAuthGrantDenied("Authorization code rejected")
         row = await conn.fetchrow(
             """SELECT subject, client_id, redirect_uri, pkce_s256, scope, audience, nonce,
                       expires_at, consumed_at FROM identity_authorization_codes

@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from .grants import _secret_digest
-from .passwords import normalize_email, verify_and_update_password, EmailAddressError
+from .passwords import normalize_email, verify_and_update_password, EmailAddressError, hash_password
 from .sessions import BrowserSession, create_browser_session
 
 
@@ -21,15 +21,11 @@ class LoginDenied(PermissionError):
 
 
 MAX_ATTEMPTS = 8
+# Use a process-local synthetic hash to avoid a cheap missing-account path.
+DUMMY_PASSWORD_HASH = hash_password('synthetic-non-account-password-proof')
 
 
-async def password_login(conn, *, email: str, password: str) -> BrowserSession:
-    if not isinstance(password, str) or not password or len(password.encode("utf-8")) > 1024:
-        raise LoginDenied("Invalid credentials")
-    try:
-        normalized = normalize_email(email)
-    except EmailAddressError as error:
-        raise LoginDenied("Invalid credentials") from error
+async def consume_password_attempt(conn, *, normalized: str) -> None:
     digest = _secret_digest("login:" + normalized)
     # SQL upsert serializes attempts for a given account even across replicas.
     # Every attempt counts; returning success never resets the window, so
@@ -49,21 +45,42 @@ async def password_login(conn, *, email: str, password: str) -> BrowserSession:
     )
     if not isinstance(count, int) or count > MAX_ATTEMPTS:
         raise LoginDenied("Invalid credentials")
+
+
+async def password_login(conn, *, email: str, password: str) -> BrowserSession:
+    if not isinstance(password, str) or not password or len(password.encode("utf-8")) > 1024:
+        raise LoginDenied("Invalid credentials")
+    try:
+        normalized = normalize_email(email)
+    except EmailAddressError as error:
+        raise LoginDenied("Invalid credentials") from error
+    await consume_password_attempt(conn, normalized=normalized)
     row = await conn.fetchrow(
         """SELECT subject, password_hash FROM identity_accounts
-           WHERE email=$1 AND source_active=TRUE AND status='active'""",
+           WHERE email=$1 AND source_active=TRUE AND status='active'
+             AND email_verified_at IS NOT NULL""",
         normalized,
     )
     # User-controlled plaintext passwords must never enter model context,
     # logs, exception messages, tracing, or any agent tools.
     stored = row["password_hash"] if row is not None else None
-    result = await asyncio.to_thread(verify_and_update_password, password, stored)
-    if not result.valid or row is None:
+    result = await asyncio.to_thread(verify_and_update_password, password, stored or DUMMY_PASSWORD_HASH)
+    if not result.valid or row is None or not stored:
         raise LoginDenied("Invalid credentials")
-    if result.upgraded_hash:
-        await conn.execute(
-            """UPDATE identity_accounts SET password_hash=$1
-               WHERE subject=$2 AND password_hash=$3 AND status='active' AND source_active=TRUE""",
-            result.upgraded_hash, row["subject"], stored,
+    # Serialize credential acceptance with recovery. A hash verified before a
+    # concurrent reset is not sufficient to mint a new browser session.
+    async with conn.transaction():
+        current = await conn.fetchrow(
+            """SELECT subject,password_hash FROM identity_accounts
+               WHERE email=$1 AND status='active' AND source_active
+               AND email_verified_at IS NOT NULL FOR UPDATE""", normalized,
         )
-    return await create_browser_session(conn, authenticated_subject=row["subject"])
+        if current is None or current["subject"] != row["subject"] or current["password_hash"] != stored:
+            raise LoginDenied("Invalid credentials")
+        if result.upgraded_hash:
+            await conn.execute(
+                """UPDATE identity_accounts SET password_hash=$1
+                   WHERE subject=$2 AND password_hash=$3 AND status='active' AND source_active=TRUE""",
+                result.upgraded_hash, row["subject"], stored,
+            )
+        return await create_browser_session(conn, authenticated_subject=row["subject"])

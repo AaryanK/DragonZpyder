@@ -57,6 +57,7 @@ def test_authorize_rejects_cross_origin_and_non_pkce(monkeypatch):
 def test_authorize_requires_real_session_and_safely_redirects(monkeypatch):
     monkeypatch.setenv("DRAGONZPYDER_IDENTITY_HTTP_ENABLED", "1")
     class DummyDB:
+        async def fetchval(self,query,*args): return 1
         @asynccontextmanager
         async def transaction(self):
             yield self

@@ -76,6 +76,28 @@ async def _restricted_identity_role(conn):
           AND NOT has_table_privilege(current_user,'public.identity_accounts','DELETE,TRUNCATE')
           AND NOT has_table_privilege(current_user,'public.identity_provider_links','DELETE,TRUNCATE')
           AND NOT has_any_column_privilege(current_user,'public.identity_provider_links','UPDATE')
+          AND NOT EXISTS (
+              SELECT 1 FROM pg_attribute a
+              WHERE a.attrelid=to_regclass('public.identity_accounts')
+                AND a.attname='import_activation_receipt_id' AND NOT a.attisdropped
+                AND (has_column_privilege(current_user,a.attrelid,a.attnum,'UPDATE')
+                     OR has_column_privilege(current_user,a.attrelid,a.attnum,'INSERT')))
+          AND NOT EXISTS (
+              SELECT 1 FROM pg_class c
+              WHERE c.oid=to_regclass('public.identity_import_activation_receipts')
+                AND (has_any_column_privilege(current_user,c.oid,'INSERT,UPDATE')
+                     OR has_table_privilege(current_user,c.oid,'DELETE,TRUNCATE')))
+          AND NOT EXISTS (
+              SELECT 1 FROM pg_proc p
+              WHERE p.oid=to_regprocedure('public.approve_imported_identity(text,uuid)')
+                AND has_function_privilege(current_user,p.oid,'EXECUTE'))
+          AND NOT EXISTS (
+              SELECT 1 FROM pg_class c
+              WHERE c.oid=to_regclass('public.identity_import_proofs')
+                AND (has_any_column_privilege(current_user,c.oid,'UPDATE')
+                     OR has_table_privilege(current_user,c.oid,'DELETE,TRUNCATE')
+                     OR has_column_privilege(current_user,c.oid,'proved_at','INSERT')
+                     OR NOT c.relrowsecurity))
           AND (SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
                WHERE n.nspname='public' AND c.relname IN ('identity_accounts','identity_provider_links')
                  AND c.relrowsecurity)=2
@@ -132,6 +154,14 @@ async def browser_authorize(payload: AuthorizeInput, request: Request):
                 db, secret=session, csrf=csrf, require_csrf=True,
             )
             async with db.transaction():
+                if await db.fetchval(
+                    "SELECT 1 FROM identity_accounts WHERE subject=$1 AND status='active' AND source_active=TRUE FOR UPDATE",
+                    subject,
+                ) != 1:
+                    raise SessionDenied("Account unavailable")
+                # Recheck after acquiring the same account lock as reset.
+                if await resolve_browser_session(db,secret=session,csrf=csrf,require_csrf=True)!=subject:
+                    raise SessionDenied("Session changed")
                 await consume_interaction(
                     db, ticket=payload.consent_ticket, subject=subject,
                     session_secret=session,
