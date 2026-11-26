@@ -16,3 +16,5 @@ Read [repository instructions](../../AGENTS.md) and [codebase navigation](../../
 
 - [dragonzpyder-api.yml](dragonzpyder-api.yml): Run combined graph, media, recovery, and PostgreSQL integration tests, with agent-stack dependencies for actual checkpoints.
 - [scoped-sandbox-runner.yml](scoped-sandbox-runner.yml): Check Node runner syntax and scoped protocol tests without allocating live VMs.
+
+- [thanksgiving-apk.yml](thanksgiving-apk.yml): Publish a raw APK from the newest retained successful develop Android debug workflow as a public prerelease; no production signing or Play publication.
