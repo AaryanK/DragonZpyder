@@ -194,3 +194,4 @@ Removed the three Markdown guides from Android drawable, values and xml resource
 - `web/app.js`: Expose modular capability and refresh canonical chat history on returned voice results without resubmission. No live rollout or paid audio qualification performed.
 - `api/tests/test_modular_voice.py`: Offline config, token restriction and authorization regression tests. No live rollout or paid audio qualification performed.
 - `.github/workflows/dragonzpyder-api.yml`: Run modular voice contracts and separate SDK import smoke checks without paid requests. No live rollout or paid audio qualification performed.
+- `api/agent_platform/first_party_voice.py`: Require an actual realtime provider call ID before admitting browser-submitted realtime transcripts; modular voice rooms exclusively use their dedicated worker authorization. Existing schema compatible; regression CI pending.

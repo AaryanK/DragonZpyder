@@ -164,7 +164,7 @@ async def turn(session_id: UUID, payload: VoiceTurn, request: Request):
         try:
             row=await db.fetchrow("""SELECT conversation_id,mcp_connection_ids
                 FROM dz_native_voice_sessions WHERE owner_id=$1 AND session_id=$2
-                AND state='active' AND agent_mode=TRUE AND expires_at>now()""",owner,session_id)
+                AND state='active' AND agent_mode=TRUE AND provider_call_id IS NOT NULL AND expires_at>now()""",owner,session_id)
             if row is None:
                 raise HTTPException(404,"Active voice agent session not found")
             # A lost response can be recovered from the exact request ledger.
