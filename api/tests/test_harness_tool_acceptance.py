@@ -382,3 +382,109 @@ def test_hatchet_cron_registration_is_explicit_and_staging_only(monkeypatch):
             await install_staging_agent_ping_cron(fake)
         assert len(fake.calls) == 1
     asyncio.run(run())
+
+
+def test_native_computer_tools_execute_multistep_graph_with_scoped_mock_runner(monkeypatch):
+    """Actual Deep Agents graph, simulated VM transport; no allocation or model spend."""
+    from agent_platform.computer import ComputerScope
+    from agent_platform.computer_run import ComputerRun, ComputerRunGrant, computer_tools
+    from langchain_core.messages import AIMessage, ToolMessage
+    from langgraph.checkpoint.memory import MemorySaver
+
+    scope = ComputerScope("personal","owner-123","task-123")
+    class Runner:
+        files = {}
+        calls = []
+        async def create(self, **kwargs):
+            assert kwargs["scope"] == scope
+            self.calls.append("create")
+            return {"id":"vm-123"}
+        async def execute_authorized(self, *, sandbox_id, scope, tool_id, args):
+            assert sandbox_id == "vm-123" and scope.principal_id == "owner-123"
+            self.calls.append(tool_id)
+            if tool_id == "files.write":
+                self.files[args["path"]] = args["content"]
+                return {"ok":True,"path":args["path"]}
+            if tool_id == "python.exec":
+                assert self.files["input.txt"] == "41"
+                self.files["output.txt"] = "42"
+                return {"ok":True,"exit_code":0,"stdout":"42"}
+            if tool_id == "files.read":
+                return {"ok":True,"content":self.files[args["path"]]}
+            raise AssertionError(tool_id)
+        async def destroy_authorized(self, sandbox_id, *, scope):
+            assert sandbox_id == "vm-123" and scope.principal_id == "owner-123"
+            self.calls.append("destroy")
+            return {"destroyed":True}
+
+    async def scenario():
+        runner = Runner()
+        run = ComputerRun(runner,ComputerRunGrant(scope,max_calls=3))
+        graph = build_frontier_agent(ToolScript(responses=[
+            scripted_call("computer_write_file",{"path":"input.txt","content":"41"}),
+            scripted_call("computer_python",{"code":"from pathlib import Path; Path('output.txt').write_text(str(int(Path('input.txt').read_text())+1))"}),
+            scripted_call("computer_read_file",{"path":"output.txt"}),
+            AIMessage(content="The computed output is 42."),
+        ]),MemorySaver(),synthetic_tools=computer_tools(run))
+        assert runner.calls == []
+        try:
+            result = await graph.ainvoke(
+                {"messages":[{"role":"user","content":"Compute and inspect the result"}]},
+                config={"configurable":{"thread_id":"offline-computer-run"},"recursion_limit":128})
+            messages = [m for m in result["messages"] if isinstance(m,ToolMessage)]
+            assert len(messages) == 3 and all(m.status == "success" for m in messages)
+            assert runner.files["output.txt"] == "42"
+            assert "vm-123" not in str(messages)
+            assert result["messages"][-1].content == "The computed output is 42."
+        finally:
+            assert await run.close()
+        assert runner.calls == ["create","files.write","python.exec","files.read","destroy"]
+
+    monkeypatch.setenv("DRAGONZPYDER_SYNTHETIC_TOOLS_ENABLED","1")
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_WEB_SEARCH_ENABLED","0")
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_QUICKJS_ENABLED","0")
+    asyncio.run(scenario())
+
+
+def test_computer_run_never_replays_uncertain_allocation_and_cleans_known_session():
+    from agent_platform.computer import ComputerScope
+    from agent_platform.computer_run import ComputerRun, ComputerRunGrant
+    import pytest
+    scope = ComputerScope("personal","owner-123","task-123")
+    class Runner:
+        creates=0
+        calls=0
+        destroys=0
+        async def create(self,**kwargs):
+            self.creates+=1
+            return {"id":"vm-123"}
+        async def execute_authorized(self,**kwargs):
+            self.calls+=1
+            raise TimeoutError()
+        async def destroy_authorized(self,*args,**kwargs):
+            self.destroys+=1
+            return {"destroyed":True}
+    async def scenario():
+        transport=Runner()
+        run=ComputerRun(transport,ComputerRunGrant(scope))
+        with pytest.raises(TimeoutError):
+            await run.execute("python.exec",{"code":"print(1)"})
+        with pytest.raises(RuntimeError):
+            await run.execute("python.exec",{"code":"print(1)"})
+        assert await run.close()
+        assert await run.close()
+        assert (transport.creates,transport.calls,transport.destroys)==(1,1,1)
+
+        class LostAllocation(Runner):
+            async def create(self,**kwargs):
+                self.creates+=1
+                raise TimeoutError()
+        lost=LostAllocation()
+        run=ComputerRun(lost,ComputerRunGrant(scope))
+        with pytest.raises(TimeoutError):
+            await run.execute("files.list",{})
+        with pytest.raises(RuntimeError):
+            await run.execute("files.list",{})
+        assert not await run.close()
+        assert (lost.creates,lost.calls,lost.destroys)==(1,0,0)
+    asyncio.run(scenario())
