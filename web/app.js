@@ -3,6 +3,8 @@ const state = {
   session: null,
   firstParty: false,
   selectedMcpConnections: [],
+  nativeCapabilities: {},
+  agentFiles: [],
   conversationId: null,
   archiveSelected: false,
   selectionVersion: 0,
@@ -39,6 +41,7 @@ const composer = $("composer");
 const composerWrap = document.querySelector(".composer-wrap");
 const messageInput = $("message-input");
 const sendButton = $("send-button");
+const computerConsent = $("native-computer-consent");
 const statusDot = $("status-dot");
 const statusText = $("status-text");
 const approvalCount = $("approval-count");
@@ -180,6 +183,8 @@ function initials(value) {
 function setSession(session) {
   state.session = session;
   if (!session) {
+    state.agentFiles=[]; renderAgentFiles();
+    if(computerConsent)computerConsent.checked=false;
     sessionLabel.textContent = "Personal session";
     profileInitial.textContent = "D";
     return;
@@ -230,6 +235,8 @@ async function bootstrapAuth() {
     // never fall back to Operly when the DragonZpyder API is unavailable.
     const routing = await api("/dz/status", { csrf: false });
     state.firstParty = routing.web_cutover_enabled === true;
+    state.nativeCapabilities = state.firstParty ? await api("/dz/v2/personal/status",{csrf:false}) : {};
+    if(computerConsent) computerConsent.closest("label").hidden = !state.nativeCapabilities.computer_enabled;
     window.dragonzpyderNativeMode = state.firstParty;
     window.dispatchEvent(new CustomEvent("dragonzpyder:runtime-mode", { detail: { firstParty: state.firstParty } }));
     if (!state.firstParty) {
@@ -445,6 +452,9 @@ window.addEventListener("resize", syncComposerClearance);
 requestAnimationFrame(syncComposerClearance);
 
 function clearConversationSelection() {
+  if(state.sending)return;
+  state.agentFiles=[]; renderAgentFiles();
+  if(computerConsent)computerConsent.checked=false;
   state.selectionVersion++;
   state.conversationId = null;
   setArchiveMode(false);
@@ -557,6 +567,8 @@ async function loadConversations({ restoreLatest = false } = {}) {
 
 async function openConversation(id, { archived = false } = {}) {
   if (!id || state.sending || (archived && !state.firstParty)) return;
+  state.agentFiles=[]; renderAgentFiles();
+  if(computerConsent)computerConsent.checked=false;
   const version = ++state.selectionVersion;
   setArchiveMode(archived);
   if(window.dragonzpyderMesh?.isActive())window.dragonzpyderMesh.disable();
@@ -618,27 +630,156 @@ async function openConversation(id, { archived = false } = {}) {
 
 function runtimeMessage(result) {
   if (!result || typeof result !== "object") return "DragonZpyder completed the request.";
-  return String(result.message || result.result?.message || result.output || "DragonZpyder completed the request.");
+  return String(result.message || result.result?.message || result.output || "No final answer was returned; outcome unconfirmed.");
 }
 
-async function submitViaClientAdapter(message, requestId) {
-  // The personal-tools client submission endpoint is not registered in Operly.
-  // Use the supported personal-agent chat API directly.
-  const body = { message };
-  if (state.conversationId) body.conversation_id = state.conversationId;
-  if (state.firstParty && state.selectedMcpConnections.length) {
-    body.mcp_connection_ids = [...state.selectedMcpConnections];
+function renderAgentFiles(){
+  if(!state.firstParty)return;
+  const preview=$("mesh-attachments");
+  if(!preview)return;
+  preview.replaceChildren();
+  preview.hidden=!state.agentFiles.length;
+  for(const file of state.agentFiles){
+    const chip=document.createElement("span");
+    chip.className="mesh-file-chip";
+    const name=document.createElement("span");
+    name.textContent=file.name;
+    const remove=document.createElement("button");
+    remove.type="button";remove.textContent="×";remove.disabled=state.sending;
+    remove.setAttribute("aria-label","Remove "+file.name);
+    remove.addEventListener("click",()=>{
+      state.agentFiles=state.agentFiles.filter(x=>x!==file);renderAgentFiles();
+    });
+    chip.append(name,remove);preview.append(chip);
   }
-  const result = await api(state.firstParty
-    ? "/dz/v2/personal/chat" : "/api/personal-agent/chat",
-    { method: "POST", body });
-  result.client_request_id = requestId;
-  return result;
+  syncComposerAction();
+}
+window.dragonzpyderQueueAgentFiles=(files)=>{
+  if(!state.firstParty)return false;
+  if(state.sending||state.archiveSelected||!state.session||!state.nativeCapabilities.artifacts_enabled){
+    showToast("Native file attachments are unavailable for this request.");return true;
+  }
+  for(const file of Array.from(files||[])){
+    if(state.agentFiles.length>=5){showToast("Attach at most five files.");break;}
+    if(!(file instanceof File)||!file.size||file.size>10*1024*1024){
+      showToast("Each attachment must be between 1 byte and 10 MiB.");continue;
+    }
+    state.agentFiles.push(file);
+  }
+  renderAgentFiles();return true;
+};
+
+async function uploadAgentFiles(files){
+  const ids=[];
+  for(const file of files){
+    const csrf=sessionCsrf();
+    if(!csrf)throw new ApiError("Sign in again before uploading files.",{status:401});
+    const response=await fetch("/dz/v2/personal/files?filename="+encodeURIComponent(file.name),{
+      method:"POST",credentials:"same-origin",redirect:"error",
+      headers:{"Content-Type":file.type||"application/octet-stream","X-DZ-CSRF":csrf},body:file
+    });
+    const info=await response.json();
+    if(!response.ok)throw errorDetail(info,response.status);
+    if(typeof info.id!=="string"||!/^[a-f0-9-]{36}$/.test(info.id))throw Error("Invalid attachment receipt.");
+    ids.push(info.id);
+  }
+  return ids;
+}
+
+function appendGeneratedFiles(parent,files){
+  if(!Array.isArray(files))return;
+  for(const info of files.slice(0,100)){
+    if(!info||typeof info.id!=="string"||!/^[a-f0-9-]{36}$/.test(info.id)||
+       typeof info.filename!=="string")continue;
+    const item=document.createElement("div");item.className="message-meta";
+    const link=document.createElement("a");
+    link.href="/dz/v2/personal/files/"+encodeURIComponent(info.id);
+    link.textContent="Download "+info.filename;link.download=info.filename;
+    item.append(link);parent.append(item);
+  }
+}
+
+async function recoverNativeRequest(requestId){
+  try{
+    const saved=await api("/dz/v2/personal/requests/"+encodeURIComponent(requestId),{csrf:false});
+    if(saved.status==="completed"&&saved.response)return saved.response;
+  }catch{}
+  throw new ApiError("Execution outcome unconfirmed. Check request status before resending.",{
+    code:"execution_outcome_uncertain",retryable:false});
+}
+
+async function streamNativeRequest(body,requestId,onEvent){
+  try{
+    const csrf=sessionCsrf();
+    if(!csrf)throw new ApiError("Sign in again.",{status:401});
+    const response=await fetch("/dz/v2/personal/chat/stream",{
+      method:"POST",credentials:"same-origin",redirect:"error",
+      headers:{"Content-Type":"application/json","Accept":"text/event-stream","X-DZ-CSRF":csrf},
+      body:JSON.stringify(body)
+    });
+    if(!response.ok){
+      const payload=await response.json();
+      if([400,401,403,404,422,429].includes(response.status))throw errorDetail(payload,response.status);
+      return await recoverNativeRequest(requestId);
+    }
+    if(!response.body||!response.headers.get("content-type")?.includes("text/event-stream"))
+      return await recoverNativeRequest(requestId);
+    const reader=response.body.getReader(),decoder=new TextDecoder();
+    let buffer="";
+    try{
+      for(;;){
+        const {done,value}=await reader.read();
+        if(done)break;
+        buffer+=decoder.decode(value,{stream:true});
+        if(buffer.length>1_000_000)throw Error("Invalid agent event size");
+        let index;
+        while((index=buffer.indexOf("\n\n"))>=0){
+          const frame=buffer.slice(0,index);buffer=buffer.slice(index+2);
+          const line=frame.split("\n").find(x=>x.startsWith("data: "));
+          if(!line)continue;
+          const event=JSON.parse(line.slice(6));
+          if(event.type==="done"&&event.response)return event.response;
+          if(event.type==="error")return await recoverNativeRequest(requestId);
+          onEvent?.(event);
+        }
+      }
+    }finally{try{await reader.cancel();}catch{}}
+  }catch(error){
+    if(error instanceof ApiError&&[400,401,403,404,422,429].includes(error.status))throw error;
+    if(error instanceof ApiError&&error.code==="execution_outcome_uncertain")throw error;
+  }
+  return await recoverNativeRequest(requestId);
+}
+
+async function submitViaClientAdapter(message,requestId,{files=[],allowComputer=false,onEvent}={}){
+  const body={message};
+  if(state.conversationId)body.conversation_id=state.conversationId;
+  if(state.firstParty){
+    if(state.selectedMcpConnections.length)body.mcp_connection_ids=[...state.selectedMcpConnections];
+    if(state.nativeCapabilities.request_ledger_enabled)body.request_id=requestId;
+    if(files.length)body.attachment_ids=await uploadAgentFiles(files);
+    if(allowComputer){
+      if(!state.nativeCapabilities.computer_enabled||!body.request_id||!state.nativeCapabilities.agent_stream_enabled)
+        throw new ApiError("Isolated computer execution unavailable.",{status:503});
+      body.allow_computer=true;
+    }
+    if(body.request_id&&state.nativeCapabilities.agent_stream_enabled)
+      return await streamNativeRequest(body,requestId,onEvent);
+    try{return await api("/dz/v2/personal/chat",{method:"POST",body});}
+    catch(error){
+      if(body.request_id&&(error.status===0||error.status===409||error.status>=500))
+        return await recoverNativeRequest(requestId);
+      throw error;
+    }
+  }
+  return await api("/api/personal-agent/chat",{method:"POST",body});
 }
 
 async function sendMessage(message, { companion = false, fromComposer = false } = {}) {
   if (state.archiveSelected) { showToast("Start a new chat to continue.", 4000); return; }
-  const clean = String(message || "").trim();
+  const selectedFiles=state.firstParty&&fromComposer?[...state.agentFiles]:[];
+  const allowComputer=Boolean(state.firstParty&&fromComposer&&computerConsent?.checked);
+  const clean = String(message || "").trim() || (selectedFiles.length?"Inspect the attached files.":"");
   if (!clean || state.sending) { if (companion) throw Error("Personal agent is busy"); return; }
   if (!state.session) { showAuth(); if (companion) throw Error("Sign in first"); return; }
 
@@ -653,17 +794,24 @@ async function sendMessage(message, { companion = false, fromComposer = false } 
     if (window.matchMedia("(max-width: 820px)").matches) messageInput.blur();
   }
   messageInput.disabled = true;
-  appendMessage("user", clean);
+  appendMessage("user", clean+(selectedFiles.length?"\nAttached: "+selectedFiles.map(x=>x.name).join(", "):""));
   const pending = appendMessage("assistant", "", { pending: true });
   const requestId = crypto.randomUUID();
   state.lastRequestId = requestId;
 
   try {
-    const result = await submitViaClientAdapter(clean, requestId);
+    let preview="";
+    const result = await submitViaClientAdapter(clean, requestId,{files:selectedFiles,allowComputer,onEvent:event=>{
+      if(event.type==="reset"){preview="";pending.value.textContent="";}
+      if(event.type==="delta"&&typeof event.text==="string"){preview=(preview+event.text).slice(0,16000);pending.value.textContent=preview;}
+      if(event.type==="phase"&&!preview&&typeof event.message==="string")pending.value.textContent=event.message.slice(0,300);
+    }});
+    if(fromComposer){state.agentFiles=[];renderAgentFiles();if(computerConsent)computerConsent.checked=false;}
     if (result.conversation_id) state.conversationId = String(result.conversation_id);
     const blocker = result.error_code ? String(result.error_code) : "";
     const text = runtimeMessage(result);
     renderMessageContent(pending.value, text);
+    appendGeneratedFiles(pending.body,result.artifacts);
     pending.wrap.classList.remove("dz-running");
     // Add message actions only after the backend has actually returned.
     if (!pending.body.querySelector(".dz-message-actions")) {
@@ -774,6 +922,7 @@ async function sendMessage(message, { companion = false, fromComposer = false } 
       autoSizeInput();
     }
     if (error instanceof ApiError && error.code === "execution_outcome_uncertain") {
+      if(fromComposer){state.agentFiles=[];renderAgentFiles();if(computerConsent)computerConsent.checked=false;}
       const stable = error.details?.rfc822_message_id ? ` Stable message identity: ${error.details.rfc822_message_id}.` : "";
       pending.value.textContent = `Delivery may already have happened. Do not send again until it is reconciled.${stable}`;
     } else if (error instanceof ApiError && error.status === 401) {
@@ -1042,7 +1191,7 @@ function syncComposerAction() {
   // The single trailing action is Live voice while the composer is empty,
   // and Send when text or attachments are ready.
   const pending = Boolean(messageInput.value.trim()) ||
-    Boolean(window.dragonzpyderMesh?.hasAttachments?.());
+    Boolean(window.dragonzpyderMesh?.hasAttachments?.()) || state.agentFiles.length>0;
   const voice = $("companion-open");
   voice.hidden = state.firstParty || pending;
   voice.disabled = state.sending || Boolean(window.dragonzpyderMesh?.isBusy?.());
