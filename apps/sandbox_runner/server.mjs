@@ -422,8 +422,13 @@ const server = http.createServer(async (req, res) => {
     if (toolMatch && req.method === "POST") return sendJson(res, 200, await executeTool(toolMatch[1], decodeURIComponent(toolMatch[2]), payload.scope, payload.arguments));
     return sendJson(res, 404, { detail: "Computer endpoint not found" });
   } catch (error) {
-    const status = Number(error?.statusCode || 400);
-    const safeMessage = status >= 500 ? "Sandbox runner operation failed" : String(error?.message || error);
+    const suppliedStatus = Number(error?.statusCode || 503);
+    const status = Number.isInteger(suppliedStatus) && suppliedStatus >= 400 && suppliedStatus <= 599
+      ? suppliedStatus : 503;
+    const safeMessage = status === 403 ? "Computer scope rejected" :
+      status === 410 ? "Computer session expired" :
+      status === 409 ? "Computer request conflict or replay" :
+      status === 422 ? "Computer request rejected" : "Sandbox runner operation failed";
     console.error(`Scoped sandbox request failed status=${status}`);
     return sendJson(res, status, { detail: safeMessage });
   }
