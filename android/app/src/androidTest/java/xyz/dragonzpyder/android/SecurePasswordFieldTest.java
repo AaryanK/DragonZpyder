@@ -39,14 +39,15 @@ public final class SecurePasswordFieldTest {
             scenario.onActivity(app->verifyScreen(app,1));
         }
     }
-    @Test public void signupAndResetPasswordMasked(){
+    @Test public void firstPartySignupHasNoPasswordAndResetFieldIsMasked(){
         try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)){
             scenario.onActivity(app->{
                 try{
                     java.lang.reflect.Method method=MainActivity.class.getDeclaredMethod("authScreen",String.class,String.class);
                     method.setAccessible(true);
                     method.invoke(app,"signup","");
-                    verifyScreen(app,2);
+                    // First-party signup uses verified Google identity; legacy password signup must not appear.
+                    verifyScreen(app,0);
                     method.invoke(app,"reset","");
                     verifyScreen(app,1);
                 }catch(ReflectiveOperationException e){throw new AssertionError(e);}
