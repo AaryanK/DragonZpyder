@@ -41,6 +41,8 @@ Use deterministic document and media libraries (PyMuPDF, python-docx, openpyxl, 
 
 ## Skills, agent manufacturing and model routing
 
+See [System One routing](system-one-routing.md) for the typed decision-model integration gates, shadow evaluation, and policy boundary.
+
 Use upstream Deep Agents skill loading (reviewed SKILL.md packages with progressive disclosure). Begin with document/spreadsheet creation, software engineering, research, scientific computing, media and browser skills. Skills are procedural knowledge, not authority. Construct task-scoped specialist configurations from approved models, capabilities, skill versions, context and bounded budgets. Dynamic delegation never widens parent grants or budgets; avoid unrestricted recursive spawning. Route by measured suitability, modalities, tool-call correctness, context, cost and latency; support bounded retries and explicit failure rather than inventing tool outputs. Do not train new models when existing intelligence meets the requirement.
 
 Use QuickJS for small programmatic tool compositions; expand existing restricted interpreter only when nested calls inherit authorization, cancellation, approval, audit and atomic parent budget. LangGraph owns durable reasoning; Hatchet owns dispatch and wake/recovery. No custom competing cron, planner or queue.
