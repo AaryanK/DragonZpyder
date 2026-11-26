@@ -133,8 +133,11 @@ async def run_workspace(
             raise ValueError("Authorized Workspace capability set is empty")
         # Never mix Personal goals, Personal token tools or unscoped tools
         # into a delegated Operly business Workspace.
-        agent = build_frontier_agent(model_client(), checkpointer, delegated_tools=tools,
-                                     product_surface="operly")
+        from .adaptive_routing import routed_model
+        model,route,route_middleware=routed_model(payload.prompt,model_factory=model_client,has_tools=True)
+        agent = build_frontier_agent(model, checkpointer, delegated_tools=tools,
+                                     product_surface="operly",
+                                     **({"routing_middleware":route_middleware} if route_middleware else {}))
     except (ValueError, RuntimeError, asyncio.TimeoutError) as error:
         logger.warning("workspace_bridge_failed stage=discovery type=%s", type(error).__name__)
         raise HTTPException(503, "Workspace MCP capability discovery unavailable") from error
