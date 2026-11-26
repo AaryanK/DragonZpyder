@@ -28,6 +28,8 @@ CI and service-specific GitHub Actions workflows; inspect individual triggers be
 | [`mcp-connections.yml`](../../.github/workflows/mcp-connections.yml) | Workflow/configuration: mcp connections; inspect triggers, jobs and gates. | Indexed |
 | [`web.yml`](../../.github/workflows/web.yml) | Workflow/configuration: web; inspect triggers, jobs and gates. | Indexed |
 
+| [`thanksgiving-apk.yml`](../../.github/workflows/thanksgiving-apk.yml) | Publishes validated existing debug APK as a public Thanksgiving beta prerelease. | Reviewed |
+
 ## api
 
 FastAPI inference/API composition, provider transport, ledgers, service images, staging and implementation packages.
