@@ -32,3 +32,25 @@ def test_gateway_model_client_rejects_untrusted_or_missing_gateway(monkeypatch):
     monkeypatch.setenv("DRAGONZPYDER_AGENT_PRODUCTION_MODE", "1")
     with pytest.raises(RuntimeError):
         model_client()
+
+
+def test_metered_gateway_output_limit_is_bounded_and_opt_in(monkeypatch):
+    import pytest
+    from agent_platform.runtime import model_client
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_MODEL_ID", "openai/gpt-oss-120b")
+    monkeypatch.setenv("DRAGONZPYDER_RUNTIME_ALLOWED_MODELS", "openai/gpt-oss-120b")
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_USE_GATEWAY", "1")
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_GATEWAY_TOKEN", "t" * 44)
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_GATEWAY_BASE_URL", "https://gateway.example.org/internal/agent/v1")
+    monkeypatch.delenv("DRAGONZPYDER_AGENT_STRESS_EVAL_ENABLED", raising=False)
+    monkeypatch.delenv("DRAGONZPYDER_AGENT_GATEWAY_OUTPUT_TOKENS", raising=False)
+    assert model_client().max_tokens == 768
+    for allowed in ("2048", "4096"):
+        monkeypatch.setenv("DRAGONZPYDER_AGENT_GATEWAY_OUTPUT_TOKENS", allowed)
+        client = model_client()
+        assert client.max_tokens == int(allowed)
+        assert client.max_retries == 0
+    for rejected in ("0", "767", "4097", "-1", "abc", "", "02048"):
+        monkeypatch.setenv("DRAGONZPYDER_AGENT_GATEWAY_OUTPUT_TOKENS", rejected)
+        with pytest.raises(RuntimeError, match="output token ceiling"):
+            model_client()

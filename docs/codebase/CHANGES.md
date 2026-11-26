@@ -248,3 +248,10 @@ Removed the three Markdown guides from Android drawable, values and xml resource
 - `.github/workflows/thanksgiving-apk.yml`: One-off develop push trigger or manual dispatch downloads the most recent successful develop Android APK workflow artifact, verifies archive and manifest, records SHA256 and publishes a debug-signed prerelease asset; limited job token, no secrets or production signing. Public release and live download verification pending.
 
 - `web/main.py`: Android choice links directly to the named official Thanksgiving beta raw APK release asset, bypassing release page and release-feed lookup; old Android route remains compatible. Public asset must exist before distribution; live verification pending.
+
+## 2026-11-26 — P0 gateway output recovery
+
+- `api/agent_platform/gateway_protocol.py`, `api/main.py`: typed rejection of truncated output, no partial tool dispatch, conservative cost accounting unchanged.
+- `api/agent_platform/runtime.py`: opt-in 768–4096 token ceiling for metered gateway only, default unchanged; exact-turn incomplete recovery, no automatic paid retry.
+- `api/agent_platform/personal_bridge.py`, `api/agent_platform/first_party_chat.py`: classify fixed gateway error code and recover current-turn evidence, never treat incomplete output as success.
+- `api/tests/test_agent_gateway_protocol.py`, `api/tests/test_agent_stack_integration.py`, `api/tests/test_personal_mcp_bridge.py`, `api/tests/test_first_party_agent_stream.py`: offline regression coverage; CI/live tests pending.

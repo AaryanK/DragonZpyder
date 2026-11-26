@@ -112,9 +112,9 @@ def model_client(*, model_override: str | None = None,
     """Agent inference is metered by DragonZpyder when gateway mode is enabled."""
     model = configured_model(model_override)
     # Reasoning-capable providers may use the first hundreds of output tokens
-    # before producing visible tool calls. Only a paid, operator-approved
-    # stress test increases this *per call* ceiling; it does not relax model
-    # allowlists, gateway price caps or supervisor/delegation limits.
+    # before producing visible tool calls. An operator-approved metered
+    # gateway setting or paid stress test can increase this per-call ceiling;
+    # neither relaxes model allowlists, price caps or run/delegation limits.
     stress_mode = (
         os.getenv("DRAGONZPYDER_AGENT_STRESS_EVAL_ENABLED") == "1"
         and os.getenv("DRAGONZPYDER_AGENT_EVAL_ALLOW_PAID") == "1"
@@ -122,6 +122,14 @@ def model_client(*, model_override: str | None = None,
     output_tokens = 2048 if stress_mode else 768
     retry_count = 1 if stress_mode else 0  # Only inference; no tool action yet.
     gateway = os.getenv("DRAGONZPYDER_AGENT_USE_GATEWAY") == "1"
+    if gateway and not stress_mode:
+        # Opt-in ceiling on the metered gateway only; no automatic retry.
+        raw_limit = os.getenv("DRAGONZPYDER_AGENT_GATEWAY_OUTPUT_TOKENS", "768")
+        if not raw_limit.isascii() or not raw_limit.isdecimal() or len(raw_limit) > 4:
+            raise RuntimeError("Invalid agent gateway output token ceiling")
+        output_tokens = int(raw_limit)
+        if not 768 <= output_tokens <= 4096:
+            raise RuntimeError("Invalid agent gateway output token ceiling")
     if gateway:
         base = os.getenv("DRAGONZPYDER_AGENT_GATEWAY_BASE_URL", "").rstrip("/")
         parsed = urlsplit(base)
@@ -393,6 +401,10 @@ class AgentRuntime:
             raise
         except Exception as exc:
             reason = controlled_termination_reason(exc)
+            if reason is None:
+                from .personal_bridge import inference_failure_code
+                if inference_failure_code(exc) == "INFERENCE_OUTPUT_LIMIT_REACHED":
+                    reason = "inference_output_limit_reached"
             if isinstance(exc, TimeoutError):
                 reason = "execution_deadline"
             if not recover_partial_on_failure or not reason:

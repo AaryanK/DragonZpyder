@@ -11,11 +11,15 @@ import re
 from typing import Any
 
 
+OUTPUT_LIMIT_CODE = "agent_output_limit_reached"
+
+
 class AgentProtocolError(ValueError):
-    def __init__(self, status: int, message: str):
+    def __init__(self, status: int, message: str, *, code: str | None = None):
         super().__init__(message)
         self.status = status
         self.message = message
+        self.code = code
 
 
 _NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_-]{0,79}$")
@@ -219,7 +223,8 @@ def validate_agent_response(
     if not isinstance(message, dict) or message.get("role") != "assistant":
         _reject("Invalid model message", 502)
     if choice.get("finish_reason") == "length":
-        _reject("Model response stopped at output limit", 502)
+        raise AgentProtocolError(502, "Model response stopped at output limit",
+                                 code=OUTPUT_LIMIT_CODE)
     content = _bounded_text(message.get("content"), limit=90000, nullable=True)
     out_message = {"role": "assistant", "content": content}
     raw_calls = message.get("tool_calls")

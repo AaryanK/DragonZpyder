@@ -125,3 +125,7 @@ Reviewed entries are source-inspected summaries; indexed entries are navigation 
 - [tool_relevance.py](tool_relevance.py): Rank authorized metadata conservatively and abstain on ambiguous matching.
 - [worker.py](worker.py): Register gated native durable workflow Hatchet controller alongside existing jobs.
 - [workspace_bridge.py](workspace_bridge.py): Recover exact Workspace turn evidence on bounded failures and share adaptive routing without changing tenant scope.
+
+### P0 gateway termination handling
+
+`gateway_protocol.py` emits a fixed truncation code, `runtime.py` exposes the bounded opt-in metered-gateway output ceiling and exact-turn recovery, `personal_bridge.py` classifies the SDK envelope, and `first_party_chat.py` reports incomplete current-turn receipts. CI and live qualification pending.
