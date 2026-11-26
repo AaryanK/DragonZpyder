@@ -31,6 +31,7 @@ class ChatInput(BaseModel):
     attachment_ids: list[UUID] = Field(default_factory=list, max_length=5)
     allow_computer: bool = Field(default=False, strict=True)
     allow_media: bool = Field(default=False, strict=True)
+    allow_durable: bool = Field(default=False, strict=True)
     conversation_id: UUID | None = None
     request_id: UUID | None = None
     # Aliases must belong to the authenticated user and are rechecked at use.
@@ -103,6 +104,7 @@ async def status():
                 "DRAGONZPYDER_COMPUTER_RUNNER_URL","DRAGONZPYDER_COMPUTER_RUNNER_TOKEN",
                 "DRAGONZPYDER_COMPUTER_RUNNER_SIGNING_KEY","DRAGONZPYDER_ARTIFACT_KEY_B64")),
             "voice_enabled": enabled and os.getenv("DRAGONZPYDER_NATIVE_VOICE_ENABLED") == "1" and bool(os.getenv("DRAGONZPYDER_NATIVE_VOICE_API_KEY")),
+            "durable_workflows_enabled": enabled and all(os.getenv(x)=="1" for x in ("DRAGONZPYDER_NATIVE_DURABLE_WORKFLOWS_ENABLED","DRAGONZPYDER_AGENT_USE_GATEWAY","DRAGONZPYDER_AGENT_PARALLEL_GATEWAY_ENABLED","DRAGONZPYDER_AGENT_ARTIFACTS_ENABLED","DRAGONZPYDER_FIRST_PARTY_REQUEST_LEDGER_ENABLED")) and bool(os.getenv("DRAGONZPYDER_NATIVE_DURABLE_MAX_USD")),
             "media_enabled": enabled and os.getenv("DRAGONZPYDER_AGENT_MEDIA_ENABLED")=="1" and os.getenv("DRAGONZPYDER_AGENT_USE_GATEWAY")=="1" and os.getenv("DRAGONZPYDER_AGENT_ARTIFACTS_ENABLED")=="1" and bool(os.getenv("DRAGONZPYDER_ARTIFACT_KEY_B64")) and os.getenv("DRAGONZPYDER_FIRST_PARTY_REQUEST_LEDGER_ENABLED")=="1",
             "voice_agent_enabled": enabled and os.getenv("DRAGONZPYDER_NATIVE_VOICE_AGENT_ENABLED")=="1" and os.getenv("DRAGONZPYDER_NATIVE_VOICE_ENABLED")=="1" and bool(os.getenv("DRAGONZPYDER_NATIVE_VOICE_API_KEY")) and os.getenv("DRAGONZPYDER_FIRST_PARTY_REQUEST_LEDGER_ENABLED")=="1",
             "request_ledger_enabled": enabled and os.getenv("DRAGONZPYDER_FIRST_PARTY_REQUEST_LEDGER_ENABLED") == "1",
@@ -240,6 +242,8 @@ def _fingerprint(payload: ChatInput) -> str:
         exclude.add("allow_computer")
     if not payload.allow_media:
         exclude.add("allow_media")
+    if not payload.allow_durable:
+        exclude.add("allow_durable")
     canonical = json.dumps(payload.model_dump(mode="json", exclude=exclude),
                            sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
@@ -369,6 +373,10 @@ async def _chat_owned(payload: ChatInput, request: Request, user: str, emit=None
         from .media_tools import enabled as media_enabled
         if not media_enabled() or payload.request_id is None:
             raise HTTPException(503,"Authorized media execution unavailable")
+    if payload.allow_durable:
+        from .native_workflows import enabled as workflows_enabled
+        if not workflows_enabled() or payload.request_id is None:
+            raise HTTPException(503,"Durable workflow scheduling unavailable")
     # Old clients remain compatible. New clients explicitly opt into durable
     # request identity; a missing migration fails closed before any model call.
     if payload.request_id is None:
@@ -682,11 +690,19 @@ async def _execute_chat(payload: ChatInput, request: Request, user: str, convers
                     else:
                         route_middleware=recovery_middleware(initial_model=selected_model,
                             reasoning_model=model_client(model_override=reasoning))
+            workflow_tools=[]
+            if payload.allow_durable:
+                from .native_workflows import native_workflow_tools,session_reference
+                workflow_tools=native_workflow_tools(owner=user,session_hash=session_reference(request),
+                    conversation_id=conversation_id,request_id=payload.request_id,
+                    attachment_ids=payload.attachment_ids,mcp_connection_ids=payload.mcp_connection_ids,
+                    allow_computer=payload.allow_computer,http=request.app.state.http)
             agent = build_frontier_agent(
                 selected_model, runtime._checkpointer,
                 delegated_tools=tools if tools else None,
                 **({"artifact_tools":artifact_tools} if artifact_tools else {}),
                 **({"media_run":media_run} if media_run else {}),
+                **({"workflow_tools":workflow_tools} if workflow_tools else {}),
                 **({"routing_middleware":route_middleware} if route_middleware else {}),
                 **({"computer_run":computer_run,"computer_artifacts":computer_artifacts} if computer_run else {}),
             )
