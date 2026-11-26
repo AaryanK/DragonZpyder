@@ -93,8 +93,8 @@ class ComputerAdmission:
 
 
 def admitted_run(*, db_factory, owner, run_id, policy, transport,
-                 deadline_seconds=180, max_calls=16):
+                 deadline_seconds=180, max_calls=16, authorize=None):
     scope=ComputerScope("personal",owner,str(run_id))
     admission=ComputerAdmission(db_factory,scope=scope,run_id=run_id,policy=policy)
     return ComputerRun(transport,ComputerRunGrant(scope,max_calls=max_calls,
-                       deadline_seconds=deadline_seconds),admission=admission)
+                       deadline_seconds=deadline_seconds),admission=admission,authorize=authorize)
