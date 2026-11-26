@@ -87,7 +87,7 @@ class AgentPipelineError(RuntimeError):
         self.phase = phase
 
 
-def build_agent(model, checkpointer, *, parent_job_id: str | None = None):
+def build_agent(model, checkpointer, *, parent_job_id: str | None = None, routing_middleware=None):
     """Single Deep Agents harness for internal API and Hatchet execution.
 
     The historical V1 flag no longer selects a second agent implementation.
@@ -103,7 +103,8 @@ def build_agent(model, checkpointer, *, parent_job_id: str | None = None):
                 model_client(model_override=configured, parent_job_id=parent_job_id)
                 if parent_job_id is not None else model_client(model_override=configured)
             )
-    return build_frontier_agent(model, checkpointer, specialist_models=models)
+    return build_frontier_agent(model, checkpointer, specialist_models=models,
+        **({"routing_middleware":routing_middleware} if routing_middleware else {}))
 
 
 def model_client(*, model_override: str | None = None,
@@ -340,8 +341,9 @@ class AgentRuntime:
         if not isinstance(prompt, str) or not 1 <= len(prompt.strip()) <= 12000:
             raise ValueError("Prompt must be 1–12000 characters")
         key = thread_key(service_id, thread_id)
-        model = (model_client(parent_job_id=parent_job_id)
-                 if parent_job_id is not None else model_client())
+        from .adaptive_routing import routed_model
+        model,route,route_middleware=routed_model(prompt,model_factory=model_client,
+            has_tools=False,parent_job_id=parent_job_id,durable=parent_job_id is not None)
         from .delegation_trace import DelegationTrace
         delegation_trace = DelegationTrace()
         from .run_telemetry import RunTelemetry
@@ -357,9 +359,9 @@ class AgentRuntime:
 
         try:
             agent = (
-                build_agent(model, self._checkpointer, parent_job_id=parent_job_id)
-                if parent_job_id is not None else
-                build_agent(model, self._checkpointer)
+                build_agent(model,self._checkpointer,
+                    **({"parent_job_id":parent_job_id} if parent_job_id is not None else {}),
+                    **({"routing_middleware":route_middleware} if route_middleware else {}))
             )
         except Exception as exc:
             raise AgentPipelineError("construction") from exc
@@ -414,6 +416,7 @@ class AgentRuntime:
             report = summarize_agent_result(current)
         trace = delegation_trace.snapshot()
         report["execution_id"] = trace["execution_id"]
+        report["model_route"] = route.tier if route else "default"
         report["execution_telemetry"] = emit_execution(report["status"],report.get("termination_reason"))
         report["delegation_spans"] = trace["spans"]
         report["parallelism_observed"] = trace["parallelism_observed"]
