@@ -10,7 +10,7 @@ function endNative(call){
   if(!call||call.ending)return call?.ending;
   call.ending=(async()=>{
     try{
-      const res=await fetch("/dz/v2/personal/voice/"+(call.modular?"modular/":"")+call.id+"/end",{
+      const res=await fetch("/dz/v2/personal/voice/"+(call.openrouter?"openrouter/":call.modular?"modular/":"")+call.id+"/end",{
         method:"POST",credentials:"same-origin",headers:{"X-DZ-CSRF":call.csrf},cache:"no-store",keepalive:true,redirect:"error"
       });
       if(!res.ok)throw Error("Voice hangup unconfirmed");
@@ -212,6 +212,40 @@ async function start(){
     if(v!==version){ acquired.getTracks().forEach(track=>track.stop()); return; }
     mic=acquired;
     window.dispatchEvent(new CustomEvent("dragonzpyder:voice-input",{detail:{stream:mic}}));
+    if(native&&context.openrouterVoice){
+      const token=csrf(true);if(!token)throw Error("Secure session missing. Sign in again.");
+      const call={id:crypto.randomUUID(),csrf:token,settled:false,closed:false,ending:null,openrouter:true};
+      nativeCall=call;nativePending=call;
+      let response;
+      try{response=await fetch("/dz/v2/personal/voice/openrouter/start",{method:"POST",credentials:"same-origin",
+        headers:{"Content-Type":"application/json","X-DZ-CSRF":token},cache:"no-store",redirect:"error",
+        body:JSON.stringify({session_id:call.id,conversation_id:context.conversationId,mcp_connection_ids:context.mcpConnectionIds})});}
+      catch(error){call.settled=true;void endNative(call);throw error;}
+      finally{if(nativePending===call)nativePending=null;}
+      call.settled=true;
+      if(v!==version||call.closed){if(response.ok||response.status>=500)void endNative(call);return;}
+      if(!response.ok){if(response.status<500)nativeCall=null;throw Error("OpenRouter voice unavailable ("+response.status+").");}
+      const grant=await response.json(),expiry=Date.parse(grant.expires_at);
+      if(grant.session_id!==call.id||grant.transport!=="openrouter"||!Number.isFinite(expiry)||expiry<=Date.now()||
+         !Number.isFinite(grant.duration_seconds)||grant.duration_seconds<1||grant.duration_seconds>600)throw Error("Invalid voice grant.");
+      if(v!==version)return;
+      expiryTimer=setTimeout(()=>{if(v===version){cleanup();panel.hidden=false;setStatus("Voice session ended.","idle");}},Math.min(grant.duration_seconds*1000,expiry-Date.now()));
+      const {connectOpenRouterVoice}=await import("./frontend/src/openrouter-voice.js");
+      if(v!==version)return;
+      const room=await connectOpenRouterVoice({stream:mic,sessionId:call.id,csrf:token,
+        onRemote:stream=>{if(v===version)browserEvent("voice-output",{stream});},
+        onState:(message,kind)=>{if(v===version)setStatus(message,kind);},
+        onData:data=>{
+          if(v!==version||calls.has(data.event_id))return;
+          calls.add(data.event_id);
+          row("user-"+data.event_id,"You",String(data.transcript||""));
+          row("agent-"+data.event_id,"DragonZpyder",String(data.message||""));
+          void window.dragonzpyderModularVoiceResult?.(data,context.conversationId);
+        }});
+      if(v!==version){await room.disconnect();return;}
+      modularRoom=room;live=true;starting=false;
+      browserEvent("voice-session",{connected:true});setStatus("Listening — speak naturally","listening");return;
+    }
     if(native&&context.modularVoice){
       const token=csrf(true);if(!token)throw Error("Secure session missing. Sign in again.");
       const call={id:crypto.randomUUID(),csrf:token,settled:false,closed:false,ending:null,modular:true};
@@ -310,6 +344,7 @@ mute.addEventListener("click",()=>{
   }
   if(!mic||!live)return;
   silent=!silent;mic.getAudioTracks().forEach(t=>t.enabled=!silent&&!nativeBusy);
+  modularRoom?.setMuted?.(silent);
   window.dispatchEvent(new CustomEvent("dragonzpyder:voice-mute",{detail:{muted:silent}}));
   setStatus(silent?"Microphone muted":"Listening — speak naturally","listening");
 });
