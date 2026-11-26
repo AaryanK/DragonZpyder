@@ -10,6 +10,20 @@ The goal is not another chatbot or coding agent, and not to own every model or a
 
 > **Status — November 25, 2026:** actively developed, partially deployed platform. The architecture below is the accepted direction, not a claim that universal autonomous computer use has shipped. Check actual source, feature gates, deployed SHA, and end-to-end evidence before asserting availability.
 
+## Start here — contributors and coding agents
+
+Before proposing or implementing any change, establish the project goal, follow the repository instructions, and inspect the actual implementation. This README is the product overview, not the complete engineering specification.
+
+| Read in this order | What you will learn |
+| --- | --- |
+| 1. [AGENTS.md](AGENTS.md) | Mandatory repository-level development instructions and guardrails. |
+| 2. [Universal Harness V4](docs/universal-harness-v4.md) | Canonical product mission, architecture, capability design, implementation sequence and acceptance criteria. |
+| 3. [Platform ownership](docs/platform-ownership.md) | DragonZpyder/Operly boundaries and migration constraints. |
+| 4. [Agent platform engineering notes](api/agent_platform/README.md) | Implementation entry points, historical test evidence and setup. |
+| 5. [Harness source](api/agent_platform/harness.py), [runtime](api/agent_platform/runtime.py), [tests](api/tests/) | What actually exists, what is enforced and what remains to implement. |
+
+Read the relevant source and current pull requests before editing. For major architecture changes, consult current upstream Deep Agents, LangChain and LangGraph documentation and relevant leading open-source harnesses before adding infrastructure; prefer reuse and explain deviations from the canonical design. Distinguish planned, implemented, tested and deployed features. Update the relevant documentation when decisions or verified capabilities change.
+
 ## What the platform is designed to do
 
 A user can eventually request an outcome rather than specify individual tools: analyze a PDF and produce a report, write and run software, use a browser or application, create images/audio/video, or monitor a goal over time. The harness should choose among structured APIs/MCP, deterministic code execution, graphical computer use and specialized models. It should prefer the most reliable and economical suitable mechanism, enforce user authority, and return real artifacts or verified effects.
