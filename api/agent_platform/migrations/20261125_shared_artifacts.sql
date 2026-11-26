@@ -21,10 +21,14 @@ ALTER TABLE dz_agent_artifacts ALTER COLUMN ciphertext DROP NOT NULL;
 ALTER TABLE dz_agent_artifacts ADD COLUMN IF NOT EXISTS object_key text;
 ALTER TABLE dz_agent_artifacts ADD COLUMN IF NOT EXISTS storage_state text NOT NULL DEFAULT 'ready';
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='dz_agent_artifacts_storage_contract'
+  IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='dz_agent_artifacts_storage_contract'
                   AND conrelid='dz_agent_artifacts'::regclass) THEN
-    ALTER TABLE dz_agent_artifacts ADD CONSTRAINT dz_agent_artifacts_storage_contract
-      CHECK (storage_state IN ('pending','ready','deleting') AND
+    ALTER TABLE dz_agent_artifacts DROP CONSTRAINT dz_agent_artifacts_storage_contract;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='dz_agent_artifacts_storage_contract_v2'
+                  AND conrelid='dz_agent_artifacts'::regclass) THEN
+    ALTER TABLE dz_agent_artifacts ADD CONSTRAINT dz_agent_artifacts_storage_contract_v2
+      CHECK (storage_state IN ('pending','ready','deleting','deleted') AND
              ((object_key IS NULL AND ciphertext IS NOT NULL AND storage_state='ready') OR
               (object_key IS NOT NULL AND ciphertext IS NULL)));
   END IF;
