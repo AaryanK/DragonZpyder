@@ -35,3 +35,17 @@ def test_one_shared_harness_but_distinct_product_presentation(monkeypatch):
 def test_arbitrary_brand_or_client_selected_identity_rejected(monkeypatch):
     with pytest.raises(ValueError, match="Unknown agent product surface"):
         harness.build_frontier_agent(object(), object(), product_surface="custom-sso-spoof")
+
+
+def test_delegated_tools_prompt_does_not_deny_authorized_business_tools(monkeypatch):
+    from types import SimpleNamespace
+    monkeypatch.setenv("DRAGONZPYDER_OPERLY_TOOLS_ENABLED", "1")
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_WEB_SEARCH_ENABLED", "0")
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_QUICKJS_ENABLED", "0")
+    monkeypatch.setattr(harness, "create_deep_agent", lambda **kwargs: kwargs)
+    configured = harness.build_frontier_agent(object(), object(),
+        delegated_tools=[SimpleNamespace(name="operly_workflow_list")], product_surface="operly")
+    prompt = configured["system_prompt"]
+    assert "business tools are NOT available" not in prompt
+    assert "invoke the matching authorized tool directly" in prompt
+    assert "operly_workflow_list" in [getattr(t, "name", "") for t in configured["tools"]]
