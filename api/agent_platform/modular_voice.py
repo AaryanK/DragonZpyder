@@ -70,7 +70,7 @@ def config():
 def enabled():
     if not all(os.getenv(x)=="1" for x in (
             "DRAGONZPYDER_MODULAR_VOICE_ENABLED","DRAGONZPYDER_FIRST_PARTY_CHAT_ENABLED",
-            "DRAGONZPYDER_FIRST_PARTY_REQUEST_LEDGER_ENABLED")):
+            "DRAGONZPYDER_FIRST_PARTY_REQUEST_LEDGER_ENABLED","DRAGONZPYDER_AGENTS_ENABLED","DRAGONZPYDER_IDENTITY_HTTP_ENABLED")):
         return False
     try:
         config()
@@ -142,6 +142,7 @@ async def start(payload:Offer,request:Request):
         async with db.transaction():
             # Shared lock prevents concurrent sessions across API replicas.
             await db.execute("SELECT pg_advisory_xact_lock(hashtextextended($1,0))","dz-modular-voice-global")
+            await db.execute("SELECT pg_advisory_xact_lock(hashtextextended($1,0))","dz-native-voice:"+owner)
             if payload.conversation_id:
                 await _require_conversation(db,user=owner,conversation_id=payload.conversation_id)
             counts=await db.fetchrow("""SELECT
@@ -185,7 +186,7 @@ async def start(payload:Offer,request:Request):
         raise HTTPException(503,"Voice setup unconfirmed; do not automatically retry") from None
 
 
-async def worker_row(scope,request):
+async def worker_row(scope,request, *, starting=False):
     if not enabled():raise HTTPException(503,"Modular voice unavailable")
     token=config()[3]
     if not hmac.compare_digest(request.headers.get("authorization",""),"Bearer "+token):
@@ -194,8 +195,8 @@ async def worker_row(scope,request):
     async with _conversation_db() as db:
         row=await db.fetchrow("""SELECT owner_id,session_reference,conversation_id,mcp_connection_ids,expires_at
             FROM dz_native_voice_sessions WHERE session_id=$1 AND room_name=$2 AND transport='modular'
-            AND state='active' AND expires_at>now() AND worker_nonce_sha256=$3""",
-            scope.session_id,scope.room,nonce_digest(scope.nonce))
+            AND (state='active' OR ($4 AND state='starting')) AND expires_at>now() AND worker_nonce_sha256=$3""",
+            scope.session_id,scope.room,nonce_digest(scope.nonce),starting)
     if row is None:raise HTTPException(403,"Voice scope unavailable")
     try:await verify_authority(row["owner_id"],row["session_reference"])
     except Exception:raise HTTPException(403,"Voice authority expired") from None
@@ -204,7 +205,7 @@ async def worker_row(scope,request):
 
 @router.post("/internal/agents/voice/modular/authorize")
 async def authorize(scope:WorkerScope,request:Request):
-    row=await worker_row(scope,request)
+    row=await worker_row(scope,request,starting=True)
     return {"expires_at":row["expires_at"].isoformat(),"participant_identity":"user-"+scope.session_id.hex}
 
 
