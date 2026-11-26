@@ -154,6 +154,14 @@ async def browser_authorize(payload: AuthorizeInput, request: Request):
                 db, secret=session, csrf=csrf, require_csrf=True,
             )
             async with db.transaction():
+                if await db.fetchval(
+                    "SELECT 1 FROM identity_accounts WHERE subject=$1 AND status='active' AND source_active=TRUE FOR UPDATE",
+                    subject,
+                ) != 1:
+                    raise SessionDenied("Account unavailable")
+                # Recheck after acquiring the same account lock as reset.
+                if await resolve_browser_session(db,secret=session,csrf=csrf,require_csrf=True)!=subject:
+                    raise SessionDenied("Session changed")
                 await consume_interaction(
                     db, ticket=payload.consent_ticket, subject=subject,
                     session_secret=session,
