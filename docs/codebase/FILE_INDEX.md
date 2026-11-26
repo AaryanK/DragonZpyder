@@ -76,64 +76,64 @@ Shared harness, runtime, capabilities, MCP, bridges, scheduling, budgets, memory
 | [`UNIVERSAL_MCP_RUNTIME.md`](../../api/agent_platform/UNIVERSAL_MCP_RUNTIME.md) | Documentation: UNIVERSAL MCP RUNTIME; check date and canonical status. | Indexed |
 | [`WEB_MONITORING.md`](../../api/agent_platform/WEB_MONITORING.md) | Documentation: WEB MONITORING; check date and canonical status. | Indexed |
 | [`__init__.py`](../../api/agent_platform/__init__.py) | Navigation hint:   init  ; source behavior not independently reviewed. | Indexed |
-| [`artifact_evidence.py`](../../api/agent_platform/artifact_evidence.py) | Navigation hint: artifact evidence; source behavior not independently reviewed. | Indexed |
-| [`budget_reservations.py`](../../api/agent_platform/budget_reservations.py) | Navigation hint: budget reservations; source behavior not independently reviewed. | Indexed |
+| [`artifact_evidence.py`](../../api/agent_platform/artifact_evidence.py) | Matches successful writes to later reads of the latest exact virtual path; filenames alone are not evidence. | Reviewed |
+| [`budget_reservations.py`](../../api/agent_platform/budget_reservations.py) | PostgreSQL AtomicBudgetStore and Decimal validation; transactional budget holds and unknown-cost reservations. | Reviewed |
 | [`business_canary.py`](../../api/agent_platform/business_canary.py) | Navigation hint: business canary; source behavior not independently reviewed. | Indexed |
 | [`business_canary_cli.py`](../../api/agent_platform/business_canary_cli.py) | Navigation hint: business canary cli; source behavior not independently reviewed. | Indexed |
 | [`capability_hub.py`](../../api/agent_platform/capability_hub.py) | Per-run tool discovery and binding; capability authority must not be cached across runs. | Reviewed |
 | [`computer.py`](../../api/agent_platform/computer.py) | Signed transport for existing Operly sandbox runner; not itself a bound agent tool. | Reviewed |
-| [`delegation_trace.py`](../../api/agent_platform/delegation_trace.py) | Navigation hint: delegation trace; source behavior not independently reviewed. | Indexed |
+| [`delegation_trace.py`](../../api/agent_platform/delegation_trace.py) | Privacy-minimal LangChain callback measuring task invocation and overlap without prompts or outputs. | Reviewed |
 | [`eval_runner.py`](../../api/agent_platform/eval_runner.py) | Navigation hint: eval runner; source behavior not independently reviewed. | Indexed |
 | [`evaluation.py`](../../api/agent_platform/evaluation.py) | Navigation hint: evaluation; source behavior not independently reviewed. | Indexed |
 | [`first_party_chat.py`](../../api/agent_platform/first_party_chat.py) | First-party Personal HTTP session, conversations, chat, streaming, request ledger, goal lookup and cancellation; resolves owner before execution and binds managed MCP tools. | Reviewed |
 | [`first_party_voice.py`](../../api/agent_platform/first_party_voice.py) | Opt-in audio-only WebRTC start/end and expired-session cleanup; durable reservations, no embedded provider key or agent tools. | Reviewed |
 | [`frontier_batch.py`](../../api/agent_platform/frontier_batch.py) | Navigation hint: frontier batch; source behavior not independently reviewed. | Indexed |
 | [`frontier_stress.py`](../../api/agent_platform/frontier_stress.py) | Navigation hint: frontier stress; source behavior not independently reviewed. | Indexed |
-| [`gateway_parent_budget.py`](../../api/agent_platform/gateway_parent_budget.py) | Navigation hint: gateway parent budget; source behavior not independently reviewed. | Indexed |
-| [`gateway_protocol.py`](../../api/agent_platform/gateway_protocol.py) | Navigation hint: gateway protocol; source behavior not independently reviewed. | Indexed |
+| [`gateway_parent_budget.py`](../../api/agent_platform/gateway_parent_budget.py) | ParentBudgetGateway reserves a conservative ceiling before dispatch; ambiguous costs retain their hold. | Reviewed |
+| [`gateway_protocol.py`](../../api/agent_platform/gateway_protocol.py) | Validates bounded internal OpenAI-compatible tool-call request and response schemas; never executes tools. | Reviewed |
 | [`harness.py`](../../api/agent_platform/harness.py) | Deep Agents construction, specialist prompts/specifications, virtual StateBackend and call/progress limits; accepts explicitly delegated tools. | Reviewed |
 | [`jobs.py`](../../api/agent_platform/jobs.py) | Hatchet task factories and API delegation for bounded internal agent jobs and ping. | Reviewed |
 | [`key_budget.py`](../../api/agent_platform/key_budget.py) | Navigation hint: key budget; source behavior not independently reviewed. | Indexed |
 | [`live_operly_mcp_smoke.py`](../../api/agent_platform/live_operly_mcp_smoke.py) | Navigation hint: live operly mcp smoke; source behavior not independently reviewed. | Indexed |
 | [`live_platform_tool_smoke.py`](../../api/agent_platform/live_platform_tool_smoke.py) | Navigation hint: live platform tool smoke; source behavior not independently reviewed. | Indexed |
-| [`local_monitor.py`](../../api/agent_platform/local_monitor.py) | Navigation hint: local monitor; source behavior not independently reviewed. | Indexed |
+| [`local_monitor.py`](../../api/agent_platform/local_monitor.py) | Worker-health monitor with local tools, policy decisions and PostgreSQL deduplication/history; no model or remote accounts. | Reviewed |
 | [`local_monitor_cli.py`](../../api/agent_platform/local_monitor_cli.py) | Navigation hint: local monitor cli; source behavior not independently reviewed. | Indexed |
 | [`local_tools.py`](../../api/agent_platform/local_tools.py) | Operator-defined read-only worker observations (memory/disk/time); not user's computer or arbitrary shell. | Reviewed |
-| [`mcp_adapter.py`](../../api/agent_platform/mcp_adapter.py) | Navigation hint: mcp adapter; source behavior not independently reviewed. | Indexed |
+| [`mcp_adapter.py`](../../api/agent_platform/mcp_adapter.py) | ApprovedMCPServer and reviewed remote bindings; allowlisted hosts/tools, no arbitrary stdio or user endpoints. | Reviewed |
 | [`mcp_broker.py`](../../api/agent_platform/mcp_broker.py) | Provider-neutral grant-scoped discovery, tool schema validation, invocation receipts, lazy catalog tools. | Reviewed |
 | [`mcp_connection_http.py`](../../api/agent_platform/mcp_connection_http.py) | Browser/native connection start, callback, completion, listing and disconnect routes; session/CSRF boundary. | Reviewed |
 | [`mcp_connections.py`](../../api/agent_platform/mcp_connections.py) | Reviewed provider OAuth discovery and encrypted user-scoped connection lifecycle; not MCP protocol transport. | Reviewed |
-| [`mcp_managed_catalog.py`](../../api/agent_platform/mcp_managed_catalog.py) | Navigation hint: mcp managed catalog; source behavior not independently reviewed. | Indexed |
-| [`memory.py`](../../api/agent_platform/memory.py) | Navigation hint: memory; source behavior not independently reviewed. | Indexed |
-| [`model_capabilities.py`](../../api/agent_platform/model_capabilities.py) | Navigation hint: model capabilities; source behavior not independently reviewed. | Indexed |
-| [`monitor.py`](../../api/agent_platform/monitor.py) | Navigation hint: monitor; source behavior not independently reviewed. | Indexed |
+| [`mcp_managed_catalog.py`](../../api/agent_platform/mcp_managed_catalog.py) | ManagedMcpRunCatalog rechecks account authorization and token freshness on describe/invoke without checkpoint credentials. | Reviewed |
+| [`memory.py`](../../api/agent_platform/memory.py) | PersonalMemory and Mem0 configuration for separately provisioned or explicitly approved shared pgvector; caller owns consent. | Reviewed |
+| [`model_capabilities.py`](../../api/agent_platform/model_capabilities.py) | Fixed OpenRouter catalog preflight for advertised tool support and context size; live smoke still required. | Reviewed |
+| [`monitor.py`](../../api/agent_platform/monitor.py) | Deterministic staging web monitor: normalize snapshots, compare sources, fingerprint and persist state across wakes. | Reviewed |
 | [`monitor_admin.py`](../../api/agent_platform/monitor_admin.py) | Navigation hint: monitor admin; source behavior not independently reviewed. | Indexed |
-| [`native_canary.py`](../../api/agent_platform/native_canary.py) | Navigation hint: native canary; source behavior not independently reviewed. | Indexed |
+| [`native_canary.py`](../../api/agent_platform/native_canary.py) | Finite native-only scheduled LangChain tool canary with signed Personal scope and persisted receipts. | Reviewed |
 | [`openrouter_spend_guard.py`](../../api/agent_platform/openrouter_spend_guard.py) | Navigation hint: openrouter spend guard; source behavior not independently reviewed. | Indexed |
-| [`operly_broker.py`](../../api/agent_platform/operly_broker.py) | Navigation hint: operly broker; source behavior not independently reviewed. | Indexed |
-| [`operly_mcp_client.py`](../../api/agent_platform/operly_mcp_client.py) | Navigation hint: operly mcp client; source behavior not independently reviewed. | Indexed |
-| [`operly_readonly_tools.py`](../../api/agent_platform/operly_readonly_tools.py) | Navigation hint: operly readonly tools; source behavior not independently reviewed. | Indexed |
-| [`operly_workflow_dispatch.py`](../../api/agent_platform/operly_workflow_dispatch.py) | Navigation hint: operly workflow dispatch; source behavior not independently reviewed. | Indexed |
+| [`operly_broker.py`](../../api/agent_platform/operly_broker.py) | Verifies Operly wrapper context and uses short-lived opaque leases for remote read-only tools. | Reviewed |
+| [`operly_mcp_client.py`](../../api/agent_platform/operly_mcp_client.py) | Upstream LangChain MCP adapter loads authorized Operly tools from validated URL, token and exact allowlist. | Reviewed |
+| [`operly_readonly_tools.py`](../../api/agent_platform/operly_readonly_tools.py) | Scoped LangChain adapter for Operly Kernel search/execute broker; broker rechecks live authority. | Reviewed |
+| [`operly_workflow_dispatch.py`](../../api/agent_platform/operly_workflow_dispatch.py) | Shared Hatchet pulse dispatch to governed Operly business executor; explicit cron provisioning and dispatch gate. | Reviewed |
 | [`ops_benchmark.py`](../../api/agent_platform/ops_benchmark.py) | Navigation hint: ops benchmark; source behavior not independently reviewed. | Indexed |
-| [`orchestration.py`](../../api/agent_platform/orchestration.py) | Navigation hint: orchestration; source behavior not independently reviewed. | Indexed |
+| [`orchestration.py`](../../api/agent_platform/orchestration.py) | LangGraph StateGraph and Send fan-out for bounded independent investigation tracks and sanitized reports. | Reviewed |
 | [`paid_tool_smoke.py`](../../api/agent_platform/paid_tool_smoke.py) | Navigation hint: paid tool smoke; source behavior not independently reviewed. | Indexed |
 | [`persistent_graph.py`](../../api/agent_platform/persistent_graph.py) | Typed resumable read-only execution graph, wake authorization, deterministic composition and verification. | Reviewed |
-| [`persistent_tool_canary.py`](../../api/agent_platform/persistent_tool_canary.py) | Navigation hint: persistent tool canary; source behavior not independently reviewed. | Indexed |
+| [`persistent_tool_canary.py`](../../api/agent_platform/persistent_tool_canary.py) | Bounded three-wake model-selected local-tool canary; validates actual tool calls and persisted result digest. | Reviewed |
 | [`personal_bridge.py`](../../api/agent_platform/personal_bridge.py) | Private Operly signed-session Personal entry point, isolated thread key, scheduled reads and receipt reporting. | Reviewed |
 | [`personal_goal_tools.py`](../../api/agent_platform/personal_goal_tools.py) | Signed-user native persistent-goal tools with trusted owner/session scope; short read-only jobs. | Reviewed |
-| [`personal_history_http.py`](../../api/agent_platform/personal_history_http.py) | Navigation hint: personal history http; source behavior not independently reviewed. | Indexed |
-| [`personal_history_import.py`](../../api/agent_platform/personal_history_import.py) | Navigation hint: personal history import; source behavior not independently reviewed. | Indexed |
+| [`personal_history_http.py`](../../api/agent_platform/personal_history_http.py) | Gated read-only archive conversation/message endpoints; archived content never replayed into agents. | Reviewed |
+| [`personal_history_import.py`](../../api/agent_platform/personal_history_import.py) | Operator-only transcript export/prepare/seal/open/import with expected counts and approved owners; archive not a checkpoint. | Reviewed |
 | [`personal_wake.py`](../../api/agent_platform/personal_wake.py) | Durable sequential Personal MCP wakes and goal controller; renews exact-capability authority per wake. | Reviewed |
-| [`progress_guard.py`](../../api/agent_platform/progress_guard.py) | Navigation hint: progress guard; source behavior not independently reviewed. | Indexed |
-| [`provider_pacing.py`](../../api/agent_platform/provider_pacing.py) | Navigation hint: provider pacing; source behavior not independently reviewed. | Indexed |
+| [`progress_guard.py`](../../api/agent_platform/progress_guard.py) | Before-model middleware fingerprints current-turn tool actions and terminates repeated cycles as incomplete. | Reviewed |
+| [`provider_pacing.py`](../../api/agent_platform/provider_pacing.py) | Gateway-local admission pacing and capped Retry-After parsing; not cross-replica accounting. | Reviewed |
 | [`router.py`](../../api/agent_platform/router.py) | Internal service-authenticated experimental /internal/agents/run route. | Reviewed |
 | [`runtime.py`](../../api/agent_platform/runtime.py) | Model selection, LangGraph checkpoint runtime, model client, telemetry and result/termination summaries. | Reviewed |
 | [`scientific_oracles.py`](../../api/agent_platform/scientific_oracles.py) | Navigation hint: scientific oracles; source behavior not independently reviewed. | Indexed |
 | [`staging_smokes.py`](../../api/agent_platform/staging_smokes.py) | Navigation hint: staging smokes; source behavior not independently reviewed. | Indexed |
-| [`subjective_monitoring.py`](../../api/agent_platform/subjective_monitoring.py) | Navigation hint: subjective monitoring; source behavior not independently reviewed. | Indexed |
+| [`subjective_monitoring.py`](../../api/agent_platform/subjective_monitoring.py) | Recommendation schema and provenance/approval validation; does not establish subjective correctness. | Reviewed |
 | [`synthetic_business_cron.py`](../../api/agent_platform/synthetic_business_cron.py) | Navigation hint: synthetic business cron; source behavior not independently reviewed. | Indexed |
 | [`synthetic_business_tools.py`](../../api/agent_platform/synthetic_business_tools.py) | Navigation hint: synthetic business tools; source behavior not independently reviewed. | Indexed |
-| [`web_research.py`](../../api/agent_platform/web_research.py) | Navigation hint: web research; source behavior not independently reviewed. | Indexed |
+| [`web_research.py`](../../api/agent_platform/web_research.py) | Bounded provider-specific search, query/excerpt normalization and source URL safety; external text untrusted. | Reviewed |
 | [`worker.py`](../../api/agent_platform/worker.py) | Hatchet worker startup and conditional workflow registration; registration alone does not schedule work. | Reviewed |
 | [`workspace_bridge.py`](../../api/agent_platform/workspace_bridge.py) | Signed Operly workspace delegation bridge; scoped MCP bearer excluded from model context. | Reviewed |
 

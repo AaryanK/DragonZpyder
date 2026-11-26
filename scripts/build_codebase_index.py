@@ -7,6 +7,9 @@ and never contacts providers or executes application code.
 """
 import argparse
 import ast
+import os
+import posixpath
+from urllib.parse import quote
 import re
 import subprocess
 from pathlib import Path
@@ -54,42 +57,193 @@ def symbols(path, source):
             for match in SQL_DECL.finditer(line):
                 yield "SQL object " + match.group(1), num
 
-def render():
-    paths = subprocess.check_output(["git", "ls-files", "-z"], cwd=ROOT).decode().split("\0")
-    sha = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
-    dirty = bool(subprocess.check_output(["git", "status", "--porcelain", "--untracked-files=no"], cwd=ROOT))
-    lines = ["# Local codebase symbol index", "", f"HEAD: {sha}; tracked working tree modified: {dirty}", "",
-             "Python: AST declarations/imports and literal route decorators. JS and SQL: lexical hints. No source bodies or configuration values.",
-             "All tracked paths are listed, including files without supported symbol extraction.", ""]
-    for name in sorted(filter(None, paths)):
-        path = ROOT / name
-        lines.append(f"## {name}")
-        if path.is_symlink() or not path.is_file() or path.suffix not in PY | JS | {".sql"}:
-            lines.extend(["", "Path only; no symbol extraction.", ""])
-            continue
-        try:
-            source = path.read_text(encoding="utf-8")
-            entries = list(symbols(path, source))
-            if path.suffix in PY:
-                module_doc = ast.get_docstring(ast.parse(source))
-                if module_doc:
-                    first_line = module_doc.splitlines()[0].strip()
-                    lines.extend(["", "Module docstring (source-authored; may be stale): " + first_line])
-        except (OSError, UnicodeError, SyntaxError) as exc:
-            lines.extend(["", f"Extraction unavailable: {type(exc).__name__}", ""])
-            continue
-        lines.extend([""] + [f"- `{label}` (L{line})" for label, line in entries] + [""])
-    return "\n".join(lines)
+def tracked(root):
+    return sorted(os.fsdecode(p) for p in subprocess.check_output(["git", "ls-files", "-z"], cwd=root).split(b"\0") if p)
+
+def file_info(root, name):
+    path = root / name
+    summary, entries, imports = "", [], []
+    if path.is_symlink() or not path.is_file():
+        return "Unavailable file or symlink (not followed).", entries, imports
+    if path.stat().st_size > 2_000_000:
+        return "File exceeds static inspection size limit.", entries, imports
+    try:
+        source = path.read_text(encoding="utf-8")
+        if "\0" in source:
+            raise UnicodeError("binary")
+        entries = list(symbols(path, source))
+        if path.suffix in PY:
+            tree = ast.parse(source)
+            doc = ast.get_docstring(tree)
+            summary = doc.splitlines()[0] if doc else "No module docstring; inspect declarations and curated inventory."
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Import):
+                    imports.extend(a.name for a in node.names)
+                elif isinstance(node, ast.ImportFrom):
+                    module = "." * node.level + (node.module or "")
+                    imports.append(module)
+                    imports.extend(module + ("" if module.endswith(".") else ".") + a.name for a in node.names)
+        else:
+            summary = "Source structure scanned; consult curated inventory for semantic purpose."
+            for n, line in enumerate(source.splitlines(), 1):
+                if path.suffix in JS:
+                    imports.extend(re.findall(r"""(?:\bfrom\s*|\bimport\s*\(|\brequire\s*\(|^\s*import\s*)['"]([^'"]+)['"]""", line))
+                elif path.suffix == ".md" and re.match(r"^#{1,6} ", line):
+                    entries.append(("heading " + line.lstrip("# ").strip()[:140], n))
+                elif path.suffix in {".yaml", ".yml", ".toml", ".json"}:
+                    match = re.match(r'^\s*"?([A-Za-z_][\w.-]*)"?\s*[:=]', line)
+                    if match:
+                        entries.append(("key " + match.group(1), n))
+                elif path.suffix == ".css":
+                    match = re.match(r"^\s*([.#][\w-]+)\s*[{,:]", line)
+                    if match:
+                        entries.append(("selector " + match.group(1), n))
+                elif path.suffix == ".html":
+                    imports.extend(re.findall(r"""(?:src|href)\s*=\s*['"]([^'"]+)['"]""", line))
+                elif path.name.startswith("Dockerfile"):
+                    match = re.match(r"^\s*(FROM|COPY|RUN|USER|CMD|ENTRYPOINT|EXPOSE|WORKDIR)\b", line)
+                    if match:
+                        entries.append(("Docker instruction " + match.group(1), n))
+                elif path.name == ".env.example":
+                    match = re.match(r"^\s*([A-Z_][A-Z0-9_]*)=", line)
+                    if match:
+                        entries.append(("configuration key " + match.group(1), n))
+        return summary, entries, imports
+    except (OSError, UnicodeError, SyntaxError) as exc:
+        return "Extraction unavailable: " + type(exc).__name__, [], []
+
+def module_names(name):
+    p = Path(name)
+    if p.suffix != ".py":
+        return []
+    parts = list(p.with_suffix("").parts)
+    if parts[-1] == "__init__":
+        parts.pop()
+    names = [".".join(parts)]
+    if parts and parts[0] in {"api", "src", "web"}:
+        names.append(".".join(parts[1:]))
+    return [n for n in names if n]
+
+def graph(paths, info):
+    modules = {}
+    available = set(paths)
+    for p in paths:
+        for m in module_names(p):
+            modules.setdefault(m, set()).add(p)
+    forward = {p: set() for p in paths}
+    for p in paths:
+        package = list(Path(p).parent.parts)
+        for name in info[p][2]:
+            if p.endswith(".py"):
+                if name.startswith("."):
+                    depth = len(name) - len(name.lstrip("."))
+                    if depth > len(package):
+                        continue
+                    name = ".".join(package[:len(package)-depth+1] + ([name[depth:]] if name[depth:] else []))
+                forward[p].update(modules.get(name, set()))
+            elif name.startswith("."):
+                candidate = posixpath.normpath(posixpath.join(posixpath.dirname(p), name))
+                for n in [candidate] + [candidate + ext for ext in sorted(JS)]:
+                    if n in available:
+                        forward[p].add(n)
+        forward[p].discard(p)
+    reverse = {p: set() for p in paths}
+    for p, dependencies in forward.items():
+        for d in dependencies:
+            reverse[d].add(p)
+    return forward, reverse
+
+def is_test(name):
+    p = Path(name).name
+    return p.startswith("test_") or ".test." in p or ".spec." in p
+
+def tests_for(name, paths, reverse):
+    stem = re.sub(r"[^a-z0-9]+", "_", Path(name).stem.lower())
+    result = {p for p in reverse[name] if is_test(p)}
+    if len(stem) >= 5 and stem not in {"index", "router", "main"}:
+        for p in paths:
+            if is_test(p):
+                test = re.sub(r"[^a-z0-9]+", "_", Path(p).stem.lower())
+                if "_" + stem + "_" in "_" + test + "_":
+                    result.add(p)
+    return result
+
+def clean(s):
+    return str(s).replace("\n", " ").replace("\r", " ").replace(chr(96), "'")[:250]
+
+def link(target, current):
+    return quote(posixpath.relpath(target, posixpath.dirname(current) or "."), safe="/._-")
+
+def file_page(name):
+    return "files/" + name + ".md"
+
+def folder_page(name):
+    return "folders/" + ("" if name == "." else name + "/") + "INDEX.md"
+
+def render(root=ROOT):
+    paths = tracked(root)
+    info = {p: file_info(root, p) for p in paths}
+    forward, reverse = graph(paths, info)
+    dirs = {str(parent) for p in paths for parent in Path(p).parents}
+    sha = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
+    dirty = bool(subprocess.check_output(["git", "status", "--porcelain", "--untracked-files=no"], cwd=root))
+    caveat = "Static navigation only: summaries may be stale; references and tests are candidates, not a complete call graph or behavioral proof."
+    pages = {}
+    flat = ["# Local source index", "", f"HEAD: {sha}; tracked changes: {dirty}", "", caveat, ""]
+    def links(items, current):
+        return [f"- [{p}]({link(file_page(p), current)})" for p in sorted(items)] or ["- None found by static extraction."]
+    for p in paths:
+        current = file_page(p)
+        summary, entries, imports = info[p]
+        body = [f"# {p}", "", f"[Parent directory]({link(folder_page(str(Path(p).parent)), current)})", "",
+                "Source summary: " + clean(summary), "", "## Symbols / structure", ""]
+        declarations = [f"- L{n}: {clean(label)}" for label, n in sorted(set(entries), key=lambda e: (e[1], e[0]))]
+        body += declarations or ["- No symbols extracted."]
+        body += ["", "## Import/reference names", ""] + [f"- {clean(m)}" for m in sorted(set(imports)) if not re.match(r"^(https?://|data:)", m)]
+        body += ["", "## Candidate dependencies", ""] + links(forward[p], current)
+        body += ["", "## Candidate reverse dependencies", ""] + links(reverse[p], current)
+        body += ["", "## Candidate related tests", ""] + links(tests_for(p, paths, reverse), current)
+        pages[current] = "\n".join(body + ["", caveat, ""])
+        flat += [f"## {p}", "", clean(summary), ""] + declarations + [""]
+    for d in sorted(dirs):
+        current = folder_page(d)
+        children = [q for q in dirs if q != d and str(Path(q).parent) == d]
+        files = [p for p in paths if str(Path(p).parent) == d]
+        pages[current] = "\n".join([f"# Directory: {d}", "", caveat, "", "## Child directories", ""] +
+            [f"- [{q}]({link(folder_page(q), current)})" for q in sorted(children)] +
+            ["", "## Files", ""] + links(files, current) + [""])
+    pages["INDEX.md"] = "\n".join(["# Source navigation", "", f"HEAD: {sha}; tracked changes: {dirty}",
+        f"Tracked files: {len(paths)}; directories: {len(dirs)}.", "", caveat, "",
+        "[Browse folders](folders/INDEX.md) | [Flat index](SYMBOLS.md)", "", "## All directories", ""] +
+        [f"- [{d}]({folder_page(d)})" for d in sorted(dirs)] + [""])
+    pages["SYMBOLS.md"] = "\n".join(flat)
+    return pages
+
+def write_bundle(root, target):
+    pages = render(root)
+    for name, content in pages.items():
+        path = target / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if path.is_symlink() or not path.resolve().is_relative_to(target.resolve()):
+            raise ValueError("Unsafe output path")
+        path.write_text(content, encoding="utf-8")
+    return len(pages)
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output", type=Path, required=True)
+    options = parser.add_mutually_exclusive_group(required=True)
+    options.add_argument("--output", type=Path)
+    options.add_argument("--directory", type=Path)
     args = parser.parse_args()
-    output = args.output.resolve()
-    # Never replace any tracked source or repository documentation by accident.
-    if output.is_relative_to(ROOT):
-        raise SystemExit("Choose an output outside the repository (for example /tmp/dragonzpyder-symbols.md).")
-    output.write_text(render(), encoding="utf-8")
+    target = (args.output or args.directory).resolve()
+    if target.is_relative_to(ROOT):
+        parser.error("Choose an output outside the repository.")
+    if args.directory:
+        if target.exists() and (not target.is_dir() or any(target.iterdir())):
+            parser.error("Choose a new or empty directory to avoid stale pages.")
+        print(f"Generated {write_bundle(ROOT, target)} navigation pages")
+    else:
+        target.write_text(render(ROOT)["SYMBOLS.md"], encoding="utf-8")
 
 if __name__ == "__main__":
     main()

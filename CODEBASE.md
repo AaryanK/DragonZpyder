@@ -9,7 +9,7 @@ Baseline: [develop at d38aa819af86](https://github.com/AaryanK/DragonZpyder/tree
 1. Read the goal and mandatory guardrails in [AGENTS.md](AGENTS.md).
 2. Find the relevant system and request path in [Implementation and execution flows](docs/codebase/IMPLEMENTATION.md).
 3. Locate individual paths in [the tracked file inventory](docs/codebase/FILE_INDEX.md). It indexes every baseline tracked file and identifies reviewed vs path-only entries.
-4. For exact symbols, imports and route decorators in your current checkout, run `python scripts/build_codebase_index.py --output /tmp/dragonzpyder-symbols.md`. Search that local index rather than loading every source file into context. It is a static navigation aid, not a call graph or behavioral verification.
+4. For source-derived folder and individual file pages, symbols, imports, routes and candidate references, run `python scripts/build_codebase_index.py --directory /tmp/dragonzpyder-codebase`. Start at `INDEX.md`. Use `--output /tmp/dragonzpyder-symbols.md` for one searchable file. This is static navigation, not behavioral verification. CI publishes the generated index.
 5. Read the specific function and its tests before editing. Check current PRs, source SHA and actual deployment evidence when relevant. Do not rely on historical reports for current rollout.
 
 ## Where to start
@@ -28,4 +28,4 @@ Baseline: [develop at d38aa819af86](https://github.com/AaryanK/DragonZpyder/tree
 
 ## Keeping this useful
 
-When moving/adding a source file, update the relevant directory navigation and implementation notes in the same PR. Regenerate the local symbol inventory after a checkout change. Prefer meaningful module docstrings and public interface documentation in future implementation PRs over comments that repeat obvious code. Record what is gated, what was tested and what is deployed separately. Never put credentials, personal data or live token values in docs.
+Every implementation change must update [path-specific change records](docs/codebase/CHANGES.md), file descriptions, and applicable directory/flow documentation in the same PR (see AGENTS.md). Regenerate the local symbol inventory after a checkout change. Prefer meaningful module docstrings and public interface documentation in future implementation PRs over comments that repeat obvious code. Record what is gated, what was tested and what is deployed separately. Never put credentials, personal data or live token values in docs.

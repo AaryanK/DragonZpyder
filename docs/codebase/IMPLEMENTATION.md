@@ -61,3 +61,10 @@ Start model request changes at [api/main.py](../../api/main.py) and [provider_ga
 [first_party_voice.py](../../api/agent_platform/first_party_voice.py) starts/ends opt-in audio-only WebRTC sessions, reserves starts and cleans expired sessions. It does not grant agent tools. Inspect [web/backend/voice.py](../../web/backend/voice.py), [VoiceOrb.jsx](../../web/frontend/src/VoiceOrb.jsx), [voice-canvas-renderer.js](../../web/frontend/src/voice-canvas-renderer.js) and [voice tests](../../api/tests/test_first_party_voice.py) for interface-specific changes. The target of voice sharing the same agent harness is not evidence it is already connected.
 
 Deployment truth is independent: inspect [workflows](../../.github/workflows/), service Dockerfiles, Railway deployed commit and feature gates, then relevant acceptance evidence. Keep earlier Node implementations and staged paths distinct from current FastAPI/React entrypoints. Do not remove compatibility code just because a newer path exists.
+
+
+## Additional reviewed modules and generated index
+
+The file inventory now records source-inspected cross-cutting modules for artifact readback, budget reservations, provider pacing, MCP trust and authorization, memory, persistent monitoring, archive migration, and delegation. Read the named module and tests for the exact boundary; historical rollout wording in source docstrings may be stale.
+
+The checkout-specific generated directory contains an index, a page for every tracked file, folder indexes, and a flat symbol map. Static references and related tests are candidates, not exhaustive dynamic dependencies. Use human-maintained change records and curated summaries to explain actual behavior.
