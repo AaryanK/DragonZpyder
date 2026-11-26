@@ -166,6 +166,8 @@ app.include_router(relying_party_status_router)
 app.include_router(agent_router)
 app.include_router(operly_personal_bridge_router)
 app.include_router(first_party_chat_router)
+from agent_platform.artifact_http import router as artifact_router
+app.include_router(artifact_router)
 app.include_router(personal_history_router)
 app.include_router(first_party_voice_router)
 app.include_router(operly_workspace_bridge_router)
