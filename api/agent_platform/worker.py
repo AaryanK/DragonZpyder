@@ -49,6 +49,10 @@ def main() -> None:
     if os.getenv("DRAGONZPYDER_OPERLY_WORKFLOW_DISPATCH_ENABLED") == "1":
         from .operly_workflow_dispatch import make_operly_workflow_pulse
         workflows.append(make_operly_workflow_pulse(hatchet))
+    if os.getenv("DRAGONZPYDER_NATIVE_DURABLE_WORKFLOWS_ENABLED")=="1":
+        from .native_workflows import make_native_workflow_task,_worker_endpoint
+        _worker_endpoint()
+        workflows.append(make_native_workflow_task(hatchet))
     worker = hatchet.worker("dragonzpyder-agent-worker", slots=2, workflows=workflows)
     worker.start()
 
