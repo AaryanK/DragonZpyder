@@ -1,11 +1,12 @@
-# DragonZpyder agent platform — staged integration
+# DragonZpyder agent platform — universal harness
+
+> **Canonical direction:** Read [Universal Harness V4](../../docs/universal-harness-v4.md) and [repository instructions](../../AGENTS.md) before implementing or modifying the harness. The following staged-integration notes preserve historical setup and test evidence; they are not a current deployment inventory. The V4 plan owns the target architecture and acceptance sequence.
 
 DragonZpyder owns the shared inference, agent harness, durable jobs, personal
 memory, and tool adapters. **Operly retains workspaces, business data, business
 authorization, approvals and workspace-specific capabilities.**
 
-This is a reviewable integration slice, **not a production migration**. The
-existing production API, Web, Operly worker and sandbox have not been changed.
+The original integration slice below was staging-only. Later first-party chat, voice, identity, MCP and goal paths exist in source; verify current deployment and gates rather than inferring rollout from these historical notes.
 
 ## Six components
 
