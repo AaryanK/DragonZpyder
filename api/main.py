@@ -30,6 +30,7 @@ from identity.login_http import router as identity_login_router
 from identity.provider_http import router as identity_provider_router
 from identity.pending_proof_http import router as identity_pending_proof_router
 from identity.native_recovery_http import router as native_recovery_router
+from identity.relying_party_status import router as relying_party_status_router
 from agent_platform.personal_bridge import router as operly_personal_bridge_router
 from agent_platform.first_party_chat import router as first_party_chat_router
 from agent_platform.personal_history_http import router as personal_history_router
@@ -157,6 +158,7 @@ app.include_router(identity_login_router)
 app.include_router(identity_provider_router)
 app.include_router(identity_pending_proof_router)
 app.include_router(native_recovery_router)
+app.include_router(relying_party_status_router)
 app.include_router(agent_router)
 app.include_router(operly_personal_bridge_router)
 app.include_router(first_party_chat_router)
