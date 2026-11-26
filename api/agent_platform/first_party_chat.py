@@ -94,6 +94,13 @@ async def status():
                and os.getenv("DRAGONZPYDER_AGENTS_ENABLED") == "1")
     return {"native_chat_enabled": enabled,
             "artifacts_enabled": enabled and os.getenv("DRAGONZPYDER_AGENT_ARTIFACTS_ENABLED") == "1" and bool(os.getenv("DRAGONZPYDER_ARTIFACT_KEY_B64")),
+            "computer_enabled": enabled and all(os.getenv(flag) == "1" for flag in (
+                "DRAGONZPYDER_FIRST_PARTY_COMPUTER_ENABLED", "DRAGONZPYDER_AGENT_ARTIFACTS_ENABLED",
+                "DRAGONZPYDER_FIRST_PARTY_REQUEST_LEDGER_ENABLED", "DRAGONZPYDER_FIRST_PARTY_STREAM_ENABLED"))
+                and all(bool(os.getenv(key)) for key in ("DRAGONZPYDER_COMPUTER_MAX_SESSION_USD",
+                "DRAGONZPYDER_COMPUTER_OWNER_DAILY_USD","DRAGONZPYDER_COMPUTER_GLOBAL_DAILY_USD",
+                "DRAGONZPYDER_COMPUTER_RUNNER_URL","DRAGONZPYDER_COMPUTER_RUNNER_TOKEN",
+                "DRAGONZPYDER_COMPUTER_RUNNER_SIGNING_KEY","DRAGONZPYDER_ARTIFACT_KEY_B64")),
             "voice_enabled": enabled and os.getenv("DRAGONZPYDER_NATIVE_VOICE_ENABLED") == "1" and bool(os.getenv("DRAGONZPYDER_NATIVE_VOICE_API_KEY")),
             "request_ledger_enabled": enabled and os.getenv("DRAGONZPYDER_FIRST_PARTY_REQUEST_LEDGER_ENABLED") == "1",
             "agent_stream_enabled": enabled and os.getenv("DRAGONZPYDER_FIRST_PARTY_REQUEST_LEDGER_ENABLED") == "1" and os.getenv("DRAGONZPYDER_FIRST_PARTY_STREAM_ENABLED") == "1",
