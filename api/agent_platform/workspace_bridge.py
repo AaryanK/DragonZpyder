@@ -8,15 +8,33 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import logging
+from uuid import uuid4
 import os
 from typing import Literal
 
 from fastapi import APIRouter, Header, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 
-from .personal_bridge import _authorized, execution_receipt_report, checkpoint_advanced_for_prompt
+from .personal_bridge import _authorized, execution_receipt_report
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
+
+
+def workspace_turn_persisted(checkpoint, *, turn_id: str, prompt: str) -> bool:
+    """Prove this exact invocation, even on an empty or compacted thread."""
+    values = getattr(checkpoint, "values", None)
+    messages = values.get("messages") if isinstance(values, dict) else None
+    if not isinstance(messages, list):
+        return False
+    matches = [i for i, message in enumerate(messages)
+               if getattr(message, "id", None) == turn_id
+               and getattr(message, "type", None) == "human"
+               and getattr(message, "content", None) == prompt]
+    return len(matches) == 1 and any(
+        getattr(message, "type", None) == "ai" for message in messages[matches[0] + 1:])
+
 
 
 class WorkspaceRun(BaseModel):
@@ -72,6 +90,7 @@ async def run_workspace(
         agent = build_frontier_agent(model_client(), checkpointer, delegated_tools=tools,
                                      product_surface="operly")
     except (ValueError, RuntimeError, asyncio.TimeoutError) as error:
+        logger.warning("workspace_bridge_failed stage=discovery type=%s", type(error).__name__)
         raise HTTPException(503, "Workspace MCP capability discovery unavailable") from error
 
     config = {"configurable": {
@@ -79,29 +98,28 @@ async def run_workspace(
             payload.user_id, payload.workspace_id, payload.conversation_id,
         ),
     }, "recursion_limit": 48}
-    try:
-        previous = await agent.aget_state(config)
-    except Exception:
-        previous = None
+    # A server-generated message ID survives persistence and distinguishes
+    # repeated identical prompts from older turns. No pre-read is needed.
+    turn_id = str(uuid4())
     try:
         result = await asyncio.wait_for(agent.ainvoke({
-            "messages": [{"role": "user", "content": payload.prompt}],
+            "messages": [{"role": "user", "content": payload.prompt, "id": turn_id}],
         }, config=config), timeout=90)
         report = summarize_agent_result(result)
     except Exception as error:
         # Never fall back to a different agent on ambiguous network failures;
         # an upstream mutation could already have succeeded.
+        logger.warning("workspace_bridge_failed stage=execution type=%s", type(error).__name__)
         raise HTTPException(503, "Workspace agent failed; reconcile before retry") from error
     try:
         checkpoint = await agent.aget_state(config)
-        values = getattr(checkpoint, "values", None)
-        checkpointed = (
-            isinstance(values, dict)
-            and checkpoint_advanced_for_prompt(previous, checkpoint, payload.prompt)
+        checkpointed = workspace_turn_persisted(
+            checkpoint, turn_id=turn_id, prompt=payload.prompt,
         )
     except Exception:
         checkpointed = False
     if not checkpointed:
+        logger.warning("workspace_bridge_failed stage=checkpoint")
         raise HTTPException(503, "Workspace checkpoint verification failed")
     return {
         "status": report["status"],

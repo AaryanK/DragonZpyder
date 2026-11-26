@@ -81,3 +81,25 @@ def test_true_postgres_checkpoint_continues_after_saver_restart_and_isolates_use
             assert "second authorized wake" not in others
 
     asyncio.run(run())
+
+
+def test_workspace_first_turn_and_repeated_prompt_have_distinct_persisted_ids():
+    from agent_platform.workspace_bridge import workspace_thread, workspace_turn_persisted
+    dsn = os.environ["DRAGONZPYDER_BUDGET_TEST_DSN"]
+    config = {"configurable": {"thread_id": workspace_thread(
+        str(uuid4()), str(uuid4()), str(uuid4()))}}
+    first, second = str(uuid4()), str(uuid4())
+    prompt = "same workspace prompt"
+    async def run():
+        async with AsyncPostgresSaver.from_conn_string(dsn) as saver:
+            await saver.setup()
+            graph = _graph(saver)
+            before = await graph.aget_state(config)
+            assert not before.values
+            await graph.ainvoke({"messages": [{"role": "user", "content": prompt, "id": first}]}, config=config)
+            saved = await graph.aget_state(config)
+            assert workspace_turn_persisted(saved, turn_id=first, prompt=prompt)
+            assert not workspace_turn_persisted(saved, turn_id=second, prompt=prompt)
+            await graph.ainvoke({"messages": [{"role": "user", "content": prompt, "id": second}]}, config=config)
+            assert workspace_turn_persisted(await graph.aget_state(config), turn_id=second, prompt=prompt)
+    asyncio.run(run())

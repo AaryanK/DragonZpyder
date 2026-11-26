@@ -50,17 +50,19 @@ def test_harness_executes_only_signed_scoped_tools_and_persists_new_turn(monkeyp
         prompt="Find pending invoices", mcp_access_token=token,
         approved_tool_names=["invoice.list"],
     )
-    before = types.SimpleNamespace(values={"messages": []})
-    after = types.SimpleNamespace(values={"messages": [
-        types.SimpleNamespace(type="human", content=body["prompt"]),
-    ]})
     class Agent:
         def __init__(self):
             self.read_count = 0
             self.calls = []
         async def aget_state(self, config):
             self.read_count += 1
-            return before if self.read_count == 1 else after
+            if not self.calls:
+                return types.SimpleNamespace(values={})
+            user = self.calls[-1][0]["messages"][0]
+            return types.SimpleNamespace(values={"messages": [
+                types.SimpleNamespace(type="human", content=user["content"], id=user["id"]),
+                types.SimpleNamespace(type="ai", content="One pending invoice"),
+            ]})
         async def ainvoke(self, value, config):
             self.calls.append((value, config))
             return {"messages": []}
@@ -85,7 +87,10 @@ def test_harness_executes_only_signed_scoped_tools_and_persists_new_turn(monkeyp
     assert response.json()["thread_checkpointed"] is True
     assert len(agent.calls) == 1
     messages, config = agent.calls[0]
-    assert messages == {"messages": [{"role": "user", "content": body["prompt"]}]}
+    assert messages["messages"][0]["role"] == "user"
+    assert messages["messages"][0]["content"] == body["prompt"]
+    from uuid import UUID
+    UUID(messages["messages"][0]["id"])
     assert token not in str(messages)
     assert config["configurable"]["thread_id"] == workspace_thread(
         body["user_id"], body["workspace_id"], body["conversation_id"],
@@ -110,3 +115,18 @@ def test_workspace_and_personal_activation_are_independent():
         assert not _authorized("Bearer " + "s" * 48, "p" * 48, scope="personal")
         assert not _authorized("Bearer " + "s" * 48, "wrong", scope="workspace")
         assert not _authorized("Bearer " + "s" * 48, "p" * 48, scope="typo")
+
+
+def test_workspace_checkpoint_rejects_old_or_unanswered_identical_prompt():
+    from types import SimpleNamespace as NS
+    from agent_platform.workspace_bridge import workspace_turn_persisted
+    old = NS(type="human", id="old", content="same")
+    new = NS(type="human", id="new", content="same")
+    answer = NS(type="ai", content="ack")
+    def snap(*items):
+        return NS(values={"messages": list(items)})
+    assert not workspace_turn_persisted(snap(old, answer), turn_id="new", prompt="same")
+    assert not workspace_turn_persisted(snap(old, answer, new), turn_id="new", prompt="same")
+    assert workspace_turn_persisted(snap(old, answer, new, answer), turn_id="new", prompt="same")
+    assert not workspace_turn_persisted(NS(values={}), turn_id="new", prompt="same")
+    assert not workspace_turn_persisted(snap(new, answer, new, answer), turn_id="new", prompt="same")
