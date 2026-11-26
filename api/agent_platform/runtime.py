@@ -246,6 +246,11 @@ def summarize_agent_result(result: dict) -> dict:
     from .tool_outcomes import tool_outcome, unresolved_external_control
     external_blocker = unresolved_external_control(turn_messages)
     incomplete = incomplete or external_blocker is not None
+    if external_blocker and not content.startswith(STOP_PREFIX):
+        # The model's prose cannot override an observed pending/unknown effect.
+        content = ("An external action requires approval; review the pending action."
+                   if external_blocker == "external_approval_required" else
+                   "An external action has an unconfirmed outcome; reconcile before retrying.")
     for message in turn_messages:
         if getattr(message, "type", None) != "tool":
             continue
