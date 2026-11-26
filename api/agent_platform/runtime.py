@@ -6,6 +6,7 @@ execution or workspace operations from agent prompts.
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import os
 import re
@@ -340,19 +341,14 @@ class AgentRuntime:
             )
         except Exception as exc:
             raise AgentPipelineError("construction") from exc
+        from .execution_contract import (execution_limits, exact_turn_state,
+                                         RECOVERY_TIMEOUT_SECONDS)
+        limits = execution_limits(parent_job=parent_job_id is not None)
+        turn_id = str(uuid4())
         langfuse_handlers = telemetry_callbacks(service_id)
         config = {
             "configurable": {"thread_id": key},
-            "recursion_limit": (
-                96 if all(os.getenv(flag) == "1" for flag in (
-                    "DRAGONZPYDER_AGENT_HARNESS_V2",
-                    "DRAGONZPYDER_AGENT_STRESS_EVAL_ENABLED",
-                    "DRAGONZPYDER_AGENT_EVAL_ALLOW_PAID",
-                    "DRAGONZPYDER_AGENT_USE_GATEWAY",
-                    "DRAGONZPYDER_AGENT_PRODUCTION_MODE",
-                )) else
-                32
-            ),
+            "recursion_limit": limits.graph_supersteps,
             "callbacks": [delegation_trace, *langfuse_handlers],
             "metadata": {
                 "service_id": service_id,
@@ -362,27 +358,34 @@ class AgentRuntime:
             },
         }
         try:
-            result = await agent.ainvoke(
-                {"messages": [{"role": "user", "content": prompt}]},
+            result = await asyncio.wait_for(agent.ainvoke(
+                {"messages": [{"role": "user", "content": prompt, "id": turn_id}]},
                 config=config,
-            )
+            ), timeout=limits.deadline_seconds)
+            current = exact_turn_state(result, turn_id=turn_id, prompt=prompt,
+                                       require_answer=True)
         except Exception as exc:
             reason = controlled_termination_reason(exc)
+            if isinstance(exc, TimeoutError):
+                reason = "execution_deadline"
             if not recover_partial_on_failure or not reason:
                 raise AgentPipelineError("execution") from exc
             # Persisted checkpoints can survive a model-call / recursion
             # limit. A read failure degrades evidence; it does NOT certify
             # failure as success or trigger another paid model request.
             try:
-                snapshot = await agent.aget_state(config)
-                state = getattr(snapshot, "values", None)
+                snapshot = await asyncio.wait_for(agent.aget_state(config),
+                                                  timeout=RECOVERY_TIMEOUT_SECONDS)
+                state = exact_turn_state(getattr(snapshot, "values", None),
+                                         turn_id=turn_id, prompt=prompt,
+                                         require_answer=False)
             except Exception:
                 state = None
             report = summarize_checkpoint_evidence(
                 state, termination_reason=reason
             )
         else:
-            report = summarize_agent_result(result)
+            report = summarize_agent_result(current)
         trace = delegation_trace.snapshot()
         report["execution_id"] = trace["execution_id"]
         report["delegation_spans"] = trace["spans"]
