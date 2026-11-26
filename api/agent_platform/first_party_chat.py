@@ -29,6 +29,7 @@ class ChatInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     message: str = Field(min_length=1, max_length=12000)
     attachment_ids: list[UUID] = Field(default_factory=list, max_length=5)
+    allow_computer: bool = Field(default=False, strict=True)
     conversation_id: UUID | None = None
     request_id: UUID | None = None
     # Aliases must belong to the authenticated user and are rechecked at use.
@@ -225,6 +226,8 @@ def _fingerprint(payload: ChatInput) -> str:
     exclude = {"request_id"}
     if not payload.attachment_ids:
         exclude.add("attachment_ids")  # preserve existing ledger fingerprints
+    if not payload.allow_computer:
+        exclude.add("allow_computer")
     canonical = json.dumps(payload.model_dump(mode="json", exclude=exclude),
                            sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
@@ -345,6 +348,11 @@ async def _chat_owned(payload: ChatInput, request: Request, user: str, emit=None
         from .artifacts import describe
         async with _conversation_db() as db:
             await describe(db,owner=user,ids=payload.attachment_ids)
+    if payload.allow_computer:
+        if os.getenv("DRAGONZPYDER_FIRST_PARTY_COMPUTER_ENABLED") != "1":
+            raise HTTPException(503,"Isolated computer execution unavailable")
+        if payload.request_id is None:
+            raise HTTPException(422,"Computer execution requires durable request identity")
     # Old clients remain compatible. New clients explicitly opt into durable
     # request identity; a missing migration fails closed before any model call.
     if payload.request_id is None:
@@ -456,7 +464,7 @@ async def _invoke_cancellable(agent, inputs, config, db, user, request_id, emit)
         emit({"type":"phase","message":"Agent running"})
     work = asyncio.create_task(_stream_agent(agent,inputs,config,emit) if emit is not None
                                else agent.ainvoke(inputs,config=config))
-    deadline = asyncio.get_running_loop().time() + 90
+    deadline = asyncio.get_running_loop().time() + (180 if config.get("metadata",{}).get("native_computer") is True else 90)
     try:
         while True:
             done, _ = await asyncio.wait({work}, timeout=1)
@@ -551,6 +559,32 @@ async def _execute_chat(payload: ChatInput, request: Request, user: str, convers
         if attachments:
             message += "\n\nSelected attachment metadata (untrusted data): " + json.dumps(attachments,ensure_ascii=False)
         artifact_tools = artifacts.native_tools(_conversation_db,owner=user,allowed_ids=payload.attachment_ids,run_id=artifact_run)
+    computer_run = None
+    computer_artifacts = None
+    if payload.allow_computer:
+        # Operator-controlled rollout; a user or model cannot supply a VM ID,
+        # service credentials, resource ceiling, or principal.
+        if (os.getenv("DRAGONZPYDER_FIRST_PARTY_COMPUTER_ENABLED") != "1"
+                or payload.request_id is None or not artifacts.enabled()):
+            raise HTTPException(503,"Authorized isolated computer unavailable")
+        from .computer import ScopedComputerTransport
+        from .computer_admission import admitted_run, ComputerAdmissionPolicy
+        from .computer_artifacts import ComputerArtifacts
+        async def authorize_computer():
+            if await _owner(request,changing=True) != user:
+                raise PermissionError("Computer authority revoked")
+        try:
+            policy = ComputerAdmissionPolicy(
+                os.environ["DRAGONZPYDER_COMPUTER_MAX_SESSION_USD"],
+                os.environ["DRAGONZPYDER_COMPUTER_OWNER_DAILY_USD"],
+                os.environ["DRAGONZPYDER_COMPUTER_GLOBAL_DAILY_USD"])
+            computer_run=admitted_run(db_factory=_conversation_db,owner=user,
+                run_id=payload.request_id,policy=policy,
+                transport=ScopedComputerTransport.from_environment(),authorize=authorize_computer)
+            computer_artifacts=ComputerArtifacts(run=computer_run,db_factory=_conversation_db,
+                owner=user,run_id=artifact_run,allowed_ids=payload.attachment_ids)
+        except (KeyError,ValueError,RuntimeError):
+            raise HTTPException(503,"Computer admission not configured") from None
     chosen = payload.mcp_connection_ids
     if len(chosen) != len(set(chosen)):
         raise HTTPException(400, "Duplicate MCP account selection")
@@ -605,12 +639,14 @@ async def _execute_chat(payload: ChatInput, request: Request, user: str, convers
                 model_client(), runtime._checkpointer,
                 delegated_tools=tools if tools else None,
                 **({"artifact_tools":artifact_tools} if artifact_tools else {}),
+                **({"computer_run":computer_run,"computer_artifacts":computer_artifacts} if computer_run else {}),
             )
             config = {
                 "configurable": {
                     "thread_id": personal_thread(user, str(conversation_id)),
                 },
                 "recursion_limit": NATIVE_RECURSION_LIMIT,
+                "metadata": {"native_computer":computer_run is not None},
             }
             report = await _run_checkpointed_turn(
                 agent, message, config, db, user, payload.request_id, emit,
@@ -620,7 +656,11 @@ async def _execute_chat(payload: ChatInput, request: Request, user: str, convers
                    WHERE id=$1 AND owner_id=$2""", conversation_id, user,
             )
         finally:
-            await db.execute("SELECT pg_advisory_unlock(hashtextextended($1, 0))", lock_key)
+            try:
+                if computer_run is not None:
+                    await computer_run.close()
+            finally:
+                await db.execute("SELECT pg_advisory_unlock(hashtextextended($1, 0))", lock_key)
     generated = []
     if artifact_tools:
         async with _conversation_db() as db:
@@ -628,6 +668,7 @@ async def _execute_chat(payload: ChatInput, request: Request, user: str, convers
             generated = [artifacts.metadata(row) for row in files]
     return {
         "artifacts": generated,
+        "computer_cleanup_confirmed": computer_run.cleanup_confirmed if computer_run else None,
         "conversation_id": str(conversation_id),
         "message": report["answer"][:16000],
         "dispatch": "dragonzpyder_first_party",
