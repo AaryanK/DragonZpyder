@@ -211,3 +211,5 @@ Removed the three Markdown guides from Android drawable, values and xml resource
 - `web/frontend/scripts/test-openrouter-voice.mjs`: Offline WAV encoding, silence/pause and short-noise detector checks. Live provider and device qualification pending.
 - `web/frontend/package.json`: Run local speech detector and WAV tests with frontend test suite. Live provider and device qualification pending.
 - `.github/workflows/dragonzpyder-api.yml`: Run OpenRouter-only voice tests with offline API contracts. Live provider and device qualification pending.
+- `api/tests/test_openrouter_voice.py`: Exercise actual PostgreSQL migration, duplicate utterance identity, no paid replay, segment claim, cross-owner denial and session closure with scripted gateway/harness.
+- `.github/workflows/dragonzpyder-api.yml`: Include OpenRouter voice PostgreSQL fixture in disposable database integration job.

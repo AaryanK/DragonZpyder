@@ -99,3 +99,88 @@ def test_authority_denied_without_matching_session(monkeypatch):
     with pytest.raises(HTTPException) as e:
         asyncio.run(voice.authority("wrong-owner",uuid4()))
     assert e.value.status_code==403
+
+
+def test_postgres_voice_turn_and_speech_replay_fences(monkeypatch):
+    """Actual transaction/advisory locks and constraints, mocked paid calls."""
+    import os
+    import asyncpg
+    from fastapi.responses import JSONResponse,Response
+    from uuid import UUID
+    dsn=os.environ.get("DRAGONZPYDER_BUDGET_TEST_DSN")
+    if not dsn:pytest.skip("Disposable PostgreSQL DSN required")
+    configured(monkeypatch)
+    owner="voice-test-"+uuid4().hex
+    sid,cid,event=uuid4(),uuid4(),uuid4()
+    current_owner=owner
+    calls=[]
+    @asynccontextmanager
+    async def db_factory():
+        db=await asyncpg.connect(dsn)
+        try:yield db
+        finally:await db.close()
+    async def authenticated(request,changing):
+        return current_owner
+    async def verify(user,ref):
+        assert user==owner and ref=="test-session-ref"
+    async def gateway(request,path,payload):
+        calls.append(path)
+        if path.endswith("/transcriptions"):return JSONResponse({"text":"Hello agent"})
+        return Response(b"ID3"+b"x"*30,media_type="audio/mpeg")
+    async def chat(payload,request,user,authority):
+        await authority()
+        assert payload.message=="Hello agent" and user==owner
+        calls.append("canonical_chat")
+        result={"request_id":str(payload.request_id),"conversation_id":str(cid),"message":"Confirmed answer.","status":"completed"}
+        async with db_factory() as db:
+            await db.execute("""INSERT INTO dz_first_party_chat_requests
+                (owner_id,request_id,fingerprint,conversation_id,status,response)
+                VALUES($1,$2,$3,$4,'completed',$5::jsonb)""",
+                owner,payload.request_id,"a"*64,cid,json.dumps(result))
+        return result
+    monkeypatch.setattr(voice,"_conversation_db",db_factory)
+    monkeypatch.setattr(voice,"_owner",authenticated)
+    monkeypatch.setattr(voice,"verify_authority",verify)
+    monkeypatch.setattr(voice,"gateway",gateway)
+    monkeypatch.setattr(voice,"_chat_owned",chat)
+    async def run():
+        nonlocal current_owner
+        migrations=Path(__file__).resolve().parents[1]/"agent_platform/migrations"
+        async with db_factory() as db:
+            for name in ("20261125_native_voice.sql","20261125_first_party_request_ledger.sql",
+                         "20261126_modular_voice.sql","20261126_openrouter_voice.sql"):
+                await db.execute((migrations/name).read_text())
+            await db.execute("""INSERT INTO dz_native_voice_sessions
+                (owner_id,session_id,state,expires_at,transport,agent_mode,conversation_id,session_reference)
+                VALUES($1,$2,'active',now()+interval '5 minutes','openrouter',TRUE,$3,'test-session-ref')""",owner,sid,cid)
+        request=SimpleNamespace()
+        payload=voice.Utterance(event_id=event,audio=fixture_audio())
+        try:
+            result=await voice.turn(sid,payload,request)
+            assert result["message"]=="Confirmed answer." and result["speech_segments"]==1
+            replay=await voice.turn(sid,payload,request)
+            assert replay["request_id"]==result["request_id"]
+            assert calls==["/audio/transcriptions","canonical_chat"]
+            with pytest.raises(HTTPException) as conflict:
+                await voice.turn(sid,voice.Utterance(event_id=event,audio=fixture_audio(3201)),request)
+            assert conflict.value.status_code==409
+            audio=await voice.speech(sid,event,0,request)
+            assert audio.body.startswith(b"ID3")
+            with pytest.raises(HTTPException) as duplicate:
+                await voice.speech(sid,event,0,request)
+            assert duplicate.value.status_code==409
+            current_owner=owner+"-stranger"
+            with pytest.raises(HTTPException) as denied:
+                await voice.turn(sid,payload,request)
+            assert denied.value.status_code==403
+            current_owner=owner
+            await voice.end(sid,request)
+            with pytest.raises(HTTPException) as closed:
+                await voice.speech(sid,event,0,request)
+            assert closed.value.status_code==403
+            assert calls==["/audio/transcriptions","canonical_chat","/audio/speech"]
+        finally:
+            async with db_factory() as db:
+                for table in ("dz_openrouter_voice_speech","dz_openrouter_voice_turns","dz_native_voice_sessions","dz_first_party_chat_requests"):
+                    await db.execute("DELETE FROM "+table+" WHERE owner_id=$1",owner)
+    asyncio.run(run())
