@@ -21,11 +21,9 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private boolean dark;
     private final ArrayList<String[]> transcript=new ArrayList<>();
     private void palette(){
-        BG=dark?0xff0e0f11:0xfffaf9f7; PANEL=dark?0xff242124:0xffffffff;
-        TEXT=dark?0xfff6f4f1:0xff24221f; MUTED=dark?0xffc2b8b0:0xff70665f;
-        ACCENT=dark?0xffff8a50:0xffb94a21; LINE=dark?0xff665047:0xffe1dad2;
-        SIDEBAR=dark?0xff141416:0xfff3f1ee; CHIP=dark?0xff1a191c:0xfff6f3ef;
-        USER=dark?0xff222922:0xffeeebe6; COMPOSER=PANEL;
+        int[] colors=DragonDesignTokens.of(dark).legacyColors();
+        BG=colors[0];PANEL=colors[1];TEXT=colors[2];MUTED=colors[3];ACCENT=colors[4];
+        LINE=colors[5];SIDEBAR=colors[6];CHIP=colors[7];USER=colors[8];COMPOSER=colors[9];
         getWindow().setStatusBarColor(BG);getWindow().setNavigationBarColor(BG);
         getWindow().getDecorView().setSystemUiVisibility(dark?0:View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR|View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
     }
@@ -39,6 +37,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private String activeRequestId="";
     private PendingAgentRequestStore pendingAgentStore;
     private static final DragonApi api=new DragonApi();
+    private AgentFileRepository fileRepository;
     private NativeVoiceSession nativeVoice;
     private android.app.Dialog voiceDialog;
     private boolean voiceStartOnResume;
@@ -73,6 +72,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         super.onCreate(b);
         agentRequests=new androidx.lifecycle.ViewModelProvider(this).get(AgentRequestViewModel.class);
         pendingAgentStore=new PendingAgentRequestStore(getApplicationContext());
+        fileRepository=new AgentFileRepository(getApplicationContext().getContentResolver(),api);
         mobileOAuth=new MobileOAuthStore(getApplicationContext());mcpOAuth=new MobileOAuthStore(getApplicationContext(),true);
         if(b!=null){
             restoredConversation=b.getString("dz.conversation","");
@@ -101,7 +101,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private TextView serif(String s,int size){TextView t=text(s,size,TEXT);t.setTypeface(Typeface.create("serif",Typeface.NORMAL));t.setLetterSpacing(-.035f);return t;}
     private ImageView logo(int size){ImageView image=new ImageView(this);image.setImageResource(R.drawable.brand_icon);image.setScaleType(ImageView.ScaleType.FIT_CENTER);image.setLayoutParams(new LinearLayout.LayoutParams(dp(size),dp(size)));image.setContentDescription("DragonZpyder");return image;}
     private Button button(String s,Runnable action){Button b=new Button(this);b.setAllCaps(false);b.setText(s);b.setTextColor(TEXT);b.setTextSize(14);b.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));b.setMinHeight(dp(48));b.setMinimumHeight(dp(48));b.setMinWidth(dp(48));b.setMinimumWidth(dp(48));b.setPadding(dp(12),0,dp(12),0);b.setBackground(new android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(0x22ffffff),surface(CHIP,10),null));b.setOnClickListener(v->{if(!busy)action.run();});return b;}
-    private Button primary(String s,Runnable action){Button b=button(s,action);b.setTextColor(Color.WHITE);b.setBackground(new android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(0x22000000),surface(0xffb94a21,11),null));return b;}
+    private Button primary(String s,Runnable action){Button b=button(s,action);b.setTextColor(dark?0xff17110d:Color.WHITE);b.setBackground(new android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(0x22000000),surface(ACCENT,11),null));return b;}
     private EditText field(String hint,boolean secret){EditText e=new EditText(this);e.setHint(hint);e.setHintTextColor(MUTED);e.setTextColor(TEXT);e.setTextSize(16);e.setPadding(dp(14),dp(12),dp(14),dp(12));GradientDrawable d=surface(PANEL,16);d.setStroke(dp(1),LINE);e.setBackground(d);if(secret)SecurePasswordField.configure(e);else e.setInputType(android.text.InputType.TYPE_CLASS_TEXT);return e;}
     private void gap(LinearLayout l,int height){l.addView(new View(this),new LinearLayout.LayoutParams(1,dp(height)));}
     private void reset(){root=column();root.setBackgroundColor(BG);root.setPadding(dp(12),dp(8),dp(12),dp(8));setContentView(root);root.setOnApplyWindowInsetsListener((v,insets)->{int left,top,right,bottom;if(android.os.Build.VERSION.SDK_INT>=30){android.graphics.Insets bars=insets.getInsets(WindowInsets.Type.systemBars()|WindowInsets.Type.displayCutout()|WindowInsets.Type.ime());left=bars.left;top=bars.top;right=bars.right;bottom=bars.bottom;}else{left=insets.getSystemWindowInsetLeft();top=insets.getSystemWindowInsetTop();right=insets.getSystemWindowInsetRight();bottom=insets.getSystemWindowInsetBottom();}v.setPadding(dp(12)+left,dp(8)+top,dp(12)+right,dp(8)+bottom);return insets;});root.requestApplyInsets();}
@@ -170,11 +170,27 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                 token->{if(isDestroyed()||attempt!=googleAttempt||!googleSignInPending)return;googleSignInPending=false;busy=false;submit("Verifying Google account…",()->{
                     api.loginWithGoogle(token,signup);return Boolean.TRUE;
                 },result->authSuccess(),true);},
-                reason->{if(isDestroyed()||attempt!=googleAttempt||!googleSignInPending)return;googleSignInPending=false;busy=false;setStatus(reason);});
+                reason->{if(isDestroyed()||attempt!=googleAttempt||!googleSignInPending)return;googleSignInPending=false;busy=false;setStatus(reason);
+                    if(api.isFirstParty())alert().setTitle("Google sign-in did not complete").setMessage("Try signing in through your browser instead. Your Google credentials stay with Google.").setNegativeButton("Close",null).setPositiveButton("Use browser",(d,i)->startBrowserProvider("google",signup)).show();
+                });
+        },true);
+    }
+    private void startBrowserProvider(String provider,boolean signup){
+        if(busy||googleSignInPending||!api.isFirstParty())return;
+        submit("Checking secure "+provider+" sign-in…",()->api.browserProviderAvailable(provider),enabled->{
+            if(!Boolean.TRUE.equals(enabled)){setStatus("Browser sign-in for "+provider+" is not configured on DragonZpyder yet.");return;}
+            try{
+                String state=MobileOAuthStore.randomToken(),verifier=MobileOAuthStore.randomToken();
+                mobileOAuth.begin(state,verifier);
+                String url="https://dragonzpyder.xyz/dz/identity/v1/mobile/"+provider+"/start?state="+android.net.Uri.encode(state)+"&code_challenge="+android.net.Uri.encode(MobileOAuthStore.challenge(verifier))+(signup?"&register=true":"");
+                new androidx.browser.customtabs.CustomTabsIntent.Builder().setShowTitle(true).build().launchUrl(this,android.net.Uri.parse(url));
+                setStatus("Complete sign-in in your browser.");
+            }catch(Exception failure){mobileOAuth.clear();setStatus("Could not open secure browser sign-in.");}
         },true);
     }
     private void startDiscordSignIn(){
         if(busy||googleSignInPending)return;
+        if(api.isFirstParty()){startBrowserProvider("discord",false);return;}
         submit("Checking Discord sign-in…",()->api.discordMobileAvailable(),enabled->{
             if(!Boolean.TRUE.equals(enabled)){
                 setStatus(api.isFirstParty()?"Discord sign-in: first-party mobile OAuth is not available yet.":"Discord sign-in: the server does not advertise the required mobile OAuth endpoint.");
@@ -198,23 +214,31 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         },true);
     }
     private void processOAuthIntent(Intent intent){
-        if(intent==null||intent.getData()==null||signedIn||isDestroyed()||googleSignInPending||api.isFirstParty())return;
+        if(intent==null||intent.getData()==null||signedIn||isDestroyed()||googleSignInPending||!api.isModeKnown())return;
         android.net.Uri uri=intent.getData();
         if(!"dragonzpyder".equals(uri.getScheme())||!"auth".equals(uri.getHost())||
-            !"/discord".equals(uri.getPath()))return;
+            !Arrays.asList("/google","/discord").contains(uri.getPath()))return;
+        final String provider=uri.getPath().substring(1);
+        if(!api.isFirstParty()&&!"discord".equals(provider))return;
         if(busy){queuedOAuthIntent=intent;return;}
         queuedOAuthIntent=null;
         setIntent(new Intent(this,MainActivity.class));
         String ticket=uri.getQueryParameter("ticket");
         String state=uri.getQueryParameter("state");
+        if(uri.getQueryParameter("error")!=null){
+            if(mobileOAuth.take(state)!=null)setStatus("Sign-in did not complete. Verify the provider account is linked to your DragonZpyder identity.");
+            return;
+        }
         if(ticket==null||state==null||!ticket.matches("[A-Za-z0-9_-]{40,120}")){
             setStatus("Discord sign-in returned an invalid response.");return;
         }
         String[] proof=mobileOAuth.take(state);
         if(proof==null){setStatus("Discord device verification expired. Please start again.");return;}
         final String verifier=proof[1];
-        submit("Completing Discord sign-in…",()->{
-            api.redeemDiscordMobile(ticket,verifier);return Boolean.TRUE;
+        submit("Completing secure sign-in…",()->{
+            if(api.isFirstParty())api.redeemBrowserProvider(provider,ticket,verifier);
+            else api.redeemDiscordMobile(ticket,verifier);
+            return Boolean.TRUE;
         },result->authSuccess(),true);
     }
     @Override protected void onNewIntent(Intent intent){
@@ -242,8 +266,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         if(mode.equals("login")||mode.equals("signup")){
             card.addView(providerButton("G","Continue with Google",0xff4285f4,this::startGoogleSignIn));
             gap(card,10);
-            if(!api.isFirstParty())card.addView(providerButton("◈","Continue with Discord",0xff5865f2,this::startDiscordSignIn));
-            else card.addView(text("Discord mobile sign-in is not yet available for first-party identity.",13,MUTED));
+            card.addView(providerButton("◈","Continue with Discord",0xff5865f2,this::startDiscordSignIn));
             if(api.isFirstParty()&&mode.equals("signup")){gap(card,12);card.addView(text("Create a DragonZpyder account with Google verification.",14,TEXT));return;}
             gap(card,18);
             LinearLayout separator=row();View left=new View(this);left.setBackgroundColor(LINE);
@@ -365,19 +388,15 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     }
     private void confirmSignOut(){alert().setTitle("Sign out of DragonZpyder?").setMessage("You’ll need to sign in again to access your Personal workspace on this device.").setNegativeButton("Cancel",null).setPositiveButton("Sign out",(d,i)->signOut()).show();}
     private void showCommands(){
-        Dialog sheet=new Dialog(this);LinearLayout page=column();page.setPadding(dp(16),dp(8),dp(16),dp(10));page.setBackground(surface(PANEL,24));
-        View handle=new View(this);handle.setBackground(surface(LINE,3));LinearLayout.LayoutParams hp=new LinearLayout.LayoutParams(dp(32),dp(4));hp.gravity=Gravity.CENTER_HORIZONTAL;hp.bottomMargin=dp(14);page.addView(handle,hp);
-        LinearLayout header=row();header.addView(heading("Commands",22),new LinearLayout.LayoutParams(0,-2,1));Button close=button("×",sheet::dismiss);close.setContentDescription("Close commands");header.addView(close,new LinearLayout.LayoutParams(dp(48),dp(48)));page.addView(header);
-        page.addView(text("Find an action in your Personal workspace.",13,MUTED));gap(page,10);
-        EditText search=field("Search commands",false);search.setSingleLine(true);page.addView(search);gap(page,8);
-        ScrollView scroller=new ScrollView(this);LinearLayout list=column();scroller.addView(list);page.addView(scroller,new LinearLayout.LayoutParams(-1,0,1));
-        String[] names={"New chat","Find conversations","Switch mode","Approvals","Dictate a message","Live voice","Toggle appearance","Connections & tools","Personal tasks","AI Mesh media","Account & security","Your tools"};
-        String[] icons={"＋","⌕","✦","◇","◉","♪","☾","⌘","◷","▧","◎","▦"};
-        Runnable[] actions={this::newChat,this::showMenu,this::showModes,this::approvals,this::dictate,this::showVoice,this::toggleTheme,this::showConnections,this::showTasks,this::showMedia,this::showAccount,this::showTools};
-        Runnable filter=()->{list.removeAllViews();String q=value(search).toLowerCase(Locale.ROOT);int count=0;for(int k=0;k<names.length;k++){final int n=k;if(names[k].toLowerCase(Locale.ROOT).contains(q)){list.addView(navRow(icons[k],names[k],false,()->{sheet.dismiss();actions[n].run();}));count++;}}if(count==0)list.addView(text("No matching commands.",14,MUTED));};
-        search.addTextChangedListener(new android.text.TextWatcher(){public void beforeTextChanged(CharSequence s,int a,int c,int f){}public void onTextChanged(CharSequence s,int a,int b,int c){filter.run();}public void afterTextChanged(android.text.Editable e){}});
-        filter.run();page.setFocusableInTouchMode(true);page.requestFocus();
-        sheet.setContentView(page);sheet.show();Window w=sheet.getWindow();if(w!=null){w.setBackgroundDrawableResource(android.R.color.transparent);w.setGravity(Gravity.BOTTOM|Gravity.CENTER_HORIZONTAL);w.setLayout(Math.min(getResources().getDisplayMetrics().widthPixels-dp(16),dp(520)),Math.min(dp(570),(int)(getResources().getDisplayMetrics().heightPixels*.78)));w.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE|WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN);}
+        if(chatUi==null||busy)return;
+        ArrayList<String> availableNames=new ArrayList<>(),availableIcons=new ArrayList<>();ArrayList<Runnable> availableActions=new ArrayList<>();
+        // Primary navigation lives in the drawer, not in a duplicate command list.
+        availableNames.add("Switch mode");availableIcons.add("more");availableActions.add(this::showModes);
+        availableNames.add("Dictate a message");availableIcons.add("mic");availableActions.add(this::dictate);
+        if(api.supportsVoice()){availableNames.add("Live voice");availableIcons.add("voice");availableActions.add(this::showVoice);}
+        if(!api.isFirstParty()){availableNames.add("AI Mesh media");availableIcons.add("attach");availableActions.add(this::showMedia);}
+        availableNames.add("Your tools");availableIcons.add("connections");availableActions.add(this::showTools);
+        chatUi.showCommands(availableNames.toArray(new String[0]),availableIcons.toArray(new String[0]),availableActions.toArray(new Runnable[0]));
     }
     private void showAdd(){
         if(api.isFirstParty()){
@@ -388,7 +407,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                     try{startActivityForResult(picker,47);}catch(android.content.ActivityNotFoundException e){setStatus("No file picker available.");}
                 }).show();return;
         }
-        if(!meshMode){setStatus("Choose a compatible AI Mesh model before attaching media.");chooseModel();return;}
+        if(!meshMode){setStatus("Agent attachments are not available on this server yet. Your conversation has not changed.");return;}
         alert().setTitle("Add to your message").setItems(new String[]{"Attach a file or photo","Take a photo"},(d,i)->{
             if(i==1){
                 if(!modelAcceptsImages){setStatus("The selected model does not advertise image support. Choose a vision model.");return;}
@@ -400,30 +419,22 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     }
     private void uploadAgentAttachment(android.net.Uri uri){
         if(busy||!signedIn||!api.supportsFiles())return;
-        submit("Uploading private attachment…",()->{
-            String name="attachment",mime=getContentResolver().getType(uri);
-            try(android.database.Cursor c=getContentResolver().query(uri,new String[]{android.provider.OpenableColumns.DISPLAY_NAME},null,null,null)){if(c!=null&&c.moveToFirst())name=c.getString(0);}
-            if(name==null||name.trim().isEmpty()||name.length()>180||name.contains("/")||name.contains("\\"))throw new Exception("Unsupported filename");
-            java.io.ByteArrayOutputStream bytes=new java.io.ByteArrayOutputStream();
-            try(java.io.InputStream in=getContentResolver().openInputStream(uri)){if(in==null)throw new Exception("Cannot read file");byte[] buffer=new byte[8192];int n;while((n=in.read(buffer))!=-1){if(bytes.size()+n>10*1024*1024)throw new Exception("File exceeds 10 MiB");bytes.write(buffer,0,n);}}
-            return api.uploadFile(name,mime,bytes.toByteArray());
-        },r->{JSONObject receipt=(JSONObject)r;attachment=receipt;attachmentName=receipt.getString("filename");if(chatUi!=null)chatUi.setAttachmentLabel(attachmentName);setStatus("File attached · send to include it in your request");},true);
+        submit("Uploading private attachment…",()->fileRepository.upload(uri),r->{JSONObject receipt=(JSONObject)r;attachment=receipt;attachmentName=receipt.getString("filename");if(chatUi!=null)chatUi.setAttachmentLabel(attachmentName);setStatus("File attached · send to include it in your request");},true);
     }
     private void showFiles(){
         if(!signedIn||!api.supportsFiles()){setStatus("Shared file storage is not enabled for this session.");return;}
-        submit("Loading files…",()->api.call("/dz/v2/personal/files",null),r->{
-            JSONArray items=((JSONObject)r).optJSONArray("files");
-            if(items==null||items.length()==0){alert().setTitle("Your files").setMessage("No files uploaded or generated yet.").setPositiveButton("Close",null).show();return;}
-            ArrayList<JSONObject> valid=new ArrayList<>();ArrayList<String> labels=new ArrayList<>();
-            for(int i=0;i<items.length();i++){JSONObject file=items.optJSONObject(i);if(file==null)continue;valid.add(file);labels.add(file.optString("filename","File")+" · "+Math.max(1,(file.optInt("size")+1023)/1024)+" KB");}
+        submit("Loading files…",()->fileRepository.inventory(),r->{
+            @SuppressWarnings("unchecked") List<JSONObject> valid=(List<JSONObject>)r;
+            if(valid.isEmpty()){alert().setTitle("Your files").setMessage("No files uploaded or generated yet.").setPositiveButton("Close",null).show();return;}
+            ArrayList<String> labels=new ArrayList<>();
+            for(JSONObject file:valid)labels.add(file.optString("filename")+" · "+Math.max(1,(file.optInt("size")+1023)/1024)+" KB");
             alert().setTitle("Your files").setItems(labels.toArray(new String[0]),(d,i)->chooseFileDestination(valid.get(i))).setNegativeButton("Close",null).show();
         },true);
     }
     private void chooseFileDestination(JSONObject file){
         if(busy||!signedIn||!api.supportsFiles())return;
-        if(!file.optString("id").matches("[0-9a-f-]{36}")||!file.optString("sha256").matches("[0-9a-f]{64}")){setStatus("Invalid file receipt.");return;}
+        if(!AgentFileRepository.validReceipt(file)){setStatus("Invalid file receipt.");return;}
         String name=file.optString("filename","download");
-        if(name.contains("/")||name.contains("\\")||name.length()>180){setStatus("Invalid filename.");return;}
         pendingFileDownload=file;
         Intent picker=new Intent(Intent.ACTION_CREATE_DOCUMENT);picker.addCategory(Intent.CATEGORY_OPENABLE);picker.setType("application/octet-stream");picker.putExtra(Intent.EXTRA_TITLE,name);
         try{startActivityForResult(picker,48);}catch(Exception unavailable){pendingFileDownload=null;setStatus("File destination picker unavailable.");}
@@ -431,15 +442,14 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private void saveAgentFile(android.net.Uri uri,JSONObject file){
         if(busy||!signedIn||!api.supportsFiles()||file==null)return;
         submit("Downloading verified file…",()->{
-            byte[] data=api.downloadFile(file.getString("id"),file.getString("sha256"));
-            try(java.io.OutputStream out=getContentResolver().openOutputStream(uri,"w")){if(out==null)throw new Exception("Cannot open destination");out.write(data);}
+            fileRepository.save(uri,file);
             return Boolean.TRUE;
         },r->setStatus("File saved"),true);
     }
     private void appendGeneratedFiles(JSONObject answer){
         JSONArray files=answer.optJSONArray("artifacts");
         if(files==null)return;
-        for(int i=0;i<Math.min(files.length(),20);i++){JSONObject file=files.optJSONObject(i);if(file!=null&&file.optString("id").matches("[0-9a-f-]{36}")&&file.optString("sha256").matches("[0-9a-f]{64}"))append("artifact",file.toString());}
+        for(int i=0;i<Math.min(files.length(),20);i++){JSONObject file=files.optJSONObject(i);if(file!=null&&AgentFileRepository.validReceipt(file))append("artifact",file.toString());}
     }
     private void discardCamera(){
         if(cameraCapture!=null){

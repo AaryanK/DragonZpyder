@@ -58,12 +58,13 @@ internal fun MarkdownBody(
     }
 }
 private class MarkdownColors(dark: Boolean,val formulas:Map<String,MathMarkup.Formula>) {
-    val ink = if(dark) Color(0xFFF6F4F1) else Color(0xFF24221F)
-    val muted = if(dark) Color(0xFFBFB6AE) else Color(0xFF675F58)
-    val panel = if(dark) Color(0xFF242124) else Color(0xFFF6F3EF)
-    val code = if(dark) Color(0xFF353034) else Color(0xFFECE7E2)
-    val line = if(dark) Color(0xFF594740) else Color(0xFFE0DAD3)
-    val accent = if(dark) Color(0xFFFFA477) else Color(0xFFB94A21)
+    private val tokens=DragonDesignTokens.of(dark)
+    val ink=tokens.ink
+    val muted=tokens.muted
+    val panel=tokens.chip
+    val code=tokens.code
+    val line=tokens.divider
+    val accent=tokens.accent
 }
 
 @Composable

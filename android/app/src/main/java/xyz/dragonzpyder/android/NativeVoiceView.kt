@@ -39,18 +39,19 @@ class NativeVoiceView(context:Context, private val callbacks:Actions) {
     }
 
     @Composable private fun Screen(){
-        val ink=Color(0xFFF6F3ED)
-        val warm=Color(0xFFEF9C6B)
+        val tokens=DragonDesignTokens.of(true)
+        val ink=tokens.ink
+        val warm=tokens.accent
         val inactive=status.contains("failed",true)||status.contains("ended",true)||status.contains("timed out",true)
         val active=(!muted&&!inactive&&(status.startsWith("Listening")||status.startsWith("Speaking")))
-        MaterialTheme(colorScheme=darkColorScheme(background=Color(0xFF101113),surface=Color(0xFF232125),primary=warm,onSurface=ink)){
+        DragonTheme(true){
             Column(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF171719),Color(0xFF0B0D11)))).systemBarsPadding().padding(horizontal=22.dp,vertical=14.dp),horizontalAlignment=Alignment.CenterHorizontally){
                 Row(Modifier.fillMaxWidth().heightIn(min=52.dp),verticalAlignment=Alignment.CenterVertically){
                     Column(Modifier.weight(1f)){
                         Text("DragonZpyder",fontSize=18.sp,fontWeight=FontWeight.SemiBold,color=ink)
                         Text("Live voice",fontSize=12.sp,color=warm)
                     }
-                    IconButton(onClick=callbacks::end,modifier=Modifier.size(48.dp).semantics{contentDescription="Close live voice"}){
+                    IconButton(onClick=callbacks::end,modifier=Modifier.size(DragonSizes.touch).semantics{contentDescription="Close live voice"}){
                         NavigationGlyph("close",ink,26.dp)
                     }
                 }
