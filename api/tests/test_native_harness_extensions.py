@@ -1,0 +1,128 @@
+"""Offline tests for the new native harness surfaces, never live acceptance."""
+import asyncio
+import base64
+from contextlib import asynccontextmanager
+from types import SimpleNamespace
+from uuid import uuid4,uuid5
+import pytest
+from fastapi import HTTPException
+
+
+def test_adaptive_routing_conservative_model_selection():
+    from agent_platform.adaptive_routing import choose_route
+    kw=dict(default_model="standard",cheap_model="fast",reasoning_model="reasoning",
+            approved_models=frozenset({"standard","fast","reasoning"}))
+    assert choose_route(objective="Hello!",**kw).model=="fast"
+    assert choose_route(objective="hello",has_tools=True,**kw).model=="standard"
+    assert choose_route(objective="Analyze this",**kw).model=="reasoning"
+    assert choose_route(objective="Hello",has_attachments=True,**kw).model=="reasoning"
+    assert choose_route(objective="hello",durable=True,**kw).model=="reasoning"
+    assert choose_route(objective="hello",tool_failures=2,**kw).model=="reasoning"
+    assert choose_route(objective="hello",**dict(kw,cheap_model="unapproved")).model=="standard"
+
+
+def test_model_escalation_uses_same_graph_after_two_observed_failures(monkeypatch):
+    from agent_platform.adaptive_routing import recovery_middleware
+    from agent_platform.harness import build_frontier_agent
+    from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
+    from langchain_core.messages import AIMessage
+    from langchain_core.tools import tool,ToolException
+    from langgraph.checkpoint.memory import MemorySaver
+    class Model(FakeMessagesListChatModel):
+        def bind_tools(self,tools,**kw):return self
+    calls=[]
+    @tool
+    async def lookup(query:str)->str:
+        """Read a synthetic record."""
+        calls.append(query)
+        raise ToolException("Synthetic lookup failed")
+    lookup.handle_tool_error=True
+    cheap=Model(responses=[
+        AIMessage(content="",tool_calls=[{"name":"lookup","args":{"query":"a"},"id":"one"}]),
+        AIMessage(content="",tool_calls=[{"name":"lookup","args":{"query":"b"},"id":"two"}]),
+        AIMessage(content="Wrong model: should have escalated"),
+    ])
+    strong=Model(responses=[AIMessage(content="The two reads failed; no result verified.")])
+    monkeypatch.setenv("DRAGONZPYDER_SYNTHETIC_TOOLS_ENABLED","1")
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_WEB_SEARCH_ENABLED","0")
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_QUICKJS_ENABLED","0")
+    async def run():
+        agent=build_frontier_agent(cheap,MemorySaver(),synthetic_tools=[lookup],
+            routing_middleware=recovery_middleware(initial_model=cheap,reasoning_model=strong))
+        out=await agent.ainvoke({"messages":[{"role":"user","content":"Check the record"}]},
+            config={"configurable":{"thread_id":"routing-test"},"recursion_limit":128})
+        assert calls==["a","b"]
+        assert out["messages"][-1].content=="The two reads failed; no result verified."
+    asyncio.run(run())
+
+
+def test_reviewed_media_policy_rejects_remote_urls_and_wrong_modalities(monkeypatch):
+    from agent_platform.media_policy import validate_media_payload
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_VISION_MODEL","test/vision")
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_IMAGE_MODEL","test/image")
+    raw=b"\x89PNG\r\n\x1a\n"+b"x"*32
+    data="data:image/png;base64,"+base64.b64encode(raw).decode()
+    payload={"model":"test/vision","messages":[{"role":"user","content":[
+        {"type":"text","text":"Describe"},
+        {"type":"image_url","image_url":{"url":data}}]}],"max_tokens":768}
+    assert validate_media_payload("/chat/completions",payload)=="vision"
+    payload["messages"][0]["content"][1]["image_url"]["url"]="https://example.com/private"
+    with pytest.raises(ValueError):validate_media_payload("/chat/completions",payload)
+    with pytest.raises(ValueError):validate_media_payload("/images",{"model":"test/vision","prompt":"draw","n":1})
+    with pytest.raises(ValueError):validate_media_payload("/images",{"model":"test/image","prompt":"draw","n":2})
+
+
+def test_native_voice_turn_is_bound_to_session_and_exact_event(monkeypatch):
+    from agent_platform import first_party_voice as voice
+    from agent_platform.first_party_chat import _fingerprint
+    sid,cid=uuid4(),uuid4()
+    calls=[]
+    class DB:
+        saved=None
+        active=True
+        async def fetchval(self,*a):return True
+        async def fetchrow(self,sql,*args):
+            if "FROM dz_native_voice_sessions" in sql:
+                return {"conversation_id":cid,"mcp_connection_ids":[]} if self.active and args==("owner",sid) else None
+            return self.saved
+        async def execute(self,*a):pass
+    db=DB()
+    @asynccontextmanager
+    async def connection():yield db
+    async def owner(request,changing):return "owner"
+    async def chat(payload,request,user):
+        calls.append(payload)
+        result={"conversation_id":str(cid),"message":"Actual core response","status":"completed"}
+        db.saved={"conversation_id":cid,"status":"completed","response":result,"fingerprint":_fingerprint(payload)}
+        return result
+    monkeypatch.setattr(voice,"_owner",owner)
+    monkeypatch.setattr(voice,"_conversation_db",connection)
+    monkeypatch.setattr(voice,"_chat_owned",chat)
+    monkeypatch.setattr(voice,"voice_agent_enabled",lambda:True)
+    async def run():
+        data=voice.VoiceTurn(event_id="item_123",transcript="Read the selected record")
+        one=await voice.turn(sid,data,None)
+        assert one["message"]=="Actual core response"
+        assert calls[0].request_id==uuid5(sid,"item_123")
+        assert await voice.turn(sid,data,None)==one and len(calls)==1
+        with pytest.raises(HTTPException) as exc:
+            await voice.turn(sid,voice.VoiceTurn(event_id="item_123",transcript="Changed"),None)
+        assert exc.value.status_code==409
+        db.active=False
+        with pytest.raises(HTTPException) as exc:
+            await voice.turn(sid,data,None)
+        assert exc.value.status_code==404 and len(calls)==1
+    asyncio.run(run())
+
+
+def test_generic_workflow_plan_forward_dependencies_and_no_extra_authority():
+    from agent_platform.native_workflows import WorkflowPlan,WorkflowPhase,validate_plan
+    from pydantic import ValidationError
+    fields=dict(objective="Research and synthesize",conversation_id=uuid4(),request_id=uuid4())
+    a=WorkflowPhase(id="research",objective="Find and compare sources")
+    b=WorkflowPhase(id="synthesis",objective="Publish an evidence report",depends_on=["research"])
+    assert len(validate_plan(WorkflowPlan(**fields,phases=[a,b]))["phases"])==2
+    for phases in ([b,a],[a,a]):
+        with pytest.raises(ValueError):validate_plan(WorkflowPlan(**fields,phases=phases))
+    with pytest.raises(ValidationError):
+        WorkflowPlan(**fields,phases=[a],owner_id="attacker")
