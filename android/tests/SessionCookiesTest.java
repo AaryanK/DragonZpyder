@@ -51,6 +51,22 @@ public final class SessionCookiesTest {
         require(!nativeRestored.header().contains("__Host-dz_provider"));
         SessionCookies wrongRealm=new SessionCookies();wrongRealm.restore(nativeSnapshot);require(wrongRealm.header().isEmpty());
         nativeRestored.restore(snapshot);require(nativeRestored.header().isEmpty());
+        nativeRestored.restore(nativeSnapshot);
+        nativeRestored.receive(Collections.singletonMap("Set-Cookie",Arrays.asList(
+            "__Host-dz_identity=domain-attack; Domain=dragonzpyder.xyz; Path=/; Secure",
+            "__Host-dz_identity=path-attack; Path=/dz; Secure",
+            "__Host-dz_identity=insecure-attack; Path=/",
+            "__Host-operly_session=wrong-realm; Max-Age=300; Path=/; Secure")));
+        require(nativeRestored.value("__Host-dz_identity").equals("native-session"));
+        require(nativeRestored.value("__Host-operly_session").isEmpty());
+        nativeRestored.clear();
+        require(nativeRestored.snapshot().isEmpty());
+        require(nativeRestored.header().isEmpty());
+        Properties partial=new Properties();
+        partial.setProperty("__Host-dz_identity","native-session");
+        partial.setProperty("__Host-dz_identity.expiry",Long.toString(System.currentTimeMillis()+60000L));
+        nativeRestored.restore(partial);
+        require(nativeRestored.header().isEmpty());
         System.out.println("Session cookie contract passed");
     }
 }
