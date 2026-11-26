@@ -51,7 +51,7 @@ test("native Agent mode never calls the Operly proxy and scopes MCP aliases", as
   await expect(page.locator("#mesh-switch")).toBeHidden();
   await page.getByRole("button", { name: "Connections & tools" }).first().click();
   await expect(page.getByRole("dialog", { name: "DragonZpyder MCP connections" })).toBeVisible();
-  await page.getByRole("checkbox").check();
+  await page.getByRole("dialog", { name: "DragonZpyder MCP connections" }).getByRole("checkbox").check();
   await page.getByRole("button", { name: /Close/ }).last().click();
   await page.locator("#message-input").fill("Research this for me");
   await page.locator("#composer").evaluate(element => element.requestSubmit());
