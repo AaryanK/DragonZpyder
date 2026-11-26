@@ -44,3 +44,33 @@ def test_real_office_and_pdf_output():
     assert sheet.active["A2"].data_type=="s" and sheet.active["B2"].value==4
     deck=Presentation(BytesIO(render_document("pptx",{"slides":[{"title":"Evidence","bullets":["Verified output"]}]})))
     assert len(deck.slides)==1 and deck.slides[0].shapes.title.text=="Evidence"
+
+
+def test_s3_object_store_uses_conditional_put_bounded_read_and_private_keys():
+    import asyncio
+    from uuid import uuid4
+    from agent_platform.artifact_object_store import S3ArtifactStore,object_key
+    fid=uuid4()
+    key=object_key("sensitive-owner",fid)
+    assert "sensitive-owner" not in key
+    assert key!=object_key("other-owner",fid)
+    class S3:
+        objects={}
+        def put_object(self,**args):
+            assert args["Bucket"]=="private-artifacts"
+            assert args["IfNoneMatch"]=="*" and "ACL" not in args
+            self.objects[args["Key"]]=args["Body"]
+        def get_object(self,**args):
+            data=self.objects[args["Key"]]
+            return {"ContentLength":len(data),"Body":BytesIO(data)}
+        def delete_object(self,**args):
+            self.objects.pop(args["Key"],None)
+    async def run():
+        s=S3ArtifactStore(S3(),"private-artifacts")
+        data=b"x"*32
+        await s.put_new(key,data)
+        assert await s.read(key,32)==data
+        with pytest.raises(ValueError):
+            await s.read(key,31)
+        await s.delete(key)
+    asyncio.run(run())
