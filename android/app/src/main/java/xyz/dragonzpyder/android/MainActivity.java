@@ -386,7 +386,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                     try{startActivityForResult(picker,47);}catch(android.content.ActivityNotFoundException e){setStatus("No file picker available.");}
                 }).show();return;
         }
-        if(!meshMode){setStatus("Choose a compatible AI Mesh model before attaching media.");chooseModel();return;}
+        if(!meshMode){setStatus("Agent attachments are not available on this server yet. Your conversation has not changed.");return;}
         alert().setTitle("Add to your message").setItems(new String[]{"Attach a file or photo","Take a photo"},(d,i)->{
             if(i==1){
                 if(!modelAcceptsImages){setStatus("The selected model does not advertise image support. Choose a vision model.");return;}
