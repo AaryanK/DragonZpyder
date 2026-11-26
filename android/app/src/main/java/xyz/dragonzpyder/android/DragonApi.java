@@ -21,6 +21,7 @@ final class DragonApi {
     private String googleState="";
     boolean isFirstParty(){return firstParty;}
     boolean isModeKnown(){return modeKnown;}
+    synchronized void refreshAuthenticationMode() throws Exception { discoverMode(); }
     private void discoverMode() throws Exception {
         JSONObject route=(JSONObject)request("/dz/status","GET",null,true);
         Object enabled=route.opt("web_cutover_enabled");
@@ -136,6 +137,7 @@ final class DragonApi {
                 Object detail = payload instanceof JSONObject ? ((JSONObject)payload).opt("detail") : null;
                 String message = detail instanceof JSONObject ? ((JSONObject)detail).optString("message", "Request failed") :
                     detail instanceof String ? (String)detail : "Request failed (" + status + ")";
+                if(status==410 && !firstParty && detail instanceof JSONObject && "LEGACY_OPERLY_ROUTE_RETIRED".equals(((JSONObject)detail).optString("code"))){clear();modeKnown=false;throw new ApiError(410,"LEGACY_OPERLY_ROUTE_RETIRED","Authentication has moved to DragonZpyder. Sign in again to refresh account access.");}
                 throw new ApiError(status, detail instanceof JSONObject ? ((JSONObject)detail).optString("code","HTTP_"+status) : "HTTP_"+status, message);
             }
             return payload;
@@ -221,7 +223,7 @@ final class DragonApi {
     }
     /** Fresh server-bound Google nonce. Credential Manager receives this unchanged. */
     synchronized JSONObject googleBootstrap() throws Exception {
-        ensureMode();clear();
+        discoverMode();clear();
         if(firstParty){JSONObject result=(JSONObject)call("/dz/identity/v1/provider/google/start",new JSONObject());googleState=result.optString("state","");if(googleState.isEmpty()||result.optString("nonce").isEmpty()||result.optString("client_id").isEmpty()||cookies.value("__Host-dz_provider").isEmpty())throw new IOException("Google challenge was incomplete");return result;}
         JSONObject result=(JSONObject)call("/api/auth/bootstrap",null);
         bootstrapCsrf=result.optString("csrf_token","");
@@ -288,8 +290,8 @@ final class DragonApi {
     synchronized Object preauth(String action, JSONObject body) throws Exception {
         if(!Arrays.asList("signup","verify-email","resend-verification","forgot-password","reset-password","login").contains(action))
             throw new IOException("Unsupported account action");
-        ensureMode();
-        if(firstParty){if(!"login".equals(action))throw unsupported();clear();return call("/dz/identity/v1/password/login",body);}
+        if("login".equals(action)||"signup".equals(action)||"forgot-password".equals(action))discoverMode();else ensureMode();
+        if(firstParty){if(!"login".equals(action))throw new ApiError(503,"NATIVE_ACCOUNT_ACTION_UNAVAILABLE","Use DragonZpyder account recovery or registration at https://dragonzpyder.xyz/account before signing in here.");clear();return call("/dz/identity/v1/password/login",body);}
         bootstrap();
         try { return call("/api/auth/"+action,body); }
         catch(Exception failure){clear();throw failure;}
