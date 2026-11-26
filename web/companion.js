@@ -4,13 +4,13 @@ const calls=new Set();
 // Native voice reservations belong to the authenticated session, not the
 // legacy companion. Let a submitted start settle even if the UI closes,
 // so a late accepted provider call can be ended rather than orphaned.
-let nativeCall=null,nativePending=null,nativeClosing=null,expiryTimer=null,nativeBusy=false;
+let nativeCall=null,nativePending=null,nativeClosing=null,expiryTimer=null,nativeBusy=false,modularRoom=null;
 function voiceContext(){return window.dragonzpyderVoiceContext?.()||{available:false,native:false}}
 function endNative(call){
   if(!call||call.ending)return call?.ending;
   call.ending=(async()=>{
     try{
-      const res=await fetch("/dz/v2/personal/voice/"+call.id+"/end",{
+      const res=await fetch("/dz/v2/personal/voice/"+(call.modular?"modular/":"")+call.id+"/end",{
         method:"POST",credentials:"same-origin",headers:{"X-DZ-CSRF":call.csrf},cache:"no-store",keepalive:true,redirect:"error"
       });
       if(!res.ok)throw Error("Voice hangup unconfirmed");
@@ -125,6 +125,7 @@ function cleanup(){
   nativeBusy=false;
   version++;clearTimeout(expiryTimer);expiryTimer=null;
   const closing=nativeCall;nativeCall=null;
+  const room=modularRoom;modularRoom=null;if(room)void room.disconnect();
   if(closing){closing.closed=true;if(closing.settled)void endNative(closing);}
   else controller?.abort();
   controller=null;
@@ -211,6 +212,49 @@ async function start(){
     if(v!==version){ acquired.getTracks().forEach(track=>track.stop()); return; }
     mic=acquired;
     window.dispatchEvent(new CustomEvent("dragonzpyder:voice-input",{detail:{stream:mic}}));
+    if(native&&context.modularVoice){
+      const token=csrf(true);if(!token)throw Error("Secure session missing. Sign in again.");
+      const call={id:crypto.randomUUID(),csrf:token,settled:false,closed:false,ending:null,modular:true};
+      nativeCall=call;nativePending=call;
+      let response;
+      try{response=await fetch("/dz/v2/personal/voice/modular/start",{method:"POST",credentials:"same-origin",
+        headers:{"Content-Type":"application/json","X-DZ-CSRF":token},cache:"no-store",redirect:"error",
+        body:JSON.stringify({session_id:call.id,conversation_id:context.conversationId,mcp_connection_ids:context.mcpConnectionIds})});}
+      catch(error){call.settled=true;void endNative(call);throw error;}
+      finally{if(nativePending===call)nativePending=null;}
+      call.settled=true;
+      if(v!==version||call.closed){if(response.ok||response.status>=500)void endNative(call);return;}
+      if(!response.ok){if(response.status<500)nativeCall=null;throw Error("Modular voice unavailable ("+response.status+").");}
+      const grant=await response.json();
+      if(grant.session_id!==call.id||grant.transport!=="modular"||typeof grant.participant_token!=="string"||
+        typeof grant.server_url!=="string"||!grant.server_url.startsWith("wss://")||
+        !Number.isFinite(grant.duration_seconds)||grant.duration_seconds<1||grant.duration_seconds>600)throw Error("Invalid voice grant.");
+      if(v!==version)return;
+      const expiry=Date.parse(grant.expires_at);
+      if(!Number.isFinite(expiry)||expiry<=Date.now())throw Error("Expired voice grant.");
+      expiryTimer=setTimeout(()=>{if(v===version){cleanup();panel.hidden=false;setStatus("Voice session ended.","idle");}},Math.min(grant.duration_seconds*1000,expiry-Date.now()));
+      const {connectModularVoice}=await import("./frontend/src/modular-voice.js");
+      if(v!==version)return;
+      const room=await connectModularVoice({url:grant.server_url,token:grant.participant_token,
+        track:mic.getAudioTracks()[0],audio,
+        onRemote:stream=>{if(v===version)browserEvent("voice-output",{stream});},
+        onDisconnect:()=>{if(v===version&&live)close();},
+        onData:data=>{
+          if(v!==version||!data||typeof data.event_id!=="string")return;
+          if(data.type==="working")setStatus("Working through DragonZpyder…","working");
+          if(data.type==="uncertain"){row("error-"+data.event_id,"DragonZpyder","Result unconfirmed. Check chat before retrying.");setStatus("Listening","listening");}
+          if(data.type==="result"&&!calls.has(data.event_id)){
+            calls.add(data.event_id);
+            row("user-"+data.event_id,"You",String(data.transcript||""));
+            row("agent-"+data.event_id,"DragonZpyder",String(data.message||""));
+            void window.dragonzpyderModularVoiceResult?.(data,context.conversationId);
+            setStatus("Listening — speak naturally","listening");
+          }
+        }});
+      if(v!==version){await room.disconnect();return;}
+      modularRoom=room;live=true;starting=false;
+      browserEvent("voice-session",{connected:true});setStatus("Listening — speak naturally","listening");return;
+    }
     peer=new RTCPeerConnection();peer.ontrack=e=>{
       if(v!==version)return;
       audio.srcObject=e.streams[0];
