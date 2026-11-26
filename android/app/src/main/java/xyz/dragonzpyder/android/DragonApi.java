@@ -10,7 +10,7 @@ import org.json.*;
 final class DragonApi {
     private static final URI ORIGIN = URI.create("https://dragonzpyder.xyz");
     private SessionCookies cookies = new SessionCookies();
-    private volatile boolean firstParty;
+    private volatile boolean firstParty=true;
     private volatile boolean modeKnown;
     private volatile boolean requestLedger,agentStream,voiceEnabled,filesEnabled,goalsEnabled;
     boolean supportsFiles(){return firstParty&&filesEnabled&&requestLedger;}
@@ -23,10 +23,9 @@ final class DragonApi {
     boolean isModeKnown(){return modeKnown;}
     synchronized void refreshAuthenticationMode() throws Exception { discoverMode(); }
     private void discoverMode() throws Exception {
-        JSONObject route=(JSONObject)request("/dz/status","GET",null,true);
-        Object enabled=route.opt("web_cutover_enabled");
-        if(!(enabled instanceof Boolean))throw new IOException("Runtime mode was not confirmed by DragonZpyder");
-        boolean nativeMode=(Boolean)enabled;
+        // Android identity belongs to DragonZpyder, independently of web cutover.
+        // The public Web gateway forwards /dz/ to the first-party API.
+        boolean nativeMode=true;
         if(!modeKnown||nativeMode!=firstParty){cookies.clear();cookies=new SessionCookies(nativeMode);authenticated=false;requestBinding="";bootstrapCsrf="";googleState="";firstParty=nativeMode;}
         requestLedger=false;agentStream=false;voiceEnabled=false;filesEnabled=false;goalsEnabled=false;
         if(nativeMode){try{JSONObject capabilities=(JSONObject)request("/dz/v2/personal/status","GET",null,true);requestLedger=capabilities.optBoolean("request_ledger_enabled",false);agentStream=capabilities.optBoolean("agent_stream_enabled",false);voiceEnabled=capabilities.optBoolean("voice_enabled",false);filesEnabled=capabilities.optBoolean("artifacts_enabled",false);goalsEnabled=capabilities.optBoolean("goal_management_enabled",false);}catch(Exception unavailable){/* Keep first-party mode; never downgrade identity. */}}
