@@ -599,9 +599,9 @@ async def inference(prefix: str, request: Request):
                     if agent_protocol:
                         payload = validate_agent_response(
                             provider_response, body["model"],
-                            allowed_tool_names={
+                            allowed_tool_names=(set() if body.get("tool_choice") == "none" else {
                                 tool["function"]["name"] for tool in body.get("tools", [])
-                            },
+                            }),
                         )
                     else:
                         choice = provider_response["choices"][0]
