@@ -137,8 +137,10 @@ def test_model_tool_calls_must_match_requested_names_and_distinct_ids():
     }
     response = {"choices": [{"message": message, "finish_reason": "tool_calls"}]}
     assert validate_agent_response(response, MODEL, {"read_file"})["choices"]
-    with pytest.raises(AgentProtocolError, match="unapproved"):
+    with pytest.raises(AgentProtocolError, match="unapproved") as rejected:
         validate_agent_response(response, MODEL, {"write_file"})
+    from agent_platform.gateway_protocol import TOOL_SELECTION_CODE
+    assert rejected.value.code == TOOL_SELECTION_CODE
     message["tool_calls"] = message["tool_calls"] * 2
     with pytest.raises(AgentProtocolError, match="Duplicate"):
         validate_agent_response(response, MODEL, {"read_file"})

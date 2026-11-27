@@ -565,6 +565,7 @@ async def _run_checkpointed_turn(agent, prompt, config, db, user, request_id, em
             reason = {
                 "INFERENCE_LIMIT_REACHED": "inference_limit_reached",
                 "INFERENCE_OUTPUT_LIMIT_REACHED": "inference_output_limit_reached",
+                "INFERENCE_TOOL_SELECTION_REJECTED": "inference_tool_selection_rejected",
             }.get(inference_failure_code(error))
         if reason is None:
             raise HTTPException(503, "DragonZpyder agent execution unavailable; outcome unconfirmed") from None

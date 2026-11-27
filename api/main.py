@@ -643,9 +643,12 @@ async def inference(prefix: str, request: Request):
                             request_id,
                         )
                     # Only preserve a fixed, gateway-authored truncation label.
-                    from agent_platform.gateway_protocol import OUTPUT_LIMIT_CODE
-                    if agent_protocol and isinstance(error, AgentProtocolError) and error.code == OUTPUT_LIMIT_CODE:
-                        raise GatewayError(502, "Model response stopped at output limit", code=OUTPUT_LIMIT_CODE) from None
+                    from agent_platform.gateway_protocol import OUTPUT_LIMIT_CODE, TOOL_SELECTION_CODE
+                    if agent_protocol and isinstance(error, AgentProtocolError):
+                        if error.code == OUTPUT_LIMIT_CODE:
+                            raise GatewayError(502, "Model response stopped at output limit", code=OUTPUT_LIMIT_CODE) from None
+                        if error.code == TOOL_SELECTION_CODE:
+                            raise GatewayError(502, "Model tool selection rejected before dispatch", code=TOOL_SELECTION_CODE) from None
                     raise GatewayError(502, "Model provider returned unexpected content")
                 served_model = str(provider_response.get("model") or body["model"])
                 generation_id = str(provider_response.get("id") or "") or None

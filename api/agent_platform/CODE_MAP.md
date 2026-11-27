@@ -136,3 +136,6 @@ Research search-only quota denial permits synthesis without further search execu
 
 ### Unified model construction
 All production entrypoints use runtime.build_agent for role-specific model clients. Native workflow specialists inherit the same parent-budget job ID. The runtime preflight checks configured fast/reasoning roles as well as specialist roles when adaptive routing is enabled. Existing capability arguments remain authority-scoped; no new tools granted by model routing.
+
+### Bounded synthesis and invalid tool recovery
+Normal supervisor has 16 model calls and specialist 7, with the last reserved for text-only synthesis. A typed gateway rejection of an undeclared tool batch permits one text-only, metered inference repair; no tool from that batch is dispatched. Generic errors are not retried. Builder's virtual-only scope is explicit. See progress_guard.py, gateway_protocol.py and test_progress_guard.py.

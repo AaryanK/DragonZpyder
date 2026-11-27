@@ -12,6 +12,7 @@ from typing import Any
 
 
 OUTPUT_LIMIT_CODE = "agent_output_limit_reached"
+TOOL_SELECTION_CODE = "agent_tool_selection_rejected"
 
 
 class AgentProtocolError(ValueError):
@@ -243,11 +244,13 @@ def validate_agent_response(
                     call["function"]["name"] not in allowed_tool_names
                     for call in calls
                 ):
-                    _reject("Model selected unapproved tool", 502)
+                    raise AgentProtocolError(502, "Model selected unapproved tool", code=TOOL_SELECTION_CODE)
                 out_message["tool_calls"] = calls
             except AgentProtocolError as error:
                 # Only an authored validation error label; never a tool's
                 # arguments, reasoning content, or external response data.
+                if error.code == TOOL_SELECTION_CODE:
+                    raise
                 _reject("Invalid model tool call format: " + error.message, 502)
         elif content is None:
             _reject("Missing model content", 502)
