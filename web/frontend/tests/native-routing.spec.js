@@ -121,7 +121,7 @@ test("migration proof pilot fails closed when disabled", async ({page})=>{
 });
 
 
-test("dedicated native login works before global web cutover", async ({page}) => {
+for(const entry of ["/login","/account"]) test("only native login before global web cutover: "+entry, async ({page}) => {
     const legacy = [], logins = [];
     await page.route("**/api/**", route => { legacy.push(route.request().url()); return route.fulfill({status:410}); });
     await page.route("**/dz/status", route => route.fulfill({json:{web_cutover_enabled:false,native_session_present:logins.length>0}}));
@@ -134,7 +134,9 @@ test("dedicated native login works before global web cutover", async ({page}) =>
     });
     await page.route("**/dz/v2/personal/session", route => route.fulfill({json:{authenticated:true,runtime:"dragonzpyder"}}));
     await page.route("**/dz/v2/personal/conversations", route => route.fulfill({json:{conversations:[]}}));
-    await page.goto("/login");
+    await page.goto(entry);
+    await expect(page.getByText("Use an existing Operly account")).toHaveCount(0);
+    await expect(page.locator("#dragonzpyder-central-signin")).toHaveCount(0);
     await page.locator("#login-email").fill("test@example.test");
     await page.locator("#login-password").fill("test-password");
     await page.locator("#login-form button[type=submit]").click();
@@ -269,7 +271,7 @@ test("signed-out native chat goes directly to compact sign-in",async({page})=>{
   await expect(page.getByRole("heading",{name:"Sign in",exact:true})).toBeVisible();
   await expect(page.locator("#login-email")).toBeInViewport();
   await expect(page.locator("#login-password")).toBeInViewport();
-  await expect(page.locator("#legacy-login-link")).toBeHidden();
+  await expect(page.locator("#legacy-login-link")).toHaveCount(0);
   await expect(page.locator(".intro")).toHaveCount(0);
   expect(legacy).toEqual([]);
 });
@@ -281,4 +283,26 @@ test("failed native session probe offers retry, not a duplicate credential form"
   await expect(page.getByRole("dialog",{name:"Unable to connect"})).toBeVisible();
   await expect(page.getByRole("button",{name:"Try again"})).toBeVisible();
   await expect(page.locator("#login-form")).toHaveCount(0);
+});
+
+test("mobile sign-in has one brand and accessible password visibility",async({page})=>{
+  await page.setViewportSize({width:360,height:640});
+  await page.route("**/dz/recovery/status",r=>r.fulfill({json:{enabled:false}}));
+  await page.route("**/dz/identity/v1/me",r=>r.fulfill({status:401}));
+  await page.route("**/dz/identity/v1/provider/google/start",r=>r.fulfill({status:503}));
+  await page.goto("/login");
+  await expect(page.locator(".dz-auth-brand")).toBeVisible();
+  await expect(page.locator("header.top")).toBeHidden();
+  await expect(page.locator("#login-form button[type=submit]")).toBeInViewport();
+  await page.locator("#login-password").fill("synthetic-test-password");
+  await page.getByRole("button",{name:"Show password"}).click();
+  await expect(page.locator("#login-password")).toHaveAttribute("type","text");
+  await page.getByRole("button",{name:"Hide password"}).click();
+  await expect(page.locator("#login-password")).toHaveAttribute("type","password");
+  await page.getByRole("button",{name:"Create account"}).click();
+  await expect(page.getByText("Google sign-up is temporarily unavailable.")).toBeVisible();
+  await expect(page.getByRole("button",{name:"Try again"})).toBeVisible();
+  await page.getByRole("button",{name:"Sign in",exact:true}).click();
+  await expect(page.locator("#login-password")).toHaveValue("");
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(361);
 });

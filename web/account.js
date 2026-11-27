@@ -1,27 +1,21 @@
 const $ = (id) => document.getElementById(id);
-const panels = ["login","signup","verify","forgot","reset","profile","migration","migration-recovery"];
-let mode = "login", bootstrap = null, challenge = null, processing = false, initializedGoogle = false;
-let nativeMode = false, googleRenderedMode = null, nativeGoogleState = null;
+const panels = ["login","signup","forgot","reset","profile","migration","migration-recovery"];
+let mode = "login", processing = false;
+// DragonZpyder owns account access, independently of runtime cutover.
+const nativeMode = true;
+let googleRenderedMode = null, nativeGoogleState = null, googleGeneration=0;
 let migrationEnabled = false, recoveryEnabled = false, recoveryEmail = null;
 let activeRecoveryEnabled=false;
 const messageBox = $("account-message");
 function report(message,isError=false){messageBox.textContent=String(message||"");messageBox.classList.toggle("error",isError);messageBox.hidden=!message;}
-function show(next){if(!panels.includes(next))next="login";if(next==="migration"&&!migrationEnabled)next="login";if(next==="migration-recovery"&&!recoveryEnabled)next="login";if(nativeMode&&!["login","signup","profile","migration","migration-recovery",...(activeRecoveryEnabled?["forgot","reset"]:[])].includes(next))next="login";mode=next;report("");panels.forEach(name=>{$(name+"-panel").hidden=name!==next});$("mode-tabs").hidden=!["login","signup"].includes(next);document.querySelectorAll("[data-mode]").forEach(el=>el.classList.toggle("selected",el.dataset.mode===next));if(next==="login"||(nativeMode&&next==="signup")||next==="migration")loadGoogle().catch(()=>{});}
+function show(next){if(!panels.includes(next))next="login";if(next==="migration"&&!migrationEnabled)next="login";if(next==="migration-recovery"&&!recoveryEnabled)next="login";if(nativeMode&&!["login","signup","profile","migration","migration-recovery",...(activeRecoveryEnabled?["forgot","reset"]:[])].includes(next))next="login";if(mode!==next){googleGeneration++;googleRenderedMode=null;nativeGoogleState=null;$("login-password").value="";}mode=next;report("");$("account-mode-prompt").textContent=next==="signup"?"Already have an account?":"New to DragonZpyder?";panels.forEach(name=>{$(name+"-panel").hidden=name!==next});$("mode-tabs").hidden=!["login","signup"].includes(next);document.querySelectorAll("[data-mode]").forEach(el=>el.classList.toggle("selected",el.dataset.mode===next));if(next==="login"||(nativeMode&&next==="signup")||next==="migration")loadGoogle().catch(()=>googleUnavailable(next));}
 function cookie(name){const part=document.cookie.split(";").map(v=>v.trim()).find(v=>v.startsWith(name+"="));return part?decodeURIComponent(part.slice(name.length+1)):"";}
-function csrf(){return nativeMode?cookie("__Host-dz_csrf"):(cookie("__Host-operly_csrf")||cookie("operly_csrf")||bootstrap?.csrf_token||"");}
-async function loadBootstrap(){
- if(nativeMode){bootstrap={};return bootstrap;}
- bootstrap=await request("/api/auth/bootstrap",{method:"GET",unauth:true});
- const central=$("dragonzpyder-central-signin");
- if(central)central.hidden=false;
- return bootstrap;
-}
+function csrf(){return cookie("__Host-dz_csrf");}
 async function request(path,{method="GET",body,unauth=false}={}){
  const headers={accept:"application/json"};
  if(body!==undefined)headers["content-type"]="application/json";
  if(method!=="GET"&&method!=="HEAD"){
-  if(nativeMode)headers["X-DZ-CSRF"]=csrf();
-  else headers["X-CSRF-Token"]=csrf();
+  headers["X-DZ-CSRF"]=csrf();
  }
  const response=await fetch(path,{method,headers,body:body===undefined?undefined:JSON.stringify(body),credentials:"same-origin",redirect:"error",cache:"no-store"});
  const payload=await response.json().catch(()=>({}));
@@ -37,13 +31,7 @@ async function submitAction(form,action){
 }
 function adminReturnRequested(){return new URLSearchParams(window.location.search).get("next")==="/admin";}
 function authenticated(){window.location.replace(adminReturnRequested()?"/admin":"/app");}
-async function ensurePersonal(){
- if(nativeMode){await request("/dz/identity/v1/me");return;}
- let response=await request("/api/auth/sessions");
- const current=Array.isArray(response)?response.find(item=>item?.current):null;
- if(!current)throw Error("Could not establish your session.");
- if(current.scope!=="personal"){await request("/api/auth/personal-scope",{method:"POST",body:{}});response=await request("/api/auth/sessions");if(!Array.isArray(response)||!response.some(item=>item?.current&&item.scope==="personal"))throw Error("Personal session unavailable.")}
-}
+async function ensurePersonal(){await request("/dz/identity/v1/me");}
 async function afterSignIn(){await ensurePersonal();authenticated();}
 function reportProof(result){
  if(result?.status!=="awaiting_review"||!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(result.proof_reference||""))throw Error("Verification response unavailable.");
@@ -59,36 +47,36 @@ async function googleCredential(credential,expectedMode){
    const result=await request("/dz/identity/v1/import-proof/google/complete",{method:"POST",body:{state:nativeGoogleState.state,credential}});
    nativeGoogleState=null;reportProof(result);return;
   }
-  if(nativeMode){
+  {
    if(!nativeGoogleState?.state)throw Error("Google sign-in challenge expired. Retry.");
    const action=mode==="signup"?"signup":"complete";
    await request("/dz/identity/v1/provider/google/"+action,{method:"POST",body:{state:nativeGoogleState.state,credential}});
    nativeGoogleState=null;
-  }else await request("/api/auth/google",{method:"POST",body:{credential}});
+  }
   await afterSignIn();
  }catch(e){report(e.message||"Google sign-in failed.",true)}finally{processing=false}
 }
+function googleUnavailable(expectedMode){if(mode!==expectedMode||mode!=="signup")return;$("signup-provider-status").hidden=false;$("signup-provider-status").textContent="Google sign-up is temporarily unavailable.";$("retry-google-signup").hidden=false;}
 async function loadGoogle(){
+ const expectedMode=mode,generation=++googleGeneration;
+ if(mode==="signup"){$("signup-provider-status").hidden=false;$("signup-provider-status").textContent="Connecting to Google…";$("retry-google-signup").hidden=true;}
  if(mode==="migration"){
   if(!migrationEnabled||googleRenderedMode===mode)return;
   const g=await request("/dz/identity/v1/import-proof/google/start",{method:"POST"});
-  if(mode!=="migration")return;
+  if(mode!=="migration"||generation!==googleGeneration)return;
   nativeGoogleState=g;
   if(g.client_id&&g.nonce)return renderGoogle(g.client_id,g.nonce,"google-provider-migration");
   return;
  }
  if(mode!=="login"&&!(nativeMode&&mode==="signup"))return;
- if(nativeMode){
+ {
   if(googleRenderedMode===mode)return;
   const g=await request("/dz/identity/v1/provider/google/start",{method:"POST"});
+  if(mode!==expectedMode||generation!==googleGeneration)return;
   nativeGoogleState=g;
-  if(!g.client_id||!g.nonce)return;
+  if(!g.client_id||!g.nonce){googleUnavailable(expectedMode);return;}
   return renderGoogle(g.client_id,g.nonce,mode==="signup"?"google-provider-signup":"google-provider");
  }
- if(initializedGoogle)return;
- const g=bootstrap||await loadBootstrap();
- if(!g.google_client_id||!g.google_nonce)return;
- return renderGoogle(g.google_client_id,g.google_nonce,"google-provider");
 }
 function renderGoogle(clientId,nonce,hostId){
  const expectedMode=mode;
@@ -97,12 +85,14 @@ function renderGoogle(clientId,nonce,hostId){
   window.google.accounts.id.initialize({client_id:clientId,nonce,callback:result=>googleCredential(String(result?.credential||""),expectedMode),auto_select:false,cancel_on_tap_outside:true});
   host.replaceChildren();
   window.google.accounts.id.renderButton(host,{theme:"outline",size:"large",text:"continue_with",shape:"rectangular",width:Math.min(400,Math.max(200,Math.floor(host.clientWidth||300)))});
-  initializedGoogle=true;googleRenderedMode=mode;
+  googleRenderedMode=mode;
+  if(mode==="signup"){$("signup-provider-status").hidden=true;$("retry-google-signup").hidden=true;}
  };
  if(window.google?.accounts?.id){render();return;}
- const script=document.createElement("script");script.src="https://accounts.google.com/gsi/client";script.async=true;script.defer=true;script.onload=render;script.onerror=()=>report("Google sign-in could not load; use email to continue.",true);document.head.append(script);
+ const script=document.createElement("script");script.src="https://accounts.google.com/gsi/client";script.async=true;script.defer=true;script.onload=render;script.onerror=()=>{if(mode!==expectedMode)return;if(mode==="signup")googleUnavailable(expectedMode);else report("Google sign-in could not load; use email to continue.",true);};document.head.append(script);
 }
 document.querySelectorAll("[data-mode]").forEach(el=>el.addEventListener("click",()=>show(el.dataset.mode)));
+$("retry-google-signup").addEventListener("click",()=>{if(mode==="signup")loadGoogle().catch(()=>googleUnavailable("signup"));});
 $("migration-recovery-start").addEventListener("submit",e=>{e.preventDefault();if(mode!=="migration-recovery"||!recoveryEnabled)return;submitAction(e.currentTarget,async()=>{
  const email=$("migration-recovery-email").value.trim();
  const result=await request("/dz/identity/v1/import-proof/recovery/start",{method:"POST",body:{email}});
@@ -126,48 +116,32 @@ $("migration-form").addEventListener("submit",e=>{e.preventDefault();if(mode!=="
  reportProof(result);
 })});
 $("login-form").addEventListener("submit",e=>{e.preventDefault();submitAction(e.currentTarget,async()=>{
- await loadBootstrap();
- try{await request(nativeMode?"/dz/identity/v1/password/login":"/api/auth/login",{method:"POST",body:{email:$("login-email").value.trim(),password:$("login-password").value}});await afterSignIn()}
- catch(err){if(err.code==="EMAIL_NOT_VERIFIED"){challenge={email:$("login-email").value.trim()};$("verify-email").value=challenge.email;show("verify");report("Please verify your email to continue.");return;}throw err}
+ await request("/dz/identity/v1/password/login",{method:"POST",body:{email:$("login-email").value.trim(),password:$("login-password").value}});
+ await afterSignIn();
 })});
-$("signup-form").addEventListener("submit",e=>{e.preventDefault();submitAction(e.currentTarget,async()=>{
- if(nativeMode)throw Error("Native account creation currently requires Google verification.");
- const password=$("signup-password").value;
- if(password!==$("signup-confirm").value)throw Error("Passwords do not match.");
- await loadBootstrap();
- const result=await request("/api/auth/signup",{method:"POST",body:{display_name:$("signup-name").value.trim(),email:$("signup-email").value.trim(),password}});
- challenge={id:result.challenge_id,email:result.email};$("verify-email").value=result.email;show("verify");report("Account created. Enter the code sent to your email.");
-})});
-$("verify-form").addEventListener("submit",e=>{e.preventDefault();submitAction(e.currentTarget,async()=>{
- const body={email:$("verify-email").value.trim(),code:$("verify-code").value.trim()};if(challenge?.id)body.challenge_id=challenge.id;
- await request("/api/auth/verify-email",{method:"POST",body});await afterSignIn();
-})});
-$("resend").addEventListener("click",async()=>{try{await loadBootstrap();await request("/api/auth/resend-verification",{method:"POST",body:{email:$("verify-email").value.trim()}});report("If verification is pending, another code is on its way.");}catch(e){report(e.message,true)}});
 $("forgot-form").addEventListener("submit",e=>{e.preventDefault();submitAction(e.currentTarget,async()=>{
- await loadBootstrap();await request(nativeMode?"/dz/identity/v1/recovery/start":"/api/auth/forgot-password",{method:"POST",body:{email:$("forgot-email").value.trim()}});
+ if(!activeRecoveryEnabled)throw Error("Password recovery is unavailable.");await request("/dz/identity/v1/recovery/start",{method:"POST",body:{email:$("forgot-email").value.trim()}});
  $("reset-email").value=$("forgot-email").value.trim();show("reset");report("If the account exists, password reset instructions were sent.");
 })});
 $("reset-form").addEventListener("submit",e=>{e.preventDefault();submitAction(e.currentTarget,async()=>{
- await loadBootstrap();const password=$("reset-password").value;const code=$("reset-code").value.trim();$("reset-password").value="";$("reset-code").value="";await request(nativeMode?"/dz/identity/v1/recovery/complete":"/api/auth/reset-password",{method:"POST",body:{email:$("reset-email").value.trim(),code,password}});
+ if(!activeRecoveryEnabled)throw Error("Password recovery is unavailable.");const password=$("reset-password").value;const code=$("reset-code").value.trim();$("reset-password").value="";$("reset-code").value="";await request("/dz/identity/v1/recovery/complete",{method:"POST",body:{email:$("reset-email").value.trim(),code,password}});
  show("login");report("Password updated. Sign in with your new password.");
 })});
 $("profile-form").addEventListener("submit",e=>{e.preventDefault();submitAction(e.currentTarget,async()=>{
- await request(nativeMode?"/dz/identity/v1/me":"/api/auth/me",{method:"PATCH",body:{display_name:$("profile-name").value.trim()}});report("Your account has been updated.");
+ await request("/dz/identity/v1/me",{method:"PATCH",body:{display_name:$("profile-name").value.trim()}});report("Your account has been updated.");
 })});
-$("account-logout").addEventListener("click",async()=>{try{await request(nativeMode?"/dz/identity/v1/logout":"/api/auth/logout",{method:"POST",body:{}});window.location.replace(nativeMode?"/login":"/account")}catch(e){report(e.message,true)}});
+$("account-logout").addEventListener("click",async()=>{try{await request("/dz/identity/v1/logout",{method:"POST",body:{}});window.location.replace("/login")}catch(e){report(e.message,true)}});
 async function profile(){
- const p=await request(nativeMode?"/dz/identity/v1/me":"/api/auth/me");$("profile-email").textContent=p.email||"";$("profile-name").value=p.display_name||"";
+ const p=await request("/dz/identity/v1/me");$("profile-email").textContent=p.email||"";$("profile-name").value=p.display_name||"";
  const avatar=$("account-profile-avatar"), fallback=$("account-profile-fallback");
  avatar.onload=null;avatar.onerror=null;avatar.hidden=true;avatar.removeAttribute("src");fallback.hidden=false;
  const parts=String(p.display_name||"").trim().split(/\s+/).filter(Boolean);
  fallback.textContent=parts.length?parts.slice(0,2).map(part=>Array.from(part)[0]).join("").toUpperCase():"?";
  if(nativeMode&&p.avatar_available===true){avatar.onload=()=>{avatar.hidden=false;fallback.hidden=true;};avatar.onerror=()=>{avatar.hidden=true;fallback.hidden=false;};avatar.src="/dz/identity/v1/avatar";}
  const identities=$("linked-identities");identities.replaceChildren();
- for(const identity of (nativeMode?[{provider:p.identity_origin||"DragonZpyder"}]:(p.auth_identities||[]))){const chip=document.createElement("span");chip.className="identity";chip.textContent=identity.provider+(identity.account?" · "+identity.account:"");identities.append(chip)}
+ for(const identity of [{provider:p.identity_origin||"DragonZpyder"}]){const chip=document.createElement("span");chip.className="identity";chip.textContent=identity.provider+(identity.account?" · "+identity.account:"");identities.append(chip)}
  const host=$("workspace-list");host.replaceChildren();
- const spaces=nativeMode?[]:await request("/api/auth/workspaces").catch(()=>[]);
- if(!Array.isArray(spaces)||spaces.length===0){const p=document.createElement("p");p.className="muted small";p.textContent=nativeMode?"Business membership is managed separately through authorized workspace access.":"No business workspaces attached to this account.";host.append(p)}
- else for(const w of spaces){const item=document.createElement("div");item.className="workspace-line";item.textContent=w.name+" · "+w.role;host.append(item)}
+ const note=document.createElement("p");note.className="muted small";note.textContent="Business workspace access is managed separately.";host.append(note);
  show("profile");
 }
 (async()=>{
@@ -189,32 +163,20 @@ async function profile(){
   report("Account migration verification is not available. Return to /account for regular access.",true);
   return;
  }
- let legacyAvailable=false;
- try{const route=await request("/dz/status");nativeMode=route.web_cutover_enabled===true||route.native_session_present===true||location.pathname==="/login";legacyAvailable=route.web_cutover_enabled===false&&route.native_session_present!==true;}catch{nativeMode=true;}
- window.dragonzpyderNativeMode=nativeMode;
- window.dispatchEvent(new CustomEvent("dragonzpyder:runtime-mode",{detail:{firstParty:nativeMode}}));
- if(nativeMode){
-  $("dragonzpyder-central-signin").hidden=true;
-  $("legacy-login-link").hidden=location.pathname!=="/login"||!legacyAvailable;
-  $("signup-form").hidden=true;
-  activeRecoveryEnabled=(await request("/dz/recovery/status").catch(()=>({enabled:false}))).enabled===true;
-  const forgotten=document.querySelector("[data-mode='forgot']");if(forgotten)forgotten.hidden=!activeRecoveryEnabled;
-  if(activeRecoveryEnabled){const code=$("reset-code");code.minLength=43;code.maxLength=43;code.pattern="[A-Za-z0-9_-]{43}";code.inputMode="text";const label=document.querySelector("label[for='reset-code']");if(label)label.textContent="One-time recovery code";const copy=$("reset-panel").querySelector(".muted");if(copy)copy.textContent="Enter the one-time recovery code sent to your verified email.";}
- }
- if(!nativeMode) $("legacy-login-link").hidden=true;
+ window.dragonzpyderNativeMode=true;
+ window.dispatchEvent(new CustomEvent("dragonzpyder:runtime-mode",{detail:{firstParty:true}}));
+ activeRecoveryEnabled=(await request("/dz/recovery/status").catch(()=>({enabled:false}))).enabled===true;
+ const forgotten=document.querySelector("[data-mode='forgot']");if(forgotten)forgotten.hidden=!activeRecoveryEnabled;
+ if(activeRecoveryEnabled){const code=$("reset-code");code.minLength=43;code.maxLength=43;code.pattern="[A-Za-z0-9_-]{43}";code.inputMode="text";const label=document.querySelector("label[for='reset-code']");if(label)label.textContent="One-time recovery code";const copy=$("reset-panel").querySelector(".muted");if(copy)copy.textContent="Enter the one-time recovery code sent to your verified email.";}
  if(params.get("discord_error"))report(params.get("discord_error"),true);
  try{
-  const sessions=nativeMode?await request("/dz/identity/v1/me"):await request("/api/auth/sessions");
-  if(nativeMode?Boolean(sessions.id):(Array.isArray(sessions)&&sessions.some(s=>s?.current))){
+  const session=await request("/dz/identity/v1/me");
+  if(Boolean(session.id)){
    if(adminReturnRequested()){window.location.replace("/admin");return;}
    await profile();return;
   }
  }catch{}
  show(params.get("mode")||"login");
- // Prefer central identity when it is activated, preserving the existing
- // password/Google flow as a safe fallback until verified account cutover.
- if(!nativeMode) $("dragonzpyder-central-signin").hidden=false;
- await loadBootstrap().catch(()=>{});
  if(adminReturnRequested())report("Sign in to access your DragonZpyder admin dashboard.");
- if(params.get("email")){$("verify-email").value=params.get("email");$("reset-email").value=params.get("email")}
+ if(params.get("email"))$("reset-email").value=params.get("email");
 })().catch(e=>{show("login");report(e.message,true)});

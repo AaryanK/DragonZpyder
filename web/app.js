@@ -161,13 +161,13 @@ function showToast(message, timeout = 4200) {
 function showAuth(error = "") {
   profileMenu.hidden = true;
   if (!error && state.routingResolved) {
-    window.location.replace(state.firstParty ? "/login" : "/account");
+    window.location.replace("/login");
     return;
   }
   authModal.hidden = false;
   loginError.textContent = error || "Unable to check your session. Please retry.";
   loginError.hidden = false;
-  $("dragonzpyder-central-signin-modal").href = state.routingResolved && !state.firstParty ? "/account" : "/login";
+  $("dragonzpyder-central-signin-modal").href = "/login";
   $("retry-session").focus();
 }
 function hideAuth() {
