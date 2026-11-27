@@ -352,3 +352,8 @@ Production evidence: session starts and one canonical turn succeeded; a subseque
 
 - `apps/sandbox_runner/server.mjs`: Normalize permissions of trusted root-owned interpreter assets, separate missing template interpreter and inaccessible helper exit codes, preserve all scope and offline kernel checks. Railway signed allocation failed exit 73 before user code; cleanup confirmed. CI/live qualification pending.
 - `apps/sandbox_runner/README.md`: Record failure and bounded repair.
+
+## 2026-11-27 — copied sandbox interpreter
+
+- `apps/sandbox_runner/server.mjs`: Use a copied Python interpreter in the trusted venv, reject stale symlink templates, check unprivileged parent directory traversal with fixed phase codes. Preserve root ownership, offline seccomp, UID drop and scope checks. Railway signed allocation still failed exit 73 on ab7ec4c, cleanup confirmed; CI/live acceptance pending.
+- `apps/sandbox_runner/README.md`: Record observed failure and repair hypothesis.
