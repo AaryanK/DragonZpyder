@@ -165,9 +165,15 @@ async def provider_request(request: Request, path: str, *, app_id: str, runtime,
             }:
                 return error_response(400, "Unsupported model catalogue filter")
             model_filter = filters[0][1]
-    provider_key = (os.getenv("DRAGONZPYDER_AGENT_MEDIA_OPENROUTER_API_KEY","")
-                    if agent_media or voice_audio else _provider_key(path))
-    if agent_media or voice_audio:
+    if voice_audio:
+        from agent_platform.openrouter_voice import provider_key as voice_key, speech_budget_ready
+        provider_key=voice_key()
+        if not await speech_budget_ready(request.app.state.http):
+            return error_response(503,"Voice admission or accounting unavailable")
+    else:
+        provider_key=(os.getenv("DRAGONZPYDER_AGENT_MEDIA_OPENROUTER_API_KEY","")
+                      if agent_media else _provider_key(path))
+    if agent_media:
         # A separate non-resetting provider cap is required for the initial
         # multimodal rollout. Ordinary inference credentials are never used.
         from agent_platform.key_budget import verify_key_budget
@@ -206,6 +212,10 @@ async def provider_request(request: Request, path: str, *, app_id: str, runtime,
                     validate_media_payload(path,payload)
             except (ValueError,TypeError,KeyError,AttributeError,IndexError) as exc:
                 return error_response(400,"Invalid agent media request" if agent_media else str(exc))
+            if voice_audio:
+                from agent_platform.openrouter_voice import admit_production_speech
+                if not await admit_production_speech():
+                    return error_response(429,"Shared speech admission unavailable or exhausted")
             is_stream = payload.get("stream") is True
         model = str((payload or {}).get("model") or "catalog")
         span, trace_id = _start_span(request, app_id, path, request_id, model)
