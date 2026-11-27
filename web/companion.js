@@ -140,6 +140,7 @@ function cleanup(){
   window.dispatchEvent(new Event("dragonzpyder:voice-closed"));
 }
 function close(){cleanup();panel.hidden=true;setStatus("Ended");launch.focus()}
+window.addEventListener("dragonzpyder:voice-playback-mute",event=>modularRoom?.setPlaybackMuted?.(Boolean(event.detail?.muted)));
 async function handleTool(item,v){
   if(!item.call_id||calls.has(item.call_id))return;
   calls.add(item.call_id);
@@ -243,7 +244,8 @@ async function start(){
           void window.dragonzpyderModularVoiceResult?.(data,context.conversationId);
         }});
       if(v!==version){await room.disconnect();return;}
-      modularRoom=room;live=true;starting=false;
+      modularRoom=room;room.setPlaybackMuted?.(audio.muted);live=true;starting=false;
+      browserEvent("voice-mode",{mode:"openrouter"});
       browserEvent("voice-session",{connected:true});setStatus("Listening — speak naturally","listening");return;
     }
     if(native&&context.modularVoice){
@@ -346,7 +348,7 @@ mute.addEventListener("click",()=>{
   silent=!silent;mic.getAudioTracks().forEach(t=>t.enabled=!silent&&!nativeBusy);
   modularRoom?.setMuted?.(silent);
   window.dispatchEvent(new CustomEvent("dragonzpyder:voice-mute",{detail:{muted:silent}}));
-  setStatus(silent?"Microphone muted":"Listening — speak naturally","listening");
+  if(panel.dataset.state!=="error"&&!(nativeCall?.openrouter&&["working","speaking"].includes(panel.dataset.state)))setStatus(silent?"Microphone muted":"Listening — speak naturally","listening");
 });
 window.addEventListener("keydown",e=>{if(e.ctrlKey&&e.code==="Space"&&!e.repeat&&!e.altKey&&!e.metaKey){e.preventDefault();if(panel.hidden){if(voiceContext().available&&!launch.disabled)start()}else close()}else if(e.key==="Escape"&&!panel.hidden)close()});
 window.addEventListener("pagehide",cleanup);window.addEventListener("dragonzpyder:logout",close);

@@ -326,7 +326,9 @@ async def provider_request(request: Request, path: str, *, app_id: str, runtime,
             upstream = await request.app.state.http.request(
                 request.method, OPENROUTER + path, headers=headers,
                 json=payload, params=query, timeout=25 if voice_audio else 120)
-        except httpx.HTTPError:
+        except httpx.HTTPError as exc:
+            if voice_audio:
+                logging.getLogger(__name__).warning("Voice provider transport failure operation=%s kind=%s",path,type(exc).__name__)
             _finish_span(span, None, 502, int((time.monotonic()-started)*1000))
             return error_response(502, "Model provider unavailable")
         if len(upstream.content) > MAX_RESULT:
@@ -349,6 +351,8 @@ async def provider_request(request: Request, path: str, *, app_id: str, runtime,
                 audit_report["id"]=generation_id
         elapsed = int((time.monotonic()-started)*1000)
         status_code = upstream.status_code
+        if voice_audio and not 200<=status_code<300:
+            logging.getLogger(__name__).warning("Voice upstream rejected operation=%s status=%s",path,status_code)
         recorded = True
         if op == "generation":
             try:
@@ -364,6 +368,8 @@ async def provider_request(request: Request, path: str, *, app_id: str, runtime,
                 recorded = False
         _finish_span(span, report, status_code, elapsed)
         if op == "generation" and (ledger.required or agent_media or voice_audio) and not recorded:
+            if voice_audio:
+                logging.getLogger(__name__).warning("Voice accounting write failed operation=%s",path)
             return error_response(503, "Inference accounting unavailable")
         # Do not expose raw upstream provider errors or headers to the browser.
         if not 200 <= status_code < 300:

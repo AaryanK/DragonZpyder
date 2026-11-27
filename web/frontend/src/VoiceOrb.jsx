@@ -64,7 +64,7 @@ export function VoiceOrb() {
         setStatus(e.detail?.message || "Ready");
       },
       "dragonzpyder:voice-session": e => setConnected(Boolean(e.detail?.connected)),
-      "dragonzpyder:voice-mode": e => setVoiceMode(e.detail?.mode === "browser" ? "browser" : "realtime"),
+      "dragonzpyder:voice-mode": e => setVoiceMode(["browser","openrouter"].includes(e.detail?.mode) ? e.detail.mode : "realtime"),
       "dragonzpyder:voice-mute": e => setMicrophoneMuted(Boolean(e.detail?.muted)),
       "dragonzpyder:voice-transcript": e => {
         const { id, label, value, append, interim } = e.detail || {};
@@ -87,6 +87,7 @@ export function VoiceOrb() {
     if (!audioRef.current) return;
     audioRef.current.muted = !audioRef.current.muted;
     setPlaybackMuted(audioRef.current.muted);
+    window.dispatchEvent(new CustomEvent("dragonzpyder:voice-playback-mute",{detail:{muted:audioRef.current.muted}}));
   };
 
   const browserOnly = voiceMode === "browser";
@@ -109,7 +110,7 @@ export function VoiceOrb() {
         <div className={"dz-voice-orb-conversation" + (session === "error" ? " is-error" : "")}>
           {session === "error"
             ? <div className="dz-voice-error-message" role="alert">
-                <h2>Voice isn't available yet</h2>
+                <h2>{connected ? "Voice interrupted" : "Voice isn't available yet"}</h2>
                 <p id="companion-status" role="status" aria-live="polite">{status}</p>
               </div>
             : <>
@@ -142,7 +143,7 @@ export function VoiceOrb() {
         <div className="companion-transcript" id="companion-transcript" aria-label="Live transcript">
           {transcripts.length ? transcripts.map(item => <p key={item.id} data-interim={Boolean(item.interim)}><strong>{item.label}: </strong><span>{item.value}</span></p>) : <p className="dz-voice-transcript-empty">Spoken words will appear here when transcription is available.</p>}
         </div>
-        <p>{browserOnly ? "Speech recognition is provided by your browser and may use an online service. Transcriptions are not automatically sent to the agent." : "Voice is streamed to the provider. In first-party voice mode, this is conversation only; use chat for agent actions."}</p>
+        <p>{browserOnly ? "Speech recognition is provided by your browser and may use an online service. Transcriptions are not automatically sent to the agent." : voiceMode==="openrouter" ? "Speech is transcribed by OpenRouter and submitted to your DragonZpyder agent. The microphone pauses while the agent works and speaks." : "Voice is streamed to the provider. Agent access depends on your voice session."}</p>
       </section>
     </div>
     <audio ref={audioRef} id="companion-audio" autoPlay playsInline />

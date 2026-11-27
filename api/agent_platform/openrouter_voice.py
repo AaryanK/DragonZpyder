@@ -296,7 +296,14 @@ async def gateway(request,path,payload):
     validate_voice_payload(path,payload)
     response=await provider_request(request,path,app_id="agent-voice",runtime=request.app.state.provider_runtime,voice_payload=payload)
     if response.status_code!=200 or response.headers.get("x-dragonzpyder-audit")!="persisted":
-        raise HTTPException(503,"Speech provider or budget unavailable; do not replay")
+        # STT failure occurs before canonical chat submission; TTS failure
+        # occurs after a committed response. Never expose upstream bodies.
+        stage="transcription" if path=="/audio/transcriptions" else "speech"
+        outcome="not_submitted" if stage=="transcription" else "committed"
+        status=response.status_code
+        reason={429:"quota_or_rate_limit",502:"provider_unavailable",413:"audio_too_large",400:"invalid_audio"}.get(status,"service_or_accounting_unavailable")
+        log.warning("Voice gateway rejected stage=%s status=%s reason=%s outcome=%s",stage,status,reason,outcome)
+        raise HTTPException(429 if status==429 else 503,{"code":"voice_"+stage+"_"+reason,"outcome":outcome})
     return response
 
 async def authority(owner,session_id):
@@ -390,8 +397,13 @@ async def turn(session_id:UUID,payload:Utterance,request:Request):
             choices=row["mcp_connection_ids"]
             if isinstance(choices,str):choices=json.loads(choices)
             async def reauthorize():await authority(owner,session_id)
-            result=await _chat_owned(ChatInput(message=transcript,request_id=rid,conversation_id=row["conversation_id"],
-                mcp_connection_ids=choices),request,owner,authority=reauthorize)
+            try:
+                result=await _chat_owned(ChatInput(message=transcript,request_id=rid,conversation_id=row["conversation_id"],
+                    mcp_connection_ids=choices),request,owner,authority=reauthorize)
+            except HTTPException as exc:
+                log.warning("Voice canonical chat rejected status=%s outcome=unconfirmed",exc.status_code)
+                if exc.status_code in (401,403):raise
+                raise HTTPException(exc.status_code,{"code":"voice_agent_unconfirmed","outcome":"unconfirmed"}) from None
             await db.execute("""UPDATE dz_native_voice_sessions SET conversation_id=$3
                 WHERE owner_id=$1 AND session_id=$2 AND state='active'""",owner,session_id,UUID(result["conversation_id"]))
             return {**result,"transcript":transcript,"event_id":str(payload.event_id),"speech_segments":len(segments(result["message"]))}
