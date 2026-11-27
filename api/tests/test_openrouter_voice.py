@@ -26,6 +26,7 @@ def fixture_audio(frames=3200,channels=1,rate=16000):
     return base64.b64encode(f.getvalue()).decode()
 
 def configured(monkeypatch):
+    monkeypatch.delenv("RAILWAY_ENVIRONMENT_NAME",raising=False)
     for k in ("DRAGONZPYDER_OPENROUTER_VOICE_ENABLED","DRAGONZPYDER_FIRST_PARTY_CHAT_ENABLED",
               "DRAGONZPYDER_FIRST_PARTY_REQUEST_LEDGER_ENABLED","DRAGONZPYDER_AGENTS_ENABLED",
               "DRAGONZPYDER_IDENTITY_HTTP_ENABLED"):monkeypatch.setenv(k,"1")
@@ -236,3 +237,70 @@ def test_bridge_token_bound_to_session_and_original_authority(monkeypatch):
         assert invalid.value.status_code==401
     asyncio.run(run())
     assert requests==[("owner",sid)]
+
+def test_production_voice_uses_existing_key_without_new_flag(monkeypatch):
+    configured(monkeypatch)
+    monkeypatch.setenv("RAILWAY_ENVIRONMENT_NAME","production")
+    monkeypatch.delenv("DRAGONZPYDER_OPENROUTER_VOICE_ENABLED")
+    monkeypatch.delenv("DRAGONZPYDER_AGENT_MEDIA_OPENROUTER_API_KEY")
+    monkeypatch.setenv("OPENROUTER_API_KEY","existing-"+ "x"*32)
+    monkeypatch.setattr(ledger,"pool",object())
+    monkeypatch.setattr(voice,"_schema_ready",False)
+    assert not voice.enabled()
+    monkeypatch.setattr(voice,"_schema_ready",True)
+    assert voice.enabled()
+    assert voice.provider_key()=="existing-"+"x"*32
+    monkeypatch.setenv("DRAGONZPYDER_OPENROUTER_VOICE_ENABLED","0")
+    assert not voice.enabled()
+    monkeypatch.delenv("DRAGONZPYDER_OPENROUTER_VOICE_ENABLED")
+    monkeypatch.setattr(ledger,"pool",None)
+    assert not voice.enabled()
+
+def test_production_voice_gateway_requires_atomic_quota(monkeypatch):
+    configured(monkeypatch)
+    monkeypatch.setenv("RAILWAY_ENVIRONMENT_NAME","production")
+    monkeypatch.delenv("DRAGONZPYDER_OPENROUTER_VOICE_ENABLED")
+    monkeypatch.delenv("DRAGONZPYDER_AGENT_MEDIA_OPENROUTER_API_KEY")
+    monkeypatch.setenv("OPENROUTER_API_KEY","existing-"+"x"*32)
+    monkeypatch.setattr(ledger,"pool",object())
+    monkeypatch.setattr(voice,"_schema_ready",True)
+    calls=[];charges=[]
+    class Runtime:
+        async def enter(self):return True
+        async def charge(self):return True
+        async def leave(self):pass
+    async def record(**kw):return True
+    monkeypatch.setattr(ledger,"record",record)
+    async def quota(limit):
+        charges.append(limit);return len(charges)==1
+    monkeypatch.setattr(ledger,"charge_agent_hour",quota)
+    def handle(req):
+        calls.append(req)
+        assert req.headers["authorization"]=="Bearer existing-"+"x"*32
+        assert req.url.path.endswith("/audio/transcriptions")
+        return httpx.Response(200,json={"text":"hello"})
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as http:
+            app=SimpleNamespace(state=SimpleNamespace(http=http,provider_runtime=Runtime()))
+            req=Request({"type":"http","method":"POST","path":"/test","headers":[(b"content-type",b"application/json")],"app":app})
+            payload={"model":voice.STT,"input_audio":{"data":fixture_audio(),"format":"wav"}}
+            assert (await voice.gateway(req,"/audio/transcriptions",payload)).status_code==200
+            with pytest.raises(HTTPException) as denied:
+                await voice.gateway(req,"/audio/transcriptions",payload)
+            assert denied.value.status_code==503
+    asyncio.run(run())
+    assert len(calls)==1 and len(charges)==2
+
+def test_production_schema_failure_does_not_enable_voice(monkeypatch):
+    configured(monkeypatch)
+    monkeypatch.setenv("RAILWAY_ENVIRONMENT_NAME","production")
+    monkeypatch.setenv("OPENROUTER_API_KEY","existing-"+"x"*32)
+    monkeypatch.setattr(ledger,"pool",object())
+    monkeypatch.setattr(voice,"_schema_ready",True)
+    @asynccontextmanager
+    async def unavailable():
+        raise RuntimeError("migration role unavailable")
+        yield
+    monkeypatch.setattr(voice,"_conversation_db",unavailable)
+    asyncio.run(voice.prepare_production_schema())
+    assert not voice.enabled()

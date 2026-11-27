@@ -1,7 +1,8 @@
 """Transport-independent utterance voice. OpenRouter is the speech provider.
 
 No LiveKit or Deepgram service is required. The provider gateway retains the
-existing capped media key, rate limits and audit. Audio is not stored; only
+existing production inference key, shared admission quota and audit. Staging
+retains its independently capped test key. Audio is not stored; only
 canonical chat transcripts, request receipts and irreversible attempt fences.
 """
 from __future__ import annotations
@@ -13,11 +14,13 @@ from typing import Literal
 import hashlib
 import io
 import json
+import logging
 import os
 import re
 import struct
 import wave
 from uuid import UUID,uuid5
+from pathlib import Path
 
 from fastapi import APIRouter,HTTPException,Request
 from fastapi.responses import JSONResponse
@@ -35,11 +38,89 @@ MAX_TURNS=20
 MAX_SEGMENTS=4
 MAX_CHARS=900
 
-def enabled():
-    return (all(os.getenv(key)=="1" for key in ("DRAGONZPYDER_OPENROUTER_VOICE_ENABLED",
+log=logging.getLogger(__name__)
+_schema_ready=False
+
+def production_voice():
+    return os.getenv("RAILWAY_ENVIRONMENT_NAME")=="production"
+
+def provider_key():
+    """Use the existing inference credential in production, never duplicate it."""
+    return os.getenv("OPENROUTER_API_KEY" if production_voice() else
+                     "DRAGONZPYDER_AGENT_MEDIA_OPENROUTER_API_KEY","")
+
+def _base_enabled():
+    return all(os.getenv(key)=="1" for key in (
         "DRAGONZPYDER_FIRST_PARTY_CHAT_ENABLED","DRAGONZPYDER_FIRST_PARTY_REQUEST_LEDGER_ENABLED",
         "DRAGONZPYDER_AGENTS_ENABLED","DRAGONZPYDER_IDENTITY_HTTP_ENABLED"))
-        and len(os.getenv("DRAGONZPYDER_AGENT_MEDIA_OPENROUTER_API_KEY",""))>=20)
+
+def enabled():
+    if not _base_enabled() or len(provider_key())<20:
+        return False
+    if production_voice():
+        from usage_ledger import ledger
+        # Existing explicit opt-out remains a rollback control, not a required flag.
+        return os.getenv("DRAGONZPYDER_OPENROUTER_VOICE_ENABLED")!="0" and _schema_ready and ledger.available
+    return os.getenv("DRAGONZPYDER_OPENROUTER_VOICE_ENABLED")=="1"
+
+async def prepare_production_schema():
+    """Apply the four reviewed additive migrations atomically to the existing
+    agent database. No role/grant changes; insufficient privileges or absent
+    storage leave voice unavailable without disrupting existing text chat.
+    """
+    global _schema_ready
+    _schema_ready=False
+    if not production_voice() or not _base_enabled() or len(provider_key())<20 or os.getenv("DRAGONZPYDER_OPENROUTER_VOICE_ENABLED")=="0":
+        return
+    from usage_ledger import ledger
+    if not ledger.available:
+        log.warning("Production voice readiness: usage ledger unavailable")
+        return
+    migrations=Path(__file__).resolve().parent/"migrations"
+    try:
+        async with asyncio.timeout(20):
+            async with _conversation_db() as db:
+                async with db.transaction():
+                    await db.execute("SET LOCAL lock_timeout = '3s'")
+                    await db.execute("SET LOCAL statement_timeout = '8s'")
+                    await db.execute("SELECT pg_advisory_xact_lock(hashtextextended($1,0))","dz-production-voice-schema-v1")
+                    for name in ("20261125_first_party_request_ledger.sql","20261125_native_voice.sql",
+                                 "20261126_modular_voice.sql","20261126_openrouter_voice.sql"):
+                        await db.execute((migrations/name).read_text(encoding="utf-8"))
+                    # Readiness must include the actual canonical conversation storage.
+                    await db.execute("SELECT id,owner_id FROM dz_first_party_conversations LIMIT 0")
+                    await db.execute("SELECT request_id,cancel_requested FROM dz_first_party_chat_requests LIMIT 0")
+                    await db.execute("SELECT session_id,transport,source_channel,bridge_token_sha256 FROM dz_native_voice_sessions LIMIT 0")
+                    await db.execute("SELECT event_id,request_id FROM dz_openrouter_voice_turns LIMIT 0")
+                    await db.execute("SELECT event_id,segment FROM dz_openrouter_voice_speech LIMIT 0")
+        _schema_ready=True
+        log.info("Production voice readiness: schema ready")
+    except Exception:
+        # Do not log DSNs, SQL error data, or credentials.
+        log.warning("Production voice readiness: schema unavailable; voice remains disabled")
+
+async def speech_budget_ready(http):
+    """Production uses the existing shared account and persistent quota; staging
+    continues to require a provider-enforced non-resetting $0.50 test cap."""
+    from usage_ledger import ledger
+    if not ledger.available or len(provider_key())<20:
+        return False
+    if production_voice():
+        return enabled()
+    from .key_budget import verify_key_budget
+    return (await verify_key_budget(http,provider_key())).get("approved") is True
+
+async def admit_production_speech():
+    """Atomic shared hourly count admission, not a hard USD spending ceiling."""
+    if not production_voice():
+        return True
+    from usage_ledger import ledger
+    try:
+        limit=max(1,min(1000,int(os.getenv("DRAGONZPYDER_RUNTIME_CALLS_PER_HOUR","120"))))
+        return bool(await ledger.charge_agent_hour(limit))
+    except Exception:
+        return False
+
 
 class SessionOffer(Offer):
     source:Literal["browser","android","ios","discord","telephony","external"]="browser"
@@ -182,7 +263,7 @@ async def gateway(request,path,payload):
     validate_voice_payload(path,payload)
     response=await provider_request(request,path,app_id="agent-voice",runtime=request.app.state.provider_runtime,voice_payload=payload)
     if response.status_code!=200 or response.headers.get("x-dragonzpyder-audit")!="persisted":
-        raise HTTPException(503,"Speech provider or capped budget unavailable; do not replay")
+        raise HTTPException(503,"Speech provider or budget unavailable; do not replay")
     return response
 
 async def authority(owner,session_id):
@@ -203,11 +284,8 @@ async def start(payload:SessionOffer,request:Request):
     if not enabled():raise HTTPException(503,"OpenRouter voice unavailable")
     if len(set(payload.mcp_connection_ids))!=len(payload.mcp_connection_ids) or any(not re.fullmatch(r"c[a-f0-9]{30}",x) for x in payload.mcp_connection_ids):
         raise HTTPException(422,"Invalid voice account selection")
-    from .key_budget import verify_key_budget
-    from usage_ledger import ledger
-    budget=await verify_key_budget(request.app.state.http,os.environ["DRAGONZPYDER_AGENT_MEDIA_OPENROUTER_API_KEY"])
-    if budget.get("approved") is not True or not ledger.available:
-        raise HTTPException(503,"Capped OpenRouter speech budget or accounting unavailable")
+    if not await speech_budget_ready(request.app.state.http):
+        raise HTTPException(503,"OpenRouter speech admission or accounting unavailable")
     ref=session_reference(request)
     await verify_authority(owner,ref)
     if payload.delegate and payload.source not in ("discord","telephony","external"):

@@ -306,3 +306,11 @@ Removed the three Markdown guides from Android drawable, values and xml resource
 - `apps/sandbox_runner/computer_tool.py`: Install inherited no_new_privs/libseccomp policy before dispatch; close inherited descriptors; deny network, io_uring and cross-process bypass syscall classes. Verify sockets and exec'ed child; fail closed. Real VM qualification pending.
 - `.github/workflows/scoped-sandbox-runner.yml`: Execute actual Linux kernel isolation probe in CI without any network requests or hosted model calls. CI pending.
 - `apps/sandbox_runner/README.md`: Record live network-hardening exit 4 and confirmed cleanup, replacement boundary and acceptance requirements.
+
+## 2026-11-27 — production voice readiness instead of a new flag
+
+- `api/agent_platform/openrouter_voice.py`: selects the existing production inference credential, prepares the reviewed additive voice/ledger schema under a bounded transaction and advisory lock, derives availability from existing authority prerequisites and accounting/schema readiness; staging still uses its capped key. Production speech calls consume the existing atomic hourly quota, not a hard dollar cap.
+- `api/provider_gateway.py`: routes only approved voice STT/TTS through the shared production key and atomically admits each validated call; ordinary image/agent-media capped-key policy is unchanged.
+- `api/main.py`: runs the voice preparation step in API lifespan; optional migration failure leaves text runtime intact.
+- `api/tests/test_openrouter_voice.py`: verifies default production activation, key reuse, ledger/schema failure, explicit rollback and quota denial without paid calls. Existing staging tests retained.
+- `api/agent_platform/README.md`, `api/agent_platform/migrations/README.md`, `docs/codebase/IMPLEMENTATION.md`: describe prerequisites, new default, bounded migration and budget tradeoff. CI, real role privileges and deployed voice acceptance remain unverified.
