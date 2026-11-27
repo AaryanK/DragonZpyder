@@ -332,7 +332,7 @@ async def execute_phase(goal_id,app_state):
     """One phase per authenticated Hatchet wake; retries reconcile, never replay."""
     from . import artifacts
     from .runtime import model_client,summarize_agent_result
-    from .harness import build_frontier_agent
+    from .runtime import build_agent
     from .execution_contract import exact_turn_state
     from .personal_bridge import personal_thread
     from .adaptive_routing import routed_model
@@ -405,7 +405,7 @@ async def execute_phase(goal_id,app_state):
                 if recovering:
                     # Never dispatch a paid model or external tool after an
                     # uncertain in-flight step. Exact persisted answer only.
-                    agent=build_frontier_agent(model,runtime._checkpointer)
+                    agent=build_agent(model,runtime._checkpointer,parent_job_id=str(goal_id))
                     snapshot=await asyncio.wait_for(agent.aget_state(config),timeout=10)
                     current=exact_turn_state(snapshot.values,turn_id=str(run_id),prompt=prompt,require_answer=True)
                     if plan.allow_computer:
@@ -447,7 +447,7 @@ async def execute_phase(goal_id,app_state):
                             policy=policy,transport=ScopedComputerTransport.from_environment(),authorize=authorize)
                         computer_binding=ComputerArtifacts(run=run,db_factory=_conversation_db,
                             owner=owner,run_id=run_id,allowed_ids=selected)
-                    agent=build_frontier_agent(model,runtime._checkpointer,
+                    agent=build_agent(model,runtime._checkpointer,parent_job_id=str(goal_id),
                         delegated_tools=delegated or None,artifact_tools=native_artifacts,
                         computer_run=run,computer_artifacts=computer_binding,
                         routing_middleware=route_middleware)

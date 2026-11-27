@@ -118,7 +118,7 @@ async def run_workspace(
         raise HTTPException(400, "Duplicate Workspace capability IDs")
     try:
         from .operly_mcp_client import load_authorized_operly_mcp_tools
-        from .harness import build_frontier_agent
+        from .runtime import build_agent
         from .runtime import (model_client, summarize_agent_result,
                               controlled_termination_reason, summarize_checkpoint_evidence)
         tools = await asyncio.wait_for(load_authorized_operly_mcp_tools(
@@ -135,7 +135,7 @@ async def run_workspace(
         # into a delegated Operly business Workspace.
         from .adaptive_routing import routed_model
         model,route,route_middleware=routed_model(payload.prompt,model_factory=model_client,has_tools=True)
-        agent = build_frontier_agent(model, checkpointer, delegated_tools=tools,
+        agent = build_agent(model, checkpointer, delegated_tools=tools,
                                      product_surface="operly",
                                      **({"routing_middleware":route_middleware} if route_middleware else {}))
     except (ValueError, RuntimeError, asyncio.TimeoutError) as error:

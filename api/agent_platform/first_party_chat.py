@@ -225,9 +225,9 @@ async def messages(conversation_id: UUID, request: Request):
     if runtime is None or runtime._checkpointer is None:
         raise HTTPException(503, "Agent checkpoints unavailable")
     from .personal_bridge import personal_thread
-    from .harness import build_frontier_agent
+    from .runtime import build_agent
     from .runtime import model_client
-    agent = build_frontier_agent(model_client(), runtime._checkpointer)
+    agent = build_agent(model_client(), runtime._checkpointer)
     config = {"configurable": {"thread_id": personal_thread(user, str(conversation_id))}}
     try:
         state = await agent.aget_state(config)
@@ -592,7 +592,7 @@ async def _execute_chat(payload: ChatInput, request: Request, user: str, convers
 
     from .personal_bridge import personal_thread, execution_receipt_report
     from .runtime import model_client
-    from .harness import build_frontier_agent
+    from .runtime import build_agent
 
     from . import artifacts
     artifact_run = payload.request_id or uuid4()
@@ -705,7 +705,7 @@ async def _execute_chat(payload: ChatInput, request: Request, user: str, convers
                     conversation_id=conversation_id,request_id=payload.request_id,
                     attachment_ids=payload.attachment_ids,mcp_connection_ids=payload.mcp_connection_ids,
                     allow_computer=payload.allow_computer,http=request.app.state.http)
-            agent = build_frontier_agent(
+            agent = build_agent(
                 selected_model, runtime._checkpointer,
                 delegated_tools=tools if tools else None,
                 **({"artifact_tools":artifact_tools} if artifact_tools else {}),
@@ -719,7 +719,9 @@ async def _execute_chat(payload: ChatInput, request: Request, user: str, convers
                     "thread_id": personal_thread(user, str(conversation_id)),
                 },
                 "recursion_limit": NATIVE_RECURSION_LIMIT,
-                "metadata": {"native_computer":computer_run is not None},
+                "metadata": {"native_computer":computer_run is not None,
+                             "model_route": routing.tier if routing else "default",
+                             "selected_model": selected_model.model_name if hasattr(selected_model, "model_name") else None},
             }
             if authority is None:
                 report = await _run_checkpointed_turn(agent, message, config, db, user, payload.request_id, emit)

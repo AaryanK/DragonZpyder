@@ -87,7 +87,7 @@ class AgentPipelineError(RuntimeError):
         self.phase = phase
 
 
-def build_agent(model, checkpointer, *, parent_job_id: str | None = None, routing_middleware=None):
+def build_agent(model, checkpointer, *, parent_job_id: str | None = None, routing_middleware=None, **capabilities):
     """Single Deep Agents harness for internal API and Hatchet execution.
 
     The historical V1 flag no longer selects a second agent implementation.
@@ -104,7 +104,7 @@ def build_agent(model, checkpointer, *, parent_job_id: str | None = None, routin
                 if parent_job_id is not None else model_client(model_override=configured)
             )
     return build_frontier_agent(model, checkpointer, specialist_models=models,
-        **({"routing_middleware":routing_middleware} if routing_middleware else {}))
+        **capabilities, **({"routing_middleware":routing_middleware} if routing_middleware else {}))
 
 
 def model_client(*, model_override: str | None = None,
@@ -318,7 +318,10 @@ class AgentRuntime:
             # capabilities; an actual model tool loop must still be smoke-tested.
             from .model_capabilities import preflight_tool_model
             selected = {configured_model()}
-            for role in ("analyst", "verifier", "researcher", "builder"):
+            roles = ["analyst", "verifier", "researcher", "builder"]
+            if os.getenv("DRAGONZPYDER_ADAPTIVE_ROUTING_ENABLED") == "1":
+                roles.extend(("fast", "reasoning"))
+            for role in roles:
                 override = os.getenv(
                     "DRAGONZPYDER_AGENT_" + role.upper() + "_MODEL_ID", ""
                 ).strip()

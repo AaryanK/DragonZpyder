@@ -96,3 +96,27 @@ def test_graph_message_stream_uses_nonstreaming_metered_model_transport(monkeypa
             assert values[-1]["messages"][-1].content == "42"
             assert len(calls)==1
     asyncio.run(scenario())
+
+
+def test_shared_builder_propagates_specialists_and_authorized_capabilities(monkeypatch):
+    from agent_platform import runtime, harness
+    for role in ("ANALYST","VERIFIER","RESEARCHER","BUILDER"):
+        monkeypatch.setenv("DRAGONZPYDER_AGENT_"+role+"_MODEL_ID", "test/"+role.lower())
+    calls=[]
+    def model_client(**kwargs):
+        calls.append(kwargs)
+        return kwargs["model_override"]
+    monkeypatch.setattr(runtime,"model_client",model_client)
+    captured={}
+    def factory(model,checkpointer,**kwargs):
+        captured.update(kwargs)
+        return "graph"
+    monkeypatch.setattr(harness,"build_frontier_agent",factory)
+    marker=object()
+    assert runtime.build_agent("supervisor","checkpoint",parent_job_id="parent",delegated_tools=marker,routing_middleware=marker)=="graph"
+    assert captured["delegated_tools"] is marker and captured["routing_middleware"] is marker
+    assert captured["specialist_models"]=={x:"test/"+x for x in ("analyst","verifier","researcher","builder")}
+    assert all(x["parent_job_id"]=="parent" for x in calls)
+    calls.clear()
+    runtime.build_agent("supervisor","checkpoint",artifact_tools=marker)
+    assert captured["artifact_tools"] is marker and all("parent_job_id" not in x for x in calls)

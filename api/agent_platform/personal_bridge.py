@@ -271,7 +271,7 @@ async def operly_personal_run(
     if checkpointer is None:
         raise HTTPException(503, "Persistent agent checkpoint is unavailable")
 
-    from .harness import build_frontier_agent
+    from .runtime import build_agent
     from .operly_mcp_client import load_authorized_operly_mcp_tools
     from .runtime import (
         controlled_termination_reason,
@@ -363,7 +363,7 @@ async def operly_personal_run(
             )[:12000]
         from .adaptive_routing import routed_model
         model,route,route_middleware=routed_model(payload.prompt,model_factory=model_client,has_tools=bool(tools))
-        agent = build_frontier_agent(
+        agent = build_agent(
             model, checkpointer, delegated_tools=tools,
             product_surface="operly",
             **({"routing_middleware":route_middleware} if route_middleware else {}),
