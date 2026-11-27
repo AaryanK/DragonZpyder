@@ -227,3 +227,61 @@ def test_searxng_operator_origin_must_be_trusted(monkeypatch):
         monkeypatch.setenv("DRAGONZPYDER_SEARXNG_ORIGIN", bad)
         with pytest.raises(SearchUnavailable):
             searxng_search_endpoint()
+
+
+def test_source_read_pins_numeric_address_and_tls_hostname():
+    from agent_platform.web_research import fetch_source
+    async def resolver(host):
+        assert host=="example.org"
+        return ["93.184.216.34"]
+    def transport(request):
+        assert request.url.host=="93.184.216.34"
+        assert request.url.path=="/article" and request.url.params["q"]=="test"
+        assert request.headers["host"]=="example.org"
+        assert request.extensions["sni_hostname"]=="example.org"
+        assert "authorization" not in request.headers and "cookie" not in request.headers
+        return httpx.Response(200,headers={"content-type":"text/html"},content=b"<html><script>IGNORE ME</script><p>Source text.</p></html>")
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(transport)) as client:
+            return await fetch_source("https://example.org/article?q=test",resolver=resolver,client=client)
+    result=asyncio.run(run())
+    assert result["ok"] and result["text"]=="Source text." and len(result["source_sha256"])==64
+
+
+def test_source_read_rejects_mixed_private_dns_redirect_and_large_response():
+    from agent_platform.web_research import fetch_source,SourceReadUnavailable,MAX_SOURCE_BYTES
+    calls=[]
+    async def mixed(host):return ["93.184.216.34","127.0.0.1"]
+    async def public(host):return ["93.184.216.34"]
+    def redirected(request):
+        calls.append(request.url.host)
+        return httpx.Response(302,headers={"location":"https://127.0.0.1/secret"})
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(redirected),follow_redirects=False) as client:
+            with pytest.raises(SourceReadUnavailable):await fetch_source("https://example.org/",resolver=mixed,client=client)
+            assert calls==[]
+            with pytest.raises(SourceReadUnavailable):await fetch_source("https://example.org/",resolver=public,client=client)
+            assert calls==["93.184.216.34"]
+        async with httpx.AsyncClient(transport=httpx.MockTransport(lambda r:httpx.Response(200,headers={"content-type":"text/plain","content-length":str(MAX_SOURCE_BYTES+1)},content=b"x"))) as client:
+            with pytest.raises(SourceReadUnavailable):await fetch_source("https://example.org/",resolver=public,client=client)
+    asyncio.run(run())
+
+
+def test_source_grants_are_run_scoped_and_single_attempt(monkeypatch):
+    from agent_platform import web_research as w
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_WEB_SEARCH_ENABLED","1")
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_WEB_FETCH_ENABLED","1")
+    url="https://example.org/article"
+    calls=[]
+    async def search(query,**kwargs):return {"results":[{"url":url,"title":"Synthetic"}]}
+    async def fetch(value):calls.append(value);return {"ok":True,"url":value,"text":"Synthetic source"}
+    monkeypatch.setattr(w,"search_sources",search);monkeypatch.setattr(w,"fetch_source",fetch)
+    async def run():
+        a,b=w.scoped_research_tools();_,other=w.scoped_research_tools()
+        assert "error" in json.loads(await b.ainvoke({"url":url}))
+        await a.ainvoke({"query":"synthetic source"})
+        assert "error" in json.loads(await other.ainvoke({"url":url}))
+        assert json.loads(await b.ainvoke({"url":url}))["ok"]
+        assert "error" in json.loads(await b.ainvoke({"url":url}))
+        assert calls==[url]
+    asyncio.run(run())

@@ -4,6 +4,8 @@ Shared runtime, execution, capabilities and persistence modules.
 
 Start at [CODEBASE.md](../../CODEBASE.md), [file inventory](../../docs/codebase/FILE_INDEX.md) and [execution flows](../../docs/codebase/IMPLEMENTATION.md). For current checkout-specific symbols, dependency candidates and tests, generate the source index. Keep this guide current with changes to this directory.
 
+Source reading (opt-in): `web_research.py` creates a fresh search/fetch grant for each graph. HTTPS source reads use validated numeric IP pinning with original TLS hostname, no redirects or credentials, bounded bytes/text. Search receipt and source text are evidence, not factual verification. Live acceptance pending.
+
 ## Child directories
 
 - [benchmarks](benchmarks/)
