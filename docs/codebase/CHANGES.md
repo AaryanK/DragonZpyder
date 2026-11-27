@@ -297,3 +297,5 @@ Removed the three Markdown guides from Android drawable, values and xml resource
 - `api/agent_platform/first_party_chat.py`: Recover checkpoint as incomplete if repair cannot finish. Offline CI and live acceptance pending.
 - `api/tests/test_progress_guard.py`: Test bounded synthesis and typed-only repair. Offline CI and live acceptance pending.
 - `api/tests/test_agent_gateway_protocol.py`: Test typed unapproved tool rejection. Offline CI and live acceptance pending.
+
+- `api/tests/test_harness_v2.py`: Update the specialist middleware contract for the added finalization guard; retain all external-tool isolation assertions. CI pending.
