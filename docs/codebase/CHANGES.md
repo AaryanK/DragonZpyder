@@ -306,3 +306,12 @@ Removed the three Markdown guides from Android drawable, values and xml resource
 - `apps/sandbox_runner/computer_tool.py`: Install inherited no_new_privs/libseccomp policy before dispatch; close inherited descriptors; deny network, io_uring and cross-process bypass syscall classes. Verify sockets and exec'ed child; fail closed. Real VM qualification pending.
 - `.github/workflows/scoped-sandbox-runner.yml`: Execute actual Linux kernel isolation probe in CI without any network requests or hosted model calls. CI pending.
 - `apps/sandbox_runner/README.md`: Record live network-hardening exit 4 and confirmed cleanup, replacement boundary and acceptance requirements.
+
+## 2026-11-27 — Reintegrate release qualification on current develop (supersedes conflicting PR #156)
+
+- `api/agent_platform/release_acceptance.py`: Pure evidence-bound release scorer for 100 held-out workflows, mandatory probes, recovery and incident thresholds; never dispatches or grants authority. Synthetic CI tests only.
+- `api/tests/test_release_acceptance.py`: Regression tests for false evidence, missing cases, duplicate runs, unknown costs, thresholds and safety incidents. CI pending.
+- `.github/workflows/dragonzpyder-api.yml`: Include release scorer tests without hosted model spending. CI pending.
+- `docs/harness-release-acceptance.md`: Preserve existing minimum release gates, append dated Railway evidence and test progression; not a release claim.
+- `docs/universal-harness-v4.md`: Append dated acceptance implementation and evidence boundary; retain mission and existing architecture.
+- `docs/codebase/IMPLEMENTATION.md`: Describe operator-controlled release qualification and independent evidence path.

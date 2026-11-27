@@ -128,6 +128,7 @@ Shared harness, runtime, capabilities, MCP, bridges, scheduling, budgets, memory
 | [`personal_wake.py`](../../api/agent_platform/personal_wake.py) | Durable sequential Personal MCP wakes and goal controller; renews exact-capability authority per wake. | Reviewed |
 | [`progress_guard.py`](../../api/agent_platform/progress_guard.py) | Before-model middleware fingerprints current-turn tool actions and terminates repeated cycles as incomplete. | Reviewed |
 | [`provider_pacing.py`](../../api/agent_platform/provider_pacing.py) | Gateway-local admission pacing and capped Retry-After parsing; not cross-replica accounting. | Reviewed |
+| [`release_acceptance.py`](../../api/agent_platform/release_acceptance.py) | Independent evidence-bound release scorer; does not authorize or execute trials. | Reviewed |
 | [`router.py`](../../api/agent_platform/router.py) | Internal service-authenticated experimental /internal/agents/run route. | Reviewed |
 | [`runtime.py`](../../api/agent_platform/runtime.py) | Model selection, LangGraph checkpoint runtime, model client, telemetry and result/termination summaries. | Reviewed |
 | [`scientific_oracles.py`](../../api/agent_platform/scientific_oracles.py) | Bounded deterministic Decimal numerical audits for quadratic gradient updates and trilinear interpolation; no dynamic code. | Reviewed |
@@ -368,6 +369,7 @@ Backend contracts, regressions, PostgreSQL integration, and explicitly gated liv
 | [`test_progress_guard.py`](../../api/tests/test_progress_guard.py) | Test target: progress guard; inspect assertions and fixtures for the exact contract. | Indexed |
 | [`test_provider_gateway.py`](../../api/tests/test_provider_gateway.py) | Test target: provider gateway; inspect assertions and fixtures for the exact contract. | Indexed |
 | [`test_provider_pacing.py`](../../api/tests/test_provider_pacing.py) | Test target: provider pacing; inspect assertions and fixtures for the exact contract. | Indexed |
+| [`test_release_acceptance.py`](../../api/tests/test_release_acceptance.py) | Synthetic release scorer threshold and evidence rejection tests. | Reviewed |
 | [`test_sandbox_math.py`](../../api/tests/test_sandbox_math.py) | Test target: sandbox math; inspect assertions and fixtures for the exact contract. | Indexed |
 | [`test_scientific_oracles.py`](../../api/tests/test_scientific_oracles.py) | Test target: scientific oracles; inspect assertions and fixtures for the exact contract. | Indexed |
 | [`test_shared_hourly_quota.py`](../../api/tests/test_shared_hourly_quota.py) | Test target: shared hourly quota; inspect assertions and fixtures for the exact contract. | Indexed |
@@ -386,6 +388,7 @@ Canonical architecture, ownership, identity phases, migration and security docum
 | File | Purpose / navigation | Evidence |
 | --- | --- | --- |
 | [`MERGE_READINESS_2026-11-19.md`](../../docs/MERGE_READINESS_2026-11-19.md) | Documentation: MERGE READINESS 2026 11 19; check date and canonical status. | Indexed |
+| [`harness-release-acceptance.md`](../../docs/harness-release-acceptance.md) | Release qualification and dated live acceptance evidence. | Reviewed |
 | [`identity-import-checkpoint-2026-11-25.md`](../../docs/identity-import-checkpoint-2026-11-25.md) | Documentation: identity import checkpoint 2026 11 25; check date and canonical status. | Indexed |
 | [`identity-migration-plan.md`](../../docs/identity-migration-plan.md) | Documentation: identity migration plan; check date and canonical status. | Indexed |
 | [`identity-offline-transfer.md`](../../docs/identity-offline-transfer.md) | Documentation: identity offline transfer; check date and canonical status. | Indexed |

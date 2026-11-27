@@ -82,6 +82,7 @@ Start at [CODEBASE.md](../../CODEBASE.md), [file inventory](../../docs/codebase/
 | [`personal_wake.py`](personal_wake.py) | Durable sequential Personal MCP wakes and goal controller; renews exact-capability authority per wake. | Reviewed |
 | [`progress_guard.py`](progress_guard.py) | Before-model middleware fingerprints current-turn tool actions and terminates repeated cycles as incomplete. | Reviewed |
 | [`provider_pacing.py`](provider_pacing.py) | Gateway-local admission pacing and capped Retry-After parsing; not cross-replica accounting. | Reviewed |
+| [`release_acceptance.py`](release_acceptance.py) | Independent sealed-manifest release scorer; no model or runtime execution authority. | Reviewed |
 | [`router.py`](router.py) | Internal service-authenticated experimental /internal/agents/run route. | Reviewed |
 | [`runtime.py`](runtime.py) | Model selection, LangGraph checkpoint runtime, model client, telemetry and result/termination summaries. | Reviewed |
 | [`scientific_oracles.py`](scientific_oracles.py) | Bounded deterministic Decimal numerical audits for quadratic gradient updates and trilinear interpolation; no dynamic code. | Reviewed |
