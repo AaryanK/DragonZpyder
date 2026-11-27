@@ -188,13 +188,13 @@ def test_subagent_stops_after_five_ai_turns_without_model_spend():
     from agent_platform.progress_guard import (
         MAX_SPECIALIST_TURNS, specialist_progress_decision,
     )
-    assert MAX_SPECIALIST_TURNS == 5
-    messages=[AIMessage(content="progress") for _ in range(5)]
+    assert MAX_SPECIALIST_TURNS == 7
+    messages=[AIMessage(content="progress") for _ in range(MAX_SPECIALIST_TURNS)]
     decision=specialist_progress_decision({"messages":messages})
     assert decision["jump_to"]=="end"
     assert decision["messages"][0].content.startswith(STOP_PREFIX)
     assert "specialist_step_budget_exhausted" in decision["messages"][0].content
-    assert specialist_progress_decision({"messages":messages[:4]}) is None
+    assert specialist_progress_decision({"messages":messages[:-1]}) is None
 
 
 def test_new_human_turn_resets_checkpoint_step_budget_and_repetition():
@@ -406,3 +406,46 @@ def test_run_telemetry_missing_or_duplicate_callback_is_not_complete():
     trace=RunTelemetry()
     trace.on_llm_error(RuntimeError("unknown"),run_id="missing")
     assert not trace.snapshot(status="failed")["callback_observation_complete"]
+
+
+def test_finalization_repairs_only_typed_pre_dispatch_rejections():
+    import asyncio
+    from types import SimpleNamespace
+    from agent_platform.progress_guard import bounded_finalization
+    from agent_platform.gateway_protocol import TOOL_SELECTION_CODE
+    class Request:
+        tools=["read_file"]
+        state={"messages":[]}
+        tool_choice=None
+        def override(self, **kw):
+            r=Request()
+            r.state=self.state
+            r.tool_choice=kw.get("tool_choice")
+            return r
+    Error=type("APIStatusError",(Exception,),{"__module__":"openai","status_code":502})
+    calls=[]
+    async def handler(request):
+        calls.append(request.tool_choice)
+        if len(calls)==1:
+            error=Error("rejected")
+            error.body={"error":{"type":"dragonzpyder_inference_error","code":TOOL_SELECTION_CODE}}
+            raise error
+        return "synthesis"
+    middleware=bounded_finalization(7)
+    assert asyncio.run(middleware.awrap_model_call(Request(),handler))=="synthesis"
+    assert calls==[None,"none"]
+    async def unrelated(request):
+        error=Error("unconfirmed")
+        error.body={}
+        raise error
+    import pytest
+    with pytest.raises(Error):
+        asyncio.run(bounded_finalization(7).awrap_model_call(Request(),unrelated))
+    req=Request()
+    req.state={"messages":[AIMessage(content="progress") for _ in range(6)]}
+    calls.clear()
+    async def final(request):
+        calls.append(request.tool_choice)
+        return "final"
+    assert asyncio.run(bounded_finalization(7).awrap_model_call(req,final))=="final"
+    assert calls==["none"]

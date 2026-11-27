@@ -103,13 +103,15 @@ def inference_failure_code(error: Exception) -> str | None:
                 return "INFERENCE_LIMIT_REACHED"
             if status == 502:
                 # Require the typed internal gateway envelope, never prose.
-                from .gateway_protocol import OUTPUT_LIMIT_CODE
+                from .gateway_protocol import OUTPUT_LIMIT_CODE, TOOL_SELECTION_CODE
                 body = getattr(current, "body", None)
                 if isinstance(body, dict):
                     detail = body.get("error", body)
-                    if (isinstance(detail, dict) and detail.get("type") == "dragonzpyder_inference_error"
-                            and detail.get("code") == OUTPUT_LIMIT_CODE):
-                        return "INFERENCE_OUTPUT_LIMIT_REACHED"
+                    if isinstance(detail, dict) and detail.get("type") == "dragonzpyder_inference_error":
+                        if detail.get("code") == OUTPUT_LIMIT_CODE:
+                            return "INFERENCE_OUTPUT_LIMIT_REACHED"
+                        if detail.get("code") == TOOL_SELECTION_CODE:
+                            return "INFERENCE_TOOL_SELECTION_REJECTED"
             if status in (502, 503, 504):
                 return "INFERENCE_PROVIDER_UNAVAILABLE"
             if type(current).__name__ in ("APIConnectionError", "APITimeoutError"):

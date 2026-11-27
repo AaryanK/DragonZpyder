@@ -286,3 +286,16 @@ Removed the three Markdown guides from Android drawable, values and xml resource
 - `api/agent_platform/personal_bridge.py`: Use shared builder with scoped Operly personal tools; no permission expansion. Offline regression coverage via shared builder; CI/live pending.
 - `api/agent_platform/native_workflows.py`: Use shared builder in execution and recovery, propagate parent-budget job identity to specialist clients; no new execution or replay authority. Offline regression coverage via shared builder; CI/live pending.
 - `api/tests/test_agent_stack_integration.py`: Test role-specific model construction, capability forwarding and parent-budget propagation without paid requests. CI/live pending.
+
+## 2026-11-27 — P0 finalization and rejected tool recovery
+
+- `api/agent_platform/harness.py`: 16/7 bounded call limits, synthesis reservation and explicit no-shell builder instructions. Offline CI and live acceptance pending.
+- `api/agent_platform/progress_guard.py`: Final call text-only; one metered inference repair for typed rejected tool selection, never uncertain external effects. Offline CI and live acceptance pending.
+- `api/agent_platform/gateway_protocol.py`: Typed rejection without allowing undeclared tools. Offline CI and live acceptance pending.
+- `api/main.py`: Preserve only fixed gateway rejection code. Offline CI and live acceptance pending.
+- `api/agent_platform/personal_bridge.py`: Classify authenticated gateway rejection envelope. Offline CI and live acceptance pending.
+- `api/agent_platform/first_party_chat.py`: Recover checkpoint as incomplete if repair cannot finish. Offline CI and live acceptance pending.
+- `api/tests/test_progress_guard.py`: Test bounded synthesis and typed-only repair. Offline CI and live acceptance pending.
+- `api/tests/test_agent_gateway_protocol.py`: Test typed unapproved tool rejection. Offline CI and live acceptance pending.
+
+- `api/tests/test_harness_v2.py`: Update the specialist middleware contract for the added finalization guard; retain all external-tool isolation assertions. CI pending.

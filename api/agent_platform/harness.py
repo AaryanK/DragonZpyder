@@ -12,7 +12,7 @@ from deepagents import FilesystemPermission, create_deep_agent
 from deepagents.backends import StateBackend
 from deepagents.middleware import FilesystemMiddleware
 from langchain.agents.middleware import TodoListMiddleware, ModelCallLimitMiddleware, ToolCallLimitMiddleware
-from .progress_guard import stop_repeating_agent, stop_repeating_specialist
+from .progress_guard import stop_repeating_agent, stop_repeating_specialist, bounded_finalization
 from .scientific_oracles import check_quadratic_gradient_step, check_trilinear_interpolation
 
 VIRTUAL_TOOLS = ("ls", "read_file", "write_file", "edit_file", "glob", "grep")
@@ -24,8 +24,10 @@ how it might be accomplished. Use the least necessary computation.
 
 Operating discipline:
 - For a simple task, answer directly; avoid unnecessary plans and subagents.
-- For nontrivial objectives, explicitly define acceptance criteria, maintain
-  a concise todo plan, and update it as evidence changes.
+- For multi-action objectives, keep a short plan only when useful. A comparison
+  or explanation can be answered directly; research only when evidence matters.
+- Reserve time for the actual deliverable. If search results are poor, stop
+  searching and answer from available evidence, distinguishing unverified facts.
 - You may use the virtual /workspace/ filesystem to draft, inspect, and revise
   working artifacts; it is not the user's real computer. Do not claim that
   virtual files were deployed, emailed, or saved to external accounts.
@@ -59,8 +61,11 @@ evidence-backed report, not hidden intermediate reasoning.
 BUILDER_PROMPT = """You are DragonZpyder's implementation specialist.
 Create precise virtual /workspace/ artifacts, algorithms, tests and small patches
 for the particular track supplied. Verify artifact content by reading it back.
-Never claim that generated code ran unless you have an actual execute tool
-result; never claim an external write, deploy or publication. Keep scope bounded.
+Your filesystem is virtual. There is no shell, Python interpreter, or
+run_shell_command tool. Do not attempt to invoke an undeclared tool. Write
+compact code, read it back, and report static verification separately from
+execution. Return the implementation or file path and useful evidence.
+Never claim an external write, deploy, publication or executed test.
 """
 
 REVIEWER_PROMPT = """You are DragonZpyder's independent critical verifier.
@@ -88,7 +93,7 @@ def specialist_specs(models: dict | None = None, search_tools=None) -> list[dict
         "DRAGONZPYDER_AGENT_USE_GATEWAY",
         "DRAGONZPYDER_AGENT_PRODUCTION_MODE",
     ))
-    specialist_limit = 7 if stress_mode else 3
+    specialist_limit = 7
     specs = [
         {
             "name": "analyst",
@@ -98,7 +103,7 @@ def specialist_specs(models: dict | None = None, search_tools=None) -> list[dict
             ),
             "system_prompt": ANALYST_PROMPT,
             "tools": [],
-            "middleware": [stop_repeating_specialist, ModelCallLimitMiddleware(run_limit=specialist_limit, exit_behavior="error")],
+            "middleware": [stop_repeating_specialist, ModelCallLimitMiddleware(run_limit=specialist_limit, exit_behavior="error"), bounded_finalization(specialist_limit)],
         },
         {
             "name": "verifier",
@@ -108,7 +113,7 @@ def specialist_specs(models: dict | None = None, search_tools=None) -> list[dict
             ),
             "system_prompt": REVIEWER_PROMPT,
             "tools": [check_quadratic_gradient_step, check_trilinear_interpolation],
-            "middleware": [stop_repeating_specialist, ModelCallLimitMiddleware(run_limit=specialist_limit, exit_behavior="error")],
+            "middleware": [stop_repeating_specialist, ModelCallLimitMiddleware(run_limit=specialist_limit, exit_behavior="error"), bounded_finalization(specialist_limit)],
         },
         {
             "name": "builder",
@@ -122,7 +127,7 @@ def specialist_specs(models: dict | None = None, search_tools=None) -> list[dict
                 stop_repeating_specialist,
                 ModelCallLimitMiddleware(
                     run_limit=specialist_limit, exit_behavior="error"
-                )
+                ), bounded_finalization(specialist_limit)
             ],
         },
     ]
@@ -144,7 +149,7 @@ def specialist_specs(models: dict | None = None, search_tools=None) -> list[dict
             "tools": list(search_tools),
             "middleware": [
                 stop_repeating_specialist,
-                ModelCallLimitMiddleware(run_limit=specialist_limit, exit_behavior="error"),
+                ModelCallLimitMiddleware(run_limit=specialist_limit, exit_behavior="error"), bounded_finalization(specialist_limit),
                 ToolCallLimitMiddleware(
                     tool_name="web_search", run_limit=2, exit_behavior="continue"
                 ),
@@ -392,8 +397,9 @@ def build_frontier_agent(model, checkpointer, *, specialist_models=None, synthet
             # This is *per agent*; global/account cost ceilings remain a
             # separate responsibility of the metered gateway.
             ModelCallLimitMiddleware(
-                run_limit=24 if stress_mode else 8, exit_behavior="error"
+                run_limit=24 if stress_mode else 16, exit_behavior="error"
             ),
+            bounded_finalization(24 if stress_mode else 16),
             ToolCallLimitMiddleware(tool_name="task", run_limit=4 if stress_mode else 3, exit_behavior="error"),
             *([
                 ToolCallLimitMiddleware(

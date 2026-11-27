@@ -10,12 +10,12 @@ import hashlib
 import json
 import os
 
-from langchain.agents.middleware import before_model
+from langchain.agents.middleware import before_model, wrap_model_call
 from langchain_core.messages import AIMessage
 
 STOP_PREFIX = "DRAGONZPYDER_INCOMPLETE:"
-MAX_NORMAL_TURNS = 10
-MAX_STRESS_TURNS = 18
+MAX_NORMAL_TURNS = 16
+MAX_STRESS_TURNS = 24
 
 
 def current_turn_messages(messages: list) -> list:
@@ -150,7 +150,7 @@ def stop_repeating_agent(state, runtime):
 
 
 
-MAX_SPECIALIST_TURNS = 5
+MAX_SPECIALIST_TURNS = 7
 
 
 def specialist_progress_decision(state: dict) -> dict | None:
@@ -179,3 +179,33 @@ def specialist_progress_decision(state: dict) -> dict | None:
 @before_model(can_jump_to=["end"])
 def stop_repeating_specialist(state, runtime):
     return specialist_progress_decision(state)
+
+
+def bounded_finalization(limit: int):
+    """Reserve the last model call for synthesis; repair one rejected model batch.
+
+    A typed gateway rejection proves no tool in that response was dispatched.
+    A model-only retry is still metered and cannot call any tool. Never retry
+    generic 502s, timeouts, authorization failures, or uncertain tool effects.
+    """
+    repaired = False
+
+    @wrap_model_call
+    async def finalize_or_repair(request, handler):
+        nonlocal repaired
+        turns = sum(getattr(m, "type", None) == "ai" for m in
+                    current_turn_messages(request.state.get("messages", [])))
+        if turns >= limit - 1 and request.tools:
+            request = request.override(tool_choice="none")
+        try:
+            return await handler(request)
+        except Exception as exc:
+            from .personal_bridge import inference_failure_code
+            if (repaired or not request.tools or turns >= limit - 1 or
+                    inference_failure_code(exc) != "INFERENCE_TOOL_SELECTION_REJECTED"):
+                raise
+            repaired = True
+            # No side-effect replay. The original batch was rejected before
+            # graph dispatch; force a text-only synthesis from existing state.
+            return await handler(request.override(tool_choice="none"))
+    return finalize_or_repair
