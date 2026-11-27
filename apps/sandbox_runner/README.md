@@ -39,3 +39,7 @@ Operator Railway deployment 75c26d7f-a4e8-4dec-b474-993d5ea61c91 performed a sig
 ## 2026-11-27 — privilege transition repair
 
 Live replacement VM bootstrap reached network verification but failed exit 126; destruction confirmed. Replace su/PAM/login shell transition with a fixed root-owned system Python launcher. It irreversibly drops supplementary groups, GID and UID before executing the isolated helper with a clean environment; failed privilege drop, helper access or exec aborts (71–74). The inherited kernel offline filter remains mandatory. No root helper execution or unfiltered fallback. Live qualification pending.
+
+## 2026-11-27 — template access repair
+
+The signed VM test returned 503 at network hardening (launcher exit 73; cleanup confirmed). Normalize permissions only on the trusted root-owned virtual environment, preserve non-writability for the scoped user, and check interpreter presence separately from helper access. No change to UID drop, kernel isolation, or scope permissions. Actual template qualification is pending.
