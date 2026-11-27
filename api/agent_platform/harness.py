@@ -208,11 +208,12 @@ def build_frontier_agent(model, checkpointer, *, specialist_models=None, synthet
             "means stop searching and return the best grounded partial answer."
         )
         if read_sources:
-            prompt += ("\\nUse web_fetch for important claims: it reads bounded source text "
-                       "from exact current search URLs. A successful read is not by itself "
-                       "factual verification. Cite only claims supported by the returned text; "
-                       "mark unread or truncated evidence appropriately. Maximum eight "
-                       "distinct reads across this graph; no repeated fetches.")
+            prompt += ("\nweb_search automatically reads up to five exact public sources and "
+                       "returns source_reads with text, digest and failures. Use these "
+                       "before searching again. web_fetch returns more text from the same "
+                       "cached source. Cite only supported claims, mark unread or truncated "
+                       "evidence, and synthesize once sufficient evidence is available. "
+                       "Maximum eight distinct reads per graph; no repeated network fetches.")
     if synthetic_tools:
         prompt += ("\nThis isolated evaluation provides only SIMULATED business tools. "
                    "Never represent their output as real transactions, customers, "
