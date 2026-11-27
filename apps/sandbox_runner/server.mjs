@@ -42,7 +42,7 @@ function computerTemplate() {
   cachedTemplate = Sandbox.template()
     .withPackages(
       "bash", "build-essential", "ca-certificates", "chromium", "curl", "ffmpeg", "file", "git",
-      "iptables", "jq", "nodejs", "npm", "poppler-utils", "procps", "python3", "python3-pip",
+      "libseccomp2", "jq", "nodejs", "npm", "poppler-utils", "procps", "python3", "python3-pip",
       "python3-venv", "ripgrep", "unzip", "wget", "zip",
     )
     .run("python3 -m venv /opt/operly-py")
@@ -240,38 +240,20 @@ async function requiredBootstrapExec(box, label, command) {
   }
 }
 
-async function harden(box, networkPolicy) {
-  const rules = [
-    {
-      apply: "iptables -C OUTPUT -m owner --uid-owner 10001 -d 169.254.0.0/16 -j REJECT 2>/dev/null || iptables -A OUTPUT -m owner --uid-owner 10001 -d 169.254.0.0/16 -j REJECT",
-      verify: "iptables -C OUTPUT -m owner --uid-owner 10001 -d 169.254.0.0/16 -j REJECT",
-    },
-    {
-      apply: "ip6tables -C OUTPUT -m owner --uid-owner 10001 -d fe80::/10 -j REJECT 2>/dev/null || ip6tables -A OUTPUT -m owner --uid-owner 10001 -d fe80::/10 -j REJECT",
-      verify: "ip6tables -C OUTPUT -m owner --uid-owner 10001 -d fe80::/10 -j REJECT",
-    },
-  ];
-  if (networkPolicy === "off") {
-    rules.push(
-      {
-        apply: "iptables -C OUTPUT -m owner --uid-owner 10001 ! -d 127.0.0.0/8 -j REJECT 2>/dev/null || iptables -A OUTPUT -m owner --uid-owner 10001 ! -d 127.0.0.0/8 -j REJECT",
-        verify: "iptables -C OUTPUT -m owner --uid-owner 10001 ! -d 127.0.0.0/8 -j REJECT",
-      },
-      {
-        apply: "ip6tables -C OUTPUT -m owner --uid-owner 10001 ! -d ::1/128 -j REJECT 2>/dev/null || ip6tables -A OUTPUT -m owner --uid-owner 10001 ! -d ::1/128 -j REJECT",
-        verify: "ip6tables -C OUTPUT -m owner --uid-owner 10001 ! -d ::1/128 -j REJECT",
-      },
-    );
-  }
+// The Railway guest rejects NET_ADMIN/iptables (live exit 4). Keep the
+// provider's isolated VM, but enforce a stricter off policy in the kernel
+// for every trusted helper invocation and every descendant process.
+// Never fall back to an unfiltered command if the kernel probe fails.
+function offlineInvocation(args) {
+  return "env -i PATH=/usr/local/bin:/usr/bin:/bin LANG=C.UTF-8 HOME=/workspace/work " +
+    PYTHON + " -I -B /opt/operly-computer-tool.py " + args.map(shellQuote).join(" ");
+}
 
-  // Network isolation is a security boundary. Never swallow firewall failures:
-  // apply every required rule, then independently verify that the kernel has it.
-  for (const rule of rules) {
-    await requiredBootstrapExec(box, "network-harden", rule.apply);
-  }
-  for (const rule of rules) {
-    await requiredBootstrapExec(box, "network-verify", rule.verify);
-  }
+async function harden(box, networkPolicy) {
+  if (networkPolicy !== "off") throw Object.assign(new Error("Offline policy required"),{statusCode:403});
+  const probe = "test \"$(id -u)\" = 10001 && " + offlineInvocation(["--offline-probe"]);
+  await requiredBootstrapExec(box, "network-verify",
+    "su -s /bin/bash operly -c " + shellQuote(probe) + " </dev/null");
 }
 
 async function createSession(payload) {
@@ -389,9 +371,9 @@ async function executeTool(runtimeId, toolId, scope, rawArgs) {
     // Use the files API for the bounded JSON packet. The pinned SDK's exec
     // stream is not a binary/artifact transport. Root opens the output file;
     // the child only inherits stdout, not permission to replace the file.
-    const invocation = `${PYTHON} /opt/operly-computer-tool.py ${tool} ${requestPath}`;
+    const invocation = offlineInvocation([tool, requestPath]);
     const result = await box.exec(
-      `umask 077; su -s /bin/bash operly -c ${shellQuote(invocation)} > ${shellQuote(outputPath)}`,
+      `umask 077; su -s /bin/bash operly -c ${shellQuote(invocation)} </dev/null > ${shellQuote(outputPath)}`,
       { cwd: WORKSPACE, timeoutSec },
     );
     // A lost/terminated exec cannot be treated as a valid completion.

@@ -299,3 +299,10 @@ Removed the three Markdown guides from Android drawable, values and xml resource
 - `api/tests/test_agent_gateway_protocol.py`: Test typed unapproved tool rejection. Offline CI and live acceptance pending.
 
 - `api/tests/test_harness_v2.py`: Update the specialist middleware contract for the added finalization guard; retain all external-tool isolation assertions. CI pending.
+
+## 2026-11-27 — Offline VM network enforcement repair
+
+- `apps/sandbox_runner/server.mjs`: Replace failing guest iptables hardening with mandatory offline kernel probe using the same root-owned isolated helper as tool execution. Keep Railway ISOLATED network mode, clean environment and scope checks. No network-enabled mode or fallback.
+- `apps/sandbox_runner/computer_tool.py`: Install inherited no_new_privs/libseccomp policy before dispatch; close inherited descriptors; deny network, io_uring and cross-process bypass syscall classes. Verify sockets and exec'ed child; fail closed. Real VM qualification pending.
+- `.github/workflows/scoped-sandbox-runner.yml`: Execute actual Linux kernel isolation probe in CI without any network requests or hosted model calls. CI pending.
+- `apps/sandbox_runner/README.md`: Record live network-hardening exit 4 and confirmed cleanup, replacement boundary and acceptance requirements.
