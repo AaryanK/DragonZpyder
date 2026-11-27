@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {encodeWav,UtteranceDetector,voiceFailureMessage} from "../src/openrouter-voice.js";
+import {encodeWav,UtteranceDetector,voiceFailureMessage,connectOpenRouterVoice} from "../src/openrouter-voice.js";
 
 test("resamples and emits canonical 16 kHz mono WAV",()=>{
   const bytes=encodeWav([new Float32Array(48000).fill(.25)],48000);
@@ -39,4 +39,32 @@ test("voice failures distinguish unsubmitted transcription from uncertain agent 
   assert.match(voiceFailureMessage({code:"voice_transcription_provider_unavailable",outcome:"not_submitted"}),/Transcription unavailable/);
   assert.match(voiceFailureMessage({code:"voice_agent_unconfirmed",outcome:"unconfirmed"}),/Check your chat/);
   assert.match(voiceFailureMessage({code:"private upstream data",outcome:"not_submitted"}),/Check your chat/);
+});
+
+test("native audio lifecycle stops capture on rejected turn and controls actual playback gain",async()=>{
+  let node,gain,posted=0,closed=false,states=[];
+  const previous={window:globalThis.window,AudioWorkletNode:globalThis.AudioWorkletNode,fetch:globalThis.fetch,crypto:globalThis.crypto};
+  const link=()=>({connect(){},disconnect(){}});
+  class Context {
+    constructor(){this.sampleRate=16000;this.destination={};this.audioWorklet={addModule:async()=>{}};}
+    async resume(){}
+    async close(){closed=true;}
+    createMediaStreamSource(){return link();}
+    createMediaStreamDestination(){return {...link(),stream:{}};}
+    createGain(){gain={...link(),gain:{value:1}};return gain;}
+  }
+  class Worklet {constructor(){node=this;this.port={};}connect(){}disconnect(){}}
+  try{
+    globalThis.window={AudioContext:Context};globalThis.AudioWorkletNode=Worklet;
+    globalThis.fetch=async()=>{posted++;return new Response(JSON.stringify({detail:{code:"voice_transcription_quota_or_rate_limit",outcome:"not_submitted"}}),{status:429,headers:{"Content-Type":"application/json"}});};
+    const room=await connectOpenRouterVoice({stream:{},sessionId:"test",csrf:"test",onData(){assert.fail("unexpected agent answer");},onRemote(){},onState(m,k){states.push([m,k]);}});
+    room.setPlaybackMuted(true);assert.equal(gain.gain.value,0);
+    room.setPlaybackMuted(false);assert.equal(gain.gain.value,1);
+    const utterance=()=>{for(let i=0;i<15;i++)node.port.onmessage({data:new Float32Array(320).fill(.2)});for(let i=0;i<30;i++)node.port.onmessage({data:new Float32Array(320)});};
+    utterance();await new Promise(resolve=>setImmediate(resolve));
+    assert.equal(posted,1);assert.equal(states.at(-1)[1],"error");assert.match(states.at(-1)[0],/No agent task was submitted/);
+    utterance();room.setMuted(true);room.setMuted(false);utterance();
+    await new Promise(resolve=>setImmediate(resolve));assert.equal(posted,1);
+    await room.disconnect();assert.equal(closed,true);
+  }finally{globalThis.window=previous.window;globalThis.AudioWorkletNode=previous.AudioWorkletNode;globalThis.fetch=previous.fetch;}
 });

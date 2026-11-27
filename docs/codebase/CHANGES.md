@@ -320,3 +320,11 @@ Removed the three Markdown guides from Android drawable, values and xml resource
 ## 2026-11-27 — production voice turn reliability
 
 Production evidence: session starts and one canonical turn succeeded; a subsequent speech request was aborted by the client, followed by session closure and three HTTP 503 turn responses. Existing logs did not establish the underlying 503 reason. `api/agent_platform/openrouter_voice.py` and `api/provider_gateway.py` now distinguish pre-chat transcription rejection, unconfirmed agent execution, and post-commit speech failure; log only sanitized phase/status/exception type, preserve quota status and all replay fences. `web/frontend/src/openrouter-voice.js` gates capture during execution and speech, pauses after failures until the user exits, and routes playback through a controllable gain. `web/companion.js` and `VoiceOrb.jsx` bind mute and truthful agent-mode copy without changing the orb renderer. Offline tests cover failure classification. Deliberate half-duplex behavior replaces automatic barge-in until echo-safe full duplex is qualified. CI and production audio verification pending.
+
+- `api/agent_platform/openrouter_voice.py`: distinguishes voice failure phases and preserves request outcome semantics.
+- `api/provider_gateway.py`: logs bounded upstream status and accounting failures for voice without private data.
+- `api/tests/test_openrouter_voice.py`: verifies safe phase errors and quota response.
+- `web/frontend/src/openrouter-voice.js`: pauses capture during processing/playback and after errors; adds gain-based speaker mute.
+- `web/companion.js`: connects speaker mute and preserves openrouter processing/error status when microphone toggles.
+- `web/frontend/src/VoiceOrb.jsx`: corrects agent-mode text and error heading while retaining the artwork.
+- `web/frontend/scripts/test-openrouter-voice.mjs`: tests error classification and mocked real adapter lifecycle, including capture halt and playback gain. CI and device acceptance pending.

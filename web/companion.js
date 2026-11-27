@@ -159,7 +159,7 @@ async function handleTool(item,v){
 function finishAgentPlayback(){
   nativeBusy=false;
   for(const t of mic?.getAudioTracks()||[])t.enabled=!silent;
-  if(panel.dataset.state!=="error")setStatus(silent?"Microphone muted":"Listening — speak naturally","listening");
+  setStatus(silent?"Microphone muted":"Listening — speak naturally","listening");
 }
 async function handleAgentTranscript(e,v){
   const call=nativeCall,transcript=String(e.transcript||"").trim(),eventId=e.item_id;
@@ -348,7 +348,7 @@ mute.addEventListener("click",()=>{
   silent=!silent;mic.getAudioTracks().forEach(t=>t.enabled=!silent&&!nativeBusy);
   modularRoom?.setMuted?.(silent);
   window.dispatchEvent(new CustomEvent("dragonzpyder:voice-mute",{detail:{muted:silent}}));
-  setStatus(silent?"Microphone muted":"Listening — speak naturally","listening");
+  if(panel.dataset.state!=="error"&&!(nativeCall?.openrouter&&["working","speaking"].includes(panel.dataset.state)))setStatus(silent?"Microphone muted":"Listening — speak naturally","listening");
 });
 window.addEventListener("keydown",e=>{if(e.ctrlKey&&e.code==="Space"&&!e.repeat&&!e.altKey&&!e.metaKey){e.preventDefault();if(panel.hidden){if(voiceContext().available&&!launch.disabled)start()}else close()}else if(e.key==="Escape"&&!panel.hidden)close()});
 window.addEventListener("pagehide",cleanup);window.addEventListener("dragonzpyder:logout",close);
