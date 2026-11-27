@@ -244,16 +244,19 @@ async function requiredBootstrapExec(box, label, command) {
 // provider's isolated VM, but enforce a stricter off policy in the kernel
 // for every trusted helper invocation and every descendant process.
 // Never fall back to an unfiltered command if the kernel probe fails.
+const OFFLINE_LAUNCHER = "# Trusted, constant bootstrap program; never interpolates model-supplied code.\nimport os,sys\nif os.getuid()!=0 or os.geteuid()!=0:\n    raise SystemExit(71)\ntry:\n    os.setgroups([])\n    os.setgid(10001)\n    os.setuid(10001)\n    assert os.getresuid()==(10001,10001,10001) and os.getresgid()==(10001,10001,10001)\nexcept Exception:\n    raise SystemExit(72)\ntry:\n    os.chdir(\"/workspace/work\")\n    executable=\"/opt/operly-py/bin/python\"\n    helper=\"/opt/operly-computer-tool.py\"\n    if not os.access(executable,os.X_OK) or not os.access(helper,os.R_OK):\n        raise SystemExit(73)\n    os.execve(executable,[executable,\"-I\",\"-B\",helper,*sys.argv[1:]],{\n        \"PATH\":\"/usr/local/bin:/usr/bin:/bin\",\"LANG\":\"C.UTF-8\",\"HOME\":\"/workspace/work\"})\nexcept OSError:\n    raise SystemExit(74)";
+
 function offlineInvocation(args) {
-  return "env -i PATH=/usr/local/bin:/usr/bin:/bin LANG=C.UTF-8 HOME=/workspace/work " +
-    PYTHON + " -I -B /opt/operly-computer-tool.py " + args.map(shellQuote).join(" ");
+  // Fixed system interpreter; clean environment; irreversible UID/GID drop.
+  // No su/PAM or login shell, no user-writable interpreter search path.
+  return "/usr/bin/env -i PATH=/usr/bin:/bin LANG=C.UTF-8 /usr/bin/python3 -I -B -c " +
+    shellQuote(OFFLINE_LAUNCHER) + " " + args.map(shellQuote).join(" ");
 }
 
 async function harden(box, networkPolicy) {
   if (networkPolicy !== "off") throw Object.assign(new Error("Offline policy required"),{statusCode:403});
-  const probe = "test \"$(id -u)\" = 10001 && " + offlineInvocation(["--offline-probe"]);
   await requiredBootstrapExec(box, "network-verify",
-    "su -s /bin/bash operly -c " + shellQuote(probe) + " </dev/null");
+    offlineInvocation(["--offline-probe"]) + " </dev/null");
 }
 
 async function createSession(payload) {
@@ -373,7 +376,7 @@ async function executeTool(runtimeId, toolId, scope, rawArgs) {
     // the child only inherits stdout, not permission to replace the file.
     const invocation = offlineInvocation([tool, requestPath]);
     const result = await box.exec(
-      `umask 077; su -s /bin/bash operly -c ${shellQuote(invocation)} </dev/null > ${shellQuote(outputPath)}`,
+      `umask 077; ${invocation} </dev/null > ${shellQuote(outputPath)}`,
       { cwd: WORKSPACE, timeoutSec },
     );
     // A lost/terminated exec cannot be treated as a valid completion.

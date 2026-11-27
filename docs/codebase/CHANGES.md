@@ -323,3 +323,8 @@ Removed the three Markdown guides from Android drawable, values and xml resource
 - `api/agent_platform/README.md`, `api/agent_platform/migrations/README.md`, `docs/codebase/IMPLEMENTATION.md`: describe prerequisites, new default, bounded migration and budget tradeoff. CI, real role privileges and deployed voice acceptance remain unverified.
 
 - `api/agent_platform/openrouter_voice.py`: checks existing conversation/quota schema, voice column/index and required DML permissions before attempting any DDL. A complete schema is reused without DDL; missing voice components are installed transactionally under the existing role. `api/tests/test_openrouter_voice.py` exercises bootstrap and repeated startup with disposable PostgreSQL. CI pending.
+
+## 2026-11-27 — VM privilege transition
+
+- `apps/sandbox_runner/server.mjs`: Replace failing su/login-shell transition with a constant system Python launcher that clears supplementary groups and irreversibly sets and verifies UID/GID 10001 before exec. Fail closed on inaccessible helper or interpreter; preserve kernel offline filter, scope enforcement and cleanup. Live exit 126 observed; exact originating permission issue not yet proven. CI and actual VM probe pending.
+- `apps/sandbox_runner/README.md`: Record live exit 126 and privilege transition repair; no production capability claim.
