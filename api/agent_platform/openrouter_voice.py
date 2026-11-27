@@ -22,6 +22,7 @@ import wave
 from uuid import UUID,uuid5
 from pathlib import Path
 
+import asyncpg
 from fastapi import APIRouter,HTTPException,Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel,ConfigDict,Field
@@ -63,6 +64,31 @@ def enabled():
         return os.getenv("DRAGONZPYDER_OPENROUTER_VOICE_ENABLED")!="0" and _schema_ready and ledger.available
     return os.getenv("DRAGONZPYDER_OPENROUTER_VOICE_ENABLED")=="1"
 
+async def _probe_schema(db):
+    """Validate the existing storage contract without DDL on ordinary restarts."""
+    for query in (
+        "SELECT id,owner_id FROM dz_first_party_conversations LIMIT 0",
+        "SELECT owner_id,quota_day,reserved_calls FROM dz_first_party_daily_quota LIMIT 0",
+        "SELECT owner_id,request_id,fingerprint,conversation_id,status,response,cancel_requested,updated_at FROM dz_first_party_chat_requests LIMIT 0",
+        "SELECT owner_id,session_id,state,expires_at,created_at,updated_at,transport,agent_mode,conversation_id,mcp_connection_ids,session_reference,source_channel,bridge_token_sha256 FROM dz_native_voice_sessions LIMIT 0",
+        "SELECT owner_id,session_id,event_id,request_id,audio_sha256 FROM dz_openrouter_voice_turns LIMIT 0",
+        "SELECT owner_id,session_id,event_id,segment FROM dz_openrouter_voice_speech LIMIT 0"):
+        await db.execute(query)
+    for table,operations in (
+        ("dz_first_party_conversations",("INSERT","UPDATE")),
+        ("dz_first_party_daily_quota",("INSERT","UPDATE")),
+        ("dz_first_party_chat_requests",("INSERT","UPDATE")),
+        ("dz_native_voice_sessions",("INSERT","UPDATE")),
+        ("dz_openrouter_voice_turns",("INSERT",)),
+        ("dz_openrouter_voice_speech",("INSERT",))):
+        for op in operations:
+            if not await db.fetchval("SELECT has_table_privilege(current_user,$1,$2)",table,op):
+                raise PermissionError("Voice storage permission unavailable")
+    return all([await db.fetchval("SELECT to_regclass($1) IS NOT NULL",name)
+                for name in ("dz_native_voice_expiry","dz_modular_voice_room",
+                             "dz_modular_voice_session","dz_voice_bridge_grant",
+                             "dz_first_party_chat_requests_owner_updated")])
+
 async def prepare_production_schema():
     """Apply the four reviewed additive migrations atomically to the existing
     agent database. No role/grant changes; insufficient privileges or absent
@@ -84,15 +110,22 @@ async def prepare_production_schema():
                     await db.execute("SET LOCAL lock_timeout = '3s'")
                     await db.execute("SET LOCAL statement_timeout = '8s'")
                     await db.execute("SELECT pg_advisory_xact_lock(hashtextextended($1,0))","dz-production-voice-schema-v1")
-                    for name in ("20261125_first_party_request_ledger.sql","20261125_native_voice.sql",
-                                 "20261126_modular_voice.sql","20261126_openrouter_voice.sql"):
-                        await db.execute((migrations/name).read_text(encoding="utf-8"))
-                    # Readiness must include the actual canonical conversation storage.
+                    # The existing Personal conversation schema is a prerequisite,
+                    # not something this voice deployment may bootstrap.
                     await db.execute("SELECT id,owner_id FROM dz_first_party_conversations LIMIT 0")
-                    await db.execute("SELECT request_id,cancel_requested FROM dz_first_party_chat_requests LIMIT 0")
-                    await db.execute("SELECT session_id,transport,source_channel,bridge_token_sha256 FROM dz_native_voice_sessions LIMIT 0")
-                    await db.execute("SELECT event_id,request_id FROM dz_openrouter_voice_turns LIMIT 0")
-                    await db.execute("SELECT event_id,segment FROM dz_openrouter_voice_speech LIMIT 0")
+                    await db.execute("SELECT owner_id,quota_day,reserved_calls FROM dz_first_party_daily_quota LIMIT 0")
+                    try:
+                        # Savepoint clears a missing-table/column error before DDL.
+                        async with db.transaction():
+                            ready=await _probe_schema(db)
+                    except (asyncpg.UndefinedTableError,asyncpg.UndefinedColumnError):
+                        ready=False
+                    if not ready:
+                        for name in ("20261125_first_party_request_ledger.sql","20261125_native_voice.sql",
+                                     "20261126_modular_voice.sql","20261126_openrouter_voice.sql"):
+                            await db.execute((migrations/name).read_text(encoding="utf-8"))
+                        if not await _probe_schema(db):
+                            raise RuntimeError("Voice storage indexes unavailable")
         _schema_ready=True
         log.info("Production voice readiness: schema ready")
     except Exception:

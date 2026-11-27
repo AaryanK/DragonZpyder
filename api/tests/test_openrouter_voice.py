@@ -148,9 +148,20 @@ def test_postgres_voice_turn_and_speech_replay_fences(monkeypatch):
         nonlocal current_owner
         migrations=Path(__file__).resolve().parents[1]/"agent_platform/migrations"
         async with db_factory() as db:
-            for name in ("20261125_native_voice.sql","20261125_first_party_request_ledger.sql",
-                         "20261126_modular_voice.sql","20261126_openrouter_voice.sql"):
-                await db.execute((migrations/name).read_text())
+            await db.execute((migrations/"20261122_first_party_chat.sql").read_text())
+        # Exercise the real production bootstrap and a repeated startup against
+        # the disposable PostgreSQL DB, without contacting a paid provider.
+        with monkeypatch.context() as production:
+            production.setenv("RAILWAY_ENVIRONMENT_NAME","production")
+            production.setenv("OPENROUTER_API_KEY","existing-"+"x"*32)
+            production.delenv("DRAGONZPYDER_OPENROUTER_VOICE_ENABLED")
+            production.setattr(ledger,"pool",object())
+            production.setattr(voice,"_schema_ready",False)
+            await voice.prepare_production_schema()
+            assert voice.enabled()
+            await voice.prepare_production_schema()
+            assert voice.enabled()
+        async with db_factory() as db:
             await db.execute("""INSERT INTO dz_native_voice_sessions
                 (owner_id,session_id,state,expires_at,transport,agent_mode,conversation_id,session_reference)
                 VALUES($1,$2,'active',now()+interval '5 minutes','openrouter',TRUE,$3,'test-session-ref')""",owner,sid,cid)

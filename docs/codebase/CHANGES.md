@@ -314,3 +314,5 @@ Removed the three Markdown guides from Android drawable, values and xml resource
 - `api/main.py`: runs the voice preparation step in API lifespan; optional migration failure leaves text runtime intact.
 - `api/tests/test_openrouter_voice.py`: verifies default production activation, key reuse, ledger/schema failure, explicit rollback and quota denial without paid calls. Existing staging tests retained.
 - `api/agent_platform/README.md`, `api/agent_platform/migrations/README.md`, `docs/codebase/IMPLEMENTATION.md`: describe prerequisites, new default, bounded migration and budget tradeoff. CI, real role privileges and deployed voice acceptance remain unverified.
+
+- `api/agent_platform/openrouter_voice.py`: checks existing conversation/quota schema, voice column/index and required DML permissions before attempting any DDL. A complete schema is reused without DDL; missing voice components are installed transactionally under the existing role. `api/tests/test_openrouter_voice.py` exercises bootstrap and repeated startup with disposable PostgreSQL. CI pending.
