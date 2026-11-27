@@ -2,6 +2,13 @@
 
 For each implementation change, add a new bullet beginning with the exact repository-relative path in backticks, followed by a colon and a substantive explanation. Include changed behavior or why behavior is unchanged, affected callers/dependencies, constraints, tests/evidence and unresolved limitations. Record both paths for a rename; describe removals. Do not edit old entries to make a new change appear covered. Update file inventory, local guides and execution flows alongside this record. Documentation-only edits need no records.
 
+## 2026-11-27 — Bounded source reading
+
+- `api/agent_platform/web_research.py`: Add opt-in per-graph exact-search-URL grants, public DNS validation and numeric TLS origin pinning, no redirects/credentials, bounded text extraction and SHA-256. Up to eight unique source reads; offline and live qualification pending.
+- `api/agent_platform/harness.py`: Bind scoped search/read tool pair only when operator enables fetch; ground important claims in actual text, no claim of verification merely from a fetch.
+- `api/tests/test_agent_web_monitor.py`: Exercise mixed-private DNS denial, numeric origin/SNI, redirect/body rejection and isolated single-attempt grants with synthetic HTTP; CI pending.
+- `api/tests/test_harness_tool_acceptance.py`: Real LangGraph dispatch with synthetic search/read transport; require receipt and deny objective self-verification. CI pending.
+
 ## 2026-11-26 — documentation infrastructure
 
 - `scripts/build_codebase_index.py`: Generates source-derived file and directory pages and flat navigation, extracts symbols, docstrings, parameters, call candidates, imports, routes and candidate references; includes curated purpose rows; no application execution. Initial generator and gate passed the codebase documentation CI; expanded coverage checks require their own run.
@@ -328,3 +335,15 @@ Production evidence: session starts and one canonical turn succeeded; a subseque
 - `web/companion.js`: connects speaker mute and preserves openrouter processing/error status when microphone toggles.
 - `web/frontend/src/VoiceOrb.jsx`: corrects agent-mode text and error heading while retaining the artwork.
 - `web/frontend/scripts/test-openrouter-voice.mjs`: tests error classification and mocked real adapter lifecycle, including capture halt and playback gain. CI and device acceptance pending.
+
+## 2026-11-27 — VM privilege transition
+
+- `apps/sandbox_runner/server.mjs`: Replace failing su/login-shell transition with a constant system Python launcher that clears supplementary groups and irreversibly sets and verifies UID/GID 10001 before exec. Fail closed on inaccessible helper or interpreter; preserve kernel offline filter, scope enforcement and cleanup. Live exit 126 observed; exact originating permission issue not yet proven. CI and actual VM probe pending.
+- `apps/sandbox_runner/README.md`: Record live exit 126 and privilege transition repair; no production capability claim.
+
+## 2026-11-27 — automatic grounded search
+
+- `api/agent_platform/web_research.py`: Automatically read up to five search-returned public pages, with a shared per-graph eight-attempt limit, concurrency three, cached success/failure, bounded excerpt and digest. Separate web_fetch reuses evidence. Direct source transport passed Railway; live graph had five searches and zero fetches, so source reading must not depend on tool selection. CI/live graph retest pending.
+- `api/agent_platform/harness.py`: Use automatic source evidence before repeated searches; do not label unsupported claims verified.
+- `api/tests/test_agent_web_monitor.py`: Test automatic reads, failures, quotas, cache and per-graph isolation.
+- `api/tests/test_harness_tool_acceptance.py`: Assert source text is present in the actual graph search receipt.

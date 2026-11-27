@@ -702,3 +702,26 @@ def test_search_budget_denies_sixth_call_but_preserves_final_answer(monkeypatch)
         assert state["messages"][-1].content=="Five search results; additional sources not verified."
         assert summarize_agent_result(state)["objective_verified"] is False
     asyncio.run(scenario())
+
+
+def test_real_graph_reads_only_search_granted_source(monkeypatch):
+    from agent_platform import web_research as w
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_WEB_SEARCH_ENABLED","1")
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_WEB_FETCH_ENABLED","1")
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_QUICKJS_ENABLED","0")
+    url="https://example.org/source"
+    calls=[]
+    async def search(query,**kwargs):return {"results":[{"url":url,"title":"Synthetic source"}]}
+    async def fetch(value):calls.append(value);return {"ok":True,"url":value,"text":"Synthetic fact 391"}
+    monkeypatch.setattr(w,"search_sources",search);monkeypatch.setattr(w,"fetch_source",fetch)
+    model=ToolScript(responses=[scripted_call("web_search",{"query":"synthetic evidence"}),scripted_call("web_fetch",{"url":url}),AIMessage(content="The source reports 391.")])
+    async def run():
+        state=await build_frontier_agent(model,MemorySaver()).ainvoke({"messages":[{"role":"user","content":"Research synthetic evidence"}]},config={"configurable":{"thread_id":"source-read-test"}})
+        report=summarize_agent_result(state)
+        assert calls==[url] and report["status"]=="completed"
+        assert "web_fetch" in report["successful_tools"] and report["objective_verified"] is False
+        from langchain_core.messages import ToolMessage
+        import json
+        evidence=[json.loads(m.content) for m in state["messages"] if isinstance(m,ToolMessage) and m.name=="web_search"]
+        assert evidence[0]["source_reads"][0]["text"]=="Synthetic fact 391"
+    asyncio.run(run())

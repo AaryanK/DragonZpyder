@@ -194,8 +194,9 @@ def build_frontier_agent(model, checkpointer, *, specialist_models=None, synthet
             "the authenticated Operly MCP tools actually authorize them."
         )
     if allow_search:
-        from .web_research import web_search
-        search_tools = [web_search]
+        from .web_research import web_search, scoped_research_tools
+        read_sources = os.getenv("DRAGONZPYDER_AGENT_WEB_FETCH_ENABLED") == "1"
+        search_tools = scoped_research_tools() if read_sources else [web_search]
         prompt += (
             "\nThe web_search tool retrieves limited source-attributed snippets, "
             "not full web pages. Use it to verify time-sensitive facts; cite exact "
@@ -206,6 +207,13 @@ def build_frontier_agent(model, checkpointer, *, specialist_models=None, synthet
             "of inventing citations or repeatedly searching. A search quota denial "
             "means stop searching and return the best grounded partial answer."
         )
+        if read_sources:
+            prompt += ("\nweb_search automatically reads up to five exact public sources and "
+                       "returns source_reads with text, digest and failures. Use these "
+                       "before searching again. web_fetch returns more text from the same "
+                       "cached source. Cite only supported claims, mark unread or truncated "
+                       "evidence, and synthesize once sufficient evidence is available. "
+                       "Maximum eight distinct reads per graph; no repeated network fetches.")
     if synthetic_tools:
         prompt += ("\nThis isolated evaluation provides only SIMULATED business tools. "
                    "Never represent their output as real transactions, customers, "
