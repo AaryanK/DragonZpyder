@@ -280,6 +280,9 @@ Removed the three Markdown guides from Android drawable, values and xml resource
 
 ## 2026-11-27 — P0 unify production model routing
 
-- `api/agent_platform/runtime.py`: shared builder forwards authorized capability arguments, role-specific clients and routing middleware; preflight includes fast/reasoning routes.
-- `api/agent_platform/first_party_chat.py`, `workspace_bridge.py`, `personal_bridge.py`, `native_workflows.py`: use common builder; parent-budget identity also applies to durable specialists; record initial route metadata. Existing authority checks retained.
-- `api/tests/test_agent_stack_integration.py`: verify all specialist roles, capability forwarding and parent-budget propagation. Offline CI pending; production model catalog and live smoke still required.
+- `api/agent_platform/runtime.py`: Shared builder forwards scoped capabilities, specialist clients, routing middleware; startup preflight includes fast/reasoning roles. Offline regression added; CI/live pending.
+- `api/agent_platform/first_party_chat.py`: Use shared builder for chat and checkpoint reads; include initial model route metadata. Existing authority preserved. Offline regression coverage via shared builder; CI/live pending.
+- `api/agent_platform/workspace_bridge.py`: Use shared builder with authorized Operly workspace tools and existing product surface. Offline regression coverage via shared builder; CI/live pending.
+- `api/agent_platform/personal_bridge.py`: Use shared builder with scoped Operly personal tools; no permission expansion. Offline regression coverage via shared builder; CI/live pending.
+- `api/agent_platform/native_workflows.py`: Use shared builder in execution and recovery, propagate parent-budget job identity to specialist clients; no new execution or replay authority. Offline regression coverage via shared builder; CI/live pending.
+- `api/tests/test_agent_stack_integration.py`: Test role-specific model construction, capability forwarding and parent-budget propagation without paid requests. CI/live pending.
