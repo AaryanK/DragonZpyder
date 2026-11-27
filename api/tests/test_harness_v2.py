@@ -24,7 +24,8 @@ def test_specialists_cannot_inherit_external_tools():
     assert {tool.name for tool in specs[1]["tools"]} == {
         "check_quadratic_gradient_step", "check_trilinear_interpolation"}
     assert specs[2]["tools"] == []
-    assert all(len(p["middleware"]) == 2 for p in specs)
+    assert all(len(p["middleware"]) == 3 for p in specs)
+    assert all(callable(getattr(p["middleware"][-1], "awrap_model_call", None)) for p in specs)
     supplied = object()
     overridden = specialist_specs({"verifier": supplied})
     assert overridden[1]["model"] is supplied
