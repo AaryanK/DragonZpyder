@@ -681,3 +681,24 @@ def test_programmatic_mcp_reads_use_real_quickjs_graph_and_shared_quota(monkeypa
         denied=await read.ainvoke({"type":"tool_call","id":"over-budget","name":read.name,"args":{"q":"gamma"}})
         assert denied.status=="error" and calls==["alpha","beta"]
     asyncio.run(run())
+
+
+def test_search_budget_denies_sixth_call_but_preserves_final_answer(monkeypatch):
+    import json
+    from langchain_core.messages import ToolMessage
+    from agent_platform import web_research
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_WEB_SEARCH_ENABLED", "1")
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_QUICKJS_ENABLED", "0")
+    calls=[]
+    async def search(query, **kwargs):
+        calls.append(query)
+        return {"query":query,"provider":"mock","results":[{"title":query,"url":"https://example.org/"+query.replace(" ","-"),"snippet":"Synthetic evidence"}]}
+    monkeypatch.setattr(web_research,"search_sources",search)
+    model=ToolScript(responses=[*[scripted_call("web_search",{"query":f"distinct topic {i}"}) for i in range(6)],AIMessage(content="Five search results; additional sources not verified.")])
+    async def scenario():
+        agent=build_frontier_agent(model,MemorySaver())
+        state=await agent.ainvoke({"messages":[{"role":"user","content":"Compare distinct topics"}]},config={"configurable":{"thread_id":"search-cap-regression"},"recursion_limit":128})
+        assert len(calls)==5
+        assert state["messages"][-1].content=="Five search results; additional sources not verified."
+        assert summarize_agent_result(state)["objective_verified"] is False
+    asyncio.run(scenario())

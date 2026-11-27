@@ -272,3 +272,8 @@ Removed the three Markdown guides from Android drawable, values and xml resource
 
 - `api/agent_platform/runtime.py`: Disable SDK auto-streaming specifically for the signed non-streaming inference gateway. Graph-level SSE remains independent; no replay or security/budget bypass. Production 23:47 UTC requests rejected stream=true before inference; streaming flag temporarily rolled back.
 - `api/tests/test_agent_stack_integration.py`: Exercise actual ChatOpenAI and LangGraph message-mode streaming against mock HTTP gateway validating complete-response request contract, one inference request and final result. Offline CI pending.
+
+## 2026-11-26 — P0 research quota recovery
+
+- `api/agent_platform/harness.py`: Supervisor gets five bounded web searches instead of three; search-only quota denial continues to synthesis rather than aborting the graph. Specialist search cap remains two. Explicitly disclose irrelevant or insufficient sources; model/tool mutation safeguards unchanged.
+- `api/tests/test_harness_tool_acceptance.py`: Script real graph through six attempted searches, assert only five execute and a final grounded/limited answer survives. Offline CI pending. Live Langfuse evidence showed encyclopedia-only results and fourth search rejected; general web provider still must be qualified.
