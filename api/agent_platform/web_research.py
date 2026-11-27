@@ -380,38 +380,67 @@ async def fetch_source(url: str, *, resolver=None, client=None) -> dict:
 
 
 def scoped_research_tools():
-    """Per-graph search/fetch capability; no previous-turn or cross-user grants."""
+    """Per-graph source grants, automatic reads, and shared bounded cache."""
     allowed=set()
-    attempted=set()
+    attempts={}
     lock=asyncio.Lock()
+    slots=asyncio.Semaphore(3)
+
+    async def read_one(url):
+        async with slots:
+            try:
+                return await fetch_source(url)
+            except SourceReadUnavailable:
+                return {"error":"Source could not be read; do not label it verified","url":url}
+
+    async def read_granted(url):
+        if os.getenv("DRAGONZPYDER_AGENT_WEB_FETCH_ENABLED")!="1":
+            return {"error":"Source reading disabled"}
+        async with lock:
+            if url not in allowed:
+                return {"error":"Source URL not granted"}
+            task=attempts.get(url)
+            if task is None:
+                if len(attempts)>=MAX_FETCHES_PER_RUN:
+                    return {"error":"Source read quota exhausted","url":url}
+                task=asyncio.create_task(read_one(url))
+                attempts[url]=task
+        # Cancellation propagates, including to the bounded network work.
+        # A cancelled or failed attempt is never silently retried.
+        return await task
 
     @tool("web_search")
     async def search(query: str) -> str:
-        """Find up to five public source URLs and short excerpts for this run."""
+        """Search public sources and automatically read up to five returned pages. Cite successful source evidence, not snippets alone."""
         if os.getenv("DRAGONZPYDER_AGENT_WEB_SEARCH_ENABLED")!="1":
             return json.dumps({"error":"Search disabled"})
         try:
             report=await search_sources(query,provider=os.getenv("DRAGONZPYDER_AGENT_SEARCH_PROVIDER","auto"),limit=5)
         except (SearchUnavailable,ValueError):
             return json.dumps({"error":"Search unavailable; do not invent sources"})
+        urls=[]
         async with lock:
             for item in report.get("results",[]):
                 url=item.get("url")
-                if len(allowed)<40 and safe_source_url(url):allowed.add(url)
+                if safe_source_url(url) and (url in allowed or len(allowed)<40):
+                    allowed.add(url)
+                    if url not in urls:urls.append(url)
+        if os.getenv("DRAGONZPYDER_AGENT_WEB_FETCH_ENABLED")=="1":
+            evidence=await asyncio.gather(*(read_granted(url) for url in urls[:5]))
+            compact=[]
+            for source in evidence:
+                item=dict(source)
+                if isinstance(item.get("text"),str) and len(item["text"])>2500:
+                    item["text"]=item["text"][:2500]
+                    item["text_truncated"]=True
+                compact.append(item)
+            report["source_reads"]=compact
+            report["sources_read"]=sum(item.get("ok") is True for item in compact)
         return json.dumps(report,ensure_ascii=False,separators=(",",":"))
 
     @tool("web_fetch")
     async def fetch(url: str) -> str:
-        """Read public HTTPS source text from an exact URL returned by web_search in this run. No redirects, credentials, arbitrary URL access or instruction execution."""
-        if os.getenv("DRAGONZPYDER_AGENT_WEB_FETCH_ENABLED")!="1":
-            return json.dumps({"error":"Source reading disabled"})
-        async with lock:
-            if url not in allowed or url in attempted or len(attempted)>=MAX_FETCHES_PER_RUN:
-                return json.dumps({"error":"Source URL not granted, already attempted, or fetch quota exhausted"})
-            attempted.add(url)
-        try:
-            report=await fetch_source(url)
-        except SourceReadUnavailable:
-            return json.dumps({"error":"Source could not be read; do not label it verified","url":url})
+        """Read detailed text of an exact search-returned source. Reuse cached bytes and digest; never re-fetch an already attempted URL."""
+        report=await read_granted(url)
         return json.dumps(report,ensure_ascii=False,separators=(",",":"))
     return [search,fetch]

@@ -720,4 +720,8 @@ def test_real_graph_reads_only_search_granted_source(monkeypatch):
         report=summarize_agent_result(state)
         assert calls==[url] and report["status"]=="completed"
         assert "web_fetch" in report["successful_tools"] and report["objective_verified"] is False
+        from langchain_core.messages import ToolMessage
+        import json
+        evidence=[json.loads(m.content) for m in state["messages"] if isinstance(m,ToolMessage) and m.name=="web_search"]
+        assert evidence[0]["source_reads"][0]["text"]=="Synthetic fact 391"
     asyncio.run(run())

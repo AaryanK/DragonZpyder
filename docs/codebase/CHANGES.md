@@ -328,3 +328,10 @@ Removed the three Markdown guides from Android drawable, values and xml resource
 
 - `apps/sandbox_runner/server.mjs`: Replace failing su/login-shell transition with a constant system Python launcher that clears supplementary groups and irreversibly sets and verifies UID/GID 10001 before exec. Fail closed on inaccessible helper or interpreter; preserve kernel offline filter, scope enforcement and cleanup. Live exit 126 observed; exact originating permission issue not yet proven. CI and actual VM probe pending.
 - `apps/sandbox_runner/README.md`: Record live exit 126 and privilege transition repair; no production capability claim.
+
+## 2026-11-27 — automatic grounded search
+
+- `api/agent_platform/web_research.py`: Automatically read up to five search-returned public pages, with a shared per-graph eight-attempt limit, concurrency three, cached success/failure, bounded excerpt and digest. Separate web_fetch reuses evidence. Direct source transport passed Railway; live graph had five searches and zero fetches, so source reading must not depend on tool selection. CI/live graph retest pending.
+- `api/agent_platform/harness.py`: Use automatic source evidence before repeated searches; do not label unsupported claims verified.
+- `api/tests/test_agent_web_monitor.py`: Test automatic reads, failures, quotas, cache and per-graph isolation.
+- `api/tests/test_harness_tool_acceptance.py`: Assert source text is present in the actual graph search receipt.

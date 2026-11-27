@@ -141,3 +141,6 @@ All production entrypoints use runtime.build_agent for role-specific model clien
 
 ### Bounded synthesis and invalid tool recovery
 Normal supervisor has 16 model calls and specialist 7, with the last reserved for text-only synthesis. A typed gateway rejection of an undeclared tool batch permits one text-only, metered inference repair; no tool from that batch is dispatched. Generic errors are not retried. Builder's virtual-only scope is explicit. See progress_guard.py, gateway_protocol.py and test_progress_guard.py.
+
+
+Grounded search: opt-in scoped web_search automatically reads up to five exact public search URLs, returns bounded source text and digests, and caches both success and failure across the graph. web_fetch returns the cached detailed read. Eight distinct attempts total, concurrency three. No new network authority.

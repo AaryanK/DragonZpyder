@@ -279,9 +279,10 @@ def test_source_grants_are_run_scoped_and_single_attempt(monkeypatch):
     async def run():
         a,b=w.scoped_research_tools();_,other=w.scoped_research_tools()
         assert "error" in json.loads(await b.ainvoke({"url":url}))
-        await a.ainvoke({"query":"synthetic source"})
+        report=json.loads(await a.ainvoke({"query":"synthetic source"}))
+        assert report["sources_read"]==1 and report["source_reads"][0]["text"]=="Synthetic source"
         assert "error" in json.loads(await other.ainvoke({"url":url}))
         assert json.loads(await b.ainvoke({"url":url}))["ok"]
-        assert "error" in json.loads(await b.ainvoke({"url":url}))
+        assert json.loads(await b.ainvoke({"url":url}))["ok"]
         assert calls==[url]
     asyncio.run(run())
