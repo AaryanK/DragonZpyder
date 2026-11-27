@@ -133,3 +133,13 @@ html[data-workspace-theme] .dz-account-avatar{width:48px;height:48px;font-size:1
 html[data-workspace-theme] .dz-account-form .submit{min-height:44px;font-size:13px;margin:0;padding:0 16px}
 html[data-workspace-theme] .dz-account-footer{padding-top:16px}
 @media(max-width:760px){html[data-workspace-theme] .top{padding:0 16px}html[data-workspace-theme] body:has(#profile-panel[hidden]) main{padding:0 24px;margin-top:36px}html[data-workspace-theme] body:has(#profile-panel:not([hidden])) main{padding:0 16px;margin-top:20px}html[data-workspace-theme] .dz-account-form{gap:8px}html[data-workspace-theme] .dz-account-form .submit{justify-self:start;width:auto}}
+
+/* Single identity form. The Google widget remains provider-rendered. */
+html[data-workspace-theme] .dz-auth-hint{font-size:14px;line-height:1.5;color:var(--muted);margin:-12px 0 20px}
+html[data-workspace-theme] #login-panel .links{justify-content:flex-start}
+html[data-workspace-theme] #login-panel .links button{border:0;background:transparent;padding:0;text-decoration:underline;text-underline-offset:3px}
+html[data-workspace-theme] #login-panel .links button[hidden]{display:none!important}
+html[data-workspace-theme] #mode-tabs button{border:0;box-shadow:none;background:transparent}
+html[data-workspace-theme] #mode-tabs button.selected{display:none}
+html[data-workspace-theme] .dz-account-shortcuts a{font-weight:550}
+html[data-workspace-theme] .dz-account-resource-mark .dz-ui-icon{width:20px;height:20px}

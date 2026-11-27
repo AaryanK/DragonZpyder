@@ -121,7 +121,7 @@ test("migration proof pilot fails closed when disabled", async ({page})=>{
 });
 
 
-test("dedicated native login works before global web cutover", async ({page}) => {
+for(const entry of ["/login","/account"]) test("only native login before global web cutover: "+entry, async ({page}) => {
     const legacy = [], logins = [];
     await page.route("**/api/**", route => { legacy.push(route.request().url()); return route.fulfill({status:410}); });
     await page.route("**/dz/status", route => route.fulfill({json:{web_cutover_enabled:false,native_session_present:logins.length>0}}));
@@ -134,7 +134,9 @@ test("dedicated native login works before global web cutover", async ({page}) =>
     });
     await page.route("**/dz/v2/personal/session", route => route.fulfill({json:{authenticated:true,runtime:"dragonzpyder"}}));
     await page.route("**/dz/v2/personal/conversations", route => route.fulfill({json:{conversations:[]}}));
-    await page.goto("/login");
+    await page.goto(entry);
+    await expect(page.getByText("Use an existing Operly account")).toHaveCount(0);
+    await expect(page.locator("#dragonzpyder-central-signin")).toHaveCount(0);
     await page.locator("#login-email").fill("test@example.test");
     await page.locator("#login-password").fill("test-password");
     await page.locator("#login-form button[type=submit]").click();
@@ -269,7 +271,7 @@ test("signed-out native chat goes directly to compact sign-in",async({page})=>{
   await expect(page.getByRole("heading",{name:"Sign in",exact:true})).toBeVisible();
   await expect(page.locator("#login-email")).toBeInViewport();
   await expect(page.locator("#login-password")).toBeInViewport();
-  await expect(page.locator("#legacy-login-link")).toBeHidden();
+  await expect(page.locator("#legacy-login-link")).toHaveCount(0);
   await expect(page.locator(".intro")).toHaveCount(0);
   expect(legacy).toEqual([]);
 });

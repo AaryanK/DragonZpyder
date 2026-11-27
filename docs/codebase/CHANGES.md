@@ -357,3 +357,15 @@ Production evidence: session starts and one canonical turn succeeded; a subseque
 
 - `apps/sandbox_runner/server.mjs`: Use a copied Python interpreter in the trusted venv, reject stale symlink templates, check unprivileged parent directory traversal with fixed phase codes. Preserve root ownership, offline seccomp, UID drop and scope checks. Railway signed allocation still failed exit 73 on ab7ec4c, cleanup confirmed; CI/live acceptance pending.
 - `apps/sandbox_runner/README.md`: Record observed failure and repair hypothesis.
+
+## 2026-11-27 — canonical account access and restrained frontend
+
+- `web/account.js`: Canonical first-party email/Google, profile, logout and recovery routes; removes legacy auth calls and bootstrap; reviewed import proof remains separate. Native identity failures never downgrade. CI and production visual verification pending.
+- `web/frontend/src/AccountTemplate.jsx`: Removes redundant Operly/central login links, legacy email signup/verification forms and adds concise native Google signup copy; keeps migration and recovery markup. CI and production visual verification pending.
+- `web/app.js`: Signed-out chat and retry dialog always point to /login, irrespective of runtime cutover; existing legacy active-session compatibility remains untouched. CI and production visual verification pending.
+- `web/frontend/src/PersonalTemplate.jsx`: Simplifies header and starter hierarchy, shortens composer and settings copy; voice renderer and controls unchanged. CI and production visual verification pending.
+- `web/ui-v1.css`: Aligns header, uses three equal starter controls on desktop and stacked rows on mobile, improves type/keyboard focus, preserves composer/voice hooks. CI and production visual verification pending.
+- `web/account.css`: Neutral utility sign-in link/button styling and settings hierarchy. CI and production visual verification pending.
+- `web/frontend/src/HomeTemplate.jsx`: Corrects stale Operly execution-backbone marketing copy to business workspace ownership; retains separate business product link. CI and production visual verification pending.
+- `web/frontend/tests/native-routing.spec.js`: Exercises both /login and /account with cutover false, asserts native credential route and no legacy requests; updates removed link assertion. CI and production visual verification pending.
+- `web/frontend/scripts/check-build.mjs`: Prerender assertion rejects legacy sign-in controls and obsolete credential forms. CI and production visual verification pending.

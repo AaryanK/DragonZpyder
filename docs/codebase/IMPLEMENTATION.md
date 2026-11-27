@@ -101,3 +101,7 @@ Production reuses `OPENROUTER_API_KEY`; no new voice feature variable or dedicat
 ### Voice failure handling
 
 OpenRouter voice distinguishes unsubmitted transcription failure, unconfirmed canonical execution and committed answer with failed playback. The browser pauses utterance admission during agent execution/playback and after uncertain failure, preserves chat results and never automatically replays a paid turn. Speaker mute controls the Web Audio gain; original orb rendering remains unchanged. Automatic barge-in is temporarily disabled to avoid echo-triggered requests. Sanitized server phase/status logs support production diagnosis without logging audio, transcripts, credentials or provider response bodies.
+
+### Canonical browser identity entry
+
+`/login` and `/account` use DragonZpyder's first-party identity API regardless of runtime cutover. `web/account.js` no longer invokes legacy Operly credential endpoints. Explicit migration verification and recovery remain separate, gated proof flows, not sign-in alternatives. Existing legacy active chat sessions and server-side compatibility routes remain until independently retired; business workspace links do not grant authorization. Signed-out chat always navigates to `/login`. Native Google signup remains the currently supported creation path. No new feature flag or identity authority changes.

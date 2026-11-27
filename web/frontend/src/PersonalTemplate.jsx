@@ -142,15 +142,15 @@ export function PersonalTemplate() {
         <button className="icon-btn mobile-only" id="open-sidebar" aria-label="Open sidebar"><UiIcon name="menu"/></button>
         <SidebarToggle />
         <div className="workspace-heading"><div className="workspace-breadcrumb"><strong>Personal</strong></div><div className="runtime-status"><span className="status-dot" id="status-dot"></span><span id="status-text">Checking runtime…</span></div></div>
-        <div className="head-actions"><button type="button" className="dz-command-trigger" id="dz-command-trigger" title="Search commands · Ctrl/⌘ K" aria-label="Open command palette" onClick={() => window.dispatchEvent(new Event("dragonzpyder:command-open"))}><UiIcon name="search"/></button><button className="theme-toggle" id="workspace-theme-toggle" type="button" aria-label="Switch to dark appearance" title="Toggle appearance"><span id="workspace-theme-icon" aria-hidden="true"><UiIcon name="moon" className="dz-theme-moon"/><UiIcon name="sun" className="dz-theme-sun"/></span></button><span className="head-privacy"><span aria-hidden="true">◈</span> Your private workspace</span><button className="ghost-btn" id="approvals-top">Approvals</button><button type="button" className="dz-mobile-new" aria-label="New conversation" onClick={() => document.getElementById("new-chat")?.click()}><UiIcon name="edit"/></button><button className="profile-btn" id="profile-button" aria-label="Account menu" aria-expanded="false"><span id="profile-initial">?</span><img id="profile-avatar" alt="" hidden referrerPolicy="no-referrer"/></button></div>
+        <div className="head-actions"><button type="button" className="dz-command-trigger" id="dz-command-trigger" title="Search commands · Ctrl/⌘ K" aria-label="Open command palette" onClick={() => window.dispatchEvent(new Event("dragonzpyder:command-open"))}><UiIcon name="search"/></button><button className="theme-toggle" id="workspace-theme-toggle" type="button" aria-label="Switch to dark appearance" title="Toggle appearance"><span id="workspace-theme-icon" aria-hidden="true"><UiIcon name="moon" className="dz-theme-moon"/><UiIcon name="sun" className="dz-theme-sun"/></span></button><button className="ghost-btn" id="approvals-top">Approvals</button><button type="button" className="dz-mobile-new" aria-label="New conversation" onClick={() => document.getElementById("new-chat")?.click()}><UiIcon name="edit"/></button><button className="profile-btn" id="profile-button" aria-label="Account menu" aria-expanded="false"><span id="profile-initial">?</span><img id="profile-avatar" alt="" hidden referrerPolicy="no-referrer"/></button></div>
       </header>
       <main className="chat-main" id="chat-main">
         <section className="empty-state" id="empty-state">
           <div className="welcome-emblem"><img src="/brand-icon.png" alt="" className="hero-logo"/></div>
-          <div className="eyebrow">YOUR SPACE TO THINK AND MAKE</div>
+          
           <h1>What shall we work on?</h1>
           <p>Ask a question or give DragonZpyder a task.</p>
-          <div className="welcome-section-title">Start anywhere <span aria-hidden="true">↗</span></div>
+          <div className="welcome-section-title">Get started</div>
           <div className="prompt-grid">
             <button className="prompt-chip" data-prompt="Help me think through a new idea."><UiIcon name="idea"/>Explore an idea</button>
             <button className="prompt-chip" data-prompt="Help me plan a project from scratch."><UiIcon name="plan"/>Plan a project</button>
@@ -165,7 +165,7 @@ export function PersonalTemplate() {
         <span id="dictation-feedback" className="dictation-feedback" role="status" aria-live="polite" hidden></span>
         <form className="composer unified-composer" id="composer" aria-label="Chat message composer">
           <div id="mesh-attachments" className="mesh-attachments" hidden></div>
-          <textarea id="message-input" rows="2" maxLength="12000" placeholder="Ask anything, or give DragonZpyder a task…" aria-label="Message DragonZpyder"></textarea>
+          <textarea id="message-input" rows="2" maxLength="12000" placeholder="Message DragonZpyder…" aria-label="Message DragonZpyder"></textarea>
           <div className="composer-toolbar">
             <div className="composer-left">
               <QuickAddMenu camera={<CameraAttachment />} />
@@ -206,7 +206,7 @@ export function PersonalTemplate() {
   </section>
   <div className="modal-backdrop" id="auth-modal" hidden><section className="modal auth-card dz-session-error" role="dialog" aria-modal="true" aria-labelledby="auth-title"><img className="dz-session-mark" src="/brand-icon.png" alt="DragonZpyder"/><h2 id="auth-title">Unable to connect</h2><p className="form-error" id="login-error" role="alert" hidden></p><button type="button" id="retry-session" className="primary-btn">Try again</button><a id="dragonzpyder-central-signin-modal" href="/login">Go to sign in</a></section></div>
   <div className="drawer-backdrop" id="approvals-drawer" hidden><aside className="drawer" role="dialog" aria-modal="true" aria-labelledby="approvals-title"><div className="drawer-head"><div><div className="eyebrow">Human boundary</div><h2 id="approvals-title">Pending approvals</h2></div><button className="icon-btn" id="close-approvals" aria-label="Close approvals">×</button></div><p className="modal-copy">Review the exact action and content before allowing DragonZpyder to execute it.</p><div id="approval-list" className="approval-list"></div></aside></div>
-  <div className="menu" id="profile-menu" hidden><div className="menu-title" id="session-label">Personal session</div><button type="button" onClick={() => document.getElementById("workspace-theme-toggle")?.click()}>Appearance</button><a className="menu-account-link" href="/account">My account & connections ↗</a><button id="logout-button">Sign out</button></div>
+  <div className="menu" id="profile-menu" hidden><div className="menu-title" id="session-label">Personal session</div><button type="button" onClick={() => document.getElementById("workspace-theme-toggle")?.click()}>Appearance</button><a className="menu-account-link" href="/account">Settings</a><button id="logout-button">Sign out</button></div>
   <div className="toast" id="toast" hidden></div>
   
     </>

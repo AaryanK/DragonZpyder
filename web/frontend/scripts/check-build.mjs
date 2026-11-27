@@ -32,6 +32,8 @@ assert.doesNotMatch(app, /id="login-form"/);
 assert.match(app, /id="retry-session"/);
 assert.match(account, /id="login-form"/);
 assert.doesNotMatch(account, /class="intro"/);
+assert.doesNotMatch(account, /id="(?:legacy-login-link|dragonzpyder-central-signin|signup-form|verify-form)"/);
+assert.doesNotMatch(account, /Use an existing Operly account/);
 assert.match(app, /workspace\.css/, "Personal workspace stylesheet missing");
 assert.match(app, /ui-v1\.css/, "UI 1.0 design-system stylesheet missing");
 const ui=readFileSync(resolve(dist,"ui-v1.css"),"utf8");
