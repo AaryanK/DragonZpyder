@@ -298,7 +298,8 @@ def test_production_voice_gateway_requires_atomic_quota(monkeypatch):
             assert (await voice.gateway(req,"/audio/transcriptions",payload)).status_code==200
             with pytest.raises(HTTPException) as denied:
                 await voice.gateway(req,"/audio/transcriptions",payload)
-            assert denied.value.status_code==503
+            assert denied.value.status_code==429
+            assert denied.value.detail=={"code":"voice_transcription_quota_or_rate_limit","outcome":"not_submitted"}
     asyncio.run(run())
     assert len(calls)==1 and len(charges)==2
 
@@ -315,3 +316,21 @@ def test_production_schema_failure_does_not_enable_voice(monkeypatch):
     monkeypatch.setattr(voice,"_conversation_db",unavailable)
     asyncio.run(voice.prepare_production_schema())
     assert not voice.enabled()
+
+@pytest.mark.parametrize("path,status,outcome,code",[
+    ("/audio/transcriptions",502,"not_submitted","voice_transcription_provider_unavailable"),
+    ("/audio/speech",502,"committed","voice_speech_provider_unavailable"),
+    ("/audio/transcriptions",503,"not_submitted","voice_transcription_service_or_accounting_unavailable"),
+])
+def test_gateway_reports_safe_voice_failure_phase(monkeypatch,path,status,outcome,code):
+    import provider_gateway
+    from fastapi.responses import JSONResponse
+    async def reject(*args,**kwargs):
+        return JSONResponse({"error":{"message":"private provider detail"}},status_code=status)
+    monkeypatch.setattr(provider_gateway,"provider_request",reject)
+    body=({"model":voice.STT,"input_audio":{"data":fixture_audio(),"format":"wav"}} if path.endswith("transcriptions")
+          else {"model":voice.TTS,"input":"Hello","voice":voice.VOICE,"response_format":"mp3"})
+    request=SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(provider_runtime=object())))
+    with pytest.raises(HTTPException) as failure:
+        asyncio.run(voice.gateway(request,path,body))
+    assert failure.value.detail=={"code":code,"outcome":outcome}
