@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import base64
+import ctypes
+import errno
 import fnmatch
 import hashlib
 import ipaddress
@@ -666,7 +668,117 @@ def dispatch(tool: str, args: dict[str, Any]) -> dict[str, Any]:
     raise ValueError(f'unknown Computer tool: {tool}')
 
 
+
+# Installed by a root-owned helper running as the scoped unprivileged UID.
+# libseccomp's default native architecture filter rejects other ABI calls.
+# Deny the network syscall family (including UNIX sockets), descriptor
+# retrieval and io_uring, which could otherwise bypass individual checks.
+# The irreversible no_new_privs/filter state is inherited across fork/exec.
+_OFFLINE_SYSCALLS = (
+    "socket", "socketpair", "connect", "bind", "listen", "accept", "accept4",
+    "sendto", "sendmsg", "sendmmsg", "recvfrom", "recvmsg", "recvmmsg",
+    "getsockopt", "setsockopt", "getsockname", "getpeername", "shutdown",
+    "io_uring_setup", "io_uring_enter", "io_uring_register", "pidfd_getfd",
+    "ptrace", "process_vm_readv", "process_vm_writev", "bpf",
+    "unshare", "setns",
+)
+def install_offline_filter() -> None:
+    # Close inherited descriptors other than stdin/stdout/stderr (the runner
+    # supplies /dev/null and a root-owned output file). Failure is fatal.
+    for name in os.listdir("/proc/self/fd"):
+        fd = int(name)
+        if fd > 2:
+            try:
+                os.close(fd)
+            except OSError as error:
+                if error.errno != errno.EBADF:
+                    raise
+    libc = ctypes.CDLL(None, use_errno=True)
+    libc.prctl.argtypes = [ctypes.c_int, ctypes.c_ulong, ctypes.c_ulong,
+                           ctypes.c_ulong, ctypes.c_ulong]
+    libc.prctl.restype = ctypes.c_int
+    if libc.prctl(38, 1, 0, 0, 0) != 0:  # PR_SET_NO_NEW_PRIVS
+        raise RuntimeError("Cannot enforce no_new_privs")
+    lib = ctypes.CDLL("libseccomp.so.2")
+    lib.seccomp_init.argtypes = [ctypes.c_uint32]
+    lib.seccomp_init.restype = ctypes.c_void_p
+    lib.seccomp_attr_set.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_uint32]
+    lib.seccomp_attr_set.restype = ctypes.c_int
+    lib.seccomp_syscall_resolve_name.argtypes = [ctypes.c_char_p]
+    lib.seccomp_syscall_resolve_name.restype = ctypes.c_int
+    lib.seccomp_rule_add.argtypes = [ctypes.c_void_p, ctypes.c_uint32,
+                                     ctypes.c_int, ctypes.c_uint]
+    lib.seccomp_rule_add.restype = ctypes.c_int
+    lib.seccomp_load.argtypes = [ctypes.c_void_p]
+    lib.seccomp_load.restype = ctypes.c_int
+    lib.seccomp_release.argtypes = [ctypes.c_void_p]
+    lib.seccomp_release.restype = None
+    ctx = lib.seccomp_init(0x7fff0000)  # SCMP_ACT_ALLOW
+    if not ctx:
+        raise RuntimeError("Cannot create offline syscall policy")
+    try:
+        if lib.seccomp_attr_set(ctx, 2, 0x80000000) != 0:  # ACT_BADARCH: kill process
+            raise RuntimeError("Cannot enforce native syscall architecture")
+        for name in _OFFLINE_SYSCALLS:
+            nr = lib.seccomp_syscall_resolve_name(name.encode("ascii"))
+            # A negative pseudo-number denotes a non-native syscall. All
+            # modern native syscall names above must resolve except accept
+            # on architectures that implement accept4 only.
+            if nr < 0:
+                if name == "accept":
+                    continue
+                raise RuntimeError("Offline syscall policy not supported")
+            if lib.seccomp_rule_add(ctx, 0x00050000 | errno.EPERM, nr, 0) != 0:
+                raise RuntimeError("Cannot add offline syscall rule")
+        if lib.seccomp_load(ctx) != 0:
+            raise RuntimeError("Cannot load offline syscall policy")
+    finally:
+        lib.seccomp_release(ctx)
+    if libc.prctl(39, 0, 0, 0, 0) != 1:  # PR_GET_NO_NEW_PRIVS
+        raise RuntimeError("No-new-privileges verification failed")
+
+
+def offline_probe() -> None:
+    # Test direct socket creation and an exec'ed descendant. No traffic is sent.
+    snippet = """import errno,socket
+for family in (socket.AF_INET, socket.AF_INET6, socket.AF_UNIX):
+    try:
+        s=socket.socket(family,socket.SOCK_STREAM)
+    except OSError as e:
+        assert e.errno==errno.EPERM, e.errno
+    else:
+        s.close()
+        raise RuntimeError("socket unexpectedly allowed")
+try:
+    a,b=socket.socketpair()
+except OSError as e:
+    assert e.errno==errno.EPERM, e.errno
+else:
+    a.close(); b.close()
+    raise RuntimeError("socketpair unexpectedly allowed")
+"""
+    exec(compile(snippet, "<offline-probe>", "exec"), {})
+    child = subprocess.run([sys.executable, "-I", "-c", snippet],
+                           stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                           stderr=subprocess.DEVNULL, timeout=5, check=False)
+    if child.returncode != 0:
+        raise RuntimeError("Descendant offline policy failed")
+
+
 def main() -> int:
+    # Run this before reading any caller-controlled arguments or dispatching
+    # a command; there is no unfiltered fallback path in scoped v2.
+    try:
+        if network_policy() != "off":
+            raise RuntimeError("Offline policy required")
+        install_offline_filter()
+        if sys.argv[1:] == ["--offline-probe"]:
+            offline_probe()
+            print("DZ_OFFLINE_KERNEL_PROBE_PASS")
+            return 0
+    except Exception:
+        emit({"ok":False,"error":"Offline isolation not established","error_type":"IsolationError"})
+        return 2
     if len(sys.argv) != 3:
         emit({'ok': False, 'error': 'usage: computer_tool.py TOOL REQUEST_JSON'})
         return 2
