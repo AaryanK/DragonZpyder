@@ -111,6 +111,50 @@ function CameraAttachment() {
   </>;
 }
 
+
+// Exact user-entered memories; no model extraction or auto-saving.
+// The first-party API rechecks session/CSRF and owner on every operation.
+function PersonalMemoryPanel() {
+  const [open,setOpen]=React.useState(false),[items,setItems]=React.useState([]),[draft,setDraft]=React.useState("");
+  const [recall,setRecall]=React.useState(false),[busy,setBusy]=React.useState(false),[error,setError]=React.useState("");
+  const dialogRef=React.useRef(null), pendingId=React.useRef(null);
+  useModalFocus(dialogRef,open);
+  const request=async(path,method="GET",body)=>{
+    const headers={Accept:"application/json"};
+    if(method!=="GET"){
+      const part=document.cookie.split(";").map(v=>v.trim()).find(v=>v.startsWith("__Host-dz_csrf="));
+      if(!part)throw new Error("Sign in again to manage memories.");
+      headers["X-DZ-CSRF"]=decodeURIComponent(part.slice("__Host-dz_csrf=".length));
+      headers["Content-Type"]="application/json";
+    }
+    const res=await fetch("/dz/v2/personal/memory"+path,{method,credentials:"same-origin",cache:"no-store",redirect:"error",headers,...(body?{body:JSON.stringify(body)}:{})});
+    const value=await res.json().catch(()=>({}));
+    if(!res.ok)throw new Error(typeof value.detail==="string"?value.detail:"Memory request failed ("+res.status+").");
+    return value;
+  };
+  const load=async()=>{setBusy(true);setError("");try{const value=await request("");setItems(value.memories||[]);}catch(e){setError(e.message);}finally{setBusy(false);}};
+  const save=async()=>{if(!draft.trim()||busy)return;setBusy(true);setError("");try{
+    pendingId.current ||= crypto.randomUUID();
+    const item=await request("","POST",{id:pendingId.current,content:draft,consent:true,recall_in_chat:recall});
+    setItems(old=>[item,...old.filter(x=>x.id!==item.id)]);setDraft("");setRecall(false);pendingId.current=null;
+  }catch(e){setError(e.message);}finally{setBusy(false);}};
+  const remove=async(id)=>{setBusy(true);setError("");try{await request("/"+encodeURIComponent(id),"DELETE");setItems(old=>old.filter(x=>x.id!==id));}catch(e){setError(e.message);}finally{setBusy(false);}};
+  const close=()=>{setOpen(false);setItems([]);setDraft("");setRecall(false);setError("");pendingId.current=null;};
+  React.useEffect(()=>{if(!open)return;const key=e=>{if(e.key==="Escape"&&!busy)close();};window.addEventListener("keydown",key);return()=>window.removeEventListener("keydown",key);},[open,busy]);
+  return <><button type="button" className="nav-link dz-center-nav-link" onClick={()=>{setOpen(true);load();}}><span className="nav-glyph"><UiIcon name="idea"/></span> Personal memory</button>
+    {open&&createPortal(<div className="camera-capture-backdrop"><section ref={dialogRef} className="camera-capture-panel" role="dialog" aria-modal="true" aria-label="Personal memory">
+      <div className="camera-capture-header"><h2>Personal memory</h2><button type="button" aria-label="Close memory" disabled={busy} onClick={close}>×</button></div>
+      <p>Save only information you choose. Memories allowed in chat may be sent to the model. Removing a memory does not remove older chat history.</p>
+      <textarea aria-label="New memory" maxLength={2000} value={draft} disabled={busy} onChange={e=>{setDraft(e.target.value);pendingId.current=null;}} placeholder="A fact or preference to remember" />
+      <label><input type="checkbox" checked={recall} disabled={busy} onChange={e=>{setRecall(e.target.checked);pendingId.current=null;}}/> Allow recall in future personal chats</label>
+      <button className="camera-capture-action" type="button" disabled={busy||!draft.trim()} onClick={save}>Save memory</button>
+      {error&&<p role="alert" className="camera-capture-error">{error}</p>}
+      <div style={{maxHeight:"32vh",overflowY:"auto"}}>{items.map(item=><div key={item.id} style={{padding:"8px 0",borderBottom:"1px solid currentColor"}}><p style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{item.content}</p><small>{item.recall_in_chat?"Chat recall allowed":"Stored only"}</small><button type="button" disabled={busy} onClick={()=>remove(item.id)}>Remove</button></div>)}</div>
+      {!items.length&&!busy&&<p>No saved memories.</p>}
+    </section></div>,document.body)}
+  </>;
+}
+
 // Layout and copy are the existing DragonZpyder design, now authored as JSX.
 // Do not reintroduce the former static HTML templates.
 export function PersonalTemplate() {
@@ -128,6 +172,7 @@ export function PersonalTemplate() {
       <div className="sidebar-navigation" aria-label="Navigation">
         <button type="button" className="nav-link dz-center-nav-link" onClick={() => window.dispatchEvent(new CustomEvent("dragonzpyder:center-open", { detail: { page: "connections" } }))}><span className="nav-glyph"><UiIcon name="plug"/></span> Connections &amp; tools</button>
         <button type="button" className="nav-link dz-center-nav-link" onClick={() => window.dispatchEvent(new CustomEvent("dragonzpyder:center-open", { detail: { page: "tasks" } }))}><span className="nav-glyph"><UiIcon name="tasks"/></span> Tasks &amp; goals</button>
+        <PersonalMemoryPanel />
       </div>
       <div className="sidebar-label">Chats</div>
       <nav className="conversation-list" id="conversation-list" aria-label="Recent conversations"></nav>

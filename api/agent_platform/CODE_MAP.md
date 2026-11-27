@@ -144,3 +144,5 @@ Normal supervisor has 16 model calls and specialist 7, with the last reserved fo
 
 
 Grounded search: opt-in scoped web_search automatically reads up to five exact public search URLs, returns bounded source text and digests, and caches both success and failure across the graph. web_fetch returns the cached detailed read. Eight distinct attempts total, concurrency three. No new network authority.
+
+Native personal memory: `memory.py` provides exact, explicitly entered PostgreSQL records; `first_party_chat.py` serves owner-bound CRUD and consented recall; `harness.py` binds only the read tool. Mem0 is an optional semantic extension, not a required provider call. No automatic extraction or cross-owner memory migration.
