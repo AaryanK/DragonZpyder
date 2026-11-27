@@ -140,6 +140,7 @@ function cleanup(){
   window.dispatchEvent(new Event("dragonzpyder:voice-closed"));
 }
 function close(){cleanup();panel.hidden=true;setStatus("Ended");launch.focus()}
+window.addEventListener("dragonzpyder:voice-playback-mute",event=>modularRoom?.setPlaybackMuted?.(Boolean(event.detail?.muted)));
 async function handleTool(item,v){
   if(!item.call_id||calls.has(item.call_id))return;
   calls.add(item.call_id);
@@ -158,7 +159,7 @@ async function handleTool(item,v){
 function finishAgentPlayback(){
   nativeBusy=false;
   for(const t of mic?.getAudioTracks()||[])t.enabled=!silent;
-  setStatus(silent?"Microphone muted":"Listening — speak naturally","listening");
+  if(panel.dataset.state!=="error")setStatus(silent?"Microphone muted":"Listening — speak naturally","listening");
 }
 async function handleAgentTranscript(e,v){
   const call=nativeCall,transcript=String(e.transcript||"").trim(),eventId=e.item_id;
@@ -243,7 +244,8 @@ async function start(){
           void window.dragonzpyderModularVoiceResult?.(data,context.conversationId);
         }});
       if(v!==version){await room.disconnect();return;}
-      modularRoom=room;live=true;starting=false;
+      modularRoom=room;room.setPlaybackMuted?.(audio.muted);live=true;starting=false;
+      browserEvent("voice-mode",{mode:"openrouter"});
       browserEvent("voice-session",{connected:true});setStatus("Listening — speak naturally","listening");return;
     }
     if(native&&context.modularVoice){

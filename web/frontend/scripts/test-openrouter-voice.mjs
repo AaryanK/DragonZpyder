@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {encodeWav,UtteranceDetector} from "../src/openrouter-voice.js";
+import {encodeWav,UtteranceDetector,voiceFailureMessage} from "../src/openrouter-voice.js";
 
 test("resamples and emits canonical 16 kHz mono WAV",()=>{
   const bytes=encodeWav([new Float32Array(48000).fill(.25)],48000);
@@ -32,4 +32,11 @@ test("short noises do not submit utterances",()=>{
   for(let i=0;i<3;i++)d.push(new Float32Array(320).fill(.1));
   for(let i=0;i<30;i++)d.push(new Float32Array(320));
   assert.equal(turns,0);
+});
+
+test("voice failures distinguish unsubmitted transcription from uncertain agent work",()=>{
+  assert.match(voiceFailureMessage({code:"voice_transcription_quota_or_rate_limit",outcome:"not_submitted"}),/No agent task was submitted/);
+  assert.match(voiceFailureMessage({code:"voice_transcription_provider_unavailable",outcome:"not_submitted"}),/Transcription unavailable/);
+  assert.match(voiceFailureMessage({code:"voice_agent_unconfirmed",outcome:"unconfirmed"}),/Check your chat/);
+  assert.match(voiceFailureMessage({code:"private upstream data",outcome:"not_submitted"}),/Check your chat/);
 });

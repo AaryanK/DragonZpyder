@@ -70,6 +70,15 @@ export class UtteranceDetector {
   }
 }
 
+// Stable, allowlisted error messages; do not display provider error bodies.
+export function voiceFailureMessage(detail){
+  const code=typeof detail?.code==="string"?detail.code:"";
+  if(code.startsWith("voice_transcription_")&&detail.outcome==="not_submitted"){
+    if(code.endsWith("quota_or_rate_limit"))return "Voice usage limit reached. No agent task was submitted.";
+    return "Transcription unavailable. No agent task was submitted.";
+  }
+  return "Request outcome unconfirmed. Check your chat before repeating.";
+}
 export async function connectOpenRouterVoice({stream,sessionId,csrf,onData,onState,onRemote}){
   const Audio=window.AudioContext||window.webkitAudioContext;
   if(!Audio)throw Error("Browser audio unavailable");
@@ -83,13 +92,18 @@ export async function connectOpenRouterVoice({stream,sessionId,csrf,onData,onSta
   finally{URL.revokeObjectURL(url);}
   source.connect(worklet);worklet.connect(ctx.destination);
   onRemote(sink.stream);
-  let closed=false,muted=false,busy=false,speech=null,playing=null,speechVersion=0;
+  const playback=ctx.createGain();playback.connect(ctx.destination);
+  let closed=false,muted=false,busy=false,failed=false,speech=null,playing=null,speechVersion=0,resumeAfter=0;
   const life=new AbortController();
   const root="/dz/v2/personal/voice/sessions/"+sessionId;
   async function post(path,body,signal){
     const response=await fetch(root+path,{method:"POST",credentials:"same-origin",redirect:"error",cache:"no-store",
       headers:{"Content-Type":"application/json","X-DZ-CSRF":csrf},body:JSON.stringify(body),signal});
-    if(!response.ok)throw Error("Voice request unavailable ("+response.status+")");
+    if(!response.ok){
+      const result=await response.json().catch(()=>null);
+      const error=Error("Voice request unavailable ("+response.status+")");
+      error.voiceDetail=result?.detail;throw error;
+    }
     return response;
   }
   function stopSpeech(){
@@ -97,7 +111,8 @@ export async function connectOpenRouterVoice({stream,sessionId,csrf,onData,onSta
     if(playing){try{playing.stop()}catch{}playing=null;}
   }
   async function speak(data){
-    stopSpeech();const v=speechVersion;const controller=new AbortController();speech=controller;
+    stopSpeech();detector.reset();const v=speechVersion;const controller=new AbortController();speech=controller;
+    onState("Preparing spoken answer…","working");
     const valid=()=>!closed&&v===speechVersion&&!controller.signal.aborted;
     const load=async i=>{
       const res=await post("/speech/"+data.event_id+"/"+i,{},controller.signal);
@@ -108,7 +123,7 @@ export async function connectOpenRouterVoice({stream,sessionId,csrf,onData,onSta
     };
     try{
       const count=Math.min(4,Math.max(0,Number(data.speech_segments)||0));
-      if(!count)return;
+      if(!count){onState("Answer is in chat — listening","listening");return;}
       let next=load(0);
       for(let i=0;i<count&&valid();i++){
         const buffer=await next;if(!valid())return;
@@ -116,19 +131,19 @@ export async function connectOpenRouterVoice({stream,sessionId,csrf,onData,onSta
         // interruption or provider failure cannot leak an unhandled promise.
         if(i+1<count){next=load(i+1);next.catch(()=>{});}
         const node=ctx.createBufferSource();node.buffer=buffer;
-        node.connect(ctx.destination);node.connect(sink);playing=node;
+        node.connect(playback);node.connect(sink);playing=node;
         onState("Speaking…","speaking");
         await new Promise(resolve=>{node.onended=resolve;node.start();});
         if(playing===node)playing=null;
         node.disconnect();
       }
       if(valid())onState("Listening — speak naturally","listening");
-    }catch(error){if(valid())onState("Speech unavailable. The answer is in chat.","error");}
-    finally{if(speech===controller)speech=null;}
+    }catch(error){if(valid()){failed=true;onState("Speech unavailable. The completed answer is in chat. Return to chat to continue.","error");}}
+    finally{if(speech===controller){speech=null;detector.reset();resumeAfter=performance.now()+350;}}
   }
   async function submit(frames){
-    if(closed||muted||busy)return;
-    busy=true;stopSpeech();
+    if(closed||muted||busy||failed||speech)return;
+    busy=true;stopSpeech();detector.reset();
     const id=crypto.randomUUID();
     onState("Transcribing and working…","working");
     try{
@@ -140,22 +155,24 @@ export async function connectOpenRouterVoice({stream,sessionId,csrf,onData,onSta
       if(data.status==="no_speech"){onState("Listening — speak naturally","listening");return;}
       if(typeof data.message!=="string"||typeof data.conversation_id!=="string")throw Error("Invalid voice answer");
       onData(data);
-      // A single accepted agent turn is allowed at a time. Playback is
-      // asynchronous: barge-in interrupts speech without replaying the turn.
-      if(!detector.frames)void speak(data);
-      else onState("Answer is in chat — listening","listening");
-    }catch(error){if(!closed)onState("Request outcome unconfirmed. Check your chat before repeating.","error");}
+      // Keep capture paused through agent execution and playback. A speaker
+      // echo must never become a new paid agent request.
+      void speak(data);
+    }catch(error){if(!closed){failed=true;detector.reset();onState(voiceFailureMessage(error.voiceDetail),"error");}}
     finally{busy=false;}
   }
   const detector=new UtteranceDetector(()=>{
-    if(closed||muted)return;
-    stopSpeech();
-    onState(busy?"Previous request still running":"Listening…",busy?"working":"listening");
-  },frames=>{if(!busy&&!closed&&!muted)void submit(frames);});
-  worklet.port.onmessage=e=>{if(!closed&&!muted&&e.data instanceof Float32Array)detector.push(e.data);};
+    if(closed||muted||busy||speech||failed)return;
+    onState("Listening…","listening");
+  },frames=>{if(!busy&&!closed&&!muted&&!speech&&!failed)void submit(frames);});
+  worklet.port.onmessage=e=>{
+    if(closed||muted||busy||speech||failed||performance.now()<resumeAfter)return;
+    if(e.data instanceof Float32Array)detector.push(e.data);
+  };
   return {
     setMuted(value){muted=Boolean(value);detector.reset();},
+    setPlaybackMuted(value){playback.gain.value=value?0:1;},
     async disconnect(){if(closed)return;closed=true;life.abort();stopSpeech();detector.reset();worklet.port.onmessage=null;
-      source.disconnect();worklet.disconnect();await ctx.close();}
+      source.disconnect();worklet.disconnect();playback.disconnect();await ctx.close();}
   };
 }
