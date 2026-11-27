@@ -1,5 +1,6 @@
 """Real PostgreSQL proof: operator tests use ordinary auth and expire closed."""
 import os
+import secrets
 import sys
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -36,7 +37,7 @@ async def test_operator_principal_expiry_and_normal_password_auth(monkeypatch):
             await conn.execute(sql.replace("BEGIN;\nSET LOCAL", "SET LOCAL", 1).removesuffix("COMMIT;\n"))
         subject = uuid4()
         email = f"acceptance-{subject}@dragonzpyder.invalid"
-        password = "disposable-acceptance-credential-37!"
+        password = secrets.token_urlsafe(36)
         hashed = hash_password(password)
         expiry = await conn.fetchval("SELECT provision_operator_test_identity($1,$2,60)", subject, hashed)
         assert expiry is not None
@@ -57,7 +58,7 @@ async def test_operator_principal_expiry_and_normal_password_auth(monkeypatch):
         try:
             await _restricted_identity_role(conn)
             with pytest.raises(LoginDenied):
-                await password_login(conn, email=email, password="wrong-password")
+                await password_login(conn, email=email, password=secrets.token_urlsafe(36))
             session = await password_login(conn, email=email, password=password)
             assert await resolve_browser_session(conn, secret=session.secret, csrf=session.csrf, require_csrf=True) == str(subject)
             with pytest.raises(SessionDenied):

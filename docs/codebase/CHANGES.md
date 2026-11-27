@@ -2,6 +2,8 @@
 
 ## 2026-11-27 — expiring engineering acceptance identity
 
+- `api/tests/test_identity_operator_test_postgres.py`: Generate disposable passwords at runtime so fixtures pass the existing secret scanner. Real PostgreSQL CI for the initial revision passed; final revision remains subject to CI. No actual test credentials committed.
+
 - `api/identity/schema_operator_test_manual.sql`: Add explicit operator-only provisioning for a separate test origin, reserved .invalid identifiers and at most eight-hour expiry enforced by restrictive RLS; preserve imported activation receipts, no Google proof or workspace mapping fabricated. Manual deployment only; real PostgreSQL CI pending.
 - `api/identity/http_bridge.py`: Reject effective API grants that could provision test users or extend test expiry; optional catalog checks preserve databases without the migration. Existing password/session/CSRF authorization unchanged. Seventeen local identity regressions passed; real PostgreSQL CI pending.
 - `api/tests/test_identity_operator_test_postgres.py`: Use disposable PostgreSQL to verify password login, wrong-password/CSRF denial, live-cookie expiry, role denial, forbidden provider attachment and imported-account activation fence. Local PostgreSQL sockets unavailable; CI required before production migration.
