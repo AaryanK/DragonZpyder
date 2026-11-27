@@ -43,3 +43,7 @@ Live replacement VM bootstrap reached network verification but failed exit 126; 
 ## 2026-11-27 — template access repair
 
 The signed VM test returned 503 at network hardening (launcher exit 73; cleanup confirmed). Normalize permissions only on the trusted root-owned virtual environment, preserve non-writability for the scoped user, and check interpreter presence separately from helper access. No change to UID drop, kernel isolation, or scope permissions. Actual template qualification is pending.
+
+## 2026-11-27 — copied interpreter template
+
+The signed probe against deployed ab7ec4c failed with launcher exit 73 despite root-owned venv permission normalization; VM destruction confirmed. Build the venv using copied interpreter binaries instead of symlinks. Fail closed if the template still uses a symlink, and distinguish unprivileged directory traversal failures (81–84). This is a targeted repair hypothesis, not a proven root cause; actual VM qualification remains required.

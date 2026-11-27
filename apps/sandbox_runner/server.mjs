@@ -45,7 +45,7 @@ function computerTemplate() {
       "libseccomp2", "jq", "nodejs", "npm", "poppler-utils", "procps", "python3", "python3-pip",
       "python3-venv", "ripgrep", "unzip", "wget", "zip",
     )
-    .run("python3 -m venv /opt/operly-py")
+    .run("python3 -m venv --copies /opt/operly-py")
     .run(
       "/opt/operly-py/bin/pip install --no-cache-dir " +
       "beautifulsoup4 duckdb httpx imageio lxml matplotlib numpy odfpy openpyxl pandas Pillow " +
@@ -217,7 +217,7 @@ async function writeHelper(box) {
   await requiredBootstrapExec(box, "prepare-workspace", "mkdir -p /workspace/work /workspace/.operly/processes && chown -R operly:operly /workspace && install -d -m 0711 -o root -g root /opt/dz-computer-requests && chown root:root /opt/operly-computer-tool.py && chmod 0555 /opt/operly-computer-tool.py");
   // Venv and helper are trusted, root-owned template assets, not workspace data.
   // Check for an absent template interpreter separately from inaccessible files.
-  await requiredBootstrapExec(box, "template-interpreter", "test -x /opt/operly-py/bin/python || exit 75; test -r /opt/operly-computer-tool.py || exit 76; chmod a+x /opt; chown -R root:root /opt/operly-py && chmod -R a+rX,go-w /opt/operly-py");
+  await requiredBootstrapExec(box, "template-interpreter", "test -x /opt/operly-py/bin/python || exit 75; test ! -L /opt/operly-py/bin/python || exit 78; test -r /opt/operly-computer-tool.py || exit 76; chmod a+x /opt; chown -R root:root /opt/operly-py && chmod -R a+rX,go-w /opt/operly-py && chmod 0755 /opt/operly-py/bin/python");
 }
 
 function requireExecSuccess(result, label) {
@@ -247,7 +247,7 @@ async function requiredBootstrapExec(box, label, command) {
 // provider's isolated VM, but enforce a stricter off policy in the kernel
 // for every trusted helper invocation and every descendant process.
 // Never fall back to an unfiltered command if the kernel probe fails.
-const OFFLINE_LAUNCHER = "# Trusted, constant bootstrap program; never interpolates model-supplied code.\nimport os,sys\nif os.getuid()!=0 or os.geteuid()!=0:\n    raise SystemExit(71)\ntry:\n    os.setgroups([])\n    os.setgid(10001)\n    os.setuid(10001)\n    assert os.getresuid()==(10001,10001,10001) and os.getresgid()==(10001,10001,10001)\nexcept Exception:\n    raise SystemExit(72)\ntry:\n    os.chdir(\"/workspace/work\")\n    executable=\"/opt/operly-py/bin/python\"\n    helper=\"/opt/operly-computer-tool.py\"\n    if not os.access(executable,os.X_OK):\n        raise SystemExit(73)\n    if not os.access(helper,os.R_OK):\n        raise SystemExit(77)\n    os.execve(executable,[executable,\"-I\",\"-B\",helper,*sys.argv[1:]],{\n        \"PATH\":\"/usr/local/bin:/usr/bin:/bin\",\"LANG\":\"C.UTF-8\",\"HOME\":\"/workspace/work\"})\nexcept OSError:\n    raise SystemExit(74)";
+const OFFLINE_LAUNCHER = "# Trusted, constant bootstrap program; never interpolates model-supplied code.\nimport os,sys\nif os.getuid()!=0 or os.geteuid()!=0:\n    raise SystemExit(71)\ntry:\n    os.setgroups([])\n    os.setgid(10001)\n    os.setuid(10001)\n    assert os.getresuid()==(10001,10001,10001) and os.getresgid()==(10001,10001,10001)\nexcept Exception:\n    raise SystemExit(72)\ntry:\n    os.chdir(\"/workspace/work\")\n    executable=\"/opt/operly-py/bin/python\"\n    helper=\"/opt/operly-computer-tool.py\"\n    for i,path in enumerate((\"/\",\"/opt\",\"/opt/operly-py\",\"/opt/operly-py/bin\")):\n        if not os.access(path,os.X_OK):\n            raise SystemExit(81+i)\n    if not os.access(executable,os.X_OK):\n        raise SystemExit(73)\n    if not os.access(helper,os.R_OK):\n        raise SystemExit(77)\n    os.execve(executable,[executable,\"-I\",\"-B\",helper,*sys.argv[1:]],{\n        \"PATH\":\"/usr/local/bin:/usr/bin:/bin\",\"LANG\":\"C.UTF-8\",\"HOME\":\"/workspace/work\"})\nexcept OSError:\n    raise SystemExit(74)";
 
 function offlineInvocation(args) {
   // Fixed system interpreter; clean environment; irreversible UID/GID drop.
