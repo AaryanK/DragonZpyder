@@ -143,3 +143,32 @@ html[data-workspace-theme] #mode-tabs button{border:0;box-shadow:none;background
 html[data-workspace-theme] #mode-tabs button.selected{display:none}
 html[data-workspace-theme] .dz-account-shortcuts a{font-weight:550}
 html[data-workspace-theme] .dz-account-resource-mark .dz-ui-icon{width:20px;height:20px}
+
+/* Authentication-only composition. No dashboard or chat styling changes. */
+html[data-workspace-theme] body:has(#profile-panel[hidden]) #root{min-height:100vh;min-height:100dvh;display:flex;flex-direction:column}
+html[data-workspace-theme] body:has(#profile-panel[hidden]) .top{display:none}
+html[data-workspace-theme] .dz-auth-brand{display:none}
+html[data-workspace-theme] body:has(#profile-panel[hidden]) .dz-auth-brand{display:flex;align-items:center;justify-content:center;gap:9px;color:var(--text);font-size:19px;font-weight:650;letter-spacing:-.045em;margin-bottom:32px;text-decoration:none}
+html[data-workspace-theme] .dz-auth-brand img{width:40px;height:40px;object-fit:contain}
+html[data-workspace-theme] body:has(#profile-panel[hidden]) main{flex:1;display:flex;align-items:center;justify-content:center;width:min(100%,408px);max-width:408px;margin:0 auto;padding:40px 24px 24px}
+html[data-workspace-theme] body:has(#profile-panel[hidden]) .account-card{width:100%;max-width:360px}
+html[data-workspace-theme] body:has(#profile-panel[hidden]) .account-panel h2{font-size:30px;letter-spacing:-.04em;font-weight:650;text-align:center;line-height:1.2;margin:0 0 24px}
+html[data-workspace-theme] .dz-auth-hint{text-align:center;font-size:14px;line-height:1.5;margin:-12px 0 20px}
+html[data-workspace-theme] #login-panel form{gap:8px}
+html[data-workspace-theme] #login-panel label{font-size:13px;font-weight:600}
+html[data-workspace-theme] #login-panel input{height:48px;border-radius:9px;border-color:var(--dz-shell-line);background:var(--dz-shell-surface);font-size:16px}
+html[data-workspace-theme] #login-panel input:focus{outline:2px solid var(--copper);outline-offset:1px}
+html[data-workspace-theme] .dz-password-field{position:relative;min-width:0}
+html[data-workspace-theme] .dz-password-field input{width:100%;padding-right:70px!important}
+html[data-workspace-theme] .dz-password-toggle{appearance:none;position:absolute;right:4px;top:2px;min-width:56px;min-height:44px;background:transparent;color:var(--muted);border:0;border-radius:6px;font-size:12px;font-weight:600}
+html[data-workspace-theme] body:has(#profile-panel[hidden]) .submit{min-height:48px;border-radius:9px;font-size:15px;font-weight:650}
+html[data-workspace-theme] #login-panel .links{margin:8px 0 0;justify-content:center}
+html[data-workspace-theme] .dz-auth-switch{border:0;margin:16px 0 0;padding:0;align-items:center;gap:5px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
+html[data-workspace-theme] .dz-auth-switch button{padding:0 4px;text-decoration:none;color:var(--copper);font-weight:600;font-size:13px}
+html[data-workspace-theme] .dz-auth-switch button:hover{text-decoration:underline}
+html[data-workspace-theme] .dz-signup-status{font-size:13px;text-align:center;color:var(--muted);line-height:1.5}
+html[data-workspace-theme] .dz-auth-retry{display:block;margin:8px auto 0;min-height:44px;padding:0 14px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--text)}
+html[data-workspace-theme] :is(.dz-signup-status,.dz-auth-retry)[hidden]{display:none!important}
+html[data-workspace-theme] body:has(#profile-panel[hidden]) footer{width:100%;max-width:none;margin:0 auto;padding:16px 24px max(20px,env(safe-area-inset-bottom));font-size:12px}
+@media(max-width:600px){html[data-workspace-theme] body:has(#profile-panel[hidden]) main{align-items:flex-start;padding:clamp(28px,8dvh,64px) 24px 24px}html[data-workspace-theme] body:has(#profile-panel[hidden]) .dz-auth-brand{margin-bottom:24px}}
+@media(max-height:620px){html[data-workspace-theme] body:has(#profile-panel[hidden]) main{padding-top:20px;align-items:flex-start}html[data-workspace-theme] body:has(#profile-panel[hidden]) .dz-auth-brand{margin-bottom:18px}}

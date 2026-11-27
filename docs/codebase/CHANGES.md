@@ -369,3 +369,11 @@ Production evidence: session starts and one canonical turn succeeded; a subseque
 - `web/frontend/src/HomeTemplate.jsx`: Corrects stale Operly execution-backbone marketing copy to business workspace ownership; retains separate business product link. CI and production visual verification pending.
 - `web/frontend/tests/native-routing.spec.js`: Exercises both /login and /account with cutover false, asserts native credential route and no legacy requests; updates removed link assertion. CI and production visual verification pending.
 - `web/frontend/scripts/check-build.mjs`: Prerender assertion rejects legacy sign-in controls and obsolete credential forms. CI and production visual verification pending.
+
+## 2026-11-27 — narrow frontend revision to login and signup
+
+- `web/frontend/src/AccountTemplate.jsx`: centered auth brand, accessible password reveal, clear sign-up failure/retry and account-mode switch. Settings and migration proof retain existing controllers.
+- `web/account.css`: responsive auth-only composition, consistent inputs and button alignment, footer placement and short-height adaptation; no chat changes.
+- `web/account.js`: rejects stale cross-mode Google challenge responses, clears password when switching modes, handles unavailable Google signup without suggesting unsupported email signup.
+- `web/frontend/tests/native-routing.spec.js`: adds mobile password visibility, signup failure/retry and layout regression coverage; CI pending.
+- `web/frontend/src/PersonalTemplate.jsx`, `web/ui-v1.css`, `web/frontend/src/HomeTemplate.jsx`: restored to PR base; unrelated chat and marketing changes removed at user clarification. No voice changes.

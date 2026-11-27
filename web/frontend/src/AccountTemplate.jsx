@@ -1,4 +1,4 @@
-import React from "react";
+import React, {useState} from "react";
 import { WorkspaceCenter } from "./WorkspaceCenter.jsx";
 import { AppearanceSettings } from "./AppearanceSettings.jsx";
 import { UiIcon } from "./UiIcon.jsx";
@@ -7,6 +7,7 @@ import "./workspace-center.css";
 // Layout and copy are the existing DragonZpyder design, now authored as JSX.
 // Do not reintroduce the former static HTML templates.
 export function AccountTemplate() {
+  const [passwordVisible,setPasswordVisible]=useState(false);
   return (
     <>
       <WorkspaceCenter />
@@ -14,10 +15,11 @@ export function AccountTemplate() {
 <header className="top"><a href="/" className="brand"><img alt="" src="/brand-icon.png"/>DragonZpyder</a><a className="account-back" href="/app"><UiIcon name="chat" size={18}/> Back to chat</a></header>
 <main>
 <section className="account-card" aria-label="DragonZpyder account">
+<a className="dz-auth-brand" href="/" aria-label="DragonZpyder home"><img src="/brand-icon.png" alt="" width="48" height="48"/><span>DragonZpyder</span></a>
 <div className="message" id="account-message" role="status" aria-live="polite" hidden></div>
-<section id="login-panel" className="account-panel"><h2>Sign in</h2><p className="dz-auth-hint">Continue to DragonZpyder.</p><div id="google-provider" className="google-provider" aria-label="Google sign-in" hidden></div><div className="divider">or use your email</div><form id="login-form">
+<section id="login-panel" className="account-panel"><h2>Sign in</h2><div id="google-provider" className="google-provider" aria-label="Google sign-in" hidden></div><div className="divider">or use your email</div><form id="login-form">
 <label htmlFor="login-email">Email address</label><input id="login-email" type="email" required autoComplete="username"/>
-<label htmlFor="login-password">Password</label><input id="login-password" type="password" required autoComplete="current-password"/>
+<label htmlFor="login-password">Password</label><div className="dz-password-field"><input id="login-password" type={passwordVisible?"text":"password"} required autoComplete="current-password"/><button type="button" className="dz-password-toggle" aria-controls="login-password" aria-label={passwordVisible?"Hide password":"Show password"} onClick={()=>setPasswordVisible(v=>!v)}>{passwordVisible?"Hide":"Show"}</button></div>
 <button className="submit" type="submit">Sign in</button></form><p className="links"><button type="button" data-mode="forgot" hidden>Forgot password?</button></p></section>
 <section id="migration-panel" className="account-panel" hidden>
 <h2>Verify your existing account.</h2><p className="muted">Confirm the sign-in method already attached to your account. This does not sign you in or change your account; activation requires a separate review.</p>
@@ -43,7 +45,7 @@ export function AccountTemplate() {
 </form>
 <p className="links"><a href="/account?mode=migration">Return to account verification</a></p>
 </section>
-<section id="signup-panel" className="account-panel" hidden><h2>Create account</h2><p className="dz-auth-hint">Use your Google account to get started.</p><div id="google-provider-signup" className="google-provider" aria-label="Google signup" hidden></div></section>
+<section id="signup-panel" className="account-panel" hidden><h2>Create account</h2><p className="dz-auth-hint">Use your Google account to get started.</p><div id="google-provider-signup" className="google-provider" aria-label="Google signup" hidden></div><p id="signup-provider-status" className="dz-signup-status" role="status">Connecting to Google…</p><button id="retry-google-signup" className="dz-auth-retry" type="button" hidden>Try again</button></section>
 <section id="forgot-panel" className="account-panel" hidden><h2>Reset password</h2><p className="muted">We'll email reset instructions if there's an account using that address.</p><form id="forgot-form">
 <label htmlFor="forgot-email">Email address</label><input id="forgot-email" type="email" required autoComplete="email"/>
 <button className="submit" type="submit">Send reset instructions</button></form><p className="links"><button type="button" data-mode="reset">I have a reset code</button><button type="button" data-mode="login">Back to sign in</button></p></section>
@@ -71,7 +73,7 @@ export function AccountTemplate() {
 <div id="workspace-list" className="dz-account-workspaces"></div><a className="business-link" href="https://operly.dragonzpyder.xyz/" target="_blank" rel="noopener noreferrer">Open business workspaces ↗</a></section>
 <div className="dz-account-footer"><a href="/app">Back to chat</a><button id="account-logout" type="button">Sign out</button></div>
 </section>
-<div className="tabs" id="mode-tabs" role="group" aria-label="Account access"><button type="button" data-mode="login" className="selected">Sign in</button><button type="button" data-mode="signup">Create account</button></div>
+<div className="tabs dz-auth-switch" id="mode-tabs" role="group" aria-label="Account access"><span id="account-mode-prompt">New to DragonZpyder?</span><button type="button" data-mode="login" className="selected">Sign in</button><button type="button" data-mode="signup">Create account</button></div>
 </section>
 </main>
 <footer>© DragonZpyder · <a href="/privacy.html">Privacy</a> · <a href="/terms.html">Terms</a></footer>

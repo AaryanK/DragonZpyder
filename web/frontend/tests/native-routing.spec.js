@@ -284,3 +284,25 @@ test("failed native session probe offers retry, not a duplicate credential form"
   await expect(page.getByRole("button",{name:"Try again"})).toBeVisible();
   await expect(page.locator("#login-form")).toHaveCount(0);
 });
+
+test("mobile sign-in has one brand and accessible password visibility",async({page})=>{
+  await page.setViewportSize({width:360,height:640});
+  await page.route("**/dz/recovery/status",r=>r.fulfill({json:{enabled:false}}));
+  await page.route("**/dz/identity/v1/me",r=>r.fulfill({status:401}));
+  await page.route("**/dz/identity/v1/provider/google/start",r=>r.fulfill({status:503}));
+  await page.goto("/login");
+  await expect(page.locator(".dz-auth-brand")).toBeVisible();
+  await expect(page.locator("header.top")).toBeHidden();
+  await expect(page.locator("#login-form button[type=submit]")).toBeInViewport();
+  await page.locator("#login-password").fill("synthetic-test-password");
+  await page.getByRole("button",{name:"Show password"}).click();
+  await expect(page.locator("#login-password")).toHaveAttribute("type","text");
+  await page.getByRole("button",{name:"Hide password"}).click();
+  await expect(page.locator("#login-password")).toHaveAttribute("type","password");
+  await page.getByRole("button",{name:"Create account"}).click();
+  await expect(page.getByText("Google sign-up is temporarily unavailable.")).toBeVisible();
+  await expect(page.getByRole("button",{name:"Try again"})).toBeVisible();
+  await page.getByRole("button",{name:"Sign in",exact:true}).click();
+  await expect(page.locator("#login-password")).toHaveValue("");
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(361);
+});

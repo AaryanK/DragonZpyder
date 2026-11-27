@@ -3,12 +3,12 @@ const panels = ["login","signup","forgot","reset","profile","migration","migrati
 let mode = "login", processing = false;
 // DragonZpyder owns account access, independently of runtime cutover.
 const nativeMode = true;
-let googleRenderedMode = null, nativeGoogleState = null;
+let googleRenderedMode = null, nativeGoogleState = null, googleGeneration=0;
 let migrationEnabled = false, recoveryEnabled = false, recoveryEmail = null;
 let activeRecoveryEnabled=false;
 const messageBox = $("account-message");
 function report(message,isError=false){messageBox.textContent=String(message||"");messageBox.classList.toggle("error",isError);messageBox.hidden=!message;}
-function show(next){if(!panels.includes(next))next="login";if(next==="migration"&&!migrationEnabled)next="login";if(next==="migration-recovery"&&!recoveryEnabled)next="login";if(nativeMode&&!["login","signup","profile","migration","migration-recovery",...(activeRecoveryEnabled?["forgot","reset"]:[])].includes(next))next="login";mode=next;report("");panels.forEach(name=>{$(name+"-panel").hidden=name!==next});$("mode-tabs").hidden=!["login","signup"].includes(next);document.querySelectorAll("[data-mode]").forEach(el=>el.classList.toggle("selected",el.dataset.mode===next));if(next==="login"||(nativeMode&&next==="signup")||next==="migration")loadGoogle().catch(()=>{});}
+function show(next){if(!panels.includes(next))next="login";if(next==="migration"&&!migrationEnabled)next="login";if(next==="migration-recovery"&&!recoveryEnabled)next="login";if(nativeMode&&!["login","signup","profile","migration","migration-recovery",...(activeRecoveryEnabled?["forgot","reset"]:[])].includes(next))next="login";if(mode!==next){googleGeneration++;googleRenderedMode=null;nativeGoogleState=null;$("login-password").value="";}mode=next;report("");$("account-mode-prompt").textContent=next==="signup"?"Already have an account?":"New to DragonZpyder?";panels.forEach(name=>{$(name+"-panel").hidden=name!==next});$("mode-tabs").hidden=!["login","signup"].includes(next);document.querySelectorAll("[data-mode]").forEach(el=>el.classList.toggle("selected",el.dataset.mode===next));if(next==="login"||(nativeMode&&next==="signup")||next==="migration")loadGoogle().catch(()=>googleUnavailable(next));}
 function cookie(name){const part=document.cookie.split(";").map(v=>v.trim()).find(v=>v.startsWith(name+"="));return part?decodeURIComponent(part.slice(name.length+1)):"";}
 function csrf(){return cookie("__Host-dz_csrf");}
 async function request(path,{method="GET",body,unauth=false}={}){
@@ -56,11 +56,14 @@ async function googleCredential(credential,expectedMode){
   await afterSignIn();
  }catch(e){report(e.message||"Google sign-in failed.",true)}finally{processing=false}
 }
+function googleUnavailable(expectedMode){if(mode!==expectedMode||mode!=="signup")return;$("signup-provider-status").hidden=false;$("signup-provider-status").textContent="Google sign-up is temporarily unavailable.";$("retry-google-signup").hidden=false;}
 async function loadGoogle(){
+ const expectedMode=mode,generation=++googleGeneration;
+ if(mode==="signup"){$("signup-provider-status").hidden=false;$("signup-provider-status").textContent="Connecting to Google…";$("retry-google-signup").hidden=true;}
  if(mode==="migration"){
   if(!migrationEnabled||googleRenderedMode===mode)return;
   const g=await request("/dz/identity/v1/import-proof/google/start",{method:"POST"});
-  if(mode!=="migration")return;
+  if(mode!=="migration"||generation!==googleGeneration)return;
   nativeGoogleState=g;
   if(g.client_id&&g.nonce)return renderGoogle(g.client_id,g.nonce,"google-provider-migration");
   return;
@@ -69,8 +72,9 @@ async function loadGoogle(){
  {
   if(googleRenderedMode===mode)return;
   const g=await request("/dz/identity/v1/provider/google/start",{method:"POST"});
+  if(mode!==expectedMode||generation!==googleGeneration)return;
   nativeGoogleState=g;
-  if(!g.client_id||!g.nonce)return;
+  if(!g.client_id||!g.nonce){googleUnavailable(expectedMode);return;}
   return renderGoogle(g.client_id,g.nonce,mode==="signup"?"google-provider-signup":"google-provider");
  }
 }
@@ -82,11 +86,13 @@ function renderGoogle(clientId,nonce,hostId){
   host.replaceChildren();
   window.google.accounts.id.renderButton(host,{theme:"outline",size:"large",text:"continue_with",shape:"rectangular",width:Math.min(400,Math.max(200,Math.floor(host.clientWidth||300)))});
   googleRenderedMode=mode;
+  if(mode==="signup"){$("signup-provider-status").hidden=true;$("retry-google-signup").hidden=true;}
  };
  if(window.google?.accounts?.id){render();return;}
- const script=document.createElement("script");script.src="https://accounts.google.com/gsi/client";script.async=true;script.defer=true;script.onload=render;script.onerror=()=>report("Google sign-in could not load; use email to continue.",true);document.head.append(script);
+ const script=document.createElement("script");script.src="https://accounts.google.com/gsi/client";script.async=true;script.defer=true;script.onload=render;script.onerror=()=>{if(mode!==expectedMode)return;if(mode==="signup")googleUnavailable(expectedMode);else report("Google sign-in could not load; use email to continue.",true);};document.head.append(script);
 }
 document.querySelectorAll("[data-mode]").forEach(el=>el.addEventListener("click",()=>show(el.dataset.mode)));
+$("retry-google-signup").addEventListener("click",()=>{if(mode==="signup")loadGoogle().catch(()=>googleUnavailable("signup"));});
 $("migration-recovery-start").addEventListener("submit",e=>{e.preventDefault();if(mode!=="migration-recovery"||!recoveryEnabled)return;submitAction(e.currentTarget,async()=>{
  const email=$("migration-recovery-email").value.trim();
  const result=await request("/dz/identity/v1/import-proof/recovery/start",{method:"POST",body:{email}});
