@@ -277,3 +277,9 @@ Removed the three Markdown guides from Android drawable, values and xml resource
 
 - `api/agent_platform/harness.py`: Supervisor gets five bounded web searches instead of three; search-only quota denial continues to synthesis rather than aborting the graph. Specialist search cap remains two. Explicitly disclose irrelevant or insufficient sources; model/tool mutation safeguards unchanged.
 - `api/tests/test_harness_tool_acceptance.py`: Script real graph through six attempted searches, assert only five execute and a final grounded/limited answer survives. Offline CI pending. Live Langfuse evidence showed encyclopedia-only results and fourth search rejected; general web provider still must be qualified.
+
+## 2026-11-27 — P0 unify production model routing
+
+- `api/agent_platform/runtime.py`: shared builder forwards authorized capability arguments, role-specific clients and routing middleware; preflight includes fast/reasoning routes.
+- `api/agent_platform/first_party_chat.py`, `workspace_bridge.py`, `personal_bridge.py`, `native_workflows.py`: use common builder; parent-budget identity also applies to durable specialists; record initial route metadata. Existing authority checks retained.
+- `api/tests/test_agent_stack_integration.py`: verify all specialist roles, capability forwarding and parent-budget propagation. Offline CI pending; production model catalog and live smoke still required.

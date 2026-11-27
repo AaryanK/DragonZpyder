@@ -133,3 +133,6 @@ Reviewed entries are source-inspected summaries; indexed entries are navigation 
 The metered SDK transport explicitly disables provider streaming even when a graph is consumed with SSE/message callbacks. The outer graph stream is independent of the signed complete-response inference protocol.
 
 Research search-only quota denial permits synthesis without further search execution: supervisor five, researcher two. The model call and deadline limits remain bounded; snippets do not prove full-page verification.
+
+### Unified model construction
+All production entrypoints use runtime.build_agent for role-specific model clients. Native workflow specialists inherit the same parent-budget job ID. The runtime preflight checks configured fast/reasoning roles as well as specialist roles when adaptive routing is enabled. Existing capability arguments remain authority-scoped; no new tools granted by model routing.
