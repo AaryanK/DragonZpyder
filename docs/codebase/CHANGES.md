@@ -347,3 +347,8 @@ Production evidence: session starts and one canonical turn succeeded; a subseque
 - `api/agent_platform/harness.py`: Use automatic source evidence before repeated searches; do not label unsupported claims verified.
 - `api/tests/test_agent_web_monitor.py`: Test automatic reads, failures, quotas, cache and per-graph isolation.
 - `api/tests/test_harness_tool_acceptance.py`: Assert source text is present in the actual graph search receipt.
+
+## 2026-11-27 — VM template access repair
+
+- `apps/sandbox_runner/server.mjs`: Normalize permissions of trusted root-owned interpreter assets, separate missing template interpreter and inaccessible helper exit codes, preserve all scope and offline kernel checks. Railway signed allocation failed exit 73 before user code; cleanup confirmed. CI/live qualification pending.
+- `apps/sandbox_runner/README.md`: Record failure and bounded repair.
