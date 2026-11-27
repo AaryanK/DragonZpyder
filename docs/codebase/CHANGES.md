@@ -1,5 +1,15 @@
 # Codebase change records
 
+## 2026-11-27 — expiring engineering acceptance identity
+
+- `api/tests/test_identity_operator_test_postgres.py`: Generate disposable passwords at runtime so fixtures pass the existing secret scanner. Real PostgreSQL CI for the initial revision passed; final revision remains subject to CI. No actual test credentials committed.
+
+- `api/identity/schema_operator_test_manual.sql`: Add explicit operator-only provisioning for a separate test origin, reserved .invalid identifiers and at most eight-hour expiry enforced by restrictive RLS; preserve imported activation receipts, no Google proof or workspace mapping fabricated. Manual deployment only; real PostgreSQL CI pending.
+- `api/identity/http_bridge.py`: Reject effective API grants that could provision test users or extend test expiry; optional catalog checks preserve databases without the migration. Existing password/session/CSRF authorization unchanged. Seventeen local identity regressions passed; real PostgreSQL CI pending.
+- `api/tests/test_identity_operator_test_postgres.py`: Use disposable PostgreSQL to verify password login, wrong-password/CSRF denial, live-cookie expiry, role denial, forbidden provider attachment and imported-account activation fence. Local PostgreSQL sockets unavailable; CI required before production migration.
+- `.github/workflows/dragonzpyder-api.yml`: Run the transactional operator identity fixture before the existing disposable identity integration sequence; no live credentials or paid calls.
+- `scripts/production_acceptance_probe.ts`: Reuse the private Railway Function for ordinary authenticated fixed-case prompts and full request-ledger readback, with explicit opt-in payloads and no automatic retry. Credentials/cookies never logged; runtime capabilities are not accepted as outcome proof. Production tests pending.
+
 For each implementation change, add a new bullet beginning with the exact repository-relative path in backticks, followed by a colon and a substantive explanation. Include changed behavior or why behavior is unchanged, affected callers/dependencies, constraints, tests/evidence and unresolved limitations. Record both paths for a rename; describe removals. Do not edit old entries to make a new change appear covered. Update file inventory, local guides and execution flows alongside this record. Documentation-only edits need no records.
 
 ## 2026-11-27 — Bounded source reading

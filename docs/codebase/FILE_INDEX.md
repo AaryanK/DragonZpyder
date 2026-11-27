@@ -1,5 +1,11 @@
 # Tracked file inventory
 
+| Added path | Responsibility | Evidence |
+| --- | --- | --- |
+| [`schema_operator_test_manual.sql`](../../api/identity/schema_operator_test_manual.sql) | Explicit operator-only expiring Personal test identities, bounded provisioning, reserved identifiers and restrictive runtime RLS. | Reviewed |
+| [`test_identity_operator_test_postgres.py`](../../api/tests/test_identity_operator_test_postgres.py) | Disposable real PostgreSQL login/CSRF/expiry/least-privilege tests preserving imported-user activation fences. | Reviewed |
+| [`production_acceptance_probe.ts`](../../scripts/production_acceptance_probe.ts) | Private normal-auth production HTTP probe with fixed test cases, durable request readback and logout. | Reviewed |
+
 Baseline: [`d38aa819af869c3b4f5d979939441b711324d3e5`](https://github.com/AaryanK/DragonZpyder/tree/d38aa819af869c3b4f5d979939441b711324d3e5) (develop, 2026-11-26). 427 pre-existing tracked files across 29 file-containing directories. All paths were enumerated from the complete Git tree. **Reviewed** means source or entrypoint inspected for the summary; **Indexed** means path-based navigation only, not a verified behavior claim. This is not a live deployment inventory. New documentation files in this PR are intentionally outside this baseline. Use [the implementation guide](IMPLEMENTATION.md) first.
 
 ## .

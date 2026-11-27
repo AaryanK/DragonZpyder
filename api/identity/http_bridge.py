@@ -71,6 +71,17 @@ async def _restricted_identity_role(conn):
           AND NOT has_column_privilege(current_user,'public.identity_accounts','identity_origin','UPDATE')
           AND NOT has_column_privilege(current_user,'public.identity_accounts','source_operly_user_id','UPDATE')
           AND NOT has_column_privilege(current_user,'public.identity_accounts','email','UPDATE')
+          AND NOT EXISTS (
+              SELECT 1 FROM pg_attribute a
+              WHERE a.attrelid=to_regclass('public.identity_accounts')
+                AND a.attname IN ('operator_test_expires_at','operator_test_provisioned_by')
+                AND NOT a.attisdropped
+                AND (has_column_privilege(current_user,a.attrelid,a.attnum,'UPDATE')
+                     OR has_column_privilege(current_user,a.attrelid,a.attnum,'INSERT')))
+          AND NOT EXISTS (
+              SELECT 1 FROM pg_proc p
+              WHERE p.oid=to_regprocedure('public.provision_operator_test_identity(uuid,text,integer)')
+                AND has_function_privilege(current_user,p.oid,'EXECUTE'))
           AND NOT has_any_column_privilege(current_user,'public.identity_oauth_clients','UPDATE')
           AND NOT has_any_column_privilege(current_user,'public.identity_oauth_clients','INSERT')
           AND NOT has_table_privilege(current_user,'public.identity_accounts','DELETE,TRUNCATE')
