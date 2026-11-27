@@ -1,5 +1,7 @@
 # Implementation and execution flows
 
+Operator production acceptance uses `scripts/production_acceptance_probe.ts` on the existing private Railway Function. An operator-only expiring principal is provisioned by `api/identity/schema_operator_test_manual.sql`; normal password login, session cookies, CSRF and the canonical chat/request ledger execute each test. Identity RLS expiry and protected provisioning fields keep these principals bounded. This path adds no public auth endpoint, provider bypass, workspace grant or alternate agent runtime. Live evidence is reported separately from CI.
+
 Source baseline: [d38aa819af86](https://github.com/AaryanK/DragonZpyder/tree/d38aa819af869c3b4f5d979939441b711324d3e5). This describes inspected entrypoints and links to adjacent files; it does not supersede [AGENTS](../../AGENTS.md), [V4](../universal-harness-v4.md), or [ownership](../platform-ownership.md).
 
 ## 1. Process and trust boundaries
