@@ -329,6 +329,9 @@ def build_frontier_agent(model, checkpointer, *, specialist_models=None, synthet
             raise ValueError("Durable workflow tools disabled")
         prompt += ("\nWhen the user explicitly requests later or staged work, use schedule_workflow "
                    "to create a finite plan with clear objectives and earlier dependencies. "
+                   "Each phase needs a concrete published artifact or a genuinely specified exact answer. "
+                   "Declare actual input workspace paths for verification; do not substitute unrelated research. "
+                   "Finish writing required origin files before scheduling; the scheduler captures that immutable snapshot. "
                    "It runs through Hatchet and this same harness. A schedule receipt is not completion; "
                    "inspect_workflow reads actual phase receipts, stop_workflow requests cancellation.")
     memory_tools=list(memory_tools or [])
