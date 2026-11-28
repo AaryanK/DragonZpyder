@@ -250,6 +250,177 @@ def admin_notice(message: str, *, status_code: int) -> HTMLResponse:
                                    "base-uri 'none'; frame-ancestors 'none'",
     })
 
+
+# Operator-only, bounded read adapters. No generic proxy, raw logs, provider
+# payloads, workspace records or mutation capability.
+ADMIN_RAILWAY_ENVIRONMENTS = {
+    "DragonZpyder": "504c45f1-9d06-4f5e-8125-4865965c3a29",
+    "Operly": "473285ce-62da-40b8-9f6c-d3ca40608f79",
+}
+ADMIN_RAILWAY_QUERY = """query Inventory($id: String!) {
+  environment(id: $id) { name serviceInstances { edges { node {
+    id serviceName latestDeployment { id status }
+  } } } }
+}"""
+ADMIN_TRAFFIC_QUERY = """query Traffic($id: String!) {
+  httpLogs(deploymentId: $id, beforeLimit: 200) {
+    timestamp method httpStatus edgeRegion totalDuration rxBytes txBytes path
+  }
+}"""
+
+
+def _admin_fields(row, keys):
+    """Return bounded scalar fields only; never relay provider objects wholesale."""
+    if not isinstance(row, dict):
+        return {}
+    return {key: (row[key][:250] if isinstance(row[key], str) else row[key])
+            for key in keys if key in row and
+            (row[key] is None or isinstance(row[key], (str, int, float, bool)))}
+
+
+async def _admin_railway(client, project, query, identifier):
+    key = os.getenv("DRAGONZPYDER_ADMIN_RAILWAY_" + project.upper() + "_TOKEN", "")
+    if not key:
+        raise RuntimeError("unconfigured")
+    response = await client.post("https://backboard.railway.com/graphql/v2",
+        json={"query": query, "variables": {"id": identifier}},
+        headers={"project-access-token": key, "cookie": ""},
+        timeout=8, follow_redirects=False)
+    response.raise_for_status()
+    value = response.json()
+    if value.get("errors") or not isinstance(value.get("data"), dict):
+        raise ValueError("Railway response unavailable")
+    return value["data"]
+
+
+async def _admin_inventory(client, project):
+    payload = await _admin_railway(client, project, ADMIN_RAILWAY_QUERY,
+                                   ADMIN_RAILWAY_ENVIRONMENTS[project])
+    rows = payload["environment"]["serviceInstances"]["edges"]
+    result = []
+    for edge in rows[:100]:
+        node = edge["node"]
+        deployment = node.get("latestDeployment") or {}
+        result.append({"service": node.get("serviceName"), "deployment": deployment.get("id"),
+                       "status": deployment.get("status") or "NO_DEPLOYMENT"})
+    return result
+
+
+def _admin_traffic_summary(rows):
+    """Aggregate a bounded edge-log sample; neither raw paths nor IPs leave server."""
+    from collections import Counter
+    routes, regions, statuses = Counter(), Counter(), Counter()
+    durations = []
+    rx = tx = 0
+    timestamps = []
+    for row in rows[:200]:
+        path = str(row.get("path", "")).split("?", 1)[0]
+        route = next((prefix for prefix in ("/api", "/v2", "/identity", "/admin", "/assets",
+                    "/app", "/account", "/healthz") if path == prefix or path.startswith(prefix + "/")), 
+                    "/" if path == "/" else "other")
+        routes[route] += 1
+        region = str(row.get("edgeRegion") or "unknown")
+        regions[region if re.fullmatch(r"[a-zA-Z0-9_-]{1,40}", region) else "unknown"] += 1
+        status = row.get("httpStatus")
+        statuses[str(status) if isinstance(status, int) and 100 <= status <= 599 else "unknown"] += 1
+        for key, target in (("rxBytes", "rx"), ("txBytes", "tx")):
+            n = row.get(key)
+            if isinstance(n, int) and n >= 0:
+                if target == "rx": rx += n
+                else: tx += n
+        duration = row.get("totalDuration")
+        if isinstance(duration, (int, float)) and 0 <= duration < 86400000:
+            durations.append(duration)
+        timestamp = row.get("timestamp")
+        if isinstance(timestamp, str):
+            timestamps.append(timestamp[:40])
+    durations.sort()
+    return {"sample_requests": sum(routes.values()), "limit": 200,
+            "first_timestamp": min(timestamps, default=None), "last_timestamp": max(timestamps, default=None),
+            "routes": dict(routes), "edge_regions": dict(regions), "statuses": dict(statuses),
+            "received_bytes": rx, "sent_bytes": tx,
+            "p95_duration_ms": durations[max(0, (95 * len(durations) + 99)//100 - 1)] if durations else None}
+
+
+async def admin_operations(request: Request):
+    """Read limited operations metadata after the existing native admin check."""
+    import asyncio
+    import logging
+    from datetime import datetime, timezone
+    headers = {"cache-control": "no-store", "x-frame-options": "DENY"}
+    if not request.cookies.get("__Host-dz_identity"):
+        return JSONResponse({"detail": "Native DragonZpyder administrator session required"},
+                            status_code=403, headers=headers)
+    source = request.query_params.get("source", "")
+    if source not in {"railway", "traffic", "github", "langfuse"}:
+        return JSONResponse({"detail": "Invalid operations source"}, status_code=400, headers=headers)
+    client = request.app.state.http
+    result = {"source": source, "retrieved_at": datetime.now(timezone.utc).isoformat()}
+    try:
+        if source == "railway":
+            async def one(project):
+                try:
+                    return {"project": project, "state": "available", "services": await _admin_inventory(client, project)}
+                except RuntimeError:
+                    return {"project": project, "state": "unconfigured", "services": []}
+                except (httpx.HTTPError, ValueError, KeyError, TypeError):
+                    return {"project": project, "state": "unavailable", "services": []}
+            result["projects"] = await asyncio.gather(*(one(p) for p in ADMIN_RAILWAY_ENVIRONMENTS))
+        elif source == "traffic":
+            rows = await _admin_inventory(client, "DragonZpyder")
+            service = next((s for s in rows if s["service"] == "DragonZpyder Web"), None)
+            if not service or not service.get("deployment"):
+                raise ValueError("No web deployment")
+            data = await _admin_railway(client, "DragonZpyder", ADMIN_TRAFFIC_QUERY, service["deployment"])
+            result["traffic"] = _admin_traffic_summary(data["httpLogs"])
+            result["scope"] = "Latest DragonZpyder Web deployment; recent bounded edge-log sample, not complete traffic."
+        elif source == "github":
+            gh = {"accept": "application/vnd.github+json", "x-github-api-version": "2022-11-28",
+                  "cookie": "", "user-agent": "DragonZpyder-Admin"}
+            token = os.getenv("DRAGONZPYDER_ADMIN_GITHUB_TOKEN", "")
+            if token:
+                gh["authorization"] = "Bearer " + token
+            root = "https://api.github.com/repos/AaryanK/DragonZpyder"
+            async def get(path, params):
+                response = await client.get(root + path, params=params, headers=gh, timeout=8, follow_redirects=False)
+                response.raise_for_status()
+                return response.json()
+            commits, prs, runs = await asyncio.gather(
+                get("/commits", {"sha": "develop", "per_page": 20}),
+                get("/pulls", {"state": "all", "sort": "updated", "direction": "desc", "per_page": 20}),
+                get("/actions/runs", {"branch": "develop", "per_page": 20}))
+            result["commits"] = [{"sha": c.get("sha"), "date": c.get("commit", {}).get("committer", {}).get("date")}
+                                 for c in commits[:20]]
+            result["pull_requests"] = [_admin_fields(p, ("number", "title", "state", "updated_at", "merged_at"))
+                                       for p in prs[:20]]
+            result["workflow_runs"] = [_admin_fields(r, ("id", "name", "status", "conclusion", "head_sha", "updated_at"))
+                                      for r in runs["workflow_runs"][:20]]
+        else:
+            host = os.getenv("DRAGONZPYDER_ADMIN_LANGFUSE_HOST", "").rstrip("/")
+            public = os.getenv("DRAGONZPYDER_ADMIN_LANGFUSE_PUBLIC_KEY", "")
+            secret = os.getenv("DRAGONZPYDER_ADMIN_LANGFUSE_SECRET_KEY", "")
+            if not public or not secret or not host:
+                raise RuntimeError("unconfigured")
+            if host not in {"https://cloud.langfuse.com", "https://us.cloud.langfuse.com",
+                            "https://jp.cloud.langfuse.com", "https://hipaa.cloud.langfuse.com"}:
+                raise ValueError("Unsupported Langfuse host")
+            response = await client.get(host + "/api/public/v2/observations",
+                params={"fields": "core,basic,model,usage,metrics", "limit": 50},
+                auth=(public, secret), headers={"cookie": ""}, timeout=8, follow_redirects=False)
+            response.raise_for_status()
+            data = response.json()
+            result["observations"] = [_admin_fields(row, ("id", "traceId", "parentObservationId", "type",
+                "startTime", "endTime", "level", "model", "inputUsage", "outputUsage", "totalUsage",
+                "totalCost", "latency", "timeToFirstToken")) for row in data["data"][:50]]
+            result["more_available"] = bool(data.get("meta", {}).get("cursor"))
+    except RuntimeError:
+        return JSONResponse({"detail": "Operations integration is not configured"}, status_code=503, headers=headers)
+    except (httpx.HTTPError, ValueError, KeyError, TypeError, AttributeError):
+        return JSONResponse({"detail": "Operations source unavailable"}, status_code=502, headers=headers)
+    logging.getLogger("dragonzpyder.admin").info("Operations metadata read: %s", source)
+    return JSONResponse(result, headers=headers)
+
+
 async def admin_route(request: Request):
     if request.method != "GET":
         return JSONResponse({"detail": "Not found"}, status_code=404)
@@ -279,6 +450,8 @@ async def admin_route(request: Request):
             return JSONResponse({"detail": "Admin frontend not built"}, status_code=503)
         return FileResponse(target, media_type="text/html",
                             headers={"cache-control": "no-store", "x-frame-options": "DENY"})
+    if request.url.path == "/admin/api/operations":
+        return await admin_operations(request)
     secret = os.getenv("DRAGONZPYDER_ADMIN_TOKEN", "")
     if len(secret) < 40:
         return JSONResponse({"detail": "Admin usage gateway is not configured"},
@@ -317,7 +490,7 @@ def native_web_session(request: Request) -> bool:
 @app.api_route("/{path:path}", methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
 async def dispatch(path: str, request: Request):
     route = "/" + path
-    if route == "/admin" or route == "/admin/api/usage":
+    if route in {"/admin", "/admin/api/usage", "/admin/api/operations"}:
         return await admin_route(request)
     # First-party identity, native chat and browser-only MCP routes terminate
     # at DragonZpyder API. No wildcard /internal proxy: browsers must never

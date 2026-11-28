@@ -13,8 +13,8 @@ Read [repository instructions](../../../AGENTS.md) and [codebase navigation](../
 | [`VoiceOrb.jsx`](VoiceOrb.jsx) | React-owned voice interface/lifecycle and artwork renderer integration; visual canvas does not request microphone itself. | Reviewed |
 | [`WorkspaceCenter.jsx`](WorkspaceCenter.jsx) | React account-scoped workspace center and same-origin API requests; includes native MCP UI. | Reviewed |
 | [`WorkspaceControls.jsx`](WorkspaceControls.jsx) | Accessible modal focus and progressive-disclosure chat controls, command palette, capture/add menus and desktop install; delegates to existing adapters. | Reviewed |
-| [`admin.css`](admin.css) | Stylesheet: admin; inspect selectors and importing page. | Indexed |
-| [`admin.jsx`](admin.jsx) | Navigation hint: admin; source behavior not independently reviewed. | Indexed |
+| [`admin.css`](admin.css) | Responsive operations navigation, tables, metrics and distribution bars. | Indexed |
+| [`admin.jsx`](admin.jsx) | Read-only operations console: usage, Railway deployments, bounded traffic sample, GitHub and redacted Langfuse observations. | Indexed |
 | [`main.jsx`](main.jsx) | React mount/hydrate entrypoint selecting page by route. | Reviewed |
 | [`markdown.js`](markdown.js) | Navigation hint: markdown; source behavior not independently reviewed. | Indexed |
 | [`pages.jsx`](pages.jsx) | React page selection and compatibility-adapter orchestration. | Reviewed |

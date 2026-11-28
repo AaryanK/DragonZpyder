@@ -123,3 +123,58 @@ def test_account_redirect_only_allows_admin_return():
     script = (Path(__file__).resolve().parents[1] / "account.js").read_text()
     assert 'get("next")==="/admin"' in script
     assert 'window.location.replace(adminReturnRequested()?"/admin":"/app")' in script
+
+
+def test_operations_denies_unverified_and_legacy_only_sessions(monkeypatch):
+    monkeypatch.setenv("DRAGONZPYDER_ADMIN_EMAILS", "owner@example.test")
+    with TestClient(app) as client:
+        assert client.get("/admin/api/operations?source=github").status_code == 401
+        old = client.app.state.http
+        client.app.state.http = httpx.AsyncClient(transport=httpx.MockTransport(
+            lambda req: httpx.Response(200, json={"email": "owner@example.test"})))
+        try:
+            assert client.get("/admin/api/operations?source=github",
+                headers={"cookie": "__Host-operly_session=valid"}).status_code == 403
+            assert client.get("/admin/api/operations?source=bogus",
+                headers={"cookie": "__Host-dz_identity=valid"}).status_code == 400
+        finally:
+            client.app.state.http = old
+
+
+def test_operations_traffic_summary_excludes_raw_paths_and_ips():
+    result = main._admin_traffic_summary([
+        {"path": "/api/private-user/secret?token=secret", "srcIp": "192.0.2.1",
+         "httpStatus": 200, "edgeRegion": "us-west", "totalDuration": 15, "rxBytes": 20},
+        {"path": "/", "httpStatus": 503, "edgeRegion": "us-west", "totalDuration": 50},
+    ])
+    assert result["routes"] == {"/api": 1, "/": 1}
+    assert result["edge_regions"] == {"us-west": 2}
+    assert result["p95_duration_ms"] == 50
+    assert "secret" not in str(result) and "192.0.2.1" not in str(result)
+
+
+def test_langfuse_operations_filters_provider_payload(monkeypatch):
+    monkeypatch.setenv("DRAGONZPYDER_ADMIN_EMAILS", "owner@example.test")
+    monkeypatch.setenv("DRAGONZPYDER_ADMIN_LANGFUSE_HOST", "https://cloud.langfuse.com")
+    monkeypatch.setenv("DRAGONZPYDER_ADMIN_LANGFUSE_PUBLIC_KEY", "public-test")
+    monkeypatch.setenv("DRAGONZPYDER_ADMIN_LANGFUSE_SECRET_KEY", "secret-test")
+    def upstream(req):
+        if req.url.path == "/identity/v1/me":
+            return httpx.Response(200, json={"email": "owner@example.test"})
+        assert req.url.host == "cloud.langfuse.com"
+        assert "io" not in req.url.params["fields"].split(",")
+        assert req.headers.get("cookie") == ""
+        return httpx.Response(200, json={"data": [{"traceId": "trace-1", "model": "example-model",
+            "input": "private-prompt", "output": "private-answer", "userId": "private-user"}], "meta": {}})
+    with TestClient(app) as client:
+        old = client.app.state.http
+        client.app.state.http = httpx.AsyncClient(transport=httpx.MockTransport(upstream))
+        try:
+            r = client.get("/admin/api/operations?source=langfuse",
+                headers={"cookie": "__Host-dz_identity=valid"})
+            assert r.status_code == 200
+            assert r.json()["observations"] == [{"traceId": "trace-1", "model": "example-model"}]
+            assert "private-" not in r.text and "secret-test" not in r.text
+            assert r.headers["cache-control"] == "no-store"
+        finally:
+            client.app.state.http = old

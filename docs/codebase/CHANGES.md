@@ -1,5 +1,13 @@
 # Codebase change records
 
+## 2026-11-27 — operations control center
+
+- `web/main.py`: Extend protected admin route with native-session-only, fixed provider read adapters for Railway inventory, bounded web edge samples, GitHub and Langfuse metadata. No raw paths, IPs, provider secrets or user content are returned; configuration and production verification pending.
+- `web/frontend/src/admin.jsx`: Preserve usage and add lazy infrastructure, traffic, engineering and trace panels, explicit source failures and timestamps; no mutations or invented values. Build and UI validation pending.
+- `web/frontend/src/admin.css`: Responsive navigation, table and distribution presentation for new admin panels; accessibility and visual validation pending.
+- `web/tests/test_admin_protection.py`: Add native-only authorization, invalid source, traffic data minimization and provider-response projection regressions using mocked upstreams. CI pending.
+
+
 ## 2026-11-27 — expiring engineering acceptance identity
 
 - `api/tests/test_identity_operator_test_postgres.py`: Generate disposable passwords at runtime so fixtures pass the existing secret scanner. Real PostgreSQL CI for the initial revision passed; final revision remains subject to CI. No actual test credentials committed.
