@@ -70,6 +70,8 @@ def test_parallel_inference_parent_is_reserved_and_settled_at_real_gateway_route
     monkeypatch.setattr(main,"ledger",Ledger())
 
     calls=[]
+    monkeypatch.setattr(main.parent_budget,"_catalog",None)
+    monkeypatch.setattr(main.parent_budget,"_catalog_at",0.0)
     class Store:
         async def reserve(self,**kwargs):
             calls.append(("reserve",kwargs))
@@ -88,7 +90,7 @@ def test_parallel_inference_parent_is_reserved_and_settled_at_real_gateway_route
                 "usage":{"prompt_tokens":5,"completion_tokens":4,"cost":0.000003}}
     async def fake_post(*args,**kwargs):
         assert kwargs["json"]["provider"]["max_price"]=={
-            "prompt":1.0,"completion":4.0}
+            "prompt":0.52,"completion":0.76}
         assert kwargs["json"]["usage"]=={"include":True}
         assert calls and calls[0][0]=="reserve"
         return Upstream()
@@ -101,6 +103,14 @@ def test_parallel_inference_parent_is_reserved_and_settled_at_real_gateway_route
             def json(self):
                 return {"data":{"limit":provider_limit,"limit_remaining":"0.40","limit_reset":None}}
         async def fake_get(url, **kwargs):
+            if url=="https://openrouter.ai/api/v1/models":
+                class Catalog:
+                    status_code=200
+                    content=b"offline catalog"
+                    def json(self):
+                        return {"data":[{"id":"openai/gpt-oss-120b","pricing":{
+                            "prompt":"0.00000026","completion":"0.00000038"}}]}
+                return Catalog()
             assert url=="https://openrouter.ai/api/v1/key"
             return CapResponse()
         monkeypatch.setenv("OPENROUTER_API_KEY","synthetic-key-for-offline-tests-only")
