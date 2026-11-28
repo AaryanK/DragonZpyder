@@ -19,7 +19,6 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urljoin, urlparse
 
-import requests
 
 ROOT = Path('/workspace/work').resolve()
 STATE = Path('/workspace/.operly').resolve()
@@ -410,7 +409,8 @@ def public_url(raw: str) -> str:
     return raw
 
 
-def public_request(method: str, url: str, timeout: int = 30) -> requests.Response:
+def public_request(method: str, url: str, timeout: int = 30) -> Any:
+    import requests
     network_allowed()
     current = public_url(url)
     session = requests.Session()
@@ -682,6 +682,12 @@ _OFFLINE_SYSCALLS = (
     "ptrace", "process_vm_readv", "process_vm_writev", "bpf",
     "unshare", "setns",
 )
+class OfflinePolicyError(RuntimeError):
+    def __init__(self, code: int):
+        super().__init__('Offline isolation not established')
+        self.code = code
+
+
 def install_offline_filter() -> None:
     # Close inherited descriptors other than stdin/stdout/stderr (the runner
     # supplies /dev/null and a root-owned output file). Failure is fatal.
@@ -698,8 +704,11 @@ def install_offline_filter() -> None:
                            ctypes.c_ulong, ctypes.c_ulong]
     libc.prctl.restype = ctypes.c_int
     if libc.prctl(38, 1, 0, 0, 0) != 0:  # PR_SET_NO_NEW_PRIVS
-        raise RuntimeError("Cannot enforce no_new_privs")
-    lib = ctypes.CDLL("libseccomp.so.2")
+        raise OfflinePolicyError(91)
+    try:
+        lib = ctypes.CDLL("libseccomp.so.2")
+    except OSError:
+        raise OfflinePolicyError(92) from None
     lib.seccomp_init.argtypes = [ctypes.c_uint32]
     lib.seccomp_init.restype = ctypes.c_void_p
     lib.seccomp_attr_set.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_uint32]
@@ -715,10 +724,10 @@ def install_offline_filter() -> None:
     lib.seccomp_release.restype = None
     ctx = lib.seccomp_init(0x7fff0000)  # SCMP_ACT_ALLOW
     if not ctx:
-        raise RuntimeError("Cannot create offline syscall policy")
+        raise OfflinePolicyError(93)
     try:
         if lib.seccomp_attr_set(ctx, 2, 0x80000000) != 0:  # ACT_BADARCH: kill process
-            raise RuntimeError("Cannot enforce native syscall architecture")
+            raise OfflinePolicyError(94)
         for name in _OFFLINE_SYSCALLS:
             nr = lib.seccomp_syscall_resolve_name(name.encode("ascii"))
             # A negative pseudo-number denotes a non-native syscall. All
@@ -727,15 +736,15 @@ def install_offline_filter() -> None:
             if nr < 0:
                 if name == "accept":
                     continue
-                raise RuntimeError("Offline syscall policy not supported")
+                raise OfflinePolicyError(95)
             if lib.seccomp_rule_add(ctx, 0x00050000 | errno.EPERM, nr, 0) != 0:
-                raise RuntimeError("Cannot add offline syscall rule")
+                raise OfflinePolicyError(96)
         if lib.seccomp_load(ctx) != 0:
-            raise RuntimeError("Cannot load offline syscall policy")
+            raise OfflinePolicyError(97)
     finally:
         lib.seccomp_release(ctx)
     if libc.prctl(39, 0, 0, 0, 0) != 1:  # PR_GET_NO_NEW_PRIVS
-        raise RuntimeError("No-new-privileges verification failed")
+        raise OfflinePolicyError(98)
 
 
 def offline_probe() -> None:
@@ -757,12 +766,15 @@ else:
     a.close(); b.close()
     raise RuntimeError("socketpair unexpectedly allowed")
 """
-    exec(compile(snippet, "<offline-probe>", "exec"), {})
+    try:
+        exec(compile(snippet, "<offline-probe>", "exec"), {})
+    except Exception:
+        raise OfflinePolicyError(99) from None
     child = subprocess.run([sys.executable, "-I", "-c", snippet],
                            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                            stderr=subprocess.DEVNULL, timeout=5, check=False)
     if child.returncode != 0:
-        raise RuntimeError("Descendant offline policy failed")
+        raise OfflinePolicyError(100)
 
 
 def main() -> int:
@@ -776,8 +788,11 @@ def main() -> int:
             offline_probe()
             print("DZ_OFFLINE_KERNEL_PROBE_PASS")
             return 0
-    except Exception:
+    except Exception as error:
+        # Only fixed numerical diagnostic codes are exposed, never exception text.
         emit({"ok":False,"error":"Offline isolation not established","error_type":"IsolationError"})
+        if sys.argv[1:] == ["--offline-probe"]:
+            return error.code if isinstance(error, OfflinePolicyError) else 90
         return 2
     if len(sys.argv) != 3:
         emit({'ok': False, 'error': 'usage: computer_tool.py TOOL REQUEST_JSON'})
