@@ -743,16 +743,24 @@ async def _execute_chat(payload: ChatInput, request: Request, user: str, convers
             raise HTTPException(409, "Conversation is already processing another message")
         try:
             from .adaptive_routing import routed_model
-            selected_model,routing,route_middleware=routed_model(payload.message,
-                model_factory=model_client,has_tools=bool(tools or computer_run or media_run or payload.allow_durable),
-                has_attachments=bool(payload.attachment_ids),durable=payload.allow_durable)
             workflow_tools=[]
+            origin_budget=None
             if payload.allow_durable:
-                from .native_workflows import native_workflow_tools,session_reference
-                workflow_tools=native_workflow_tools(owner=user,session_hash=session_reference(request),
+                from .native_workflows import native_workflow_tools,session_reference,admit_origin
+                session_hash=session_reference(request)
+                try:
+                    origin_budget=await admit_origin(owner=user,request_id=payload.request_id,
+                        session_hash=session_hash,http=request.app.state.http)
+                except Exception:
+                    raise HTTPException(503,"Durable objective budget unavailable before execution") from None
+                workflow_tools=native_workflow_tools(owner=user,session_hash=session_hash,
                     conversation_id=conversation_id,request_id=payload.request_id,
                     attachment_ids=payload.attachment_ids,mcp_connection_ids=payload.mcp_connection_ids,
-                    allow_computer=payload.allow_computer,http=request.app.state.http)
+                    allow_computer=payload.allow_computer,http=request.app.state.http,origin_budget=origin_budget)
+            selected_model,routing,route_middleware=routed_model(payload.message,
+                model_factory=model_client,has_tools=bool(tools or computer_run or media_run or payload.allow_durable),
+                has_attachments=bool(payload.attachment_ids),durable=payload.allow_durable,
+                parent_job_id=str(origin_budget[0]) if origin_budget else None)
             memory_tools=[]
             if (authority is None and getattr(request.app.state,"personal_memory_ready",False)
                     and os.getenv("DRAGONZPYDER_PERSONAL_MEMORY_RECALL_ENABLED", "1") == "1"):
@@ -764,6 +772,7 @@ async def _execute_chat(payload: ChatInput, request: Request, user: str, convers
                     memory_tools=native_memory_tools(owner=user,db_factory=_conversation_db,authorize=authorize_memory)
             agent = build_agent(
                 selected_model, runtime._checkpointer,
+                **({"parent_job_id":str(origin_budget[0])} if origin_budget else {}),
                 **({"memory_tools":memory_tools} if memory_tools else {}),
                 delegated_tools=tools if tools else None,
                 **({"artifact_tools":artifact_tools} if artifact_tools else {}),
