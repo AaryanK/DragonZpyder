@@ -352,6 +352,45 @@ ADMIN_CONFIG_FLAGS = (
 )
 
 
+def admin_source_gates(root=None):
+    """Index literal boolean gate references in the shipped API Python source.
+
+    This is source inventory, not proof of reachability or functional health.
+    Never return arbitrary source lines, environment values or credential names.
+    """
+    import ast
+    from pathlib import Path
+    root = Path(root) if root is not None else Path(__file__).resolve().parent
+    paths = [root / "main.py"]
+    for directory in ("agent_platform", "identity"):
+        paths.extend(sorted((root / directory).rglob("*.py")))
+    gates = {}
+    for path in paths[:1200]:
+        if path.is_symlink() or not path.is_file() or path.stat().st_size > 1000000:
+            continue
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, SyntaxError):
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Constant) or not isinstance(node.value, str):
+                continue
+            name = node.value
+            if not re.fullmatch(r"DRAGONZPYDER_[A-Z0-9_]{1,110}", name):
+                continue
+            if not name.endswith(("_ENABLED", "_APPROVED", "_ALLOWED", "_ENFORCED")):
+                continue
+            if any(x in name for x in ("TOKEN", "SECRET", "PASSWORD", "KEY")):
+                continue
+            places = gates.setdefault(name, [])
+            if len(places) < 20:
+                places.append({"path": "api/" + path.relative_to(root).as_posix(), "line": node.lineno})
+    return [{"flag": name, "references": places,
+             "runtime": ("on" if os.getenv(name) == "1" else "off" if os.getenv(name) == "0" else
+                         "unset" if os.getenv(name) is None else "other")}
+            for name, places in sorted(gates.items())]
+
+
 def admin_runtime_config(request: Request):
     """Only report allowlisted non-secret booleans from this running process."""
     values = {}
@@ -360,6 +399,7 @@ def admin_runtime_config(request: Request):
         values[name] = ("default_on" if name.endswith("PERSONAL_MEMORY_RECALL_ENABLED") else "unset") if value is None else (
             "on" if value == "1" else "off" if value == "0" else "other")
     return {"flags": values,
+            "source_gates": admin_source_gates(),
             "deployed_sha": os.getenv("RAILWAY_GIT_COMMIT_SHA"),
             "dependencies": {name: bool(os.getenv(name)) for name in (
                 "HATCHET_CLIENT_TOKEN", "DRAGONZPYDER_AGENT_DATABASE_URL",

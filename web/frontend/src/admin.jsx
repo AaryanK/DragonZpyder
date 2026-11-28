@@ -117,10 +117,33 @@ function Configuration({report,onRefresh}) {
       return <tr key={flag}><td>{flag.replace("DRAGONZPYDER_","")}</td><td>{live?.flags?.[flag]||"Unknown"}</td><td>{current||"Unknown"}</td><td>{editable?<><button disabled={busy||current==="on"} onClick={()=>change(flag,current,true)}>Enable</button>{" "}<button disabled={busy||current==="off"} onClick={()=>change(flag,current,false)}>Disable</button></>: "Read only"}</td></tr>;
     })}</tbody></table></div></section>
     <p className="data-note">Memory recall controls access by the chat agent, not saved-memory management or consent. API search controls do not alter Worker monitor registration. Identity, credentials, budget, isolation and coupled workflow settings are intentionally not editable here.</p>
+    {service==="API"&&<OpsTable title="Discovered source gate references (running API image)" rows={(live?.source_gates||[]).map(g=>({flag:g.flag,runtime:g.runtime,references:g.references.map(r=>r.path+":"+r.line).join(", ")}))} columns={[["flag","Source flag"],["runtime","Runtime value"],["references","Source references"]]}/>}
     {service==="API"&&<OpsTable title="API dependency presence (not health)" rows={Object.entries(live?.dependencies||{}).map(([name,present])=>({name,status:present?"Present":"Missing"}))} columns={[["name","Dependency"],["status","State"]]}/>}
   </>;
 }
 
+
+function RepositoryInventory({report}) {
+  const [query,setQuery]=useState(""), [page,setPage]=useState(0);
+  const matches=report.files.filter(f=>f.path.toLowerCase().includes(query.toLowerCase()));
+  const pages=Math.max(1,Math.ceil(matches.length/50));
+  const selected=Math.min(page,pages-1);
+  return <><p className="data-note">GitHub develop tree at <a href={"https://github.com/AaryanK/DragonZpyder/tree/"+report.head} target="_blank" rel="noreferrer">{report.head}</a>. Tracked paths are not proof of implementation or deployment. {report.partial?"Partial tree coverage.":"Complete returned tree."}</p>
+    <section className="stats"><article className="stat"><span>Tracked files</span><strong>{formatInteger(report.total_files)}</strong></article><article className="stat"><span>Root groups</span><strong>{Object.keys(report.folders).length}</strong></article></section>
+    <Distribution title="Tracked files by root" values={report.folders}/>
+    <label className="data-note">Filter paths <input value={query} onChange={e=>{setQuery(e.target.value);setPage(0);}} placeholder="api/agent_platform"/></label>
+    <OpsTable title={"Source inventory · "+matches.length+" matches"} rows={matches.slice(selected*50,selected*50+50)} columns={[["path","Tracked path"],["bytes","Bytes"]]}/>
+    <div className="toolbar"><button disabled={selected===0} onClick={()=>setPage(selected-1)}>Previous</button><span>{selected+1} / {pages}</span><button disabled={selected===pages-1} onClick={()=>setPage(selected+1)}>Next</button></div>
+  </>;
+}
+
+function Overview({checks}) {
+  return <><p className="data-note">Independent read-only integration checks. Available with zero records means no returned samples, not successful end-to-end capability execution.</p>
+    <section className="stats">{[["Available sources",checks.filter(c=>c.state==="available").length],["Unconfigured",checks.filter(c=>c.state==="unconfigured").length],["Unavailable",checks.filter(c=>c.state==="unavailable").length]].map(([label,value])=><article className="stat" key={label}><span>{label}</span><strong>{value}</strong></article>)}</section>
+    <OpsTable title="Live data coverage" rows={checks} columns={[["source","Data source"],["state","Read status"],["records","Reported records / series"]]}/>
+    <p className="data-note">Use Infrastructure for deployment metadata, Configuration for runtime gates, Repository for source inventory and Product & harness for native activity. No model calls are made by these checks.</p>
+  </>;
+}
 
 function Operations({source}) {
   const [data,setData] = useState(null), [error,setError] = useState(""), [loading,setLoading] = useState(true);
@@ -145,16 +168,18 @@ function Operations({source}) {
     {data && source==="resources"&&<ResourceMetrics data={data}/>}
     {data && source==="traffic_history"&&<TrafficHistory report={data.history}/>}
     {source==="langfuse" && <form className="toolbar" onSubmit={e=>{e.preventDefault();setCursor("");setTrace(traceInput.trim());setRevision(v=>v+1);}}><label>Trace ID<input value={traceInput} maxLength={128} onChange={e=>setTraceInput(e.target.value)} placeholder="All traces"/></label><button>Search</button><button type="button" onClick={()=>{setTraceInput("");setTrace("");setCursor("");}}>Clear</button></form>}
+    {data && source==="overview" && <Overview checks={data.checks}/>}
+    {data && source==="repository" && <RepositoryInventory report={data.repository}/>}
     {data && source==="activity" && <Activity report={data.activity}/>}
     {data && source==="configuration" && <Configuration report={data.configuration} onRefresh={()=>setRevision(v=>v+1)}/>}
     {loading && <p role="status">Loading operations data…</p>}{error && <p role="alert" className="error">{error}</p>}
     {data && source==="railway" && <><p className="data-note">Deployment status is not runtime health. No deployment changes are made here.</p>
       {data.projects.map(project=><div key={project.project}><OpsTable title={project.project+" · "+project.state} rows={project.services}
-        columns={[["service","Service"],["status","Latest deployment status"],["deployment","Deployment ID"]]}/></div>)}</>}
+        columns={[["service","Service"],["status","Latest deployment status"],["deployment","Deployment ID"],["commit","Deployed commit"],["created_at","Created"],["metadata_state","Metadata"]]}/></div>)}</>}
     {t && <><p className="data-note">{data.scope} Edge region is not visitor country. Counts are requests, not users. Device/OS/browser are coarse user-agent estimates, not unique devices or verified installations; missing or misleading clients remain unknown.</p>
       <section className="stats">{[["Sample requests",t.sample_requests],["P95 duration (ms)",t.p95_duration_ms],["Received bytes",t.received_bytes],["Sent bytes",t.sent_bytes]].map(([label,value])=><article key={label} className="stat"><span>{label}</span><strong>{formatInteger(value)}</strong></article>)}</section>
       <p className="data-note">{t.first_timestamp || "Unknown"} — {t.last_timestamp || "Unknown"}</p>
-      <div className="ops-distributions"><Distribution title="Edge regions (not visitor countries)" values={t.edge_regions}/><Distribution title="Device classes (requests)" values={t.devices}/><Distribution title="Operating systems (requests)" values={t.operating_systems}/><Distribution title="Browsers and clients (requests)" values={t.browsers}/><Distribution title="Route groups" values={t.routes}/><Distribution title="HTTP status" values={t.statuses}/></div></>}
+      <div className="ops-distributions"><Distribution title="Edge regions (not visitor countries)" values={t.edge_regions}/><Distribution title={"Visitor country estimate · "+t.geo_state} values={t.countries}/><Distribution title="UTM source tags (requests, not referrals)" values={t.campaign_sources}/><Distribution title="Device classes (requests)" values={t.devices}/><Distribution title="Operating systems (requests)" values={t.operating_systems}/><Distribution title="Browsers and clients (requests)" values={t.browsers}/><Distribution title="Route groups" values={t.routes}/><Distribution title="HTTP status" values={t.statuses}/></div></>}
     {data && source==="github" && <><p className="data-note">Latest 20 records per category; develop commit and workflow history. <a href="https://github.com/AaryanK/DragonZpyder" target="_blank" rel="noreferrer">Open repository</a></p>
       <OpsTable title="Commits" rows={data.commits} columns={[["sha","Commit SHA"],["date","Committed"]]}/>
       <OpsTable title="Pull requests" rows={data.pull_requests} columns={[["number","PR"],["title","Title"],["state","State"],["updated_at","Updated"],["merged_at","Merged"]]}/>
@@ -165,7 +190,7 @@ function Operations({source}) {
 }
 
 function AdminPage() {
-  const [tab, setTab] = useState("usage");
+  const [tab, setTab] = useState("overview");
   const [days, setDays] = useState(30);
   const [filter, setFilter] = useState("");
   const [applied, setApplied] = useState("");
@@ -205,7 +230,7 @@ function AdminPage() {
           <p>Production inventory, traffic samples, engineering activity and AI observability.</p></div>
         <a href="/account" className="account-link">Account ↗</a>
       </header>
-      <nav className="ops-tabs" aria-label="Operations sections">{[["usage","Model usage"],["activity","Product & harness"],["configuration","Configuration"],["railway","Infrastructure"],["resources","Resources"],["traffic_history","Traffic history"],["traffic","Recent traffic"],["github","Engineering"],["langfuse","Traces"]].map(([key,label])=><button key={key} aria-pressed={tab===key} onClick={()=>setTab(key)}>{label}</button>)}</nav>
+      <div className="ops-shell"><nav className="ops-tabs" aria-label="Operations sections">{[["overview","Overview"],["activity","Product & harness"],["usage","Model usage"],["configuration","Configuration"],["railway","Infrastructure"],["resources","Resources"],["traffic_history","Traffic history"],["traffic","Recent traffic"],["github","Engineering"],["repository","Repository"],["langfuse","Traces"]].map(([key,label])=><button key={key} aria-pressed={tab===key} onClick={()=>setTab(key)}>{label}</button>)}</nav><div className="ops-content">
       {tab!=="usage" ? <Operations key={tab} source={tab}/> : <>
       <form className="toolbar" onSubmit={e => {
         e.preventDefault();
@@ -255,6 +280,7 @@ function AdminPage() {
         <p className="data-note">Trace correlation IDs are recorded per request. Detailed inspection requires the configured Langfuse workspace and a trace viewer with appropriate permissions.</p>
       </>}
       </>}
+      </div></div>
     </main>
   );
 }

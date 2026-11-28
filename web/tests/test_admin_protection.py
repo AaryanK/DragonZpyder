@@ -254,3 +254,14 @@ def test_config_change_requires_native_csrf_and_fixed_flag(monkeypatch):
             assert client.post(path,json=body,headers=h).status_code==503
         finally:
             client.app.state.http=old
+
+
+def test_country_and_campaign_aggregates_are_not_raw():
+    class Reader:
+        def get(self, ip):
+            return {"country":{"iso_code":"US"}}
+    report=main._admin_traffic_summary([{"srcIp":"8.8.8.8","path":"/?utm_source=google&secret=private"}, {"srcIp":"127.0.0.1","path":"/?utm_source=private-identifier"}],Reader())
+    assert report["countries"]=={"US":1,"Unknown":1}
+    assert report["campaign_sources"]=={"google":1,"Other tagged source":1}
+    assert "8.8.8.8" not in str(report) and "private" not in str(report)
+    assert main._admin_traffic_summary([])["geo_state"]=="unconfigured"

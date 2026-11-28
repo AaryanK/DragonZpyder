@@ -48,3 +48,5 @@ button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible{ou
 .ops-line{fill:none;stroke:var(--accent);stroke-width:2.5;stroke-linejoin:round;stroke-linecap:round}
 .ops-point{fill:var(--accent)}
 .ops-subtitle{margin-top:36px}
+
+.ops-shell{display:grid;grid-template-columns:210px minmax(0,1fr);gap:28px;align-items:start;margin-top:28px}.ops-content{min-width:0}.ops-tabs{position:sticky;top:20px;display:flex;flex-direction:column;align-items:stretch;border:1px solid var(--line);border-radius:16px;padding:12px;margin:0;background:var(--panel)}.ops-tabs button{text-align:left;border-color:transparent}.ops-tabs button[aria-pressed="true"]{background:var(--bg);border-color:var(--accent)}.admin-layout{max-width:1600px}.ops-content td{max-width:600px;overflow:hidden;text-overflow:ellipsis}.ops-content td:hover{white-space:normal;overflow-wrap:anywhere}@media(max-width:760px){.ops-shell{display:block}.ops-tabs{position:static;flex-direction:row;flex-wrap:wrap;margin-bottom:18px}.ops-tabs button{font-size:12px}}
