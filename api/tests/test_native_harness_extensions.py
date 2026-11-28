@@ -141,3 +141,34 @@ def test_native_control_unknown_outcome_stops_next_agent_step():
     receipt = ToolMessage(content='{"state":"scheduled","objective_verified":false}',
                           name="schedule_workflow",tool_call_id="test-schedule")
     assert unresolved_external_control([receipt]) is None
+
+
+def test_workspace_handoff_is_bounded_and_does_not_copy_other_state():
+    import json
+    from agent_platform.native_workflows import workspace_bytes
+    files={"/workspace/report.md":{"content":["original"],"created_at":"t","modified_at":"t"},
+           "/large_tool_results/raw":{"content":["not part of working directory"]},
+           "/workspace/../private":{"content":["invalid path"]}}
+    raw,paths=workspace_bytes(files)
+    assert paths==["/workspace/report.md"]
+    assert json.loads(raw)=={paths[0]:files[paths[0]]}
+    with pytest.raises(ValueError):
+        workspace_bytes({"/workspace/report.md":{"content":["x"*(512*1024+1)]}})
+    with pytest.raises(ValueError):
+        workspace_bytes({"/workspace/report.md":{"content":"not line state"}})
+
+
+def test_required_reads_are_evidence_not_model_claims():
+    from langchain_core.messages import AIMessage,ToolMessage
+    from agent_platform.native_workflows import required_reads_observed
+    from agent_platform.tool_outcomes import tool_outcome
+    path="/workspace/report.md"
+    call=AIMessage(content="",tool_calls=[{"id":"read","name":"read_file","args":{"file_path":path}}])
+    for failure in ("Error: File not found","No files found","Permission denied"):
+        msg=ToolMessage(name="read_file",tool_call_id="read",content=failure,status="success")
+        assert tool_outcome(msg)=="failed"
+        assert not required_reads_observed([call,msg,AIMessage(content="I read it.")],[path])
+    assert not required_reads_observed([AIMessage(content="I read it.")],[path])
+    success=ToolMessage(name="read_file",tool_call_id="read",content="1\tOriginal report",status="success")
+    assert required_reads_observed([call,success],[path])
+    assert not required_reads_observed([call,success],["/workspace/other.md"])
