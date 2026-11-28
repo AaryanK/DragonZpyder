@@ -219,3 +219,16 @@ def test_resources_projection_filters_unknown_metrics_and_invalid_samples():
     assert data[0]["current"]==0.6 and data[0]["average"]==0.5
     assert "private" not in str(data) and "ignore" not in str(data)
     assert main._admin_metric_samples([{"ts":10,"value":float("inf")},{"ts":20,"value":1.0}]) == [{"ts":10},{"ts":20,"value":1.0}]
+
+
+def test_traffic_client_classes_are_bounded_not_raw():
+    data = main._admin_traffic_summary([
+        {"clientUa": "Mozilla/5.0 (Linux; Android 14; private-device-id) Chrome/124.0 Mobile Safari/537.36"},
+        {"clientUa": "Mozilla/5.0 (Windows NT 10.0) Chrome/124.0 Edg/124.0"},
+        {"clientUa": "Mozilla/5.0 (iPhone) Version/17.0 Safari/604.1"},
+        {"clientUa": "okhttp/4.12.0"}, {},
+    ])
+    assert data["devices"] == {"Phone": 2, "Desktop / laptop": 1, "Unknown": 2}
+    assert data["operating_systems"] == {"Android": 1, "Windows": 1, "iOS": 1, "Unknown": 2}
+    assert data["browsers"] == {"Chrome": 1, "Edge": 1, "Safari": 1, "Native HTTP client": 1, "Unknown": 1}
+    assert "private-device-id" not in str(data)

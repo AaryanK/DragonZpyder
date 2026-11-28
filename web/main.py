@@ -267,7 +267,7 @@ ADMIN_RAILWAY_QUERY = """query Inventory($id: String!) {
 }"""
 ADMIN_TRAFFIC_QUERY = """query Traffic($id: String!) {
   httpLogs(deploymentId: $id, beforeLimit: 200) {
-    timestamp method httpStatus edgeRegion totalDuration rxBytes txBytes path
+    timestamp method httpStatus edgeRegion totalDuration rxBytes txBytes path clientUa
   }
 }"""
 
@@ -404,14 +404,60 @@ async def _admin_inventory(client, project):
     return result
 
 
+def _admin_client_classes(value):
+    """Map untrusted client UA to bounded coarse classes; never emit the UA."""
+    ua = value[:1024].lower() if isinstance(value, str) else ""
+    if not ua:
+        return "Unknown", "Unknown", "Unknown"
+    if any(k in ua for k in ("bot", "crawler", "spider", "headless", "healthcheck")):
+        return "Automation", "Unknown", "Bot / automation"
+    if "android" in ua or "dalvik" in ua:
+        os_name = "Android"
+        device = "Phone" if "mobile" in ua else "Android (form factor unknown)"
+    elif "ipad" in ua:
+        os_name, device = "iPadOS", "Tablet"
+    elif "iphone" in ua or "ipod" in ua:
+        os_name, device = "iOS", "Phone"
+    elif "windows" in ua:
+        os_name, device = "Windows", "Desktop / laptop"
+    elif "macintosh" in ua or "mac os x" in ua:
+        os_name, device = "macOS", "Desktop / laptop"
+    elif "cros" in ua:
+        os_name, device = "ChromeOS", "Desktop / laptop"
+    elif "linux" in ua:
+        os_name, device = "Linux", "Unknown"
+    else:
+        os_name, device = "Unknown", "Unknown"
+    if "okhttp" in ua or "dalvik" in ua:
+        browser = "Native HTTP client"
+    elif "edg/" in ua or "edga/" in ua or "edgios/" in ua:
+        browser = "Edge"
+    elif "opr/" in ua or "opera" in ua:
+        browser = "Opera"
+    elif "firefox/" in ua or "fxios/" in ua:
+        browser = "Firefox"
+    elif "chrome/" in ua or "crios/" in ua:
+        browser = "Chrome"
+    elif "safari/" in ua:
+        browser = "Safari"
+    else:
+        browser = "Other / unknown"
+    return device, os_name, browser
+
+
 def _admin_traffic_summary(rows):
     """Aggregate a bounded edge-log sample; neither raw paths nor IPs leave server."""
     from collections import Counter
     routes, regions, statuses = Counter(), Counter(), Counter()
+    devices, operating_systems, browsers = Counter(), Counter(), Counter()
     durations = []
     rx = tx = 0
     timestamps = []
     for row in rows[:200]:
+        device, os_name, browser = _admin_client_classes(row.get("clientUa"))
+        devices[device] += 1
+        operating_systems[os_name] += 1
+        browsers[browser] += 1
         path = str(row.get("path", "")).split("?", 1)[0]
         route = next((prefix for prefix in ("/api", "/v2", "/identity", "/admin", "/assets",
                     "/app", "/account", "/healthz") if path == prefix or path.startswith(prefix + "/")), 
@@ -436,6 +482,7 @@ def _admin_traffic_summary(rows):
     return {"sample_requests": sum(routes.values()), "limit": 200,
             "first_timestamp": min(timestamps, default=None), "last_timestamp": max(timestamps, default=None),
             "routes": dict(routes), "edge_regions": dict(regions), "statuses": dict(statuses),
+            "devices": dict(devices), "operating_systems": dict(operating_systems), "browsers": dict(browsers),
             "received_bytes": rx, "sent_bytes": tx,
             "p95_duration_ms": durations[max(0, (95 * len(durations) + 99)//100 - 1)] if durations else None}
 

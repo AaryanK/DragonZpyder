@@ -316,6 +316,30 @@ async def healthz():
 
 
 
+async def admin_identity_activity(days: int):
+    """Count visible non-test identities and live sessions; never select PII."""
+    from identity.http_bridge import _identity_db
+    try:
+        async with asyncio.timeout(10):
+            async with _identity_db() as db:
+                async with db.transaction(readonly=True):
+                    accounts = await db.fetchrow("""SELECT COUNT(*)::int AS total_accounts,
+                        COUNT(*) FILTER (WHERE status='active' AND source_active)::int AS active_accounts,
+                        COUNT(*) FILTER (WHERE status='pending')::int AS pending_accounts,
+                        COUNT(*) FILTER (WHERE status='disabled')::int AS disabled_accounts,
+                        COUNT(*) FILTER (WHERE identity_origin='native_google'
+                          AND created_at >= now()-($1::int * interval '1 day'))::int AS native_signups
+                        FROM identity_accounts WHERE identity_origin <> 'operator_test'""", days)
+                    sessions = await db.fetchrow("""SELECT COUNT(*)::int AS live_sessions,
+                        COUNT(DISTINCT s.subject)::int AS session_holders
+                        FROM identity_browser_sessions s JOIN identity_accounts a ON a.subject=s.subject
+                        WHERE a.identity_origin <> 'operator_test' AND a.status='active' AND a.source_active
+                          AND s.revoked_at IS NULL AND s.expires_at > now()""")
+        return {"state": "available", "accounts": dict(accounts), "sessions": dict(sessions)}
+    except Exception:
+        return {"state": "unavailable", "accounts": None, "sessions": None}
+
+
 async def admin_platform_activity(request: Request, days: int):
     """Bounded read-only product aggregates from authoritative native stores.
 
@@ -337,7 +361,7 @@ async def admin_platform_activity(request: Request, days: int):
             return {"state": "unavailable", "rows": []}
 
     # SQL is static and parameters are bounded by the caller. UTC bucketing.
-    requests, daily, conversations, workflows, goals, memory = await asyncio.gather(
+    requests, daily, conversations, workflows, goals, memory, identity_activity, owners = await asyncio.gather(
         query_rows("""SELECT status, COUNT(*)::int AS count,
             COUNT(*) FILTER (WHERE cancel_requested)::int AS cancellation_requested
             FROM dz_first_party_chat_requests
@@ -365,6 +389,9 @@ async def admin_platform_activity(request: Request, days: int):
             COUNT(DISTINCT owner_id)::int AS memory_owners,
             COUNT(*) FILTER (WHERE recall_in_chat)::int AS recall_enabled_entries
             FROM dz_personal_memory WHERE created_at >= now() - ($1::int * interval '1 day')""", days),
+        admin_identity_activity(days),
+        query_rows("""SELECT COUNT(DISTINCT owner_id)::int AS distinct_request_owners
+            FROM dz_first_party_chat_requests WHERE created_at >= now() - ($1::int * interval '1 day')""", days),
     )
     try:
         capabilities = await personal_status()
@@ -372,7 +399,7 @@ async def admin_platform_activity(request: Request, days: int):
         capabilities = None
     return {"days": days, "requests": requests, "daily": daily,
             "conversations": conversations, "workflows": workflows, "goals": goals,
-            "memory": memory, "capabilities": capabilities,
+            "memory": memory, "identity": identity_activity, "request_owners": owners, "capabilities": capabilities,
             "runtime": {"usage_ledger_ready": bool(ledger.available),
                         "parent_budget_ready": bool(parent_budget.active),
                         "agent_runtime_initialized": getattr(request.app.state, "agent_runtime", None) is not None,

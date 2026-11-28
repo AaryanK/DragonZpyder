@@ -113,3 +113,8 @@ The in-process call quota is *not* an enforced dollar budget. Create and monitor
 `/thanksgiving` serves a minimal TV display; its QR targets `/thanksgiving/start` with Website and Android choices. `/thanksgiving/android` redirects only to an APK asset from the official repository's public releases; otherwise returns an honest unavailable page. These exact public routes are implemented in `main.py` without affecting auth or runtime routing.
 
 The Thanksgiving platform selector links directly to the public `thanksgiving-2026-android-beta/DragonZpyder-beta.apk` GitHub release asset. The legacy `/thanksgiving/android` lookup remains available. The release is a debug-signed beta, not Play distribution.
+
+
+### Recent client distribution
+
+Recent traffic now projects Railway clientUa to coarse device, OS and browser/client counts for the bounded deployment request sample. Unknown or ambiguous UA is explicitly classified; no raw UA or IP is emitted or stored. Request counts are not device or user counts. No country lookup or acquisition tracking; Railway edge region is not visitor country. Source field documented at https://docs.railway.com/cli/logs; credential-backed provider verification pending.

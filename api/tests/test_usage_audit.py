@@ -136,3 +136,36 @@ def test_admin_activity_requires_independent_service_token(monkeypatch):
         response = client.get(route + "?days=7", headers=h)
         assert response.status_code == 200 and response.json()["days"] == 7
         assert response.headers["cache-control"] == "no-store"
+
+
+def test_admin_identity_aggregates_without_personal_fields(monkeypatch):
+    import asyncio
+    from contextlib import asynccontextmanager
+    import main
+    import identity.http_bridge as identity
+    class DB:
+        @asynccontextmanager
+        async def transaction(self, **kwargs):
+            assert kwargs == {"readonly": True}
+            yield
+        async def fetchrow(self, sql, *args):
+            assert "operator_test" in sql
+            assert "password_hash" not in sql and "email" not in sql
+            if "identity_browser_sessions" in sql:
+                assert "revoked_at IS NULL" in sql and "expires_at > now()" in sql
+                return {"live_sessions": 3, "session_holders": 2}
+            assert args == (7,)
+            return {"total_accounts": 10, "active_accounts": 7, "pending_accounts": 2, "disabled_accounts": 1, "native_signups": 4}
+    @asynccontextmanager
+    async def database():
+        yield DB()
+    monkeypatch.setattr(identity, "_identity_db", database)
+    result = asyncio.run(main.admin_identity_activity(7))
+    assert result["accounts"]["total_accounts"] == 10
+    assert result["sessions"]["session_holders"] == 2
+    @asynccontextmanager
+    async def unavailable():
+        raise RuntimeError("private DB detail")
+        yield
+    monkeypatch.setattr(identity, "_identity_db", unavailable)
+    assert asyncio.run(main.admin_identity_activity(7)) == {"state": "unavailable", "accounts": None, "sessions": None}
