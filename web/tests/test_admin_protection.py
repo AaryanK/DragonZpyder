@@ -232,3 +232,25 @@ def test_traffic_client_classes_are_bounded_not_raw():
     assert data["operating_systems"] == {"Android": 1, "Windows": 1, "iOS": 1, "Unknown": 2}
     assert data["browsers"] == {"Chrome": 1, "Edge": 1, "Safari": 1, "Native HTTP client": 1, "Unknown": 1}
     assert "private-device-id" not in str(data)
+
+
+def test_config_change_requires_native_csrf_and_fixed_flag(monkeypatch):
+    monkeypatch.setenv("DRAGONZPYDER_ADMIN_EMAILS", "owner@example.test")
+    def upstream(req):
+        assert req.url.path == "/identity/v1/me"
+        return httpx.Response(200,json={"id":"admin-subject","email":"owner@example.test"})
+    with TestClient(app) as client:
+        old=client.app.state.http
+        client.app.state.http=httpx.AsyncClient(transport=httpx.MockTransport(upstream))
+        try:
+            path="/admin/api/config"
+            body={"service":"API","flag":"OPENROUTER_API_KEY","expected":"on","enabled":False,"confirm":True}
+            h={"cookie":"__Host-dz_identity=valid; __Host-dz_csrf=test","origin":"https://dragonzpyder.xyz","x-dz-csrf":"test"}
+            assert client.post(path,json=body,headers={"cookie":"__Host-dz_identity=valid"}).status_code==403
+            assert client.post(path,json=body,headers=h).status_code==400
+            assert client.post(path,json=body,headers={**h,"origin":"https://evil.test"}).status_code==403
+            body["flag"]="DRAGONZPYDER_AGENT_WEB_SEARCH_ENABLED"
+            monkeypatch.delenv("DRAGONZPYDER_ADMIN_RAILWAY_DRAGONZPYDER_TOKEN",raising=False)
+            assert client.post(path,json=body,headers=h).status_code==503
+        finally:
+            client.app.state.http=old

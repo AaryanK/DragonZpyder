@@ -45,3 +45,8 @@ Existing independent admin bearer protects /internal/admin/activity and usage. A
 ### Admin account analytics
 
 The native admin activity report reads aggregate account states, native signup counts and unexpired session counts using the existing restricted identity database role in a read-only transaction, excluding operator test identities. Distinct request owners are counted across the selected interval, not by summing daily counts. Sessions are not devices or online presence; device/country/referral data are not provided by these stores. No new grants or credentials. CI and live data verification pending.
+
+
+### Runtime configuration control
+
+Admin Configuration compares reviewed source gate names with API/Web process state and Railway desired-state projection for API/Web/Worker. Existing admin token authenticates API read; native allowlist and same-origin CSRF protect a narrow API-only Railway upsert of web search, fetch, and native chat memory recall. Default-on memory recall retains existing consent and saved-memory management; no permission or budget bypass, no secret or arbitrary variable editor. Railway accepts desired state, not proof of rollout; process SHA and flags refreshed separately. Audit records go to server logs, not an immutable audit ledger. Worker live state and exhaustive repo-wide capability inventory remain pending. Existing project tokens are required on Web; no token creation or live configuration change performed.

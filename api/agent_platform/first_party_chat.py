@@ -754,7 +754,8 @@ async def _execute_chat(payload: ChatInput, request: Request, user: str, convers
                     attachment_ids=payload.attachment_ids,mcp_connection_ids=payload.mcp_connection_ids,
                     allow_computer=payload.allow_computer,http=request.app.state.http)
             memory_tools=[]
-            if authority is None and getattr(request.app.state,"personal_memory_ready",False):
+            if (authority is None and getattr(request.app.state,"personal_memory_ready",False)
+                    and os.getenv("DRAGONZPYDER_PERSONAL_MEMORY_RECALL_ENABLED", "1") == "1"):
                 from .memory import has_recall_memory,native_memory_tools
                 if await has_recall_memory(db,owner=user):
                     async def authorize_memory():

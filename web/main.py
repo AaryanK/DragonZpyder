@@ -262,7 +262,7 @@ ADMIN_RAILWAY_ENVIRONMENTS = {
 }
 ADMIN_RAILWAY_QUERY = """query Inventory($id: String!) {
   environment(id: $id) { name serviceInstances { edges { node {
-    id serviceName latestDeployment { id status }
+    serviceId latestDeployment { id status }
   } } } }
 }"""
 ADMIN_TRAFFIC_QUERY = """query Traffic($id: String!) {
@@ -394,12 +394,13 @@ async def _admin_railway(client, project, query, identifier):
 async def _admin_inventory(client, project):
     payload = await _admin_railway(client, project, ADMIN_RAILWAY_QUERY,
                                    ADMIN_RAILWAY_ENVIRONMENTS[project])
+    names = await _admin_service_names(client, project)
     rows = payload["environment"]["serviceInstances"]["edges"]
     result = []
     for edge in rows[:100]:
         node = edge["node"]
         deployment = node.get("latestDeployment") or {}
-        result.append({"service": node.get("serviceName"), "deployment": deployment.get("id"),
+        result.append({"service": names.get(node.get("serviceId"), node.get("serviceId")), "deployment": deployment.get("id"),
                        "status": deployment.get("status") or "NO_DEPLOYMENT"})
     return result
 
@@ -487,6 +488,159 @@ def _admin_traffic_summary(rows):
             "p95_duration_ms": durations[max(0, (95 * len(durations) + 99)//100 - 1)] if durations else None}
 
 
+ADMIN_CONFIG_FLAGS = (
+    "DRAGONZPYDER_AGENTS_ENABLED",
+    "DRAGONZPYDER_FIRST_PARTY_CHAT_ENABLED",
+    "DRAGONZPYDER_IDENTITY_HTTP_ENABLED",
+    "DRAGONZPYDER_AGENT_HARNESS_V2",
+    "DRAGONZPYDER_AGENT_USE_GATEWAY",
+    "DRAGONZPYDER_AGENT_PARALLEL_GATEWAY_ENABLED",
+    "DRAGONZPYDER_AGENT_WEB_SEARCH_ENABLED",
+    "DRAGONZPYDER_AGENT_WEB_FETCH_ENABLED",
+    "DRAGONZPYDER_AGENT_ARTIFACTS_ENABLED",
+    "DRAGONZPYDER_FIRST_PARTY_COMPUTER_ENABLED",
+    "DRAGONZPYDER_FIRST_PARTY_REQUEST_LEDGER_ENABLED",
+    "DRAGONZPYDER_FIRST_PARTY_STREAM_ENABLED",
+    "DRAGONZPYDER_NATIVE_DURABLE_WORKFLOWS_ENABLED",
+    "DRAGONZPYDER_EXECUTION_GRAPH_ENABLED",
+    "DRAGONZPYDER_PERSONAL_MCP_SCHEDULED_ENABLED",
+    "DRAGONZPYDER_PERSONAL_GOAL_CONTROLLER_ENABLED",
+    "DRAGONZPYDER_FIRST_PARTY_GOAL_MANAGEMENT_ENABLED",
+    "DRAGONZPYDER_MCP_USER_CONNECTIONS_ENABLED",
+    "DRAGONZPYDER_NATIVE_MCP_OAUTH_ENABLED",
+    "DRAGONZPYDER_MCP_EGRESS_FIREWALL_ENFORCED",
+    "DRAGONZPYDER_MCP_USER_CONNECTIONS_PRODUCTION_APPROVED",
+    "DRAGONZPYDER_MCP_PROGRAMMATIC_READS_ENABLED",
+    "DRAGONZPYDER_AGENT_QUICKJS_ENABLED",
+    "DRAGONZPYDER_ADAPTIVE_ROUTING_ENABLED",
+    "DRAGONZPYDER_AGENT_MEDIA_ENABLED",
+    "DRAGONZPYDER_NATIVE_VOICE_ENABLED",
+    "DRAGONZPYDER_NATIVE_VOICE_AGENT_ENABLED",
+    "DRAGONZPYDER_FIRST_PARTY_WEB_CUTOVER_ENABLED",
+    "DRAGONZPYDER_AGENT_WORKER_ALLOWED",
+    "DRAGONZPYDER_WEB_MONITOR_ENABLED",
+    "DRAGONZPYDER_OPERLY_TOOLS_ENABLED",
+    "DRAGONZPYDER_PERSONAL_MEMORY_RECALL_ENABLED",
+)
+ADMIN_CONFIG_SERVICES = {
+    "API": "7e498ab0-5b98-4868-ba41-95e05ca361aa",
+    "Web": "da82b425-d5c2-417f-bd07-415c5e0602ac",
+    "Worker": "ea5e5c21-8fee-40cd-aaaa-96a524b8d696",
+}
+ADMIN_MUTABLE = {
+    "API": {"DRAGONZPYDER_AGENT_WEB_SEARCH_ENABLED", "DRAGONZPYDER_AGENT_WEB_FETCH_ENABLED",
+            "DRAGONZPYDER_PERSONAL_MEMORY_RECALL_ENABLED"},
+}
+ADMIN_VARIABLE_QUERY = """query Variables($projectId: String!, $environmentId: String!, $serviceId: String) {
+    variables(projectId: $projectId, environmentId: $environmentId, serviceId: $serviceId, unrendered: true)
+}"""
+ADMIN_VARIABLE_CHANGE = """mutation Change($input: VariableUpsertInput!) { variableUpsert(input: $input) }"""
+
+
+def _admin_flag_state(value):
+    return "unset" if value is None else "on" if value == "1" else "off" if value == "0" else "other"
+
+
+def _admin_variable_ids(service):
+    return {"projectId": ADMIN_RAILWAY_PROJECTS["DragonZpyder"],
+            "environmentId": ADMIN_RAILWAY_ENVIRONMENTS["DragonZpyder"],
+            "serviceId": ADMIN_CONFIG_SERVICES[service]}
+
+
+async def _admin_desired_flags(client, service):
+    raw = await _admin_railway(client, "DragonZpyder", ADMIN_VARIABLE_QUERY, _admin_variable_ids(service))
+    variables = raw.get("variables")
+    if not isinstance(variables, dict):
+        raise ValueError("Variable data unavailable")
+    # Never relay values, references, names outside the reviewed allowlist, or credentials.
+    return {name: _admin_flag_state(variables.get(name)) for name in ADMIN_CONFIG_FLAGS}
+
+
+async def _admin_configuration(request):
+    import asyncio
+    client = request.app.state.http
+    async def desired(service):
+        try:
+            return {"state": "available", "flags": await _admin_desired_flags(client, service)}
+        except (RuntimeError, httpx.HTTPError, ValueError, KeyError, TypeError):
+            return {"state": "unavailable", "flags": {}}
+    async def live():
+        token = os.getenv("DRAGONZPYDER_ADMIN_TOKEN", "")
+        if len(token) < 40:
+            return None
+        try:
+            response = await client.get(API + "/internal/admin/config",
+                headers={"authorization": "Bearer " + token, "cookie": ""}, timeout=8, follow_redirects=False)
+            response.raise_for_status()
+            return response.json()
+        except (httpx.HTTPError, ValueError):
+            return None
+    runtime, *desired_states = await asyncio.gather(live(), *(desired(s) for s in ADMIN_CONFIG_SERVICES))
+    return {"api_runtime": runtime, "desired": dict(zip(ADMIN_CONFIG_SERVICES, desired_states)),
+            "web_runtime": {"flags": {k: _admin_flag_state(os.getenv(k)) for k in ADMIN_CONFIG_FLAGS},
+                            "deployed_sha": os.getenv("RAILWAY_GIT_COMMIT_SHA")},
+            "editable": {service: sorted(keys) for service, keys in ADMIN_MUTABLE.items()},
+            "integration": {p: bool(os.getenv("DRAGONZPYDER_ADMIN_RAILWAY_" + p.upper() + "_TOKEN"))
+                            for p in ADMIN_RAILWAY_PROJECTS}}
+
+
+async def admin_config_change(request):
+    """Explicit, narrow Railway desired-state change. No generic variable editor."""
+    import hmac
+    import json
+    import logging
+    from hashlib import sha256
+    headers = {"cache-control": "no-store", "x-frame-options": "DENY"}
+    def fail(message, status):
+        return JSONResponse({"detail": message}, status_code=status, headers=headers)
+    csrf = request.cookies.get("__Host-dz_csrf", "")
+    supplied = request.headers.get("x-dz-csrf", "")
+    if (not getattr(request.state, "admin_subject", None) or not request.cookies.get("__Host-dz_identity")
+            or request.headers.get("origin") != "https://dragonzpyder.xyz"
+            or not csrf or not supplied or not hmac.compare_digest(csrf, supplied)):
+        return fail("Native administrator session and same-origin CSRF required", 403)
+    if request.headers.get("content-type", "").split(";")[0].strip() != "application/json":
+        return fail("JSON required", 415)
+    try:
+        raw = bytearray()
+        async for chunk in request.stream():
+            raw.extend(chunk)
+            if len(raw) > 1024:
+                return fail("Request too large", 413)
+        item = json.loads(raw)
+    except (ValueError, TypeError):
+        return fail("Invalid JSON", 400)
+    if (not isinstance(item, dict) or set(item) != {"service", "flag", "expected", "enabled", "confirm"}
+            or not isinstance(item["service"], str) or not isinstance(item["flag"], str)
+            or item["flag"] not in ADMIN_MUTABLE.get(item["service"], set())
+            or item["expected"] not in ("on", "off", "unset") or type(item["enabled"]) is not bool
+            or item["confirm"] is not True):
+        return fail("Unsupported configuration change", 400)
+    service, flag = item["service"], item["flag"]
+    actor = sha256(request.state.admin_subject.encode()).hexdigest()[:24]
+    log = logging.getLogger("dragonzpyder.admin")
+    try:
+        current = await _admin_desired_flags(request.app.state.http, service)
+        if current.get(flag) != item["expected"]:
+            return fail("Configuration changed or is a reference; refresh before retrying", 409)
+        value = "1" if item["enabled"] else "0"
+        if flag == "DRAGONZPYDER_AGENT_WEB_FETCH_ENABLED" and item["enabled"] and current.get("DRAGONZPYDER_AGENT_WEB_SEARCH_ENABLED") != "on":
+            return fail("Enable web search first", 409)
+        if flag == "DRAGONZPYDER_AGENT_WEB_SEARCH_ENABLED" and not item["enabled"] and current.get("DRAGONZPYDER_AGENT_WEB_FETCH_ENABLED") == "on":
+            return fail("Disable web fetch first", 409)
+        log.warning("Admin variable change requested actor=%s service=%s flag=%s previous=%s desired=%s", actor, service, flag, item["expected"], value)
+        result = await _admin_railway(request.app.state.http, "DragonZpyder", ADMIN_VARIABLE_CHANGE,
+                    {"input": {**_admin_variable_ids(service), "name": flag, "value": value}})
+        if result.get("variableUpsert") is not True:
+            return fail("Railway did not confirm change; inspect configuration", 502)
+        log.warning("Admin variable change accepted actor=%s service=%s flag=%s desired=%s", actor, service, flag, value)
+        return JSONResponse({"state": "accepted", "message": "Railway accepted desired configuration; deployment and runtime verification pending"}, headers=headers)
+    except RuntimeError:
+        return fail("Railway integration is not configured", 503)
+    except (httpx.HTTPError, ValueError, KeyError, TypeError):
+        return fail("Railway outcome unknown; inspect configuration before retrying", 502)
+
+
 async def admin_operations(request: Request):
     """Read limited operations metadata after the existing native admin check."""
     import asyncio
@@ -497,12 +651,14 @@ async def admin_operations(request: Request):
         return JSONResponse({"detail": "Native DragonZpyder administrator session required"},
                             status_code=403, headers=headers)
     source = request.query_params.get("source", "")
-    if source not in {"railway", "traffic", "github", "langfuse", "activity", "resources", "traffic_history"}:
+    if source not in {"railway", "traffic", "github", "langfuse", "activity", "resources", "traffic_history", "configuration"}:
         return JSONResponse({"detail": "Invalid operations source"}, status_code=400, headers=headers)
     client = request.app.state.http
     result = {"source": source, "retrieved_at": datetime.now(timezone.utc).isoformat()}
     try:
-        if source in {"resources", "traffic_history"}:
+        if source == "configuration":
+            result["configuration"] = await _admin_configuration(request)
+        elif source in {"resources", "traffic_history"}:
             raw_days = request.query_params.get("days", "1")
             if raw_days not in {"1", "7", "30"}:
                 return JSONResponse({"detail": "Invalid metric period"}, status_code=400, headers=headers)
@@ -606,7 +762,7 @@ async def admin_operations(request: Request):
 
 
 async def admin_route(request: Request):
-    if request.method != "GET":
+    if request.method != "GET" and not (request.method == "POST" and request.url.path == "/admin/api/config"):
         return JSONResponse({"detail": "Not found"}, status_code=404)
     status = await admin_auth_status(request)
     if status != "allowed":
@@ -634,6 +790,10 @@ async def admin_route(request: Request):
             return JSONResponse({"detail": "Admin frontend not built"}, status_code=503)
         return FileResponse(target, media_type="text/html",
                             headers={"cache-control": "no-store", "x-frame-options": "DENY"})
+    if request.url.path == "/admin/api/config":
+        if request.method != "POST":
+            return JSONResponse({"detail": "Method not allowed"}, status_code=405)
+        return await admin_config_change(request)
     if request.url.path == "/admin/api/operations":
         return await admin_operations(request)
     secret = os.getenv("DRAGONZPYDER_ADMIN_TOKEN", "")
@@ -674,7 +834,7 @@ def native_web_session(request: Request) -> bool:
 @app.api_route("/{path:path}", methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
 async def dispatch(path: str, request: Request):
     route = "/" + path
-    if route in {"/admin", "/admin/api/usage", "/admin/api/operations"}:
+    if route in {"/admin", "/admin/api/usage", "/admin/api/operations", "/admin/api/config"}:
         return await admin_route(request)
     # First-party identity, native chat and browser-only MCP routes terminate
     # at DragonZpyder API. No wildcard /internal proxy: browsers must never

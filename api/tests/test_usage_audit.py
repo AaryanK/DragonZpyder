@@ -169,3 +169,17 @@ def test_admin_identity_aggregates_without_personal_fields(monkeypatch):
         yield
     monkeypatch.setattr(identity, "_identity_db", unavailable)
     assert asyncio.run(main.admin_identity_activity(7)) == {"state": "unavailable", "accounts": None, "sessions": None}
+
+
+def test_runtime_configuration_only_reports_boolean_gates(monkeypatch):
+    monkeypatch.setenv("DRAGONZPYDER_ADMIN_TOKEN", ADMIN)
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_WEB_SEARCH_ENABLED","1")
+    monkeypatch.setenv("DRAGONZPYDER_SEARXNG_ORIGIN","private-url")
+    monkeypatch.delenv("DRAGONZPYDER_PERSONAL_MEMORY_RECALL_ENABLED",raising=False)
+    with TestClient(app) as client:
+        assert client.get("/internal/admin/config").status_code==401
+        result=client.get("/internal/admin/config",headers={"authorization":"Bearer "+ADMIN})
+        assert result.status_code==200
+        assert result.json()["flags"]["DRAGONZPYDER_AGENT_WEB_SEARCH_ENABLED"]=="on"
+        assert result.json()["flags"]["DRAGONZPYDER_PERSONAL_MEMORY_RECALL_ENABLED"]=="default_on"
+        assert "private-url" not in result.text and ADMIN not in result.text

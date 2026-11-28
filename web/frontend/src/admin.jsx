@@ -88,6 +88,40 @@ function Activity({report}) {
   </>;
 }
 
+function Configuration({report,onRefresh}) {
+  const [message,setMessage]=useState(""), [busy,setBusy]=useState(false);
+  const [service,setService]=useState("API");
+  const live=service==="API"?report.api_runtime:service==="Web"?report.web_runtime:null;
+  const desired=report.desired?.[service];
+  const keys=[...new Set([...Object.keys(live?.flags||{}),...Object.keys(desired?.flags||{})])];
+  async function change(flag,current,enabled) {
+    if(!window.confirm("Change "+flag+" on "+service+" in production? Railway may redeploy the service. Existing data is not deleted.")) return;
+    const csrf=document.cookie.split("; ").find(x=>x.startsWith("__Host-dz_csrf="))?.split("=").slice(1).join("=")||"";
+    setBusy(true);setMessage("");
+    try {
+      const r=await fetch("/admin/api/config",{method:"POST",credentials:"same-origin",cache:"no-store",
+        headers:{"content-type":"application/json","x-dz-csrf":csrf},
+        body:JSON.stringify({service,flag,expected:current,enabled,confirm:true})});
+      const data=await r.json(); if(!r.ok)throw Error(data.detail||"Change unavailable");
+      setMessage(data.message);onRefresh();
+    } catch(e) {setMessage(e.message);} finally {setBusy(false);}
+  }
+  return <><p className="data-note">Source-reviewed configuration gates. Live values come from the running process; desired values come from Railway. An enabled gate is not a passed capability test. Worker live values are not instrumented. Changes affect new deployments, not existing data.</p>
+    <OpsTable title="Railway integrations" rows={Object.entries(report.integration||{}).map(([project,present])=>({project,status:present?"Credential present; provider access not proven":"Missing project token"}))} columns={[["project","Project"],["status","Configuration"]]}/>
+    <label className="data-note">Service <select value={service} onChange={e=>setService(e.target.value)}>{["API","Web","Worker"].map(s=><option key={s}>{s}</option>)}</select></label>
+    <p className="data-note">Running commit: {live?.deployed_sha||"Unknown"} · Railway desired state: {desired?.state||"unavailable"}</p>
+    {message&&<p role="status">{message}</p>}
+    <section className="table-box"><h2>Capability gates</h2><div className="table-scroll"><table><thead><tr><th>Source gate</th><th>Running</th><th>Railway desired</th><th>Control</th></tr></thead><tbody>{keys.map(flag=>{
+      const current=desired?.flags?.[flag];
+      const editable=report.editable?.[service]?.includes(flag)&&["on","off","unset"].includes(current);
+      return <tr key={flag}><td>{flag.replace("DRAGONZPYDER_","")}</td><td>{live?.flags?.[flag]||"Unknown"}</td><td>{current||"Unknown"}</td><td>{editable?<><button disabled={busy||current==="on"} onClick={()=>change(flag,current,true)}>Enable</button>{" "}<button disabled={busy||current==="off"} onClick={()=>change(flag,current,false)}>Disable</button></>: "Read only"}</td></tr>;
+    })}</tbody></table></div></section>
+    <p className="data-note">Memory recall controls access by the chat agent, not saved-memory management or consent. API search controls do not alter Worker monitor registration. Identity, credentials, budget, isolation and coupled workflow settings are intentionally not editable here.</p>
+    {service==="API"&&<OpsTable title="API dependency presence (not health)" rows={Object.entries(live?.dependencies||{}).map(([name,present])=>({name,status:present?"Present":"Missing"}))} columns={[["name","Dependency"],["status","State"]]}/>}
+  </>;
+}
+
+
 function Operations({source}) {
   const [data,setData] = useState(null), [error,setError] = useState(""), [loading,setLoading] = useState(true);
   const [revision,setRevision] = useState(0);
@@ -112,6 +146,7 @@ function Operations({source}) {
     {data && source==="traffic_history"&&<TrafficHistory report={data.history}/>}
     {source==="langfuse" && <form className="toolbar" onSubmit={e=>{e.preventDefault();setCursor("");setTrace(traceInput.trim());setRevision(v=>v+1);}}><label>Trace ID<input value={traceInput} maxLength={128} onChange={e=>setTraceInput(e.target.value)} placeholder="All traces"/></label><button>Search</button><button type="button" onClick={()=>{setTraceInput("");setTrace("");setCursor("");}}>Clear</button></form>}
     {data && source==="activity" && <Activity report={data.activity}/>}
+    {data && source==="configuration" && <Configuration report={data.configuration} onRefresh={()=>setRevision(v=>v+1)}/>}
     {loading && <p role="status">Loading operations data…</p>}{error && <p role="alert" className="error">{error}</p>}
     {data && source==="railway" && <><p className="data-note">Deployment status is not runtime health. No deployment changes are made here.</p>
       {data.projects.map(project=><div key={project.project}><OpsTable title={project.project+" · "+project.state} rows={project.services}
@@ -170,7 +205,7 @@ function AdminPage() {
           <p>Production inventory, traffic samples, engineering activity and AI observability.</p></div>
         <a href="/account" className="account-link">Account ↗</a>
       </header>
-      <nav className="ops-tabs" aria-label="Operations sections">{[["usage","Model usage"],["activity","Product & harness"],["railway","Infrastructure"],["resources","Resources"],["traffic_history","Traffic history"],["traffic","Recent traffic"],["github","Engineering"],["langfuse","Traces"]].map(([key,label])=><button key={key} aria-pressed={tab===key} onClick={()=>setTab(key)}>{label}</button>)}</nav>
+      <nav className="ops-tabs" aria-label="Operations sections">{[["usage","Model usage"],["activity","Product & harness"],["configuration","Configuration"],["railway","Infrastructure"],["resources","Resources"],["traffic_history","Traffic history"],["traffic","Recent traffic"],["github","Engineering"],["langfuse","Traces"]].map(([key,label])=><button key={key} aria-pressed={tab===key} onClick={()=>setTab(key)}>{label}</button>)}</nav>
       {tab!=="usage" ? <Operations key={tab} source={tab}/> : <>
       <form className="toolbar" onSubmit={e => {
         e.preventDefault();
