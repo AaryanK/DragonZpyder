@@ -18,6 +18,7 @@ import asyncpg
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
+from typing import Literal
 
 from identity.http_bridge import _identity_db, _issuer, _enabled as _identity_enabled
 from identity.sessions import SessionDenied, resolve_browser_session
@@ -86,6 +87,52 @@ async def _require_conversation(db, *, user: str, conversation_id: UUID):
     if row is None:
         # Deliberately indistinguishable: unknown and other-user IDs.
         raise HTTPException(404, "Conversation not found")
+
+
+class MemoryInput(BaseModel):
+    model_config=ConfigDict(extra="forbid")
+    id:UUID
+    content:str=Field(min_length=1,max_length=2000)
+    consent:Literal[True]
+    recall_in_chat:bool=Field(strict=True)
+
+
+def _memory_ready(request):
+    if not getattr(request.app.state,"personal_memory_ready",False):
+        raise HTTPException(503,"Personal memory storage unavailable")
+
+
+@router.get("/memory")
+async def list_memory(request:Request):
+    owner=await _owner(request,changing=False)
+    _memory_ready(request)
+    from .memory import list_native_memory
+    async with _conversation_db() as db:
+        return {"memories":await list_native_memory(db,owner=owner)}
+
+
+@router.post("/memory")
+async def save_memory(payload:MemoryInput,request:Request):
+    owner=await _owner(request,changing=True)
+    _memory_ready(request)
+    from .memory import save_native_memory
+    try:
+        async with _conversation_db() as db:
+            return await save_native_memory(db,owner=owner,memory_id=payload.id,
+                content=payload.content,consent=payload.consent,recall_in_chat=payload.recall_in_chat)
+    except ValueError as exc:
+        raise HTTPException(409,str(exc)) from None
+
+
+@router.delete("/memory/{memory_id}")
+async def forget_memory(memory_id:UUID,request:Request):
+    owner=await _owner(request,changing=True)
+    _memory_ready(request)
+    from .memory import delete_native_memory
+    async with _conversation_db() as db:
+        if not await delete_native_memory(db,owner=owner,memory_id=memory_id):
+            raise HTTPException(404,"Memory not found")
+    return {"deleted":True,"id":str(memory_id)}
 
 
 @router.get("/status")
@@ -706,8 +753,17 @@ async def _execute_chat(payload: ChatInput, request: Request, user: str, convers
                     conversation_id=conversation_id,request_id=payload.request_id,
                     attachment_ids=payload.attachment_ids,mcp_connection_ids=payload.mcp_connection_ids,
                     allow_computer=payload.allow_computer,http=request.app.state.http)
+            memory_tools=[]
+            if authority is None and getattr(request.app.state,"personal_memory_ready",False):
+                from .memory import has_recall_memory,native_memory_tools
+                if await has_recall_memory(db,owner=user):
+                    async def authorize_memory():
+                        if await _owner(request,changing=True)!=user:
+                            raise PermissionError("Memory authority revoked")
+                    memory_tools=native_memory_tools(owner=user,db_factory=_conversation_db,authorize=authorize_memory)
             agent = build_agent(
                 selected_model, runtime._checkpointer,
+                **({"memory_tools":memory_tools} if memory_tools else {}),
                 delegated_tools=tools if tools else None,
                 **({"artifact_tools":artifact_tools} if artifact_tools else {}),
                 **({"media_run":media_run} if media_run else {}),

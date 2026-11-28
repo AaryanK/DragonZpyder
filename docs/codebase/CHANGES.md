@@ -367,3 +367,12 @@ Production evidence: session starts and one canonical turn succeeded; a subseque
 
 - `apps/sandbox_runner/server.mjs`: Use a copied Python interpreter in the trusted venv, reject stale symlink templates, check unprivileged parent directory traversal with fixed phase codes. Preserve root ownership, offline seccomp, UID drop and scope checks. Railway signed allocation still failed exit 73 on ab7ec4c, cleanup confirmed; CI/live acceptance pending.
 - `apps/sandbox_runner/README.md`: Record observed failure and repair hypothesis.
+
+## 2026-11-27 — consented native personal memory
+
+- `api/agent_platform/memory.py`: Native exact PostgreSQL memory store with explicit user consent, bounded per-owner capacity, idempotent save, owner-scoped list/delete and recall-only search. Mem0 remains optional; no paid extraction or automatic writes. Offline/live acceptance pending.
+- `api/agent_platform/first_party_chat.py`: Authenticated CSRF-protected memory endpoints, bind read-only recall to current owner only where explicit record consent exists; reauthorize each read. No external MCP or voice authority expansion.
+- `api/agent_platform/harness.py`: Add bounded supervisor-only personal memory read tool; do not grant model write/delete authority.
+- `api/main.py`: Prepare additive memory schema at startup; fail closed for memory without blocking chat.
+- `api/tests/test_memory_database_reuse.py`: Cover explicit consent, scoped queries and revoked authorization. CI pending.
+- `web/frontend/src/PersonalTemplate.jsx`: Explicit memory management dialog with user-entered content, recall consent, owner-scoped list/save/remove, CSRF and visible errors. Browser acceptance pending; Android native UI unchanged.

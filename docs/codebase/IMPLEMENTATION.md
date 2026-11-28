@@ -103,3 +103,7 @@ Production reuses `OPENROUTER_API_KEY`; no new voice feature variable or dedicat
 ### Voice failure handling
 
 OpenRouter voice distinguishes unsubmitted transcription failure, unconfirmed canonical execution and committed answer with failed playback. The browser pauses utterance admission during agent execution/playback and after uncertain failure, preserves chat results and never automatically replays a paid turn. Speaker mute controls the Web Audio gain; original orb rendering remains unchanged. Automatic barge-in is temporarily disabled to avoid echo-triggered requests. Sanitized server phase/status logs support production diagnosis without logging audio, transcripts, credentials or provider response bodies.
+
+## Native personal memory
+
+The authenticated first-party memory API stores exact user-entered records in the existing agent PostgreSQL database. The web memory dialog separately asks whether a saved record may be recalled in future personal chats. Only consented records are searched by the supervisor's bounded, live-authorized read tool. No model tool can write or delete memory; no Mem0 extraction or additional inference provider is required. Removal affects the memory store, not historical chat content. Schema readiness fails closed independently of ordinary chat.

@@ -123,6 +123,19 @@ async def lifespan(app: FastAPI):
             agent_runtime = AgentRuntime()
             await agent_runtime.start()
             app.state.agent_runtime = agent_runtime
+        app.state.personal_memory_ready=False
+        if (agent_runtime is not None and os.getenv("DRAGONZPYDER_FIRST_PARTY_CHAT_ENABLED")=="1"
+                and os.getenv("DRAGONZPYDER_IDENTITY_HTTP_ENABLED")=="1"):
+            try:
+                from agent_platform.first_party_chat import _conversation_db
+                from agent_platform.memory import prepare_native_memory
+                async with asyncio.timeout(10):
+                    async with _conversation_db() as db:
+                        await prepare_native_memory(db)
+                app.state.personal_memory_ready=True
+                log.info("Personal memory storage ready")
+            except Exception:
+                log.warning("Personal memory storage unavailable; ordinary chat unaffected")
         async with httpx.AsyncClient(timeout=90.0, follow_redirects=False) as client:
             app.state.http = client
             if (os.getenv("RAILWAY_ENVIRONMENT_NAME") == "staging" and

@@ -39,3 +39,40 @@ def test_ambiguous_database_config_rejected():
                                   "DRAGONZPYDER_MEMORY_DATABASE_URL": DATA["DRAGONZPYDER_AGENT_DATABASE_URL"]}, clear=True):
         with pytest.raises(RuntimeError, match="Ambiguous"):
             memory_config()
+
+
+def test_native_memory_rejects_unconsented_save_without_db():
+    import asyncio
+    from uuid import uuid4
+    from agent_platform.memory import save_native_memory
+    with pytest.raises(PermissionError):
+        asyncio.run(save_native_memory(None,owner="synthetic",memory_id=uuid4(),content="fact",consent=False,recall_in_chat=True))
+
+
+def test_native_memory_search_binds_owner_and_consent_and_delete():
+    import asyncio
+    from uuid import uuid4
+    from agent_platform.memory import search_native_memory,delete_native_memory
+    class Db:
+        async def fetch(self,sql,*args):
+            assert "owner_id=$1 AND recall_in_chat" in sql and "LIMIT 5" in sql
+            assert args==("owner-a","example")
+            return []
+        async def fetchval(self,sql,*args):
+            assert "owner_id=$1 AND id=$2" in sql and args[0]=="owner-a"
+            return None
+    async def run():
+        assert await search_native_memory(Db(),owner="owner-a",query=" example ")==[]
+        assert await delete_native_memory(Db(),owner="owner-a",memory_id=uuid4()) is False
+        with pytest.raises(ValueError):
+            await search_native_memory(Db(),owner="owner-a",query="")
+    asyncio.run(run())
+
+
+def test_native_memory_tool_requires_live_authority_before_read():
+    import asyncio
+    from agent_platform.memory import native_memory_tools
+    async def denied():raise PermissionError("revoked")
+    tool=native_memory_tools(owner="owner-a",db_factory=None,authorize=denied)[0]
+    with pytest.raises(PermissionError):
+        asyncio.run(tool.ainvoke({"query":"example"}))
