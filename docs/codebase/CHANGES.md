@@ -15,6 +15,9 @@
 - `api/agent_platform/first_party_chat.py`, `api/agent_platform/native_workflows.py`: Admit a stable owner/request-scoped objective budget before the foreground model call; reuse for all specialists and scheduled phases. New plans require each phase to declare a published deliverable or an exact expected answer. Require actual read/import evidence for declared inputs and durable readback for named output artifacts. Distinguish machine-checkable acceptance from semantic truth; `objective_verified` remains false absent an independent content oracle. Existing plan digests remain compatible.
 - Capture original-run published artifacts alongside selected attachments; pin exact owner-scoped file identities and digests. Reject absent/ambiguous input filenames and verify receipts before advancing. Original workspace reads must precede modifications. No new flags, scheduler, database or agent framework.
 - `api/agent_platform/harness.py`: Explain the actual scheduling and deliverable contract to the model.
+- `api/agent_platform/first_party_chat.py`: Bind the foreground run to the stable parent budget before model dispatch.
+- `api/tests/test_fastapi_gateway.py`: Assert that actual upstream provider caps match the model-aware reservation policy.
+- `api/tests/test_native_workflows_postgres.py`: Exercise the real schedule persistence path with stubbed Hatchet and budget dispatch; check the origin artifact and workspace input handoff, single budget identity and restart recovery.
 - Extend existing tests for shared objective identity, acceptance requirements, original-version and artifact input receipts, and provider-enforced model pricing. New revision requires CI and production qualification. Historical unknown holds without authoritative evidence remain held; semantic content accuracy is not automatically guaranteed.
 
 
