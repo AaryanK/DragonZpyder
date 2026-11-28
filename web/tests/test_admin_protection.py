@@ -131,7 +131,7 @@ def test_operations_denies_unverified_and_legacy_only_sessions(monkeypatch):
         assert client.get("/admin/api/operations?source=github").status_code == 401
         old = client.app.state.http
         client.app.state.http = httpx.AsyncClient(transport=httpx.MockTransport(
-            lambda req: httpx.Response(200, json={"email": "owner@example.test"})))
+            lambda req: httpx.Response(200, json={"email": "owner@example.test", "id": "admin-subject"})))
         try:
             assert client.get("/admin/api/operations?source=github",
                 headers={"cookie": "__Host-operly_session=valid"}).status_code == 403
@@ -160,7 +160,7 @@ def test_langfuse_operations_filters_provider_payload(monkeypatch):
     monkeypatch.setenv("DRAGONZPYDER_ADMIN_LANGFUSE_SECRET_KEY", "secret-test")
     def upstream(req):
         if req.url.path == "/identity/v1/me":
-            return httpx.Response(200, json={"email": "owner@example.test"})
+            return httpx.Response(200, json={"email": "owner@example.test", "id": "admin-subject"})
         assert req.url.host == "cloud.langfuse.com"
         assert "io" not in req.url.params["fields"].split(",")
         assert req.headers.get("cookie") == ""
@@ -176,5 +176,30 @@ def test_langfuse_operations_filters_provider_payload(monkeypatch):
             assert r.json()["observations"] == [{"traceId": "trace-1", "model": "example-model"}]
             assert "private-" not in r.text and "secret-test" not in r.text
             assert r.headers["cache-control"] == "no-store"
+        finally:
+            client.app.state.http = old
+
+
+def test_activity_proxy_reuses_private_admin_token(monkeypatch):
+    monkeypatch.setenv("DRAGONZPYDER_ADMIN_EMAILS", "owner@example.test")
+    token = "A" * 48
+    monkeypatch.setenv("DRAGONZPYDER_ADMIN_TOKEN", token)
+    def upstream(req):
+        if req.url.path == "/identity/v1/me":
+            return httpx.Response(200, json={"id":"admin-subject","email":"owner@example.test"})
+        assert req.url.path == "/internal/admin/activity"
+        assert req.headers["authorization"] == "Bearer " + token
+        assert req.headers["cookie"] == ""
+        assert req.url.params["days"] == "7"
+        return httpx.Response(200, json={"days":7,"requests":{"state":"available","rows":[]}})
+    with TestClient(app) as client:
+        old = client.app.state.http
+        client.app.state.http = httpx.AsyncClient(transport=httpx.MockTransport(upstream))
+        try:
+            h = {"cookie":"__Host-dz_identity=valid"}
+            result = client.get("/admin/api/operations?source=activity&days=7",headers=h)
+            assert result.status_code == 200
+            assert result.json()["activity"]["days"] == 7 and token not in result.text
+            assert client.get("/admin/api/operations?source=activity&days=91",headers=h).status_code == 400
         finally:
             client.app.state.http = old

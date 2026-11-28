@@ -111,3 +111,5 @@ The authenticated first-party memory API stores exact user-entered records in th
 ## Operator console
 
 The existing web/main.py admin_route enforces identity allowlist before admin_operations; native session required for new panels. Fixed read-only provider adapters return bounded deployment, edge request aggregate, GitHub and Langfuse metadata. React admin.jsx loads a selected tab on demand. See OBSERVABILITY.md for credentials and limitations. No new user-data or mutation authority; live validation pending.
+
+Admin product activity: Web native identity check → fixed /internal/admin/activity request using existing independent reporting bearer → bounded read-only native aggregate SELECTs plus configuration signals. No user payload, identity database access or mutation. Usage summary provides UTC daily latency and spend aggregates.

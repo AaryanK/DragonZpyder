@@ -47,7 +47,7 @@ FastAPI inference/API composition, provider transport, ledgers, service images, 
 | [`Dockerfile.personal`](../../api/Dockerfile.personal) | Navigation hint: Dockerfile; source behavior not independently reviewed. | Indexed |
 | [`Dockerfile.staging`](../../api/Dockerfile.staging) | Navigation hint: Dockerfile; source behavior not independently reviewed. | Indexed |
 | [`inference.mjs`](../../api/inference.mjs) | Legacy Node private inference handler with backend bearer, model allowlist, bounded parsing and per-hour admission. | Reviewed |
-| [`main.py`](../../api/main.py) | FastAPI gateway composition root, lifespan, router registration, caller auth and catch-all inference dispatch. | Reviewed |
+| [`main.py`](../../api/main.py) | FastAPI gateway composition root, lifespan, caller auth, inference dispatch and bounded admin native activity aggregates. | Reviewed |
 | [`observability.py`](../../api/observability.py) | Configures OpenTelemetry/Langfuse OTLP export and redacted inference spans; full encrypted payload storage is separate. | Reviewed |
 | [`package.json`](../../api/package.json) | Data/configuration fixture: package; inspect schema and consumers. | Indexed |
 | [`provider_gateway.py`](../../api/provider_gateway.py) | Scoped OpenRouter transport, operation classification, provider-key selection, metering and tracing. | Reviewed |
@@ -59,7 +59,7 @@ FastAPI inference/API composition, provider transport, ledgers, service images, 
 | [`staging.js`](../../api/staging.js) | Navigation hint: staging; source behavior not independently reviewed. | Indexed |
 | [`staging_app.py`](../../api/staging_app.py) | Password-gated staging smoke lab for agent, search, memory and Hatchet diagnostics; no workspace/computer grants. | Reviewed |
 | [`staging_ui.html`](../../api/staging_ui.html) | Navigation hint: staging ui; source behavior not independently reviewed. | Indexed |
-| [`usage_ledger.py`](../../api/usage_ledger.py) | Append-only PostgreSQL metering, normalized token/cost usage and optional AES-GCM payload escrow; unknown cost is not zero. | Reviewed |
+| [`usage_ledger.py`](../../api/usage_ledger.py) | Append-only PostgreSQL metering, normalized token/cost and daily latency aggregates, optional AES-GCM payload escrow; unknown cost is not zero. | Reviewed |
 
 ## api/agent_platform
 

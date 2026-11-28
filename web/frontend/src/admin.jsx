@@ -23,23 +23,46 @@ function Distribution({title, values}) {
     <div className="ops-bar" key={name}><span>{name}</span><meter min={0} max={max} value={count}/><strong>{count}</strong></div>
   ) : <p>No records returned.</p>}</section>;
 }
+
+function Activity({report}) {
+  if (!report) return null;
+  const data=report;
+  const groups=[["requests","Request states"],["workflows","Native workflow states"],["goals","Personal MCP goal states"]];
+  const con=data.conversations?.rows?.[0], mem=data.memory?.rows?.[0];
+  return <>
+    <p className="data-note">Native request and conversation activity over {data.days} days. This is not the registered-user population. Workflow groups include current active or uncertain records even if older.</p>
+    <section className="stats">{[["Active conversations",con?.active_conversations],["Conversation owners",con?.conversation_owners],["New saved memory entries",mem?.saved_entries],["Memory owners (new entries)",mem?.memory_owners],["New recall-enabled entries",mem?.recall_enabled_entries]].map(([label,value])=>
+      <article className="stat" key={label}><span>{label}</span><strong>{formatInteger(value)}</strong></article>)}</section>
+    <div className="ops-distributions">{groups.map(([key,label])=><Distribution key={key} title={label+" · "+(data[key]?.state||"unavailable")} values={Object.fromEntries((data[key]?.rows||[]).map(r=>[r.state||r.status,r.count]))}/>)}</div>
+    <Distribution title={"Requests by UTC day · "+(data.daily?.state||"unavailable")} values={Object.fromEntries((data.daily?.rows||[]).map(r=>[r.day,r.requests]))}/>
+    <OpsTable title="Daily activity (UTC)" rows={data.daily?.rows||[]} columns={[["day","Day"],["requests","Accepted requests"],["active_users","Distinct request owners"],["completed","Completed"]]}/>
+    <OpsTable title="Runtime initialization" rows={Object.entries(data.runtime||{}).map(([name,enabled])=>({name,status:enabled?"Ready / initialized":"Not ready / not initialized"}))} columns={[["name","Component"],["status","Reported state"]]}/>
+    <p className="data-note">Capability values indicate configuration eligibility, not proof of end-to-end execution.</p>
+    <OpsTable title="Capability configuration" rows={Object.entries(data.capabilities||{}).map(([name,enabled])=>({name,status:enabled?"Enabled":"Disabled"}))} columns={[["name","Capability"],["status","Configured"]]}/>
+  </>;
+}
+
 function Operations({source}) {
   const [data,setData] = useState(null), [error,setError] = useState(""), [loading,setLoading] = useState(true);
   const [revision,setRevision] = useState(0);
+  const [period,setPeriod] = useState(30), [traceInput,setTraceInput] = useState(""), [trace,setTrace] = useState(""), [cursor,setCursor] = useState("");
   useEffect(()=>{
     const controller = new AbortController();
     setData(null); setError(""); setLoading(true);
-    fetch("/admin/api/operations?" + new URLSearchParams({source}), {credentials:"same-origin",cache:"no-store",signal:controller.signal})
+    fetch("/admin/api/operations?" + new URLSearchParams({source, ...(source==="activity"?{days:String(period)}:{}), ...(source==="langfuse"?{trace,cursor}:{})}), {credentials:"same-origin",cache:"no-store",signal:controller.signal})
       .then(async r=>{const v=await r.json(); if(!r.ok) throw new Error(typeof v.detail==="string"?v.detail:"Source unavailable"); return v;})
       .then(v=>{if(!controller.signal.aborted)setData(v);})
       .catch(e=>{if(!controller.signal.aborted)setError(e.message);})
       .finally(()=>{if(!controller.signal.aborted)setLoading(false);});
     return ()=>controller.abort();
-  },[source,revision]);
+  },[source,revision,period,trace,cursor]);
   const t=data?.traffic;
   return <section>
     <div className="ops-heading"><p className="data-note">{data ? "Retrieved " + new Date(data.retrieved_at).toLocaleString() : "Live provider data; no simulated metrics."}</p>
       <button onClick={()=>setRevision(v=>v+1)} disabled={loading}>Refresh</button></div>
+    {source==="activity" && <label className="data-note">Period <select value={period} onChange={e=>setPeriod(Number(e.target.value))}><option value={1}>24 hours</option><option value={7}>7 days</option><option value={30}>30 days</option><option value={90}>90 days</option></select></label>}
+    {source==="langfuse" && <form className="toolbar" onSubmit={e=>{e.preventDefault();setCursor("");setTrace(traceInput.trim());setRevision(v=>v+1);}}><label>Trace ID<input value={traceInput} maxLength={128} onChange={e=>setTraceInput(e.target.value)} placeholder="All traces"/></label><button>Search</button><button type="button" onClick={()=>{setTraceInput("");setTrace("");setCursor("");}}>Clear</button></form>}
+    {data && source==="activity" && <Activity report={data.activity}/>}
     {loading && <p role="status">Loading operations data…</p>}{error && <p role="alert" className="error">{error}</p>}
     {data && source==="railway" && <><p className="data-note">Deployment status is not runtime health. No deployment changes are made here.</p>
       {data.projects.map(project=><div key={project.project}><OpsTable title={project.project+" · "+project.state} rows={project.services}
@@ -53,7 +76,7 @@ function Operations({source}) {
       <OpsTable title="Pull requests" rows={data.pull_requests} columns={[["number","PR"],["title","Title"],["state","State"],["updated_at","Updated"],["merged_at","Merged"]]}/>
       <OpsTable title="CI runs" rows={data.workflow_runs} columns={[["id","Run ID"],["name","Workflow"],["status","Status"],["conclusion","Conclusion"],["head_sha","SHA"],["updated_at","Updated"]]}/></>}
     {data && source==="langfuse" && <><p className="data-note">Latest 50 observations; additional records: {data.more_available?"yes":"not reported"}. No prompts, responses, raw metadata, user identifiers or tool arguments are exposed.</p>
-      <OpsTable title="Trace observations" rows={data.observations} columns={[["traceId","Trace ID"],["id","Observation ID"],["parentObservationId","Parent"],["type","Type"],["model","Model"],["level","Level"],["startTime","Started"],["latency","Latency"],["inputUsage","Input"],["outputUsage","Output"],["totalCost","Cost"]]}/></>}
+      <OpsTable title="Trace observations" rows={data.observations} columns={[["traceId","Trace ID"],["id","Observation ID"],["parentObservationId","Parent"],["type","Type"],["model","Model"],["level","Level"],["startTime","Started"],["latency","Latency"],["inputUsage","Input"],["outputUsage","Output"],["totalCost","Cost"]]}/><div className="toolbar"><button disabled={!cursor} onClick={()=>setCursor("")}>First page</button><button disabled={!data.next_cursor} onClick={()=>setCursor(data.next_cursor)}>Next page</button></div></>}
   </section>;
 }
 
@@ -98,7 +121,7 @@ function AdminPage() {
           <p>Production inventory, traffic samples, engineering activity and AI observability.</p></div>
         <a href="/account" className="account-link">Account ↗</a>
       </header>
-      <nav className="ops-tabs" aria-label="Operations sections">{[["usage","Model usage"],["railway","Infrastructure"],["traffic","Traffic"],["github","Engineering"],["langfuse","Traces"]].map(([key,label])=><button key={key} aria-pressed={tab===key} onClick={()=>setTab(key)}>{label}</button>)}</nav>
+      <nav className="ops-tabs" aria-label="Operations sections">{[["usage","Model usage"],["activity","Product & harness"],["railway","Infrastructure"],["traffic","Traffic"],["github","Engineering"],["langfuse","Traces"]].map(([key,label])=><button key={key} aria-pressed={tab===key} onClick={()=>setTab(key)}>{label}</button>)}</nav>
       {tab!=="usage" ? <Operations key={tab} source={tab}/> : <>
       <form className="toolbar" onSubmit={e => {
         e.preventDefault();
@@ -131,6 +154,7 @@ function AdminPage() {
           Missing token reports: {formatInteger(totals?.missing_token_usage)} · Missing cost reports: {formatInteger(totals?.missing_cost)}.
           These are not assumed to be zero. Costs shown are provider-reported, not customer billing amounts.
         </p>
+        {data.daily && <><Distribution title="Model calls by UTC day" values={Object.fromEntries(data.daily.map(r=>[r.day,r.calls]))}/><OpsTable title="Daily usage" rows={data.daily} columns={[["day","Day"],["calls","Calls"],["failures","Failures"],["total_tokens","Tokens"],["provider_cost_usd","Provider cost (USD)"],["missing_cost","Missing cost"],["p95_duration_ms","P95 (ms)"]]}/></>}
         <section className="table-box"><h2>Usage by application and model</h2>
           <div className="table-scroll"><table><thead><tr>
             <th>Application</th><th>Requested model</th><th>Calls</th><th>Input</th>

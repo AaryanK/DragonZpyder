@@ -225,6 +225,9 @@ async def admin_auth_status(request: Request) -> str:
     try:
         account = response.json()
         email = account.get("email", "") if isinstance(account, dict) else ""
+        subject = account.get("id") if isinstance(account, dict) else None
+        if native and isinstance(subject, str) and 1 <= len(subject) <= 160:
+            request.state.admin_subject = subject
     except (ValueError, TypeError):
         return "unavailable"
     return "allowed" if isinstance(email, str) and email.casefold() in allowed else "forbidden"
@@ -348,16 +351,27 @@ async def admin_operations(request: Request):
     import logging
     from datetime import datetime, timezone
     headers = {"cache-control": "no-store", "x-frame-options": "DENY"}
-    if not request.cookies.get("__Host-dz_identity"):
+    if not request.cookies.get("__Host-dz_identity") or not getattr(request.state, "admin_subject", None):
         return JSONResponse({"detail": "Native DragonZpyder administrator session required"},
                             status_code=403, headers=headers)
     source = request.query_params.get("source", "")
-    if source not in {"railway", "traffic", "github", "langfuse"}:
+    if source not in {"railway", "traffic", "github", "langfuse", "activity"}:
         return JSONResponse({"detail": "Invalid operations source"}, status_code=400, headers=headers)
     client = request.app.state.http
     result = {"source": source, "retrieved_at": datetime.now(timezone.utc).isoformat()}
     try:
-        if source == "railway":
+        if source == "activity":
+            days = request.query_params.get("days", "30")
+            if not days.isdigit() or not 1 <= int(days) <= 90:
+                return JSONResponse({"detail": "Invalid date range"}, status_code=400, headers=headers)
+            token = os.getenv("DRAGONZPYDER_ADMIN_TOKEN", "")
+            if len(token) < 40:
+                raise RuntimeError("unconfigured")
+            upstream = await client.get(API + "/internal/admin/activity", params={"days": days},
+                headers={"authorization": "Bearer " + token, "cookie": ""}, timeout=15, follow_redirects=False)
+            upstream.raise_for_status()
+            result["activity"] = upstream.json()
+        elif source == "railway":
             async def one(project):
                 try:
                     return {"project": project, "state": "available", "services": await _admin_inventory(client, project)}
@@ -396,28 +410,39 @@ async def admin_operations(request: Request):
             result["workflow_runs"] = [_admin_fields(r, ("id", "name", "status", "conclusion", "head_sha", "updated_at"))
                                       for r in runs["workflow_runs"][:20]]
         else:
-            host = os.getenv("DRAGONZPYDER_ADMIN_LANGFUSE_HOST", "").rstrip("/")
-            public = os.getenv("DRAGONZPYDER_ADMIN_LANGFUSE_PUBLIC_KEY", "")
-            secret = os.getenv("DRAGONZPYDER_ADMIN_LANGFUSE_SECRET_KEY", "")
+            host = (os.getenv("DRAGONZPYDER_ADMIN_LANGFUSE_HOST") or os.getenv("LANGFUSE_BASE_URL") or "").rstrip("/")
+            public = os.getenv("DRAGONZPYDER_ADMIN_LANGFUSE_PUBLIC_KEY") or os.getenv("LANGFUSE_PUBLIC_KEY", "")
+            secret = os.getenv("DRAGONZPYDER_ADMIN_LANGFUSE_SECRET_KEY") or os.getenv("LANGFUSE_SECRET_KEY", "")
             if not public or not secret or not host:
                 raise RuntimeError("unconfigured")
             if host not in {"https://cloud.langfuse.com", "https://us.cloud.langfuse.com",
                             "https://jp.cloud.langfuse.com", "https://hipaa.cloud.langfuse.com"}:
                 raise ValueError("Unsupported Langfuse host")
+            trace_id = request.query_params.get("trace", "")
+            cursor = request.query_params.get("cursor", "")
+            if (trace_id and not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", trace_id)) or (cursor and not re.fullmatch(r"[A-Za-z0-9_+/=-]{1,2048}", cursor)):
+                return JSONResponse({"detail": "Invalid trace filter or cursor"}, status_code=400, headers=headers)
+            params = {"fields": "core,basic,model,usage,metrics", "limit": 50}
+            if trace_id: params["traceId"] = trace_id
+            if cursor: params["cursor"] = cursor
             response = await client.get(host + "/api/public/v2/observations",
-                params={"fields": "core,basic,model,usage,metrics", "limit": 50},
+                params=params,
                 auth=(public, secret), headers={"cookie": ""}, timeout=8, follow_redirects=False)
             response.raise_for_status()
             data = response.json()
             result["observations"] = [_admin_fields(row, ("id", "traceId", "parentObservationId", "type",
                 "startTime", "endTime", "level", "model", "inputUsage", "outputUsage", "totalUsage",
                 "totalCost", "latency", "timeToFirstToken")) for row in data["data"][:50]]
-            result["more_available"] = bool(data.get("meta", {}).get("cursor"))
+            next_cursor = data.get("meta", {}).get("cursor")
+            result["next_cursor"] = next_cursor if isinstance(next_cursor, str) and re.fullmatch(r"[A-Za-z0-9_+/=-]{1,2048}", next_cursor) else None
+            result["more_available"] = bool(result["next_cursor"])
     except RuntimeError:
         return JSONResponse({"detail": "Operations integration is not configured"}, status_code=503, headers=headers)
     except (httpx.HTTPError, ValueError, KeyError, TypeError, AttributeError):
         return JSONResponse({"detail": "Operations source unavailable"}, status_code=502, headers=headers)
-    logging.getLogger("dragonzpyder.admin").info("Operations metadata read: %s", source)
+    from hashlib import sha256
+    actor = sha256(request.state.admin_subject.encode()).hexdigest()[:24]
+    logging.getLogger("dragonzpyder.admin").info("Operations metadata read source=%s actor=%s", source, actor)
     return JSONResponse(result, headers=headers)
 
 

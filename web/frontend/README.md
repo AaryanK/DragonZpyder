@@ -78,3 +78,24 @@ authorization review. Future phases: durable aggregated traffic and geolocation,
 resource time series, workflow health, trace pagination, identity aggregates,
 correlation, and audited support access. CI and live credential-backed
 validation are pending; do not claim production deployment or complete analytics.
+
+### Product and harness activity
+
+The native-admin operations tab proxies the existing independent admin service
+token to /internal/admin/activity. This endpoint queries only static, aggregate
+SELECTs against the existing agent database, with read-only transactions and
+8-second source deadlines. It reports request states and UTC daily distinct
+request owners, active conversation counts, workflow and Personal goal states,
+recent native memory-entry counts and runtime initialization/capability flags.
+These are not registered-account totals, historical imported conversations, or
+verified execution results. Each missing table/source remains unavailable;
+no identity DB role is widened. Existing usage summary adds UTC daily tokens,
+provider cost, missing-cost counts, call failures and p95 inference duration.
+Langfuse observation search and pagination remain metadata-only and use existing
+LANGFUSE_BASE_URL/PUBLIC_KEY/SECRET_KEY on Web if dedicated overrides are absent.
+The new operations path requires a stable ID from the verified native profile
+and logs a hashed admin actor with the source on successful reads; this is
+operational logging, not a durable support-content access audit. No customer
+conversation or memory bodies are returned. No provider calls incur inference
+cost. Additional tests assert bearer scope and protected Web proxying. CI and
+credential-backed tests are required before claiming deployment.

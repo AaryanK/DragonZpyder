@@ -1,5 +1,14 @@
 # Codebase change records
 
+## 2026-11-27 — product analytics and operations refinement
+
+- `api/main.py`: Add independent admin-bearer-only native activity counts, runtime initialization and configuration indicators using static read-only aggregate SELECTs with per-source timeouts; no content or identity privilege expansion. CI pending.
+- `api/usage_ledger.py`: Add UTC daily count/failure/cost/token/p95 summaries under existing filters; unknown cost remains null. CI pending.
+- `api/tests/test_usage_audit.py`: Assert distinct bearer/method/date restrictions for activity endpoint using stubbed report. CI pending.
+- `web/main.py`: Require stable authenticated native subject for operations, log pseudonymous actor, reuse existing Web Langfuse keys, validate trace filters/cursors and proxy activity using existing independent admin token. CI pending.
+- `web/frontend/src/admin.jsx`: Add activity tab, daily usage charts, trace search and pagination; label initialized/configured separately from real execution. CI pending.
+- `web/tests/test_admin_protection.py`: Model valid native identity subject and test activity token handling/period bounds. CI pending.
+
 ## 2026-11-27 — operations control center
 
 - `web/main.py`: Extend protected admin route with native-session-only, fixed provider read adapters for Railway inventory, bounded web edge samples, GitHub and Langfuse metadata. No raw paths, IPs, provider secrets or user content are returned; configuration and production verification pending.
