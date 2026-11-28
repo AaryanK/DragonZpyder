@@ -1,5 +1,12 @@
 # Codebase change records
 
+## 2026-11-27 — coarse client analytics
+
+- `web/main.py`: Recent traffic now projects Railway clientUa to coarse device, OS and browser/client counts for the bounded deployment request sample. Unknown or ambiguous UA is explicitly classified; no raw UA or IP is emitted or stored. Request counts are not device or user counts. No country lookup or acquisition tracking; Railway edge region is not visitor country. Source field documented at https://docs.railway.com/cli/logs; credential-backed provider verification pending.
+- `web/frontend/src/admin.jsx`: Display device classes, OS and browser/client distribution with explicit request sample caveats.
+- `web/tests/test_admin_protection.py`: Test bounded client classification and no raw user-agent leakage. CI pending.
+
+
 ## 2026-11-27 — account and session analytics
 
 - `api/main.py`: The native admin activity report reads aggregate account states, native signup counts and unexpired session counts using the existing restricted identity database role in a read-only transaction, excluding operator test identities. Distinct request owners are counted across the selected interval, not by summing daily counts. Sessions are not devices or online presence; device/country/referral data are not provided by these stores. No new grants or credentials. CI and live data verification pending.
