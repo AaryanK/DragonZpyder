@@ -71,6 +71,14 @@ def tool_outcome(message: Any) -> str:
     status = getattr(message, "status", None)
     if not isinstance(name, str) or not name:
         return "unknown"
+    # Deep Agents filesystem middleware can encode denials/missing files
+    # as successful transport messages. Never credit these as actual reads.
+    if name in {"ls","glob","grep","read_file","write_file","edit_file"}:
+        content=getattr(message,"content",None)
+        if isinstance(content,str) and content.lstrip().lower().startswith((
+                "error:", "permission denied", "file not found", "no files found",
+                "no matches found", "no matching files")):
+            return "failed"
     # Native filesystem and compute tools have their own schemas. Restrict
     # structured business-envelope detection to known broker/capability tools.
     structured = (name.startswith("operly_")
