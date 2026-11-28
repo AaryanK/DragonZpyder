@@ -155,7 +155,9 @@ def test_workspace_handoff_is_bounded_and_does_not_copy_other_state():
     with pytest.raises(ValueError):
         workspace_bytes({"/workspace/report.md":{"content":["x"*(512*1024+1)]}})
     with pytest.raises(ValueError):
-        workspace_bytes({"/workspace/report.md":{"content":"not line state"}})
+        workspace_bytes({"/workspace/report.md":{"content":42}})
+    raw,_=workspace_bytes({"/workspace/report.md":{"content":"current SDK","encoding":"utf-8"}})
+    assert json.loads(raw)["/workspace/report.md"]["content"]=="current SDK"
 
 
 def test_required_reads_are_evidence_not_model_claims():
