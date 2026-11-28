@@ -1,6 +1,7 @@
 """Contract checks for the migrated DragonZpyder internal API."""
 import os
 import sys
+import pytest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -44,7 +45,8 @@ def test_no_browser_credentials_and_route_aliases(monkeypatch):
 
 
 
-def test_parallel_inference_parent_is_reserved_and_settled_at_real_gateway_route(monkeypatch):
+@pytest.mark.parametrize(('environment','provider_limit'), [('', '0.50'), ('production', '3.00')])
+def test_parallel_inference_parent_is_reserved_and_settled_at_real_gateway_route(monkeypatch, environment, provider_limit):
     """No paid provider; exercise authenticated FastAPI request to reservation."""
     import json
     from uuid import uuid4
@@ -57,7 +59,7 @@ def test_parallel_inference_parent_is_reserved_and_settled_at_real_gateway_route
     monkeypatch.setenv("DRAGONZPYDER_RUNTIME_ALLOWED_MODELS","openai/gpt-oss-120b")
     monkeypatch.delenv("DRAGONZPYDER_AGENT_PAID_TEST_MAX_KEY_LIMIT_USD",raising=False)
     monkeypatch.delenv("DRAGONZPYDER_STAGING_PAID_TEST_CAP_USD",raising=False)
-    monkeypatch.delenv("RAILWAY_ENVIRONMENT_NAME",raising=False)
+    monkeypatch.setenv("RAILWAY_ENVIRONMENT_NAME",environment)
 
     class Ledger:
         available=True
@@ -97,7 +99,7 @@ def test_parallel_inference_parent_is_reserved_and_settled_at_real_gateway_route
         class CapResponse:
             status_code=200
             def json(self):
-                return {"data":{"limit":"0.50","limit_remaining":"0.40","limit_reset":None}}
+                return {"data":{"limit":provider_limit,"limit_remaining":"0.40","limit_reset":None}}
         async def fake_get(url, **kwargs):
             assert url=="https://openrouter.ai/api/v1/key"
             return CapResponse()

@@ -27,3 +27,20 @@ def test_soft_balance_or_missing_key_cap_cannot_authorize_paid_test():
 def test_rejects_string_injection_and_boolean_caps():
     assert evaluate_key_budget(record(limit=True)).get("approved") is not True
     assert evaluate_key_budget(record(limit="0.5; DELETE")).get("approved") is not True
+
+
+
+def test_production_parent_key_ceiling_is_separate_from_staging(monkeypatch):
+    from agent_platform.key_budget import parent_key_ceiling
+    monkeypatch.setenv("RAILWAY_ENVIRONMENT_NAME", "production")
+    ceiling = parent_key_ceiling()
+    assert evaluate_key_budget(record(limit=3, remaining=1), max_total=ceiling)["approved"] is True
+    for payload in (record(limit=3.01, remaining=1), record(limit=3, remaining=0),
+                    record(limit=3, remaining=1, reset="daily"), record(limit=None)):
+        assert evaluate_key_budget(payload, max_total=ceiling)["approved"] is False
+    # Default staging callers stay restricted even in a production process.
+    assert evaluate_key_budget(record(limit=3, remaining=1))["approved"] is False
+    for environment in ("staging", "unknown", ""):
+        monkeypatch.setenv("RAILWAY_ENVIRONMENT_NAME", environment)
+        assert evaluate_key_budget(record(limit=3, remaining=1),
+                                   max_total=parent_key_ceiling())["approved"] is False
