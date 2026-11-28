@@ -1,5 +1,16 @@
 # Codebase change records
 
+## 2026-11-28 — P0 durable workspace and accounting integrity
+
+- `api/agent_platform/native_workflows.py`: Capture the authorized virtual workspace from the scheduling tool's injected graph state; store a bounded canonical snapshot using existing encrypted artifact storage with independent byte readback and immutable plan digest. Restore workspace into distinct phase threads; transfer snapshots of dependencies; fail closed on missing, conflicting or unverified required reads/outputs. Direct API callers cannot supply a workspace snapshot. Snapshots are owner-scoped generated JSON artifacts under separate run identities, not final deliverables. Existing plan digests remain compatible when optional fields are absent. No extra scheduler or flags.
+- `api/agent_platform/tool_outcomes.py`: Classify native filesystem missing/denied receipts as failed rather than successful transport.
+- `api/main.py`: Settle paid provider responses before validating response shape; log unresolved settlements and fixed admission categories with private accounting totals.
+- `api/agent_platform/gateway_parent_budget.py`: Read-only parent ceiling, outstanding reservation, settled spend and unknown-hold count diagnostics. Do not release unknown holds or change approved caps.
+- `api/tests/test_native_workflows_postgres.py`: Regression for chat-created virtual file -> scheduling tool -> persisted workspace snapshot -> separate phase checkpoint and exact recovery.
+- `api/tests/test_native_harness_extensions.py`: Bounded workspace path/size checks and read receipt acceptance regression.
+- Pending CI and production verification. Price-estimation changes, automatic provider reconciliation of already-unknown holds, general semantic objective verification and full evidence transfer are not asserted.
+
+
 ## 2026-11-27 — cross-project traffic
 
 - `web/main.py`: Expand historic and recent HTTP analytics to selected public services in both DragonZpyder and Operly; fixed project/service allowlist, no arbitrary provider targets. Overview checks history separately for each. Tests cover rejection of unknown project and private service selections. Production verification pending.
