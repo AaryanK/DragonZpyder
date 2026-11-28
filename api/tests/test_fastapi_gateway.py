@@ -93,6 +93,16 @@ def test_parallel_inference_parent_is_reserved_and_settled_at_real_gateway_route
 
     with TestClient(main.app) as client:
         monkeypatch.setattr(main.app.state.http,"post",fake_post)
+        # Exercise real cap validation with a synthetic provider response.
+        class CapResponse:
+            status_code=200
+            def json(self):
+                return {"data":{"limit":"0.50","limit_remaining":"0.40","limit_reset":None}}
+        async def fake_get(url, **kwargs):
+            assert url=="https://openrouter.ai/api/v1/key"
+            return CapResponse()
+        monkeypatch.setenv("OPENROUTER_API_KEY","synthetic-key-for-offline-tests-only")
+        monkeypatch.setattr(main.app.state.http,"get",fake_get)
         job=str(uuid4())
         headers={"Authorization":"Bearer "+token,
                  "Content-Type":"application/json",

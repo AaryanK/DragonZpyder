@@ -141,3 +141,21 @@ def test_model_client_attaches_parent_header_only_when_gated(monkeypatch):
     assert captured["default_headers"]=={"X-DragonZpyder-Parent-Job-Id":job}
     runtime.model_client()
     assert captured["default_headers"] is None
+
+
+
+@pytest.mark.parametrize(("environment","parallel","durable","staging_cap","expected"), [
+    ("production","1","1","",True),
+    ("production","1","0","0.50",False),
+    ("production","0","1","",False),
+    ("staging","1","0","0.50",True),
+    ("staging","1","1","",False),
+    ("unknown","1","1","0.50",False),
+])
+def test_parent_budget_deployment_admission(monkeypatch, environment, parallel, durable, staging_cap, expected):
+    from agent_platform.gateway_parent_budget import deployment_admitted
+    monkeypatch.setenv("RAILWAY_ENVIRONMENT_NAME", environment)
+    monkeypatch.setenv("DRAGONZPYDER_AGENT_PARALLEL_GATEWAY_ENABLED", parallel)
+    monkeypatch.setenv("DRAGONZPYDER_NATIVE_DURABLE_WORKFLOWS_ENABLED", durable)
+    monkeypatch.setenv("DRAGONZPYDER_STAGING_PAID_TEST_CAP_USD", staging_cap)
+    assert deployment_admitted() is expected

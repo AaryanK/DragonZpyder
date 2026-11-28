@@ -376,3 +376,12 @@ Production evidence: session starts and one canonical turn succeeded; a subseque
 - `api/main.py`: Prepare additive memory schema at startup; fail closed for memory without blocking chat.
 - `api/tests/test_memory_database_reuse.py`: Cover explicit consent, scoped queries and revoked authorization. CI pending.
 - `web/frontend/src/PersonalTemplate.jsx`: Explicit memory management dialog with user-entered content, recall consent, owner-scoped list/save/remove, CSRF and visible errors. Browser acceptance pending; Android native UI unchanged.
+
+
+## 2026-11-28 — native durable production budget admission
+
+- `api/agent_platform/gateway_parent_budget.py`: Allow the existing atomic budget store in production only when the existing native durable and parallel gateway rollout gates are set. Keep staging policy unchanged, require configured shared PostgreSQL, and fail closed in unknown environments. No new flag or scheduler.
+- `api/main.py`: Revalidate the existing non-resetting provider hard cap before each parent-funded inference dispatch; parent reservations, price ceilings, authentication and uncertain-cost holds remain unchanged. No higher provider ceiling authorized. Update readiness wording to cover both environments.
+- `api/tests/test_gateway_parent_budget.py`: Add environment admission matrix including disabled and unknown environments. Offline CI and live production acceptance pending; no configuration or paid inference changed by this PR.
+
+- `api/tests/test_fastapi_gateway.py`: Supply a synthetic non-resetting provider key-cap response in the existing authenticated reservation route test. Exercise the real cap parser before reservation, without external network or paid inference; fixes the stale fixture exposed by the new dispatch check.

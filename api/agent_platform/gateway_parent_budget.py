@@ -1,4 +1,4 @@
-"""Authenticated parent-budget gateway adapter for opt-in staging parallel agents.
+"""Authenticated parent-budget gateway adapter for bounded agent execution.
 
 Only the gateway owns this PostgreSQL store and OpenRouter key. Each request
 reserves atomically BEFORE model dispatch; unknown outcomes retain their hold.
@@ -66,8 +66,20 @@ def _id(raw: str) -> str:
     return canonical
 
 
+def deployment_admitted() -> bool:
+    """Reuse the existing durable workflow rollout gate in production."""
+    if os.getenv("DRAGONZPYDER_AGENT_PARALLEL_GATEWAY_ENABLED") != "1":
+        return False
+    environment = os.getenv("RAILWAY_ENVIRONMENT_NAME")
+    if environment == "staging":
+        return os.getenv("DRAGONZPYDER_STAGING_PAID_TEST_CAP_USD") == "0.50"
+    if environment == "production":
+        return os.getenv("DRAGONZPYDER_NATIVE_DURABLE_WORKFLOWS_ENABLED") == "1"
+    return False
+
+
 class ParentBudgetGateway:
-    """Staging-only facade over transactional budget store."""
+    """Transactional budget store; provider cap is independently verified."""
     def __init__(self):
         self.pool = None
         self.store = None
@@ -77,11 +89,7 @@ class ParentBudgetGateway:
         return self.store is not None
 
     async def open(self) -> None:
-        if not (
-            os.getenv("DRAGONZPYDER_AGENT_PARALLEL_GATEWAY_ENABLED") == "1"
-            and os.getenv("RAILWAY_ENVIRONMENT_NAME") == "staging"
-            and os.getenv("DRAGONZPYDER_STAGING_PAID_TEST_CAP_USD") == "0.50"
-        ):
+        if not deployment_admitted():
             return
         dsn = os.getenv("DRAGONZPYDER_AGENT_SHARED_BUDGET_DATABASE_URL", "")
         # Staging may explicitly choose the same trusted PostgreSQL cluster
