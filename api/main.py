@@ -102,7 +102,7 @@ async def lifespan(app: FastAPI):
     setup_telemetry()
     await ledger.open()
     await parent_budget.open()
-    log.warning("Staging atomic parent-budget gateway status=%s",
+    log.warning("Atomic parent-budget gateway status=%s",
                 "ready" if parent_budget.active else "disabled")
     agent_runtime = None
     mcp_pool = None
@@ -349,7 +349,7 @@ async def inference(prefix: str, request: Request):
         )
         return JSONResponse(report)
 
-    # Create parent USD budgets only through the authenticated staging
+    # Create parent USD budgets only through the authenticated
     # gateway. No client can create an unmetered parallel job from a browser.
     if path == "/internal/agent/v1/parallel-budget":
         if request.method != "POST":
@@ -561,6 +561,12 @@ async def inference(prefix: str, request: Request):
                 if parent_job_id is not None:
                     if not parent_budget.active:
                         raise GatewayError(503, "Parallel parent budget gateway is disabled")
+                    # Recheck the same non-resetting provider hard cap on every
+                    # paid parent dispatch, including production wakes.
+                    from agent_platform.key_budget import verify_key_budget
+                    cap = await verify_key_budget(request.app.state.http, os.getenv("OPENROUTER_API_KEY", ""))
+                    if cap.get("approved") is not True:
+                        raise GatewayError(503, "Provider hard cap not verified")
                     try:
                         await parent_budget.reserve(
                             job_id=parent_job_id, request_id=request_id,
