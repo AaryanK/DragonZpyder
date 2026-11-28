@@ -222,8 +222,9 @@ async def schedule(*,owner,session_hash,plan,http):
     async with _conversation_db() as db:
         await _require_conversation(db,user=owner,conversation_id=plan.conversation_id)
         await artifacts.describe(db,owner=owner,ids=plan.attachment_ids)
-        if plan.workspace_snapshot:
-            await load_workspace(db,owner,plan.workspace_snapshot)
+        initial_workspace=await load_workspace(db,owner,plan.workspace_snapshot) if plan.workspace_snapshot else {}
+        if not set(plan.phases[0].required_workspace_paths)<=set(initial_workspace):
+            raise ValueError("First phase requires missing workspace input")
         async with db.transaction():
             await db.execute("SELECT pg_advisory_xact_lock(hashtextextended($1,0))","dz-durable:"+owner)
             existing=await db.fetchrow("""SELECT goal_id,plan_sha256,state FROM dz_native_workflows
@@ -485,6 +486,7 @@ async def execute_phase(goal_id,app_state):
             inputs=[]
             attachments=list(plan.attachment_ids)
             workspace={}
+            dependency_versions={}
             try:
                 if plan.workspace_snapshot:
                     workspace=await load_workspace(db,owner,plan.workspace_snapshot)
@@ -502,6 +504,12 @@ async def execute_phase(goal_id,app_state):
                     if report.get("workspace_snapshot"):
                         try:
                             inherited=await load_workspace(db,owner,WorkspaceSnapshot.model_validate(report["workspace_snapshot"]))
+                            # A dependency snapshot represents the complete workspace at its phase boundary.
+                            # Preserve independent additions but refuse ambiguous divergent edits.
+                            for path,value in inherited.items():
+                                if path in dependency_versions and dependency_versions[path]!=value:
+                                    return await stop("dependency_workspace_conflict")
+                                dependency_versions[path]=value
                             workspace.update(inherited)
                         except Exception:
                             return await stop("dependency_workspace_unavailable")
@@ -637,8 +645,14 @@ async def execute_phase(goal_id,app_state):
                         "objective_verified":False}
             except Exception as exc:
                 cancelled=await db.fetchval("SELECT cancel_requested FROM dz_native_workflows WHERE goal_id=$1",goal_id)
-                return await stop("cancelled" if cancelled else "phase_outcome_unconfirmed",
-                                  "cancelled" if cancelled else "uncertain")
+                if cancelled:
+                    return await stop("cancelled","cancelled")
+                # An explicit gateway rejection is not an ambiguous external
+                # effect. Preserve the existing checkpoint, never replay it.
+                from .personal_bridge import inference_failure_code
+                if inference_failure_code(exc)=="INFERENCE_LIMIT_REACHED":
+                    return await stop("inference_limit_reached")
+                return await stop("phase_outcome_unconfirmed","uncertain")
         finally:
             if run:
                 await run.close()
