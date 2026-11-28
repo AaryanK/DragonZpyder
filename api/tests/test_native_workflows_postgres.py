@@ -34,6 +34,7 @@ def test_native_workflow_commits_and_recovers_exact_phase_without_replay(monkeyp
         "DRAGONZPYDER_ADAPTIVE_ROUTING_ENABLED":"0",
         "DRAGONZPYDER_AGENT_QUICKJS_ENABLED":"0",
         "DRAGONZPYDER_AGENT_WEB_SEARCH_ENABLED":"0",
+        "DRAGONZPYDER_NATIVE_DURABLE_WORKFLOWS_ENABLED":"1",
     }.items():monkeypatch.setenv(key,value)
     @asynccontextmanager
     async def db_factory():
@@ -49,6 +50,7 @@ def test_native_workflow_commits_and_recovers_exact_phase_without_replay(monkeyp
     class Model(FakeMessagesListChatModel):
         def bind_tools(self,tools,**kwargs):return self
     script=Model(responses=[
+        AIMessage(content="",tool_calls=[{"name":"read_file","args":{"file_path":"/workspace/report.md"},"id":"read-origin"}]),
         AIMessage(content="",tool_calls=[{"name":"create_text_artifact","args":{
             "name":"result.txt","content":"independent bytes","content_type":"text/plain"},"id":"write"}]),
         AIMessage(content="The input report was published."),
@@ -60,30 +62,61 @@ def test_native_workflow_commits_and_recovers_exact_phase_without_replay(monkeyp
         return script if len(model_builds)==1 else Model(responses=[
             AIMessage(content="A paid model must not be called during recovery")])
     monkeypatch.setattr(runtime,"model_client",model_client)
-    plan=w.WorkflowPlan(objective="Prepare and review a report",conversation_id=uuid4(),
-        request_id=uuid4(),phases=[
-            w.WorkflowPhase(id="prepare",objective="Publish a text report"),
-            w.WorkflowPhase(id="review",objective="Review the evidence",depends_on=["prepare"])])
-    frozen=w.validate_plan(plan)
+    conversation_id,request_id=uuid4(),uuid4()
+    phases=[
+        w.WorkflowPhase(id="prepare",objective="Read the original report and publish a text report",
+            required_workspace_paths=["/workspace/report.md"],required_artifact_names=["result.txt"]),
+        w.WorkflowPhase(id="review",objective="Review the evidence",depends_on=["prepare"])]
+    captured=[]
+    async def capture_schedule(*,owner,session_hash,plan,http):
+        captured.append(plan)
+        return {"goal_id":str(goal),"state":"scheduled","objective_verified":False}
+    async def owned_conversation(db,*,user,conversation_id):
+        assert user==owner
+    monkeypatch.setattr(w,"schedule",capture_schedule)
+    monkeypatch.setattr(w,"require_gate",lambda:"0.50")
+    monkeypatch.setattr(w,"_require_conversation",owned_conversation)
     async def run():
         async with db_factory() as db:
             root=Path(__file__).resolve().parents[1]/"agent_platform/migrations"
             await db.execute((root/"20261125_shared_artifacts.sql").read_text())
             await db.execute((root/"20261126_native_workflows.sql").read_text())
-            await db.execute("""INSERT INTO dz_native_workflows
-              (goal_id,owner_id,session_hash,request_id,conversation_id,plan,plan_sha256,ceiling_usd,state)
-              VALUES($1,$2,$3,$4,$5,$6::jsonb,$7,0.50,'active')""",
-              goal,owner,"synthetic-session-reference",plan.request_id,plan.conversation_id,
-              json.dumps(frozen),w.plan_digest(frozen))
         try:
             async with AsyncPostgresSaver.from_conn_string(dsn) as saver:
                 await saver.setup()
+                origin=build_frontier_agent(Model(responses=[
+                    AIMessage(content="",tool_calls=[{"name":"write_file","args":{
+                        "file_path":"/workspace/report.md","content":"Original evidence: 42"},"id":"draft"}]),
+                    AIMessage(content="",tool_calls=[{"name":"schedule_workflow","args":{
+                        "objective":"Prepare and review a report",
+                        "phases":[p.model_dump(mode="json") for p in phases],
+                        "start_after_minutes":2},"id":"schedule"}]),
+                    AIMessage(content="Scheduled.")]),saver,
+                    workflow_tools=w.native_workflow_tools(owner=owner,session_hash="synthetic-session-reference",
+                        conversation_id=conversation_id,request_id=request_id,attachment_ids=[],
+                        mcp_connection_ids=[],allow_computer=False,http=None))
+                await origin.ainvoke({"messages":[{"role":"user","content":"Write a report and verify it later"}]},
+                    config={"configurable":{"thread_id":personal_thread(owner,str(conversation_id))},"recursion_limit":128})
+                assert len(captured)==1
+                plan=captured[0]
+                assert plan.workspace_snapshot.paths==["/workspace/report.md"]
+                frozen=w.validate_plan(plan)
+                async with db_factory() as db:
+                    snapshot=await w.load_workspace(db,owner,plan.workspace_snapshot)
+                    assert snapshot["/workspace/report.md"]["content"]==["Original evidence: 42"]
+                    await db.execute("""INSERT INTO dz_native_workflows
+                      (goal_id,owner_id,session_hash,request_id,conversation_id,plan,plan_sha256,ceiling_usd,state)
+                      VALUES($1,$2,$3,$4,$5,$6::jsonb,$7,0.50,'active')""",
+                      goal,owner,"synthetic-session-reference",plan.request_id,plan.conversation_id,
+                      json.dumps(frozen),w.plan_digest(frozen))
                 state=SimpleNamespace(agent_runtime=SimpleNamespace(_checkpointer=saver))
                 first=await w.execute_phase(goal,state)
                 assert first["state"]=="active",first
                 status=await w.workflow_status(owner,goal)
                 report=status["phase_receipts"][0]["report"]
                 assert report["artifacts"] and not report["objective_verified"]
+                assert "read_file" in report["tool_names"]
+                assert report["workspace_snapshot"]["paths"]==["/workspace/report.md"]
                 async with db_factory() as db:
                     _,raw=await artifacts.get(db,owner=owner,file_id=__import__("uuid").UUID(report["artifacts"][0]["id"]))
                     assert raw==b"independent bytes"
