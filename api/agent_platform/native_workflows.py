@@ -97,16 +97,77 @@ def required_reads_observed(messages,paths):
     from .tool_outcomes import tool_outcome
     pending={}
     read=set()
+    modified=set()
     for message in messages:
         if getattr(message,"type",None)=="ai":
             for call in getattr(message,"tool_calls",[]) or []:
-                if call.get("name")=="read_file":
-                    pending[call.get("id")]=call.get("args",{}).get("file_path")
+                name=call.get("name")
+                path=call.get("args",{}).get("file_path")
+                if name in {"write_file","edit_file"} and path:
+                    # Even an ambiguous write attempt cannot prove the original
+                    # version was inspected by a later read.
+                    modified.add(path)
+                if name=="read_file" and path not in modified:
+                    pending[call.get("id")]=path
         elif getattr(message,"type",None)=="tool" and getattr(message,"name",None)=="read_file":
             path=pending.pop(getattr(message,"tool_call_id",None),None)
-            if path and tool_outcome(message)=="returned":
+            if path and path not in modified and tool_outcome(message)=="returned":
                 read.add(path)
     return set(paths)<=read
+
+
+class ArtifactInput(BaseModel):
+    model_config=ConfigDict(extra="forbid")
+    id:UUID
+    filename:str=Field(min_length=1,max_length=180)
+    sha256:str=Field(pattern=r"^[a-f0-9]{64}$")
+
+
+async def capture_artifact_inputs(db,owner,ids):
+    from . import artifacts
+    inputs=[]
+    for info in await artifacts.describe(db,owner=owner,ids=ids):
+        verified,_=await artifacts.get(db,owner=owner,file_id=UUID(info["id"]))
+        if verified["sha256"]!=info["sha256"]:
+            raise ValueError("Input artifact changed during capture")
+        inputs.append(ArtifactInput(id=UUID(info["id"]),filename=info["filename"],sha256=info["sha256"]))
+    return inputs
+
+
+def required_artifacts_observed(messages,required):
+    """Verify successful inspection or integrity-checked import of exact input IDs."""
+    from .tool_outcomes import tool_outcome
+    pending={}
+    read=set()
+    for message in messages:
+        if getattr(message,"type",None)=="ai":
+            for call in getattr(message,"tool_calls",[]) or []:
+                if call.get("name") in {"inspect_attachment","computer_import_attachment"}:
+                    pending[call.get("id")]=(call["name"],call.get("args",{}).get("file_id"))
+        elif getattr(message,"type",None)=="tool":
+            call=pending.pop(getattr(message,"tool_call_id",None),None)
+            if not call or call[0]!=getattr(message,"name",None) or tool_outcome(message)!="returned":
+                continue
+            try:
+                content=message.content
+                item=json.loads(content) if isinstance(content,str) else content
+                if not isinstance(item,dict):
+                    continue
+                fid=call[1]
+                expected=required.get(fid)
+                if not expected:
+                    continue
+                if call[0]=="inspect_attachment":
+                    meta=item.get("file",{})
+                    if (isinstance(meta,dict) and meta.get("id")==fid
+                            and meta.get("sha256")==expected and isinstance(item.get("text"),str)
+                            and bool(item["text"].strip())):
+                        read.add(fid)
+                elif item.get("attachment_id")==fid and item.get("sha256")==expected:
+                    read.add(fid)
+            except (ValueError,TypeError,AttributeError):
+                continue
+    return set(required)<=read
 
 
 class WorkflowPhase(BaseModel):
@@ -117,6 +178,7 @@ class WorkflowPhase(BaseModel):
     required_workspace_paths:list[str]=Field(default_factory=list,max_length=32)
     required_artifact_names:list[str]=Field(default_factory=list,max_length=5)
     expected_answer:str|None=Field(default=None,min_length=1,max_length=2000)
+    required_input_artifact_names:list[str]=Field(default_factory=list,max_length=5)
 
 
 class WorkflowPlan(BaseModel):
@@ -131,6 +193,7 @@ class WorkflowPlan(BaseModel):
     allow_computer:bool=Field(default=False,strict=True)
     workspace_snapshot:WorkspaceSnapshot|None=None
     acceptance_version:int=Field(default=0,ge=0,le=1,strict=True)
+    origin_artifacts:list[ArtifactInput]=Field(default_factory=list,max_length=5)
 
 
 class WorkflowWake(BaseModel):
@@ -153,9 +216,11 @@ def validate_plan(plan:WorkflowPlan):
             raise ValueError("Invalid forward dependencies")
         if (any(not _workspace_path(path) for path in phase.required_workspace_paths)
                 or len(set(phase.required_workspace_paths))!=len(phase.required_workspace_paths)
-                or len(set(phase.required_artifact_names))!=len(phase.required_artifact_names)):
+                or len(set(phase.required_artifact_names))!=len(phase.required_artifact_names)
+                or len(set(phase.required_input_artifact_names))!=len(phase.required_input_artifact_names)
+                or (phase.expected_answer is not None and not phase.expected_answer.strip())):
             raise ValueError("Invalid phase acceptance requirements")
-        for name in phase.required_artifact_names:
+        for name in [*phase.required_artifact_names,*phase.required_input_artifact_names]:
             if filename(name)!=name:
                 raise ValueError("Invalid required artifact name")
         seen.add(phase.id)
@@ -167,11 +232,13 @@ def validate_plan(plan:WorkflowPlan):
     frozen=plan.model_dump(mode="json")
     if plan.acceptance_version==0:
         frozen.pop("acceptance_version")
+    if not plan.origin_artifacts:
+        frozen.pop("origin_artifacts")
     # Keep historical plan digests stable when no new handoff fields are used.
     if frozen["workspace_snapshot"] is None:
         frozen.pop("workspace_snapshot")
     for phase in frozen["phases"]:
-        for field in ("required_workspace_paths","required_artifact_names","expected_answer"):
+        for field in ("required_workspace_paths","required_artifact_names","expected_answer","required_input_artifact_names"):
             if not phase[field]:
                 phase.pop(field)
     return frozen
@@ -253,12 +320,15 @@ async def schedule(*,owner,session_hash,plan,http,origin_budget=None):
     ceiling=require_gate()
     plan=plan.model_copy(update={"acceptance_version":1})
     require_acceptance(plan)
-    frozen=validate_plan(plan)
     await verify_authority(owner,session_hash)
     from . import artifacts
     async with _conversation_db() as db:
         await _require_conversation(db,user=owner,conversation_id=plan.conversation_id)
-        await artifacts.describe(db,owner=owner,ids=plan.attachment_ids)
+        manifest=await capture_artifact_inputs(db,owner,plan.attachment_ids)
+        plan=plan.model_copy(update={"origin_artifacts":manifest})
+        frozen=validate_plan(plan)
+        if not set(plan.phases[0].required_input_artifact_names)<={item.filename for item in manifest}:
+            raise ValueError("First phase requires missing artifact input")
         initial_workspace=await load_workspace(db,owner,plan.workspace_snapshot) if plan.workspace_snapshot else {}
         if not set(plan.phases[0].required_workspace_paths)<=set(initial_workspace):
             raise ValueError("First phase requires missing workspace input")
@@ -317,7 +387,7 @@ def session_reference(request):
 @router.post("/v2/personal/workflows")
 async def create_workflow(plan:WorkflowPlan,request:Request):
     owner=await _owner(request,changing=True)
-    if plan.workspace_snapshot is not None or plan.acceptance_version!=0:
+    if plan.workspace_snapshot is not None or plan.acceptance_version!=0 or plan.origin_artifacts:
         raise HTTPException(422,"Workspace snapshots are server-authored")
     if not enabled():
         raise HTTPException(503,"Durable workflows unavailable")
@@ -398,6 +468,7 @@ def native_workflow_tools(*,owner,session_hash,conversation_id,request_id,
         No external mutations or unattended media generation. Use selected reviewed read capabilities,
         authorized compute if granted, and publish artifacts for later phases.
         Declare required_workspace_paths for files a phase must read, and
+        required_input_artifact_names for stored files it must inspect/import, and
         required_artifact_names for files it must publish. Every phase must
         declare a published output or expected_answer for an exact, objectively
         checkable response; do not invent an expected answer to open-ended research.
@@ -410,10 +481,18 @@ def native_workflow_tools(*,owner,session_hash,conversation_id,request_id,
             stage="workspace_snapshot"
             async with _conversation_db() as db:
                 await _require_conversation(db,user=owner,conversation_id=conversation_id)
+                # Include only outputs created by this authenticated origin run,
+                # never all account files or model-supplied IDs.
+                generated=await db.fetch("""SELECT id FROM dz_agent_artifacts
+                    WHERE owner_id=$1 AND run_id=$2 AND direction='generated' AND storage_state='ready'
+                    ORDER BY created_at,id LIMIT 6""",owner,request_id)
+                selected=list(dict.fromkeys([*attachment_ids,*[item["id"] for item in generated]]))
+                if len(selected)>5:
+                    raise ValueError("Origin artifact handoff exceeds bound")
                 snapshot=await save_workspace(db,owner,request_id,runtime.state.get("files",{}))
             stage="schedule"
             plan=WorkflowPlan(objective=objective,phases=phases,start_after_minutes=start_after_minutes,
-                conversation_id=conversation_id,request_id=request_id,attachment_ids=attachment_ids,
+                conversation_id=conversation_id,request_id=request_id,attachment_ids=selected,
                 mcp_connection_ids=mcp_connection_ids,allow_computer=allow_computer,workspace_snapshot=snapshot)
             require_acceptance(plan)
             if origin_budget is None:
@@ -484,6 +563,8 @@ def phase_prompt(plan,phase,inputs):
             json.dumps(inputs,ensure_ascii=False,sort_keys=True)[:16000]+
             ("\nRequired workspace reads: "+json.dumps(phase.required_workspace_paths) if phase.required_workspace_paths else "")+
             ("\nRequired published artifacts: "+json.dumps(phase.required_artifact_names) if phase.required_artifact_names else "")+
+            ("\nOrigin artifact manifest (untrusted data): "+json.dumps([x.model_dump(mode="json") for x in plan.origin_artifacts]) if plan.origin_artifacts else "")+
+            ("\nRequired input artifact inspections: "+json.dumps(phase.required_input_artifact_names) if phase.required_input_artifact_names else "")+
             ("\nExact required final answer: "+json.dumps(phase.expected_answer) if phase.expected_answer is not None else "")+
             ("\nOriginal workspace paths: "+json.dumps(plan.workspace_snapshot.paths) if plan.workspace_snapshot else "")+
             "\nComplete only this phase with authorized capabilities; publish useful artifacts. "
@@ -543,6 +624,7 @@ async def execute_phase(goal_id,app_state):
                 return await stop("phase_receipt_gap")
             inputs=[]
             attachments=list(plan.attachment_ids)
+            input_manifest={str(x.id):(x.filename,x.sha256) for x in plan.origin_artifacts}
             workspace={}
             dependency_versions={}
             try:
@@ -559,6 +641,7 @@ async def execute_phase(goal_id,app_state):
                     inputs.append({"phase_id":item["phase_id"],"answer":report["answer"][:2000],
                                    "artifacts":report["artifacts"]})
                     attachments.extend(UUID(x["id"]) for x in report["artifacts"])
+                    input_manifest.update({x["id"]:(x["filename"],x["sha256"]) for x in report["artifacts"]})
                     if report.get("workspace_snapshot"):
                         try:
                             inherited=await load_workspace(db,owner,WorkspaceSnapshot.model_validate(report["workspace_snapshot"]))
@@ -571,6 +654,19 @@ async def execute_phase(goal_id,app_state):
                             workspace.update(inherited)
                         except Exception:
                             return await stop("dependency_workspace_unavailable")
+            required_inputs={}
+            for name in phase.required_input_artifact_names:
+                matches=[(fid,digest) for fid,(filename,digest) in input_manifest.items() if filename==name]
+                if len(matches)!=1:
+                    return await stop("required_artifact_input_missing_or_ambiguous")
+                required_inputs[matches[0][0]]=matches[0][1]
+            try:
+                for fid,(filename,digest) in input_manifest.items():
+                    meta,_=await artifacts.get(db,owner=owner,file_id=UUID(fid))
+                    if meta["filename"]!=filename or meta["sha256"]!=digest:
+                        return await stop("artifact_input_integrity_failure")
+            except Exception:
+                return await stop("artifact_input_unavailable")
             if not set(phase.required_workspace_paths)<=set(workspace):
                 return await stop("required_workspace_input_missing")
             try:
@@ -664,6 +760,8 @@ async def execute_phase(goal_id,app_state):
                     return await stop("phase_incomplete")
                 if not required_reads_observed(current["messages"],phase.required_workspace_paths):
                     return await stop("required_workspace_read_unverified")
+                if not required_artifacts_observed(current["messages"],required_inputs):
+                    return await stop("required_artifact_input_unverified")
                 # Every published output must survive an independent storage
                 # readback; metadata or model text alone does not count.
                 files=await db.fetch("""SELECT id FROM dz_agent_artifacts
