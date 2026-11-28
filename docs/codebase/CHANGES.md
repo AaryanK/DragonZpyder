@@ -1,5 +1,26 @@
 # Codebase change records
 
+## 2026-11-28 — P0 durable workspace and accounting integrity
+
+- `api/agent_platform/native_workflows.py`: Capture the authorized virtual workspace from the scheduling tool's injected graph state; store a bounded canonical snapshot using existing encrypted artifact storage with independent byte readback and immutable plan digest. Restore workspace into distinct phase threads; transfer snapshots of dependencies; fail closed on missing, conflicting or unverified required reads/outputs. Direct API callers cannot supply a workspace snapshot. Snapshots are owner-scoped generated JSON artifacts under separate run identities, not final deliverables. Existing plan digests remain compatible when optional fields are absent. No extra scheduler or flags.
+- `api/agent_platform/tool_outcomes.py`: Classify native filesystem missing/denied receipts as failed rather than successful transport.
+- `api/main.py`: Settle paid provider responses before validating response shape; log unresolved settlements and fixed admission categories with private accounting totals.
+- `api/agent_platform/gateway_parent_budget.py`: Read-only parent ceiling, outstanding reservation, settled spend and unknown-hold count diagnostics. Do not release unknown holds or change approved caps.
+- `api/tests/test_native_workflows_postgres.py`: Regression for chat-created virtual file -> scheduling tool -> persisted workspace snapshot -> separate phase checkpoint and exact recovery.
+- `api/tests/test_native_harness_extensions.py`: Bounded workspace path/size checks and read receipt acceptance regression.
+- `api/agent_platform/gateway_parent_budget.py`, `api/main.py`: On a parent ceiling rejection, reconcile up to 16 outstanding reservations against trusted gateway-owned usage rows, with at most four read-only provider generation metadata lookups; release only authoritative matching costs under atomic settlement, then retry admission once before any inference dispatch. No background polling or replay. Preserve generation identity before response-shape validation.
+- `api/tests/test_gateway_parent_budget.py`: Offline tests for trusted-cost reconciliation, matching generation IDs and unresolved holds.
+- Fix snapshot serialization for current string-valued FileData and legacy list-valued checkpoints; earlier CI passed the corrected workspace handoff.
+- `api/agent_platform/gateway_parent_budget.py`, `api/main.py`: Derive tighter model-aware price ceilings from a five-minute trusted OpenRouter catalog; apply the same limits to the provider request and reserve conservatively against byte count. Fall back to existing broad caps when pricing is missing, malformed or includes separate non-text charges. Existing global and objective spending ceilings are unchanged.
+- `api/agent_platform/first_party_chat.py`, `api/agent_platform/native_workflows.py`: Admit a stable owner/request-scoped objective budget before the foreground model call; reuse for all specialists and scheduled phases. New plans require each phase to declare a published deliverable or an exact expected answer. Require actual read/import evidence for declared inputs and durable readback for named output artifacts. Distinguish machine-checkable acceptance from semantic truth; `objective_verified` remains false absent an independent content oracle. Existing plan digests remain compatible.
+- Capture original-run published artifacts alongside selected attachments; pin exact owner-scoped file identities and digests. Reject absent/ambiguous input filenames and verify receipts before advancing. Original workspace reads must precede modifications. No new flags, scheduler, database or agent framework.
+- `api/agent_platform/harness.py`: Explain the actual scheduling and deliverable contract to the model.
+- `api/agent_platform/first_party_chat.py`: Bind the foreground run to the stable parent budget before model dispatch.
+- `api/tests/test_fastapi_gateway.py`: Assert that actual upstream provider caps match the model-aware reservation policy.
+- `api/tests/test_native_workflows_postgres.py`: Exercise the real schedule persistence path with stubbed Hatchet and budget dispatch; check the origin artifact and workspace input handoff, single budget identity and restart recovery.
+- Extend existing tests for shared objective identity, acceptance requirements, original-version and artifact input receipts, and provider-enforced model pricing. New revision requires CI and production qualification. Historical unknown holds without authoritative evidence remain held; semantic content accuracy is not automatically guaranteed.
+
+
 ## 2026-11-27 — cross-project traffic
 
 - `web/main.py`: Expand historic and recent HTTP analytics to selected public services in both DragonZpyder and Operly; fixed project/service allowlist, no arbitrary provider targets. Overview checks history separately for each. Tests cover rejection of unknown project and private service selections. Production verification pending.

@@ -159,3 +159,71 @@ def test_parent_budget_deployment_admission(monkeypatch, environment, parallel, 
     monkeypatch.setenv("DRAGONZPYDER_NATIVE_DURABLE_WORKFLOWS_ENABLED", durable)
     monkeypatch.setenv("DRAGONZPYDER_STAGING_PAID_TEST_CAP_USD", staging_cap)
     assert deployment_admitted() is expected
+
+
+def test_reconcile_uses_only_owned_gateway_generation_evidence():
+    from contextlib import asynccontextmanager
+    from types import SimpleNamespace
+    job=uuid4()
+    ids=[uuid4() for _ in range(5)]
+    class Pool:
+        def __init__(self,rows):
+            self.rows=rows
+        @asynccontextmanager
+        async def acquire(self):
+            yield self
+        async def fetch(self,sql,*args):
+            if "agent_budget_reservations" in sql:
+                assert args==(job,"agent-runtime")
+            else:
+                assert "app_id='agent-runtime'" in sql
+                assert args==([{"request_id":i}["request_id"] for i in ids],)
+            return self.rows
+    class Store:
+        def __init__(self):
+            self.settlements=[]
+        async def settle(self,**kw):
+            assert kw["job_id"]==str(job) and kw["tenant_id"]=="agent-runtime"
+            self.settlements.append(kw)
+            return True
+    class Http:
+        def __init__(self):
+            self.lookups=[]
+        async def get(self,url,**kw):
+            assert url=="https://openrouter.ai/api/v1/generation"
+            assert kw["follow_redirects"] is False
+            generation=kw["params"]["id"]
+            self.lookups.append(generation)
+            return SimpleNamespace(status_code=200,content=b"synthetic",json=lambda:{
+                "data":{"id":generation if generation=="gen-good" else "gen-other",
+                        "total_cost":0.002}})
+    async def exercise():
+        gateway=ParentBudgetGateway()
+        gateway.store=Store()
+        gateway.pool=Pool([{"request_id":i} for i in ids])
+        ledger=SimpleNamespace(pool=Pool([
+            {"request_id":ids[0],"provider_generation_id":"gen-ledger","provider_cost_usd":Decimal("0.001")},
+            {"request_id":ids[1],"provider_generation_id":"gen-good","provider_cost_usd":None},
+            {"request_id":ids[2],"provider_generation_id":"gen-bad","provider_cost_usd":None},
+            {"request_id":ids[3],"provider_generation_id":"not-a-generation","provider_cost_usd":Decimal("0")},
+        ]))
+        http=Http()
+        assert await gateway.reconcile(job_id=str(job),ledger=ledger,http=http,key="offline-test")==2
+        assert http.lookups==["gen-good","gen-bad"]
+        assert [(x["request_id"],x["actual_usd"]) for x in gateway.store.settlements]==[
+            (str(ids[0]),"0.0010000000"),(str(ids[1]),"0.0020000000")]
+    asyncio.run(exercise())
+
+
+def test_model_aware_price_caps_never_raise_the_existing_ceiling():
+    from agent_platform.gateway_parent_budget import model_price_caps
+    model="test/model"
+    def catalog(prompt,completion,**extra):
+        return {"data":[{"id":model,"pricing":{"prompt":prompt,"completion":completion,**extra}}]}
+    lower=model_price_caps(catalog("0.00000026","0.00000038"),model)
+    assert lower==(Decimal("0.52"),Decimal("0.76"))
+    assert Decimal(conservative_request_ceiling(payload_bytes=60000,output_tokens=4096,price_caps=lower)) < Decimal("0.035")
+    for item in ({},catalog("NaN","0.000001"),catalog("0.000001","0.000002",request="0.01"),catalog("0.0001","0.0001")):
+        assert model_price_caps(item,model)==(Decimal("1"),Decimal("4"))
+    with pytest.raises(ValueError):
+        conservative_request_ceiling(payload_bytes=100,output_tokens=100,price_caps=(Decimal("2"),Decimal("4")))

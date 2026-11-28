@@ -141,3 +141,83 @@ def test_native_control_unknown_outcome_stops_next_agent_step():
     receipt = ToolMessage(content='{"state":"scheduled","objective_verified":false}',
                           name="schedule_workflow",tool_call_id="test-schedule")
     assert unresolved_external_control([receipt]) is None
+
+
+def test_workspace_handoff_is_bounded_and_does_not_copy_other_state():
+    import json
+    from agent_platform.native_workflows import workspace_bytes
+    files={"/workspace/report.md":{"content":["original"],"created_at":"t","modified_at":"t"},
+           "/large_tool_results/raw":{"content":["not part of working directory"]},
+           "/workspace/../private":{"content":["invalid path"]}}
+    raw,paths=workspace_bytes(files)
+    assert paths==["/workspace/report.md"]
+    assert json.loads(raw)=={paths[0]:files[paths[0]]}
+    with pytest.raises(ValueError):
+        workspace_bytes({"/workspace/report.md":{"content":["x"*(512*1024+1)]}})
+    with pytest.raises(ValueError):
+        workspace_bytes({"/workspace/report.md":{"content":42}})
+    raw,_=workspace_bytes({"/workspace/report.md":{"content":"current SDK","encoding":"utf-8"}})
+    assert json.loads(raw)["/workspace/report.md"]["content"]=="current SDK"
+
+
+def test_required_reads_are_evidence_not_model_claims():
+    from langchain_core.messages import AIMessage,ToolMessage
+    from agent_platform.native_workflows import required_reads_observed
+    from agent_platform.tool_outcomes import tool_outcome
+    path="/workspace/report.md"
+    call=AIMessage(content="",tool_calls=[{"id":"read","name":"read_file","args":{"file_path":path}}])
+    for failure in ("Error: File not found","No files found","Permission denied"):
+        msg=ToolMessage(name="read_file",tool_call_id="read",content=failure,status="success")
+        assert tool_outcome(msg)=="failed"
+        assert not required_reads_observed([call,msg,AIMessage(content="I read it.")],[path])
+    assert not required_reads_observed([AIMessage(content="I read it.")],[path])
+    success=ToolMessage(name="read_file",tool_call_id="read",content="1\tOriginal report",status="success")
+    assert required_reads_observed([call,success],[path])
+    assert not required_reads_observed([call,success],["/workspace/other.md"])
+
+
+def test_new_workflow_contract_requires_checkable_outputs():
+    from agent_platform.native_workflows import WorkflowPhase,WorkflowPlan,require_acceptance,objective_id
+    fields=dict(objective="Produce an evidence report",conversation_id=uuid4(),request_id=uuid4())
+    with pytest.raises(ValueError):
+        require_acceptance(WorkflowPlan(**fields,phases=[WorkflowPhase(id="verify",objective="Trust me")]))
+    require_acceptance(WorkflowPlan(**fields,phases=[WorkflowPhase(id="verify",objective="Publish",required_artifact_names=["report.md"])]))
+    require_acceptance(WorkflowPlan(**fields,phases=[WorkflowPhase(id="verify",objective="Return exact text",expected_answer="42")]))
+    assert objective_id("owner-a",fields["request_id"])==objective_id("owner-a",fields["request_id"])
+    assert objective_id("owner-a",fields["request_id"])!=objective_id("owner-b",fields["request_id"])
+
+
+def test_origin_budget_is_admitted_before_work(monkeypatch):
+    from agent_platform import native_workflows as w
+    events=[]
+    req=uuid4()
+    monkeypatch.setattr(w,"require_gate",lambda:"0.50")
+    async def verify(owner,session_hash):
+        events.append(("authority",owner,session_hash))
+    async def create(goal_id,ceiling,http):
+        events.append(("budget",goal_id,ceiling))
+    monkeypatch.setattr(w,"verify_authority",verify)
+    monkeypatch.setattr(w,"create_budget",create)
+    goal,ceiling=asyncio.run(w.admit_origin(owner="owner-a",request_id=req,session_hash="synthetic",http=None))
+    assert goal==w.objective_id("owner-a",req) and ceiling=="0.50"
+    assert events==[("authority","owner-a","synthetic"),("budget",goal,"0.50")]
+
+
+def test_artifact_input_acceptance_requires_matching_receipt():
+    import json
+    from langchain_core.messages import AIMessage,ToolMessage
+    from agent_platform.native_workflows import required_artifacts_observed,required_reads_observed
+    fid=str(uuid4())
+    sha="a"*64
+    call=AIMessage(content="",tool_calls=[{"name":"inspect_attachment","args":{"file_id":fid},"id":"read"}])
+    receipt=lambda item:ToolMessage(name="inspect_attachment",tool_call_id="read",content=json.dumps(item))
+    good={"file":{"id":fid,"sha256":sha},"text":"Original evidence"}
+    assert required_artifacts_observed([call,receipt(good)],{fid:sha})
+    assert not required_artifacts_observed([call,receipt({"file":good["file"],"status":"requires_isolated_computer"})],{fid:sha})
+    assert not required_artifacts_observed([call,receipt(good)],{fid:"b"*64})
+    path="/workspace/report.md"
+    write=AIMessage(content="",tool_calls=[{"name":"write_file","args":{"file_path":path,"content":"replacement"},"id":"write"}])
+    read=AIMessage(content="",tool_calls=[{"name":"read_file","args":{"file_path":path},"id":"read2"}])
+    result=ToolMessage(name="read_file",tool_call_id="read2",content="replacement")
+    assert not required_reads_observed([write,read,result],[path])
+    assert required_reads_observed([read,result,write],[path])
