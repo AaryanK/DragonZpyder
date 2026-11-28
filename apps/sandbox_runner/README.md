@@ -47,3 +47,7 @@ The signed VM test returned 503 at network hardening (launcher exit 73; cleanup 
 ## 2026-11-27 — copied interpreter template
 
 The signed probe against deployed ab7ec4c failed with launcher exit 73 despite root-owned venv permission normalization; VM destruction confirmed. Build the venv using copied interpreter binaries instead of symlinks. Fail closed if the template still uses a symlink, and distinguish unprivileged directory traversal failures (81–84). This is a targeted repair hypothesis, not a proven root cause; actual VM qualification remains required.
+
+## 2026-11-27 — scoped bootstrap diagnosis
+
+The live #183 runner logged exit 1 at network verification, and the acceptance task fell back to eval. The offline helper now loads requests only for the network-request code path, so the isolated kernel probe does not depend on a third-party HTTP import. Fixed probe exit codes identify unexpected/policy error (90), no_new_privs (91), missing libseccomp (92), filter initialization (93), architecture policy (94), syscall resolution (95), rule installation (96), filter load (97), privilege verification (98), direct socket denial (99), and descendant denial (100). No exception strings are logged and no isolation checks are removed. Live VM execution and confirmed teardown remain mandatory.
