@@ -315,6 +315,71 @@ async def healthz():
                         status_code=200 if configured else 503)
 
 
+
+async def admin_platform_activity(request: Request, days: int):
+    """Bounded read-only product aggregates from authoritative native stores.
+
+    Never query account credentials, conversation titles, messages, checkpoint
+    state, tool arguments, memory contents, or encrypted payload escrow.
+    Each source reports unavailability separately instead of inventing zeros.
+    """
+    from agent_platform.first_party_chat import _conversation_db, status as personal_status
+
+    async def query_rows(sql, *args):
+        try:
+            async with asyncio.timeout(8):
+                async with _conversation_db() as db:
+                    async with db.transaction(readonly=True):
+                        records = await db.fetch(sql, *args)
+                        return {"state": "available", "rows": [dict(r) for r in records]}
+        except Exception:
+            # Do not leak DB errors, schemas, DSNs, or customer data.
+            return {"state": "unavailable", "rows": []}
+
+    # SQL is static and parameters are bounded by the caller. UTC bucketing.
+    requests, daily, conversations, workflows, goals, memory = await asyncio.gather(
+        query_rows("""SELECT status, COUNT(*)::int AS count,
+            COUNT(*) FILTER (WHERE cancel_requested)::int AS cancellation_requested
+            FROM dz_first_party_chat_requests
+            WHERE created_at >= now() - ($1::int * interval '1 day')
+            GROUP BY status ORDER BY status""", days),
+        query_rows("""SELECT to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS day,
+            COUNT(*)::int AS requests,
+            COUNT(DISTINCT owner_id)::int AS active_users,
+            COUNT(*) FILTER (WHERE status='completed')::int AS completed
+            FROM dz_first_party_chat_requests
+            WHERE created_at >= now() - ($1::int * interval '1 day')
+            GROUP BY 1 ORDER BY 1 LIMIT 91""", days),
+        query_rows("""SELECT COUNT(*)::int AS active_conversations,
+            COUNT(DISTINCT owner_id)::int AS conversation_owners
+            FROM dz_first_party_conversations
+            WHERE updated_at >= now() - ($1::int * interval '1 day')""", days),
+        query_rows("""SELECT state, COUNT(*)::int AS count FROM dz_native_workflows
+            WHERE updated_at >= now() - ($1::int * interval '1 day') OR state IN
+            ('preparing','active','inflight','uncertain')
+            GROUP BY state ORDER BY state""", days),
+        query_rows("""SELECT state, COUNT(*)::int AS count FROM dz_personal_mcp_goals
+            WHERE updated_at >= now() - ($1::int * interval '1 day') OR state='active'
+            GROUP BY state ORDER BY state""", days),
+        query_rows("""SELECT COUNT(*)::int AS saved_entries,
+            COUNT(DISTINCT owner_id)::int AS memory_owners,
+            COUNT(*) FILTER (WHERE recall_in_chat)::int AS recall_enabled_entries
+            FROM dz_personal_memory WHERE created_at >= now() - ($1::int * interval '1 day')""", days),
+    )
+    try:
+        capabilities = await personal_status()
+    except Exception:
+        capabilities = None
+    return {"days": days, "requests": requests, "daily": daily,
+            "conversations": conversations, "workflows": workflows, "goals": goals,
+            "memory": memory, "capabilities": capabilities,
+            "runtime": {"usage_ledger_ready": bool(ledger.available),
+                        "parent_budget_ready": bool(parent_budget.active),
+                        "agent_runtime_initialized": getattr(request.app.state, "agent_runtime", None) is not None,
+                        "memory_storage_ready": bool(getattr(request.app.state, "personal_memory_ready", False)),
+                        "mcp_manager_initialized": getattr(request.app.state, "mcp_connections", None) is not None}}
+
+
 @app.api_route("/{prefix:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"])
 async def inference(prefix: str, request: Request):
     path = "/" + prefix
@@ -384,6 +449,17 @@ async def inference(prefix: str, request: Request):
             return denied(503, "Parent budget database unavailable")
         return JSONResponse({"status": "created", "job_id": item["job_id"],
                              "atomic_gateway_enforced": True})
+
+    if path == "/internal/admin/activity":
+        if not admin_authorized(request):
+            return denied(401, "Admin service authentication required")
+        if request.method != "GET":
+            return denied(405, "Method not allowed")
+        raw_days = request.query_params.get("days", "30")
+        if not raw_days.isdigit() or not 1 <= int(raw_days) <= 90:
+            return denied(400, "Invalid days range")
+        return JSONResponse(await admin_platform_activity(request, int(raw_days)),
+                            headers={"cache-control": "no-store"})
 
     if path == "/internal/admin/usage":
         if not admin_authorized(request):

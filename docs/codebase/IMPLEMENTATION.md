@@ -107,3 +107,11 @@ OpenRouter voice distinguishes unsubmitted transcription failure, unconfirmed ca
 ## Native personal memory
 
 The authenticated first-party memory API stores exact user-entered records in the existing agent PostgreSQL database. The web memory dialog separately asks whether a saved record may be recalled in future personal chats. Only consented records are searched by the supervisor's bounded, live-authorized read tool. No model tool can write or delete memory; no Mem0 extraction or additional inference provider is required. Removal affects the memory store, not historical chat content. Schema readiness fails closed independently of ordinary chat.
+
+## Operator console
+
+The existing web/main.py admin_route enforces identity allowlist before admin_operations; native session required for new panels. Fixed read-only provider adapters return bounded deployment, edge request aggregate, GitHub and Langfuse metadata. React admin.jsx loads a selected tab on demand. See OBSERVABILITY.md for credentials and limitations. No new user-data or mutation authority; live validation pending.
+
+Admin product activity: Web native identity check → fixed /internal/admin/activity request using existing independent reporting bearer → bounded read-only native aggregate SELECTs plus configuration signals. No user payload, identity database access or mutation. Usage summary provides UTC daily latency and spend aggregates.
+
+Resource metrics and historical HTTP traffic: admin Web adapters resolve project-scoped service names and request bounded Railway samples; React shows summary, time-series and status/latency tables. Provider retention/availability is explicit. No mutation or user payload.

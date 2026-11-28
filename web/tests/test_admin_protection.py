@@ -123,3 +123,99 @@ def test_account_redirect_only_allows_admin_return():
     script = (Path(__file__).resolve().parents[1] / "account.js").read_text()
     assert 'get("next")==="/admin"' in script
     assert 'window.location.replace(adminReturnRequested()?"/admin":"/app")' in script
+
+
+def test_operations_denies_unverified_and_legacy_only_sessions(monkeypatch):
+    monkeypatch.setenv("DRAGONZPYDER_ADMIN_EMAILS", "owner@example.test")
+    with TestClient(app) as client:
+        assert client.get("/admin/api/operations?source=github").status_code == 401
+        old = client.app.state.http
+        client.app.state.http = httpx.AsyncClient(transport=httpx.MockTransport(
+            lambda req: httpx.Response(200, json={"email": "owner@example.test", "id": "admin-subject"})))
+        try:
+            assert client.get("/admin/api/operations?source=github",
+                headers={"cookie": "__Host-operly_session=valid"}).status_code == 403
+            assert client.get("/admin/api/operations?source=bogus",
+                headers={"cookie": "__Host-dz_identity=valid"}).status_code == 400
+        finally:
+            client.app.state.http = old
+
+
+def test_operations_traffic_summary_excludes_raw_paths_and_ips():
+    result = main._admin_traffic_summary([
+        {"path": "/api/private-user/secret?token=secret", "srcIp": "192.0.2.1",
+         "httpStatus": 200, "edgeRegion": "us-west", "totalDuration": 15, "rxBytes": 20},
+        {"path": "/", "httpStatus": 503, "edgeRegion": "us-west", "totalDuration": 50},
+    ])
+    assert result["routes"] == {"/api": 1, "/": 1}
+    assert result["edge_regions"] == {"us-west": 2}
+    assert result["p95_duration_ms"] == 50
+    assert "secret" not in str(result) and "192.0.2.1" not in str(result)
+
+
+def test_langfuse_operations_filters_provider_payload(monkeypatch):
+    monkeypatch.setenv("DRAGONZPYDER_ADMIN_EMAILS", "owner@example.test")
+    monkeypatch.setenv("DRAGONZPYDER_ADMIN_LANGFUSE_HOST", "https://cloud.langfuse.com")
+    monkeypatch.setenv("DRAGONZPYDER_ADMIN_LANGFUSE_PUBLIC_KEY", "public-test")
+    monkeypatch.setenv("DRAGONZPYDER_ADMIN_LANGFUSE_SECRET_KEY", "secret-test")
+    def upstream(req):
+        if req.url.path == "/identity/v1/me":
+            return httpx.Response(200, json={"email": "owner@example.test", "id": "admin-subject"})
+        assert req.url.host == "cloud.langfuse.com"
+        assert "io" not in req.url.params["fields"].split(",")
+        assert req.headers.get("cookie") == ""
+        return httpx.Response(200, json={"data": [{"traceId": "trace-1", "model": "example-model",
+            "input": "private-prompt", "output": "private-answer", "userId": "private-user"}], "meta": {}})
+    with TestClient(app) as client:
+        old = client.app.state.http
+        client.app.state.http = httpx.AsyncClient(transport=httpx.MockTransport(upstream))
+        try:
+            r = client.get("/admin/api/operations?source=langfuse",
+                headers={"cookie": "__Host-dz_identity=valid"})
+            assert r.status_code == 200
+            assert r.json()["observations"] == [{"traceId": "trace-1", "model": "example-model"}]
+            assert "private-" not in r.text and "secret-test" not in r.text
+            assert r.headers["cache-control"] == "no-store"
+        finally:
+            client.app.state.http = old
+
+
+def test_activity_proxy_reuses_private_admin_token(monkeypatch):
+    monkeypatch.setenv("DRAGONZPYDER_ADMIN_EMAILS", "owner@example.test")
+    token = "A" * 48
+    monkeypatch.setenv("DRAGONZPYDER_ADMIN_TOKEN", token)
+    def upstream(req):
+        if req.url.path == "/identity/v1/me":
+            return httpx.Response(200, json={"id":"admin-subject","email":"owner@example.test"})
+        assert req.url.path == "/internal/admin/activity"
+        assert req.headers["authorization"] == "Bearer " + token
+        assert req.headers["cookie"] == ""
+        assert req.url.params["days"] == "7"
+        return httpx.Response(200, json={"days":7,"requests":{"state":"available","rows":[]}})
+    with TestClient(app) as client:
+        old = client.app.state.http
+        client.app.state.http = httpx.AsyncClient(transport=httpx.MockTransport(upstream))
+        try:
+            h = {"cookie":"__Host-dz_identity=valid"}
+            result = client.get("/admin/api/operations?source=activity&days=7",headers=h)
+            assert result.status_code == 200
+            assert result.json()["activity"]["days"] == 7 and token not in result.text
+            assert client.get("/admin/api/operations?source=activity&days=91",headers=h).status_code == 400
+        finally:
+            client.app.state.http = old
+
+
+def test_resources_projection_filters_unknown_metrics_and_invalid_samples():
+    data = main._admin_resource_summary([
+        {"measurement":"CPU_USAGE","tags":{"serviceId":"service-1"},"values":[
+            {"ts":10,"value":0.4,"private":"ignore"},
+            {"ts":20,"value":0.6},
+            {"ts":30,"value":-1},
+        ]},
+        {"measurement":"UNSUPPORTED","tags":{"serviceId":"service-1"},"values":[]},
+        {"measurement":"MEMORY_USAGE_GB","tags":{"serviceId":"unknown"},"values":[]},
+    ],{"service-1":"API"})
+    assert len(data)==1 and data[0]["service"]=="API"
+    assert data[0]["current"]==0.6 and data[0]["average"]==0.5
+    assert "private" not in str(data) and "ignore" not in str(data)
+    assert main._admin_metric_samples([{"ts":10,"value":float("inf")},{"ts":20,"value":1.0}]) == [{"ts":10},{"ts":20,"value":1.0}]

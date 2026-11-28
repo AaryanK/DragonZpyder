@@ -13,8 +13,8 @@ Read [repository instructions](../../../AGENTS.md) and [codebase navigation](../
 | [`VoiceOrb.jsx`](VoiceOrb.jsx) | React-owned voice interface/lifecycle and artwork renderer integration; visual canvas does not request microphone itself. | Reviewed |
 | [`WorkspaceCenter.jsx`](WorkspaceCenter.jsx) | React account-scoped workspace center and same-origin API requests; includes native MCP UI. | Reviewed |
 | [`WorkspaceControls.jsx`](WorkspaceControls.jsx) | Accessible modal focus and progressive-disclosure chat controls, command palette, capture/add menus and desktop install; delegates to existing adapters. | Reviewed |
-| [`admin.css`](admin.css) | Stylesheet: admin; inspect selectors and importing page. | Indexed |
-| [`admin.jsx`](admin.jsx) | Navigation hint: admin; source behavior not independently reviewed. | Indexed |
+| [`admin.css`](admin.css) | Responsive operations navigation, tables, metrics and distribution bars. | Indexed |
+| [`admin.jsx`](admin.jsx) | Read-only operations console: usage, Railway deployments, bounded traffic sample, GitHub and redacted Langfuse observations. | Indexed |
 | [`main.jsx`](main.jsx) | React mount/hydrate entrypoint selecting page by route. | Reviewed |
 | [`markdown.js`](markdown.js) | Navigation hint: markdown; source behavior not independently reviewed. | Indexed |
 | [`pages.jsx`](pages.jsx) | React page selection and compatibility-adapter orchestration. | Reviewed |
@@ -46,3 +46,7 @@ The browser uses local AudioWorklet energy-based utterance detection, OpenRouter
 ## Transport-neutral voice session contract v1
 
 All supported clients use the same backend: authenticated session creation at POST /v2/personal/voice/sessions; POST /v2/personal/voice/sessions/{session_id}/turn with event_id, base64 audio, format and explicit sample_rate/channels when using raw PCM; POST /v2/personal/voice/sessions/{session_id}/speech/{event_id}/{index} returns the committed answer segment as MP3; POST /v2/personal/voice/sessions/{session_id}/end revokes session authority. Existing provider-specific paths remain compatibility aliases. Browser and native Android/iOS clients use existing DragonZpyder session and CSRF authentication. An authenticated user may explicitly create a short-lived, session-only external bridge grant with source=discord, telephony or external and delegate=true. Return the grant once; pass it as Authorization: Bearer <grant> only to that session's endpoints. Store only a digest; validate original account/session authority on each call. No account mapping from untrusted channel IDs, no login cookie sharing, no arbitrary tool or model authority. The bridge integration must obtain user authorization and protect the token. The backend accepts canonical mono 16 kHz WAV, PCM signed little-endian 16-bit mono/stereo at 8/16/24/48 kHz, and mono G.711 mu-law/A-law at 8 kHz; converts to mono 16 kHz WAV before the same metered OpenRouter STT/harness/TTS path. Each utterance is 0.15–30 seconds. Opus/RTP/WebSocket packet framing, jitter buffering, per-speaker segmentation, consent and output re-encoding belong in transport adapters. These adapters are not implemented by this change. MP3 is the common egress; voice bridges decode/resample for their own transport. Session lifetime and quotas are unchanged. No deployment or paid testing performed.
+
+Admin console also renders internal native product/harness aggregates, daily inference usage and trace filtering/pagination; production verification pending.
+
+Resources and Traffic history sections use bounded fixed provider queries, time-series SVG charts and table readbacks; external schema/credentials and live production verification pending.

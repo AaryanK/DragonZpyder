@@ -47,7 +47,7 @@ FastAPI inference/API composition, provider transport, ledgers, service images, 
 | [`Dockerfile.personal`](../../api/Dockerfile.personal) | Navigation hint: Dockerfile; source behavior not independently reviewed. | Indexed |
 | [`Dockerfile.staging`](../../api/Dockerfile.staging) | Navigation hint: Dockerfile; source behavior not independently reviewed. | Indexed |
 | [`inference.mjs`](../../api/inference.mjs) | Legacy Node private inference handler with backend bearer, model allowlist, bounded parsing and per-hour admission. | Reviewed |
-| [`main.py`](../../api/main.py) | FastAPI gateway composition root, lifespan, router registration, caller auth and catch-all inference dispatch. | Reviewed |
+| [`main.py`](../../api/main.py) | FastAPI gateway composition root, lifespan, caller auth, inference dispatch and bounded admin native activity aggregates. | Reviewed |
 | [`observability.py`](../../api/observability.py) | Configures OpenTelemetry/Langfuse OTLP export and redacted inference spans; full encrypted payload storage is separate. | Reviewed |
 | [`package.json`](../../api/package.json) | Data/configuration fixture: package; inspect schema and consumers. | Indexed |
 | [`provider_gateway.py`](../../api/provider_gateway.py) | Scoped OpenRouter transport, operation classification, provider-key selection, metering and tracing. | Reviewed |
@@ -59,7 +59,7 @@ FastAPI inference/API composition, provider transport, ledgers, service images, 
 | [`staging.js`](../../api/staging.js) | Navigation hint: staging; source behavior not independently reviewed. | Indexed |
 | [`staging_app.py`](../../api/staging_app.py) | Password-gated staging smoke lab for agent, search, memory and Hatchet diagnostics; no workspace/computer grants. | Reviewed |
 | [`staging_ui.html`](../../api/staging_ui.html) | Navigation hint: staging ui; source behavior not independently reviewed. | Indexed |
-| [`usage_ledger.py`](../../api/usage_ledger.py) | Append-only PostgreSQL metering, normalized token/cost usage and optional AES-GCM payload escrow; unknown cost is not zero. | Reviewed |
+| [`usage_ledger.py`](../../api/usage_ledger.py) | Append-only PostgreSQL metering, normalized token/cost and daily latency aggregates, optional AES-GCM payload escrow; unknown cost is not zero. | Reviewed |
 
 ## api/agent_platform
 
@@ -518,7 +518,7 @@ FastAPI web gateway, styles and compatibility JavaScript; React source in fronte
 | [`dictation.js`](../../web/dictation.js) | Navigation hint: dictation; source behavior not independently reviewed. | Indexed |
 | [`image-progress.mjs`](../../web/image-progress.mjs) | Navigation hint: image progress; source behavior not independently reviewed. | Indexed |
 | [`internal-inference.mjs`](../../web/internal-inference.mjs) | Navigation hint: internal inference; source behavior not independently reviewed. | Indexed |
-| [`main.py`](../../web/main.py) | FastAPI compiled-page server, native API and compatibility proxy dispatch, admin protection and security headers. | Reviewed |
+| [`main.py`](../../web/main.py) | FastAPI compiled-page server, native API and compatibility proxy dispatch, admin protection, bounded read-only operations provider adapters and security headers. | Reviewed |
 | [`mesh-picker.js`](../../web/mesh-picker.js) | Navigation hint: mesh picker; source behavior not independently reviewed. | Indexed |
 | [`mesh-server.mjs`](../../web/mesh-server.mjs) | Navigation hint: mesh server; source behavior not independently reviewed. | Indexed |
 | [`mesh.css`](../../web/mesh.css) | Stylesheet: mesh; inspect selectors and importing page. | Indexed |
@@ -567,7 +567,7 @@ React/Vite application, build/prerender and Playwright tests.
 | [`README.md`](../../web/frontend/README.md) | Documentation: README; check date and canonical status. | Indexed |
 | [`UI-1-RELEASE.md`](../../web/frontend/UI-1-RELEASE.md) | Documentation: UI 1 RELEASE; check date and canonical status. | Indexed |
 | [`account.html`](../../web/frontend/account.html) | Navigation hint: account; source behavior not independently reviewed. | Indexed |
-| [`admin.html`](../../web/frontend/admin.html) | Navigation hint: admin; source behavior not independently reviewed. | Indexed |
+| [`admin.html`](../../web/frontend/admin.html) | Read-only operations tabs and bounded provider metadata UI; existing usage retained. | Indexed |
 | [`app.html`](../../web/frontend/app.html) | Navigation hint: app; source behavior not independently reviewed. | Indexed |
 | [`index.html`](../../web/frontend/index.html) | Navigation hint: index; source behavior not independently reviewed. | Indexed |
 | [`package.json`](../../web/frontend/package.json) | Data/configuration fixture: package; inspect schema and consumers. | Indexed |
@@ -599,7 +599,7 @@ React source, UI components, runtime context, markdown and voice renderer.
 | [`VoiceOrb.jsx`](../../web/frontend/src/VoiceOrb.jsx) | React-owned voice interface/lifecycle and artwork renderer integration; visual canvas does not request microphone itself. | Reviewed |
 | [`WorkspaceCenter.jsx`](../../web/frontend/src/WorkspaceCenter.jsx) | React account-scoped workspace center and same-origin API requests; includes native MCP UI. | Reviewed |
 | [`WorkspaceControls.jsx`](../../web/frontend/src/WorkspaceControls.jsx) | Accessible modal focus and progressive-disclosure chat controls, command palette, capture/add menus and desktop install; delegates to existing adapters. | Reviewed |
-| [`admin.css`](../../web/frontend/src/admin.css) | Stylesheet: admin; inspect selectors and importing page. | Indexed |
+| [`admin.css`](../../web/frontend/src/admin.css) | Operations console layout, responsive navigation and distribution bars. | Indexed |
 | [`admin.jsx`](../../web/frontend/src/admin.jsx) | Navigation hint: admin; source behavior not independently reviewed. | Indexed |
 | [`main.jsx`](../../web/frontend/src/main.jsx) | React mount/hydrate entrypoint selecting page by route. | Reviewed |
 | [`markdown.js`](../../web/frontend/src/markdown.js) | Navigation hint: markdown; source behavior not independently reviewed. | Indexed |

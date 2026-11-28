@@ -232,10 +232,21 @@ class UsageLedger:
                    WHERE occurred_at >= now() - ($1::int * interval '1 day')
                    AND ($2::text IS NULL OR app_id = $2)
                    GROUP BY app_id, requested_model ORDER BY calls DESC LIMIT 200""", days, app_id)
+            daily = await con.fetch(
+                """SELECT to_char(occurred_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS day,
+                   COUNT(*) AS calls, COUNT(*) FILTER (WHERE status <> 'ok') AS failures,
+                   SUM(total_tokens) AS total_tokens, SUM(provider_cost_usd) AS provider_cost_usd,
+                   COUNT(*) FILTER (WHERE provider_cost_usd IS NULL) AS missing_cost,
+                   percentile_cont(0.95) WITHIN GROUP (ORDER BY duration_ms) AS p95_duration_ms
+                   FROM model_usage_events
+                   WHERE occurred_at >= now() - ($1::int * interval '1 day')
+                   AND ($2::text IS NULL OR app_id = $2)
+                   GROUP BY 1 ORDER BY 1 LIMIT 91""", days, app_id)
         def json_safe(row):
             return {k: str(v) if isinstance(v, Decimal) else v for k, v in dict(row).items()}
         return {"days": days, "app_id": app_id, "totals": json_safe(totals),
-                "groups": [json_safe(row) for row in group]}
+                "groups": [json_safe(row) for row in group],
+                "daily": [json_safe(row) for row in daily]}
 
 
 ledger = UsageLedger()

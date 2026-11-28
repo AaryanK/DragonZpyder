@@ -117,3 +117,22 @@ def test_admin_scope_is_distinct(monkeypatch):
                           headers={"authorization": "Bearer " + LEGACY}).status_code == 401
         assert client.get("/v1/models", headers=h).status_code == 401
         assert client.get("/internal/admin/usage").status_code == 401
+
+
+def test_admin_activity_requires_independent_service_token(monkeypatch):
+    import main
+    monkeypatch.setenv("DRAGONZPYDER_RUNTIME_TOKEN", LEGACY)
+    monkeypatch.setenv("DRAGONZPYDER_ADMIN_TOKEN", ADMIN)
+    async def activity(request, days):
+        return {"days": days, "requests": {"state": "available", "rows": []}}
+    monkeypatch.setattr(main, "admin_platform_activity", activity)
+    with TestClient(app) as client:
+        route = "/internal/admin/activity"
+        assert client.get(route).status_code == 401
+        assert client.get(route, headers={"authorization": "Bearer " + LEGACY}).status_code == 401
+        h = {"authorization": "Bearer " + ADMIN}
+        assert client.post(route, headers=h).status_code == 405
+        assert client.get(route + "?days=91", headers=h).status_code == 400
+        response = client.get(route + "?days=7", headers=h)
+        assert response.status_code == 200 and response.json()["days"] == 7
+        assert response.headers["cache-control"] == "no-store"
