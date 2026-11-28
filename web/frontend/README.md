@@ -99,3 +99,18 @@ operational logging, not a durable support-content access audit. No customer
 conversation or memory bodies are returned. No provider calls incur inference
 cost. Additional tests assert bearer scope and protected Web proxying. CI and
 credential-backed tests are required before claiming deployment.
+
+### Historical traffic and resource metrics
+
+The additional Resources and Traffic history sections request fixed Railway
+GraphQL metrics over 1, 7 or 30 days with bounded sampling windows. Environment
+and project IDs are fixed; service names are dynamically resolved from the
+provider project. Resource data includes CPU, memory, disk and network summary
+and time series grouped by service. HTTP histories include request count,
+status buckets and duration percentiles for the native Web and API services
+across deployments, within provider retention. No unique visitors, referrers,
+visitor-country estimates, inferred zero intervals or billing charges are
+derived from these sources. Existing latest-deployment traffic sample remains
+a separate panel. Actual runtime credentials, schema compatibility and
+production verification remain required; provider failures are not represented
+as zero activity.

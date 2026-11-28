@@ -41,3 +41,10 @@ button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible{ou
 .ops-distributions{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px}
 .ops-bar{display:grid;grid-template-columns:minmax(80px,1fr) 2fr auto;gap:10px;align-items:center;margin:10px 0;font-size:13px}
 .ops-bar meter{width:100%;height:18px;accent-color:var(--accent)}
+
+.ops-series{display:block;width:100%;height:auto;overflow:visible}
+.ops-series text{font-size:10px;fill:var(--muted)}
+.ops-gridline{stroke:var(--line);stroke-width:1}
+.ops-line{fill:none;stroke:var(--accent);stroke-width:2.5;stroke-linejoin:round;stroke-linecap:round}
+.ops-point{fill:var(--accent)}
+.ops-subtitle{margin-top:36px}

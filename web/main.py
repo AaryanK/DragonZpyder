@@ -272,6 +272,101 @@ ADMIN_TRAFFIC_QUERY = """query Traffic($id: String!) {
 }"""
 
 
+
+ADMIN_RAILWAY_PROJECTS = {
+    "DragonZpyder": "56b446c0-a237-4c2c-8548-940d2bc02276",
+    "Operly": "c1ea4f21-76b7-4830-8ee1-be1c825f18d5",
+}
+ADMIN_RAILWAY_NAMES = """query ServiceNames($id: String!) {
+  project(id: $id) { services { edges { node { id name } } } }
+}"""
+ADMIN_RESOURCE_QUERY = """query Resources($environment: String!, $start: DateTime!, $end: DateTime!, $step: Int) {
+  metrics(environmentId: $environment, startDate: $start, endDate: $end,
+    sampleRateSeconds: $step, groupBy: [SERVICE_ID],
+    measurements: [CPU_USAGE, MEMORY_USAGE_GB, DISK_USAGE_GB, NETWORK_RX_GB, NETWORK_TX_GB]) {
+      measurement tags { serviceId } values { ts value }
+  }
+}"""
+ADMIN_HTTP_METRIC_QUERY = """query RequestHistory($environment: String!, $service: String!, $start: DateTime!, $end: DateTime!, $step: Int) {
+  httpMetrics(environmentId: $environment, serviceId: $service, startDate: $start, endDate: $end,
+    stepSeconds: $step) { ts value }
+  httpMetricsGroupedByStatus(environmentId: $environment, serviceId: $service, startDate: $start,
+    endDate: $end, stepSeconds: $step) { statusCode samples { ts value } }
+  httpDurationMetrics(environmentId: $environment, serviceId: $service, startDate: $start,
+    endDate: $end, stepSeconds: $step) { ts p50 p90 p95 p99 }
+}"""
+
+
+def _admin_metric_samples(rows, keys=("ts", "value")):
+    """Bound provider samples and drop non-numeric values and arbitrary fields."""
+    import math
+    result = []
+    for row in rows[:200]:
+        if not isinstance(row, dict) or not isinstance(row.get("ts"), (int, float)):
+            continue
+        item = {k: row[k] for k in keys if isinstance(row.get(k), (int, float)) and
+                not isinstance(row[k], bool) and math.isfinite(row[k]) and row[k] >= 0}
+        if "ts" in item:
+            result.append(item)
+    return sorted(result, key=lambda item: item["ts"])
+
+
+def _admin_resource_summary(rows, names):
+    allowed = {"CPU_USAGE", "MEMORY_USAGE_GB", "DISK_USAGE_GB", "NETWORK_RX_GB", "NETWORK_TX_GB"}
+    result = []
+    for row in rows[:500]:
+        measurement = row.get("measurement")
+        service = (row.get("tags") or {}).get("serviceId")
+        if measurement not in allowed or service not in names:
+            continue
+        samples = _admin_metric_samples(row.get("values") or [])
+        values = [v["value"] for v in samples if "value" in v]
+        result.append({"service": names[service], "measurement": measurement,
+            "current": values[-1] if values else None,
+            "average": sum(values) / len(values) if values else None,
+            "maximum": max(values) if values else None, "samples": samples})
+    return result
+
+
+async def _admin_service_names(client, project):
+    raw = await _admin_railway(client, project, ADMIN_RAILWAY_NAMES, ADMIN_RAILWAY_PROJECTS[project])
+    return {edge["node"]["id"]: edge["node"]["name"]
+            for edge in raw["project"]["services"]["edges"][:100]}
+
+
+def _admin_window(days):
+    from datetime import datetime, timedelta, timezone
+    end = datetime.now(timezone.utc)
+    return {"start": (end - timedelta(days=days)).isoformat(), "end": end.isoformat(),
+            "step": {1:900, 7:3600, 30:21600}[days]}
+
+
+async def _admin_http_history(client, days):
+    names = await _admin_service_names(client, "DragonZpyder")
+    window = _admin_window(days)
+    async def service_report(service_id, name):
+        try:
+            raw = await _admin_railway(client, "DragonZpyder", ADMIN_HTTP_METRIC_QUERY,
+                {**window, "environment": ADMIN_RAILWAY_ENVIRONMENTS["DragonZpyder"], "service": service_id})
+            samples = _admin_metric_samples(raw["httpMetrics"])
+            status = {}
+            for group in raw["httpMetricsGroupedByStatus"][:100]:
+                code = group.get("statusCode")
+                if isinstance(code, int) and 100 <= code <= 599:
+                    status[str(code)] = sum(r.get("value", 0) for r in _admin_metric_samples(group.get("samples") or []))
+            latency = _admin_metric_samples(raw["httpDurationMetrics"], ("ts", "p50", "p90", "p95", "p99"))
+            return {"service": name, "state": "available", "requests": samples,
+                "status_counts": status, "latency": latency,
+                "total_requests": sum(r.get("value", 0) for r in samples) if samples else None}
+        except (httpx.HTTPError, RuntimeError, ValueError, KeyError, TypeError, AttributeError):
+            return {"service": name, "state": "unavailable"}
+    import asyncio
+    rows = [(i,n) for i,n in names.items() if n in {"DragonZpyder Web", "DragonZpyder API"}]
+    return {"days": days, "window": window,
+            "services": await asyncio.gather(*(service_report(i,n) for i,n in rows))}
+
+
+
 def _admin_fields(row, keys):
     """Return bounded scalar fields only; never relay provider objects wholesale."""
     if not isinstance(row, dict):
@@ -286,7 +381,7 @@ async def _admin_railway(client, project, query, identifier):
     if not key:
         raise RuntimeError("unconfigured")
     response = await client.post("https://backboard.railway.com/graphql/v2",
-        json={"query": query, "variables": {"id": identifier}},
+        json={"query": query, "variables": identifier if isinstance(identifier, dict) else {"id": identifier}},
         headers={"project-access-token": key, "cookie": ""},
         timeout=8, follow_redirects=False)
     response.raise_for_status()
@@ -355,12 +450,29 @@ async def admin_operations(request: Request):
         return JSONResponse({"detail": "Native DragonZpyder administrator session required"},
                             status_code=403, headers=headers)
     source = request.query_params.get("source", "")
-    if source not in {"railway", "traffic", "github", "langfuse", "activity"}:
+    if source not in {"railway", "traffic", "github", "langfuse", "activity", "resources", "traffic_history"}:
         return JSONResponse({"detail": "Invalid operations source"}, status_code=400, headers=headers)
     client = request.app.state.http
     result = {"source": source, "retrieved_at": datetime.now(timezone.utc).isoformat()}
     try:
-        if source == "activity":
+        if source in {"resources", "traffic_history"}:
+            raw_days = request.query_params.get("days", "1")
+            if raw_days not in {"1", "7", "30"}:
+                return JSONResponse({"detail": "Invalid metric period"}, status_code=400, headers=headers)
+            days = int(raw_days)
+            if source == "resources":
+                project = request.query_params.get("project", "DragonZpyder")
+                if project not in ADMIN_RAILWAY_PROJECTS:
+                    return JSONResponse({"detail": "Unknown project"}, status_code=400, headers=headers)
+                names = await _admin_service_names(client, project)
+                window = _admin_window(days)
+                data = await _admin_railway(client, project, ADMIN_RESOURCE_QUERY,
+                    {**window, "environment": ADMIN_RAILWAY_ENVIRONMENTS[project]})
+                result.update({"project": project, "days": days, "window": window,
+                    "metrics": _admin_resource_summary(data["metrics"], names)})
+            else:
+                result["history"] = await _admin_http_history(client, days)
+        elif source == "activity":
             days = request.query_params.get("days", "30")
             if not days.isdigit() or not 1 <= int(days) <= 90:
                 return JSONResponse({"detail": "Invalid date range"}, status_code=400, headers=headers)

@@ -203,3 +203,19 @@ def test_activity_proxy_reuses_private_admin_token(monkeypatch):
             assert client.get("/admin/api/operations?source=activity&days=91",headers=h).status_code == 400
         finally:
             client.app.state.http = old
+
+
+def test_resources_projection_filters_unknown_metrics_and_invalid_samples():
+    data = main._admin_resource_summary([
+        {"measurement":"CPU_USAGE","tags":{"serviceId":"service-1"},"values":[
+            {"ts":10,"value":0.4,"private":"ignore"},
+            {"ts":20,"value":0.6},
+            {"ts":30,"value":-1},
+        ]},
+        {"measurement":"UNSUPPORTED","tags":{"serviceId":"service-1"},"values":[]},
+        {"measurement":"MEMORY_USAGE_GB","tags":{"serviceId":"unknown"},"values":[]},
+    ],{"service-1":"API"})
+    assert len(data)==1 and data[0]["service"]=="API"
+    assert data[0]["current"]==0.6 and data[0]["average"]==0.5
+    assert "private" not in str(data) and "ignore" not in str(data)
+    assert main._admin_metric_samples([{"ts":10,"value":float("inf")},{"ts":20,"value":1.0}]) == [{"ts":10},{"ts":20,"value":1.0}]

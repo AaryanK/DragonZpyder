@@ -1,5 +1,12 @@
 # Codebase change records
 
+## 2026-11-27 — historical traffic and resources
+
+- `web/main.py`: Fixed Railway project/service name and metric queries with 1/7/30-day windows, capped numeric projection, resource summaries and independent Web/API HTTP metric reports. Read-only provider calls; credential-backed verification pending.
+- `web/frontend/src/admin.jsx`: Add resource and historical traffic panels with service selection, SVG charts and explicit provider coverage. CI pending.
+- `web/frontend/src/admin.css`: Style responsive time-series and metric panels. CI pending.
+- `web/tests/test_admin_protection.py`: Test numeric metric projection, service scope and discarded extra/nonfinite provider fields. CI pending.
+
 ## 2026-11-27 — product analytics and operations refinement
 
 - `api/main.py`: Add independent admin-bearer-only native activity counts, runtime initialization and configuration indicators using static read-only aggregate SELECTs with per-source timeouts; no content or identity privilege expansion. CI pending.
