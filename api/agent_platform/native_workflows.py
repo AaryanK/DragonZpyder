@@ -16,7 +16,7 @@ import logging
 import os
 import re
 from urllib.parse import urlsplit
-from uuid import UUID,uuid4,uuid5
+from uuid import UUID,NAMESPACE_URL,uuid5
 
 import httpx
 from fastapi import APIRouter,HTTPException,Request
@@ -116,6 +116,7 @@ class WorkflowPhase(BaseModel):
     depends_on:list[str]=Field(default_factory=list,max_length=5)
     required_workspace_paths:list[str]=Field(default_factory=list,max_length=32)
     required_artifact_names:list[str]=Field(default_factory=list,max_length=5)
+    expected_answer:str|None=Field(default=None,min_length=1,max_length=2000)
 
 
 class WorkflowPlan(BaseModel):
@@ -129,6 +130,7 @@ class WorkflowPlan(BaseModel):
     mcp_connection_ids:list[str]=Field(default_factory=list,max_length=10)
     allow_computer:bool=Field(default=False,strict=True)
     workspace_snapshot:WorkspaceSnapshot|None=None
+    acceptance_version:int=Field(default=0,ge=0,le=1,strict=True)
 
 
 class WorkflowWake(BaseModel):
@@ -163,14 +165,36 @@ def validate_plan(plan:WorkflowPlan):
             or any(not re.fullmatch(r"c[a-f0-9]{30}",x) for x in plan.mcp_connection_ids)):
         raise ValueError("Invalid account selection")
     frozen=plan.model_dump(mode="json")
+    if plan.acceptance_version==0:
+        frozen.pop("acceptance_version")
     # Keep historical plan digests stable when no new handoff fields are used.
     if frozen["workspace_snapshot"] is None:
         frozen.pop("workspace_snapshot")
     for phase in frozen["phases"]:
-        for field in ("required_workspace_paths","required_artifact_names"):
+        for field in ("required_workspace_paths","required_artifact_names","expected_answer"):
             if not phase[field]:
                 phase.pop(field)
     return frozen
+
+
+def require_acceptance(plan):
+    """New objectives need a checkable output, not just successful execution."""
+    for phase in plan.phases:
+        if not phase.required_artifact_names and phase.expected_answer is None:
+            raise ValueError("Each phase needs a published artifact or exact answer criterion")
+
+
+def objective_id(owner,request_id):
+    # Stable across the foreground and wake; never supplied by the model.
+    return uuid5(NAMESPACE_URL,"dragonzpyder-native-goal:"+owner+":"+str(request_id))
+
+
+async def admit_origin(*,owner,request_id,session_hash,http):
+    ceiling=require_gate()
+    await verify_authority(owner,session_hash)
+    goal_id=objective_id(owner,request_id)
+    await create_budget(goal_id,ceiling,http)
+    return goal_id,ceiling
 
 
 def enabled():
@@ -225,8 +249,10 @@ async def create_budget(goal_id,ceiling,http):
         raise RuntimeError("Parent budget evidence missing")
 
 
-async def schedule(*,owner,session_hash,plan,http):
+async def schedule(*,owner,session_hash,plan,http,origin_budget=None):
     ceiling=require_gate()
+    plan=plan.model_copy(update={"acceptance_version":1})
+    require_acceptance(plan)
     frozen=validate_plan(plan)
     await verify_authority(owner,session_hash)
     from . import artifacts
@@ -249,14 +275,19 @@ async def schedule(*,owner,session_hash,plan,http):
                 WHERE owner_id=$1 AND state IN ('preparing','active','inflight','uncertain')""",owner)
             if count>=2:
                 raise HTTPException(429,"Active workflow allowance exhausted")
-            goal_id=uuid4()
+            goal_id=objective_id(owner,plan.request_id)
+            if origin_budget is not None:
+                if origin_budget[0]!=goal_id:
+                    raise ValueError("Origin budget identity mismatch")
+                ceiling=origin_budget[1]
             await db.execute("""INSERT INTO dz_native_workflows
                 (goal_id,owner_id,session_hash,request_id,conversation_id,plan,plan_sha256,
                  ceiling_usd,state) VALUES($1,$2,$3,$4,$5,$6::jsonb,$7,$8,'preparing')""",
                 goal_id,owner,session_hash,plan.request_id,plan.conversation_id,
                 json.dumps(frozen),plan_digest(frozen),amount(ceiling))
     try:
-        await create_budget(goal_id,ceiling,http)
+        if origin_budget is None:
+            await create_budget(goal_id,ceiling,http)
         from hatchet_sdk import Hatchet
         task=make_native_workflow_task(Hatchet())
         await task.aio_schedule(run_at=datetime.now(timezone.utc)+timedelta(minutes=plan.start_after_minutes),
@@ -286,7 +317,7 @@ def session_reference(request):
 @router.post("/v2/personal/workflows")
 async def create_workflow(plan:WorkflowPlan,request:Request):
     owner=await _owner(request,changing=True)
-    if plan.workspace_snapshot is not None:
+    if plan.workspace_snapshot is not None or plan.acceptance_version!=0:
         raise HTTPException(422,"Workspace snapshots are server-authored")
     if not enabled():
         raise HTTPException(503,"Durable workflows unavailable")
@@ -312,7 +343,10 @@ async def workflow_status(owner,goal_id):
         results.append({"sequence":item["sequence"],"phase_id":item["phase_id"],"report":report})
     return {"goal_id":str(goal_id),"state":row["state"],"completed_phases":row["next_sequence"],
             "total_phases":len(as_json(row["plan"])["phases"]),"blocked_reason":row["blocked_reason"],
-            "phase_receipts":results,"objective_verified":False}
+            "phase_receipts":results,
+            "acceptance_verified":(row["state"]=="completed" and len(results)==len(as_json(row["plan"])["phases"])
+                and all(r["report"].get("acceptance_verified") is True for r in results)),
+            "objective_verified":False}
 
 
 @router.get("/v2/personal/workflows/{goal_id}")
@@ -354,7 +388,7 @@ async def resume(goal_id:UUID,request:Request):
 
 
 def native_workflow_tools(*,owner,session_hash,conversation_id,request_id,
-                          attachment_ids,mcp_connection_ids,allow_computer,http):
+                          attachment_ids,mcp_connection_ids,allow_computer,http,origin_budget=None):
     from langchain_core.tools import tool,ToolException
 
     @tool
@@ -364,7 +398,10 @@ def native_workflow_tools(*,owner,session_hash,conversation_id,request_id,
         No external mutations or unattended media generation. Use selected reviewed read capabilities,
         authorized compute if granted, and publish artifacts for later phases.
         Declare required_workspace_paths for files a phase must read, and
-        required_artifact_names for files it must publish. The current virtual
+        required_artifact_names for files it must publish. Every phase must
+        declare a published output or expected_answer for an exact, objectively
+        checkable response; do not invent an expected answer to open-ended research.
+        The current virtual
         workspace is snapshotted by the runtime; do not recreate missing inputs."""
         stage="authority"
         try:
@@ -378,7 +415,10 @@ def native_workflow_tools(*,owner,session_hash,conversation_id,request_id,
             plan=WorkflowPlan(objective=objective,phases=phases,start_after_minutes=start_after_minutes,
                 conversation_id=conversation_id,request_id=request_id,attachment_ids=attachment_ids,
                 mcp_connection_ids=mcp_connection_ids,allow_computer=allow_computer,workspace_snapshot=snapshot)
-            return await schedule(owner=owner,session_hash=session_hash,plan=plan,http=http)
+            require_acceptance(plan)
+            if origin_budget is None:
+                return await schedule(owner=owner,session_hash=session_hash,plan=plan,http=http)
+            return await schedule(owner=owner,session_hash=session_hash,plan=plan,http=http,origin_budget=origin_budget)
         except Exception as exc:
             log.warning("Workflow schedule unavailable stage=%s error_type=%s",stage,type(exc).__name__)
             raise ToolException("Workflow schedule unavailable or unconfirmed; do not replay") from None
@@ -444,6 +484,7 @@ def phase_prompt(plan,phase,inputs):
             json.dumps(inputs,ensure_ascii=False,sort_keys=True)[:16000]+
             ("\nRequired workspace reads: "+json.dumps(phase.required_workspace_paths) if phase.required_workspace_paths else "")+
             ("\nRequired published artifacts: "+json.dumps(phase.required_artifact_names) if phase.required_artifact_names else "")+
+            ("\nExact required final answer: "+json.dumps(phase.expected_answer) if phase.expected_answer is not None else "")+
             ("\nOriginal workspace paths: "+json.dumps(plan.workspace_snapshot.paths) if plan.workspace_snapshot else "")+
             "\nComplete only this phase with authorized capabilities; publish useful artifacts. "
             "Do not claim overall objective verification or schedule another workflow.")
@@ -490,6 +531,8 @@ async def execute_phase(goal_id,app_state):
                 return await stop("plan_integrity_failure")
             plan=WorkflowPlan.model_validate(frozen)
             validate_plan(plan)
+            if plan.acceptance_version:
+                require_acceptance(plan)
             seq=row["next_sequence"]
             if not 0<=seq<len(plan.phases):
                 return await stop("phase_cursor_invalid")
@@ -633,13 +676,17 @@ async def execute_phase(goal_id,app_state):
                     outputs.append(meta)
                 if not set(phase.required_artifact_names)<={item["filename"] for item in outputs}:
                     return await stop("required_artifact_missing")
+                if phase.expected_answer is not None and summary["answer"].strip()!=phase.expected_answer.strip():
+                    return await stop("required_answer_mismatch")
+                acceptance_verified=bool(phase.required_artifact_names or phase.expected_answer is not None)
                 snapshot=None
                 if any(phase.id in later.depends_on for later in plan.phases[seq+1:]):
                     snapshot=await save_workspace(db,owner,run_id,current.get("files",{}))
                 report={"answer":summary["answer"][:4000],"artifacts":outputs,
                         "tool_names":summary["successful_tools"][:40],
                         "failed_tool_count":summary["failed_tool_count"],
-                        "recovered_checkpoint":recovering,"objective_verified":False}
+                        "recovered_checkpoint":recovering,"acceptance_verified":acceptance_verified,
+                        "objective_verified":False}
                 if snapshot:
                     report["workspace_snapshot"]=snapshot.model_dump(mode="json")
                 await authorize()
@@ -657,6 +704,8 @@ async def execute_phase(goal_id,app_state):
                         VALUES($1,$2,$3,$4::jsonb,$5)""",goal_id,seq,phase.id,
                         json.dumps(report,ensure_ascii=False),plan_digest(report))
                 return {"goal_id":str(goal_id),"state":terminal,"completed_phases":seq+1,
+                        "acceptance_verified":terminal=="completed" and acceptance_verified
+                            and all(as_json(item["report"]).get("acceptance_verified") is True for item in prior),
                         "objective_verified":False}
             except Exception as exc:
                 cancelled=await db.fetchval("SELECT cancel_requested FROM dz_native_workflows WHERE goal_id=$1",goal_id)
