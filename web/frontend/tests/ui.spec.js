@@ -228,3 +228,25 @@ test("sidebar rows use explicit neutral backgrounds and no native bevel",async({
   await expect(page.locator("#sidebar").getByRole("link",{name:"Settings"})).toBeVisible();
   await expect(page.locator(".workspace-switcher")).toHaveCount(0);
 });
+
+
+test("admin console supports overview navigation, searchable and inspectable tables, and deep links",async({page})=>{
+  await page.route("**/admin/api/operations?*",route=>{
+    const source=new URL(route.request().url()).searchParams.get("source");
+    const retrieved_at="2026-11-27T00:00:00Z";
+    if(source==="overview")return route.fulfill({json:{retrieved_at,checks:[{source:"DragonZpyder service inventory",state:"available",records:12},{source:"Operly resource series",state:"unavailable",records:null}]}});
+    if(source==="railway")return route.fulfill({json:{retrieved_at,projects:[{project:"DragonZpyder",state:"available",services:[{service:"API",status:"SUCCESS",deployment:"deploy-api"},{service:"Worker",status:"BUILDING",deployment:"deploy-worker"}]}]}});
+    return route.fulfill({json:{retrieved_at}});
+  });
+  await page.goto("/admin.html#overview");
+  await expect(page.getByRole("button",{name:/DragonZpyder service inventory/})).toBeVisible();
+  await page.getByRole("button",{name:/DragonZpyder service inventory/}).click();
+  await expect(page).toHaveURL(/#railway$/);
+  await page.getByRole("textbox",{name:"Search DragonZpyder · available"}).fill("Worker");
+  await expect(page.getByRole("cell",{name:"API",exact:true})).toHaveCount(0);
+  await page.getByRole("button",{name:"Inspect ↗"}).click();
+  await expect(page.getByRole("region",{name:"DragonZpyder · available record details"}).getByText("deploy-worker",{exact:true})).toBeVisible();
+  await page.getByRole("button",{name:"Close",exact:true}).click();
+  await page.getByRole("button",{name:"Auto refresh off"}).click();
+  await expect(page.getByRole("button",{name:"Auto · 60s"})).toHaveAttribute("aria-pressed","true");
+});

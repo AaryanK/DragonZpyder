@@ -10,37 +10,67 @@ function formatUsd(value) {
   return value === null || value === undefined ? "Unknown" : "$" + Number(value).toFixed(6);
 }
 
-function OpsTable({ title, rows, columns }) {
-  return <section className="table-box"><h2>{title}</h2><div className="table-scroll">
-    <table><thead><tr>{columns.map(([key,label]) => <th key={key}>{label}</th>)}</tr></thead>
-      <tbody>{rows.map((row,i) => <tr key={i}>{columns.map(([key]) => <td key={key}>{row[key] == null ? "Unknown" : String(row[key])}</td>)}</tr>)}
-        {!rows.length && <tr><td colSpan={columns.length}>No records returned.</td></tr>}</tbody></table></div></section>;
+const sections=[
+  ["Platform",[["overview","Overview","dashboard"],["activity","Users & harness","users"],["usage","Model usage","chart"]]],
+  ["Operations",[["configuration","Configuration","settings"],["railway","Infrastructure","server"],["resources","Resources","activity"],["traffic_history","Traffic history","clock"],["traffic","Recent traffic","globe"]]],
+  ["Engineering",[["github","Engineering","git"],["repository","Repository","folder"],["langfuse","Traces","trace"]]]
+];
+const icons={dashboard:"M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z",users:"M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2 M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8 M17 5a4 4 0 0 1 0 8 M22 21v-2a4 4 0 0 0-3-4",chart:"M3 3v18h18 M8 16v-5 M13 16V6 M18 16V9",settings:"M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8 M12 2v3 M12 19v3 M2 12h3 M19 12h3 M5 5l2 2 M17 17l2 2 M19 5l-2 2 M7 17l-2 2",server:"M3 3h18v8H3z M3 13h18v8H3z M7 7h.01 M7 17h.01",activity:"M2 12h4l3-7 5 14 3-7h5",clock:"M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20 M12 6v6l4 2",globe:"M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20 M2 12h20 M12 2c-5 5-5 15 0 20 M12 2c5 5 5 15 0 20",git:"M6 3a3 3 0 1 0 0 6 3 3 0 0 0 0-6 M18 3a3 3 0 1 0 0 6 3 3 0 0 0 0-6 M6 15a3 3 0 1 0 0 6 3 3 0 0 0 0-6 M6 9v6 M18 9c0 5-12 1-12 6",folder:"M3 5h7l2 3h9v13H3z",trace:"M3 4h7v5H3z M14 15h7v5h-7z M6 9v8h8 M17 15V6h-7"};
+function Glyph({name}){return <svg className="ops-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={icons[name]||icons.activity}/></svg>}
+function State({value}) {
+  const v=String(value??"Unknown"), s=v.toLowerCase();
+  const tone=/^(available|success|completed|on|enabled|present|ready \/ initialized|default_on)$/.test(s)?"good":/^(failed|failure|crashed|unavailable|disabled|off|missing|not ready \/ not initialized)$/.test(s)?"bad":/^(unconfigured|building|deploying|pending|queued|in_progress|uncertain|unset)$/.test(s)?"warn":"neutral";
+  return <span className={"ops-state "+tone}><i/>{v.replaceAll("_"," ")}</span>;
+}
+function csvDownload(title,rows,columns) {
+  // Quote all cells; neutralize formula prefixes before opening in spreadsheets.
+  const cell=v=>{let s=String(v??"");if(/^[\s\u0000-\u001f]*[=+@-]/.test(s))s="'"+s;return '"'+s.replaceAll('"','""')+'"'};
+  const csv=[columns.map(([,label])=>cell(label)).join(","),...rows.map(row=>columns.map(([key])=>cell(row[key])).join(","))].join("\r\n");
+  const url=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"}));
+  const link=document.createElement("a");link.href=url;link.download=title.replace(/[^a-z0-9]+/gi,"-").toLowerCase()+".csv";link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+function OpsTable({ title, rows=[], columns, onInspect }) {
+  const [query,setQuery]=useState(""),[sort,setSort]=useState(null),[page,setPage]=useState(0),[detail,setDetail]=useState(null);
+  const filtered=rows.filter(row=>columns.some(([key])=>String(row[key]??"").toLowerCase().includes(query.toLowerCase())));
+  if(sort) filtered.sort((a,b)=>{const x=a[sort.key],y=b[sort.key];if(x==null)return y==null?0:1;if(y==null)return -1;return sort.dir*(typeof x==="number"&&typeof y==="number"?x-y:String(x).localeCompare(String(y),undefined,{numeric:true}))});
+  const pages=Math.max(1,Math.ceil(filtered.length/15)), current=Math.min(page,pages-1);
+  return <section className="table-box"><div className="ops-table-head"><div><h2>{title}</h2><small>{filtered.length} of {rows.length} records</small></div><div className="ops-table-tools"><input aria-label={"Search "+title} placeholder="Search records…" value={query} onChange={e=>{setQuery(e.target.value);setPage(0)}}/><button onClick={()=>csvDownload(title,filtered,columns)} disabled={!filtered.length}>CSV ↓</button></div></div><div className="table-scroll">
+    <table><thead><tr>{columns.map(([key,label])=><th key={key} aria-sort={sort?.key===key?(sort.dir===1?"ascending":"descending"):"none"}><button className="ops-sort" onClick={()=>{setSort({key,dir:sort?.key===key?-sort.dir:1});setPage(0)}}>{label}<span>{sort?.key===key?(sort.dir===1?" ↑":" ↓"):" ↕"}</span></button></th>)}<th>Details</th></tr></thead>
+      <tbody>{filtered.slice(current*15,current*15+15).map((row,i)=><tr key={i}>{columns.map(([key])=><td key={key}>{/^(state|status|conclusion|runtime|metadata_state)$/.test(key)?<State value={row[key]}/>:row[key]==null?"Unknown":typeof row[key]==="number"?row[key].toLocaleString(undefined,{maximumFractionDigits:8}):String(row[key])}</td>)}<td><button className="ops-small" onClick={()=>onInspect?onInspect(row):setDetail(row)}>Inspect ↗</button></td></tr>)}
+        {!filtered.length&&<tr><td colSpan={columns.length+1} className="ops-empty">{rows.length?"No matching records.":"No records returned."}</td></tr>}</tbody></table></div>
+    <div className="ops-pagination"><span>Page {current+1} of {pages}</span><button disabled={!current} onClick={()=>setPage(current-1)}>Previous</button><button disabled={current>=pages-1} onClick={()=>setPage(current+1)}>Next</button></div>
+    {detail&&<section className="ops-inspector" aria-label={title+" record details"}><div className="ops-table-head"><h3>Record details</h3><button onClick={()=>setDetail(null)}>Close</button></div><dl>{columns.map(([key,label])=><React.Fragment key={key}><dt>{label}</dt><dd>{String(detail[key]??"Unknown")}</dd></React.Fragment>)}</dl></section>}
+  </section>;
 }
 function Distribution({title, values}) {
-  const entries = Object.entries(values || {}).sort((a,b)=>b[1]-a[1]);
-  const max = Math.max(1,...entries.map(x=>x[1]));
-  return <section className="table-box"><h2>{title}</h2>{entries.length ? entries.map(([name,count]) =>
-    <div className="ops-bar" key={name}><span>{name}</span><meter min={0} max={max} value={count}/><strong>{count}</strong></div>
-  ) : <p>No records returned.</p>}</section>;
+  const [selection,setSelection]=useState(null),[expanded,setExpanded]=useState(false);
+  const entries=Object.entries(values||{}).filter(([,n])=>typeof n==="number"&&Number.isFinite(n)&&n>=0).sort((a,b)=>b[1]-a[1]);
+  const total=entries.reduce((s,[,n])=>s+n,0),max=Math.max(1,...entries.map(x=>x[1]));
+  const selected=entries.find(([k])=>k===selection);
+  return <section className="table-box ops-distribution"><div className="ops-table-head"><h2>{title}</h2><small>{entries.length} groups</small></div>
+    {entries.length?<><div className="ops-dist-summary"><strong>{(selected?selected[1]:total).toLocaleString()}</strong><span>{selected?selected[0]:"Total reported"}</span>{selected&&<button className="ops-small" onClick={()=>setSelection(null)}>Clear</button>}</div>
+    {entries.slice(0,expanded?entries.length:8).map(([name,count])=><button type="button" aria-pressed={selection===name} className="ops-bar ops-bar-button" key={name} onClick={()=>setSelection(selection===name?null:name)}><span>{name}</span><span className="ops-bar-track"><span style={{width:100*count/max+"%"}}/></span><strong>{count.toLocaleString()} <small>{total?(100*count/total).toFixed(1):"0.0"}%</small></strong></button>)}
+    {entries.length>8&&<button className="ops-small" onClick={()=>setExpanded(!expanded)}>{expanded?"Show less":"Show all "+entries.length}</button>}</>:<p className="ops-empty">No records returned.</p>}</section>;
 }
-
-
-function SeriesChart({title, rows, field, unit=""}) {
-  const data=(rows||[]).filter(r=>typeof r[field]==="number" && Number.isFinite(r[field]));
-  const width=680,height=164,left=56,right=12,top=16,bottom=28;
-  const max=Math.max(0.000001,...data.map(r=>r[field]));
+function SeriesChart({title,rows,field,unit=""}) {
+  const [active,setActive]=useState(null),[range,setRange]=useState("all");
+  const full=(rows||[]).filter(r=>typeof r[field]==="number"&&Number.isFinite(r[field]));
+  const data=range==="all"?full:full.slice(-Number(range));
+  const width=680,height=218,left=58,right=16,top=18,bottom=32;
+  const max=Math.max(0.000001,...data.map(r=>r[field])),min=Math.min(0,...data.map(r=>r[field]));
   const x=i=>left+i*(width-left-right)/Math.max(1,data.length-1);
-  const y=v=>top+(1-v/max)*(height-top-bottom);
-  const labels=data.length?[data[0],data[data.length-1]]:[];
-  const timestamp=r=>r.day||new Date(r.ts*1000).toLocaleString();
-  return <section className="table-box"><h2>{title}</h2>
-    {data.length ? <><svg className="ops-series" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={title+" trend"}>
-      {[0,.5,1].map(t=><g key={t}><line x1={left} x2={width-right} y1={y(max*t)} y2={y(max*t)} className="ops-gridline"/><text x={left-7} y={y(max*t)+4} textAnchor="end">{Number((max*t).toPrecision(3))}</text></g>)}
-      <polyline points={data.map((r,i)=>x(i)+","+y(r[field])).join(" ")} className="ops-line"/>
-      {data.length===1&&<circle cx={x(0)} cy={y(data[0][field])} r="4" className="ops-point"/>}
-      <text x={left} y={height-6}>{timestamp(labels[0])}</text><text x={width-right} y={height-6} textAnchor="end">{timestamp(labels[1])}</text>
-    </svg><p className="data-note">{data.length} reported samples{unit?" · "+unit:""}; missing intervals are not inferred as zero.</p></> : <p>No reported samples.</p>}
-  </section>;
+  const y=v=>top+(max-v)/Math.max(.000001,max-min)*(height-top-bottom);
+  const timestamp=r=>r?.day||(Number.isFinite(r?.ts)?new Date(r.ts*1000).toLocaleString():"Unknown");
+  const i=active==null?Math.max(0,data.length-1):Math.min(active,Math.max(0,data.length-1)),point=data[i];
+  const line=data.map((r,k)=>x(k)+","+y(r[field])).join(" ");
+  return <section className="table-box ops-chart"><div className="ops-table-head"><h2>{title}</h2><select aria-label={title+" sample range"} value={range} onChange={e=>{setRange(e.target.value);setActive(null)}}><option value="all">All samples</option><option value="24">Last 24</option><option value="12">Last 12</option></select></div>
+    {data.length?<><div className="ops-chart-readout"><strong>{point[field].toLocaleString(undefined,{maximumFractionDigits:6})} {unit}</strong><small>{timestamp(point)}</small></div>
+    <svg className="ops-series" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={title+" trend"} onPointerMove={e=>{const b=e.currentTarget.getBoundingClientRect();const local=(e.clientX-b.left)*width/b.width;setActive(Math.max(0,Math.min(data.length-1,Math.round((local-left)/(width-left-right)*Math.max(1,data.length-1)))))}} onPointerLeave={()=>setActive(null)}>
+      {[0,.25,.5,.75,1].map(t=><g key={t}><line x1={left} x2={width-right} y1={y(min+(max-min)*t)} y2={y(min+(max-min)*t)} className="ops-gridline"/><text x={left-7} y={y(min+(max-min)*t)+4} textAnchor="end">{Number((min+(max-min)*t).toPrecision(3))}</text></g>)}
+      <polygon className="ops-area" points={x(0)+","+(height-bottom)+" "+line+" "+x(data.length-1)+","+(height-bottom)}/><polyline points={line} className="ops-line"/>
+      <line x1={x(i)} x2={x(i)} y1={top} y2={height-bottom} className="ops-crosshair"/><circle cx={x(i)} cy={y(point[field])} r="5" className="ops-point"/>
+      <text x={left} y={height-8}>{timestamp(data[0])}</text><text x={width-right} y={height-8} textAnchor="end">{timestamp(data[data.length-1])}</text>
+    </svg><input className="ops-scrubber" aria-label={title+" inspect sample"} type="range" min="0" max={Math.max(0,data.length-1)} value={i} onChange={e=>setActive(Number(e.target.value))}/><p className="data-note">{data.length} reported samples · hover or scrub to inspect; missing intervals are not inferred as zero.</p></>:<p className="ops-empty">No reported samples.</p>}</section>;
 }
 function ResourceMetrics({data}) {
   const [service,setService]=useState("");
@@ -91,6 +121,7 @@ function Activity({report}) {
 function Configuration({report,onRefresh}) {
   const [message,setMessage]=useState(""), [busy,setBusy]=useState(false);
   const [service,setService]=useState("API");
+  const [gateSearch,setGateSearch]=useState(""),[onlyEditable,setOnlyEditable]=useState(false);
   const live=service==="API"?report.api_runtime:service==="Web"?report.web_runtime:null;
   const desired=report.desired?.[service];
   const keys=[...new Set([...Object.keys(live?.flags||{}),...Object.keys(desired?.flags||{})])];
@@ -111,10 +142,10 @@ function Configuration({report,onRefresh}) {
     <label className="data-note">Service <select value={service} onChange={e=>setService(e.target.value)}>{["API","Web","Worker"].map(s=><option key={s}>{s}</option>)}</select></label>
     <p className="data-note">Running commit: {live?.deployed_sha||"Unknown"} · Railway desired state: {desired?.state||"unavailable"}</p>
     {message&&<p role="status">{message}</p>}
-    <section className="table-box"><h2>Capability gates</h2><div className="table-scroll"><table><thead><tr><th>Source gate</th><th>Running</th><th>Railway desired</th><th>Control</th></tr></thead><tbody>{keys.map(flag=>{
+    <section className="table-box"><div className="ops-table-head"><h2>Capability gates</h2><div className="ops-table-tools"><input aria-label="Filter capability gates" placeholder="Search flags…" value={gateSearch} onChange={e=>setGateSearch(e.target.value)}/><label><input type="checkbox" checked={onlyEditable} onChange={e=>setOnlyEditable(e.target.checked)}/> Editable only</label></div></div><div className="table-scroll"><table><thead><tr><th>Source gate</th><th>Running</th><th>Railway desired</th><th>Control</th></tr></thead><tbody>{keys.filter(flag=>flag.toLowerCase().includes(gateSearch.toLowerCase())&&(!onlyEditable||report.editable?.[service]?.includes(flag))).map(flag=>{
       const current=desired?.flags?.[flag];
       const editable=report.editable?.[service]?.includes(flag)&&["on","off","unset"].includes(current);
-      return <tr key={flag}><td>{flag.replace("DRAGONZPYDER_","")}</td><td>{live?.flags?.[flag]||"Unknown"}</td><td>{current||"Unknown"}</td><td>{editable?<><button disabled={busy||current==="on"} onClick={()=>change(flag,current,true)}>Enable</button>{" "}<button disabled={busy||current==="off"} onClick={()=>change(flag,current,false)}>Disable</button></>: "Read only"}</td></tr>;
+      return <tr key={flag}><td>{flag.replace("DRAGONZPYDER_","")}</td><td><State value={live?.flags?.[flag]}/></td><td><State value={current}/></td><td>{editable?<><button disabled={busy||current==="on"} onClick={()=>change(flag,current,true)}>Enable</button>{" "}<button disabled={busy||current==="off"} onClick={()=>change(flag,current,false)}>Disable</button></>: "Read only"}</td></tr>;
     })}</tbody></table></div></section>
     <p className="data-note">Memory recall controls access by the chat agent, not saved-memory management or consent. API search controls do not alter Worker monitor registration. Identity, credentials, budget, isolation and coupled workflow settings are intentionally not editable here.</p>
     {service==="API"&&<OpsTable title="Discovered source gate references (running API image)" rows={(live?.source_gates||[]).map(g=>({flag:g.flag,runtime:g.runtime,references:g.references.map(r=>r.path+":"+r.line).join(", ")}))} columns={[["flag","Source flag"],["runtime","Runtime value"],["references","Source references"]]}/>}
@@ -137,21 +168,22 @@ function RepositoryInventory({report}) {
   </>;
 }
 
-function Overview({checks}) {
+function Overview({checks,navigate}) {
   return <><p className="data-note">Independent read-only integration checks. Available with zero records means no returned samples, not successful end-to-end capability execution.</p>
     <section className="stats">{[["Available sources",checks.filter(c=>c.state==="available").length],["Unconfigured",checks.filter(c=>c.state==="unconfigured").length],["Unavailable",checks.filter(c=>c.state==="unavailable").length]].map(([label,value])=><article className="stat" key={label}><span>{label}</span><strong>{value}</strong></article>)}</section>
-    <OpsTable title="Live data coverage" rows={checks} columns={[["source","Data source"],["state","Read status"],["records","Reported records / series"]]}/>
+    <div className="ops-health-grid">{checks.map(c=>{const n=c.source.toLowerCase(),target=n.includes("resource")?"resources":n.includes("historical")?"traffic_history":n.includes("recent")?"traffic":n.includes("repository")?"repository":n.includes("activity")?"activity":"railway";return <button className="ops-health-card" key={c.source} onClick={()=>navigate(target)}><State value={c.state}/><strong>{c.source}</strong><span>{formatInteger(c.records)} reported · Open panel ↗</span></button>})}</div><OpsTable title="Live data coverage" rows={checks} columns={[["source","Data source"],["state","Read status"],["records","Reported records / series"]]}/>
     <p className="data-note">Use Infrastructure for deployment metadata, Configuration for runtime gates, Repository for source inventory and Product & harness for native activity. No model calls are made by these checks.</p>
   </>;
 }
 
-function Operations({source}) {
+function Operations({source,navigate}) {
   const [data,setData] = useState(null), [error,setError] = useState(""), [loading,setLoading] = useState(true);
-  const [revision,setRevision] = useState(0);
+  const [revision,setRevision] = useState(0),[auto,setAuto]=useState(false);
+  useEffect(()=>{if(!auto||source==="configuration")return;const id=setInterval(()=>{if(document.visibilityState==="visible")setRevision(r=>r+1)},60000);return ()=>clearInterval(id)},[auto,source]);
   const [period,setPeriod] = useState(source==="activity"?30:1), [project,setProject] = useState("DragonZpyder"), [trafficService,setTrafficService] = useState("DragonZpyder Web"), [traceInput,setTraceInput] = useState(""), [trace,setTrace] = useState(""), [cursor,setCursor] = useState("");
   useEffect(()=>{
     const controller = new AbortController();
-    setData(null); setError(""); setLoading(true);
+    setError(""); setLoading(true);
     fetch("/admin/api/operations?" + new URLSearchParams({source, ...(["activity","resources","traffic_history"].includes(source)?{days:String(period)}:{}), ...(["resources","traffic_history","traffic"].includes(source)?{project}:{}), ...(source==="traffic"?{service:trafficService}:{}), ...(source==="langfuse"?{trace,cursor}:{})}), {credentials:"same-origin",cache:"no-store",signal:controller.signal})
       .then(async r=>{const v=await r.json(); if(!r.ok) throw new Error(typeof v.detail==="string"?v.detail:"Source unavailable"); return v;})
       .then(v=>{if(!controller.signal.aborted)setData(v);})
@@ -159,17 +191,19 @@ function Operations({source}) {
       .finally(()=>{if(!controller.signal.aborted)setLoading(false);});
     return ()=>controller.abort();
   },[source,revision,period,project,trafficService,trace,cursor]);
+  // Clear old scope when changing filters, not during same-scope polling.
+  useEffect(()=>{setData(null)},[source,period,project,trafficService,trace,cursor]);
   const t=data?.traffic;
   return <section>
     <div className="ops-heading"><p className="data-note">{data ? "Retrieved " + new Date(data.retrieved_at).toLocaleString() : "Live provider data; no simulated metrics."}</p>
-      <button onClick={()=>setRevision(v=>v+1)} disabled={loading}>Refresh</button></div>
+      <div className="ops-table-tools">{source!=="configuration"&&<button aria-pressed={auto} onClick={()=>setAuto(!auto)} className={auto?"ops-auto-on":""}>{auto?"Auto · 60s":"Auto refresh off"}</button>}<button onClick={()=>setRevision(v=>v+1)} disabled={loading}>{loading?"Refreshing…":"Refresh ↻"}</button></div></div>
     {["activity","resources","traffic_history"].includes(source) && <label className="data-note">Period <select value={period} onChange={e=>setPeriod(Number(e.target.value))}><option value={1}>24 hours</option><option value={7}>7 days</option><option value={30}>30 days</option>{source==="activity"&&<option value={90}>90 days</option>}</select></label>}
     {["resources","traffic_history","traffic"].includes(source)&&<label className="data-note"> Project <select value={project} onChange={e=>{setProject(e.target.value);setTrafficService(e.target.value==="Operly"?"Operly":"DragonZpyder Web");}}><option>DragonZpyder</option><option>Operly</option></select></label>}
     {source==="traffic"&&<label className="data-note"> Service <select value={trafficService} onChange={e=>setTrafficService(e.target.value)}>{(project==="Operly"?["Operly"]:["DragonZpyder Web","DragonZpyder API"]).map(s=><option key={s}>{s}</option>)}</select></label>}
     {data && source==="resources"&&<ResourceMetrics data={data}/>}
     {data && source==="traffic_history"&&<TrafficHistory report={data.history}/>}
     {source==="langfuse" && <form className="toolbar" onSubmit={e=>{e.preventDefault();setCursor("");setTrace(traceInput.trim());setRevision(v=>v+1);}}><label>Trace ID<input value={traceInput} maxLength={128} onChange={e=>setTraceInput(e.target.value)} placeholder="All traces"/></label><button>Search</button><button type="button" onClick={()=>{setTraceInput("");setTrace("");setCursor("");}}>Clear</button></form>}
-    {data && source==="overview" && <Overview checks={data.checks}/>}
+    {data && source==="overview" && <Overview checks={data.checks} navigate={navigate}/>}
     {data && source==="repository" && <RepositoryInventory report={data.repository}/>}
     {data && source==="activity" && <Activity report={data.activity}/>}
     {data && source==="configuration" && <Configuration report={data.configuration} onRefresh={()=>setRevision(v=>v+1)}/>}
@@ -191,7 +225,11 @@ function Operations({source}) {
 }
 
 function AdminPage() {
-  const [tab, setTab] = useState("overview");
+  const validTabs=sections.flatMap(([,items])=>items.map(([key])=>key));
+  const [tab,setTab]=useState(()=>validTabs.includes(location.hash.slice(1))?location.hash.slice(1):"overview");
+  const [navSearch,setNavSearch]=useState("");
+  function navigate(key){if(!validTabs.includes(key))return;setTab(key);location.hash=key;}
+  useEffect(()=>{const change=()=>{const key=location.hash.slice(1);setTab(validTabs.includes(key)?key:"overview")};window.addEventListener("hashchange",change);return ()=>window.removeEventListener("hashchange",change)},[]);
   const [days, setDays] = useState(30);
   const [filter, setFilter] = useState("");
   const [applied, setApplied] = useState("");
@@ -231,8 +269,8 @@ function AdminPage() {
           <p>Production inventory, traffic samples, engineering activity and AI observability.</p></div>
         <a href="/account" className="account-link">Account ↗</a>
       </header>
-      <div className="ops-shell"><nav className="ops-tabs" aria-label="Operations sections">{[["overview","Overview"],["activity","Product & harness"],["usage","Model usage"],["configuration","Configuration"],["railway","Infrastructure"],["resources","Resources"],["traffic_history","Traffic history"],["traffic","Recent traffic"],["github","Engineering"],["repository","Repository"],["langfuse","Traces"]].map(([key,label])=><button key={key} aria-pressed={tab===key} onClick={()=>setTab(key)}>{label}</button>)}</nav><div className="ops-content">
-      {tab!=="usage" ? <Operations key={tab} source={tab}/> : <>
+      <div className="ops-shell"><nav className="ops-tabs" aria-label="Operations sections"><div className="ops-nav-brand"><span className="ops-live-dot"/>Production console</div><input aria-label="Find a panel" placeholder="Find a panel…" value={navSearch} onChange={e=>setNavSearch(e.target.value)}/>{sections.map(([group,items])=><React.Fragment key={group}><div className="ops-nav-label">{group}</div>{items.filter(([,label])=>label.toLowerCase().includes(navSearch.toLowerCase())).map(([key,label,glyph])=><button key={key} aria-pressed={tab===key} onClick={()=>navigate(key)}><Glyph name={glyph}/>{label}</button>)}</React.Fragment>)}</nav><div className="ops-content"><div className="ops-page-title"><span>Operations / {sections.flatMap(([,items])=>items).find(([key])=>key===tab)?.[1]}</span><h2>{sections.flatMap(([,items])=>items).find(([key])=>key===tab)?.[1]}</h2></div>
+      {tab!=="usage" ? <Operations key={tab} source={tab} navigate={navigate}/> : <>
       <form className="toolbar" onSubmit={e => {
         e.preventDefault();
         if (!filter || /^[a-z0-9_-]{2,60}$/.test(filter)) setApplied(filter);
@@ -264,7 +302,7 @@ function AdminPage() {
           Missing token reports: {formatInteger(totals?.missing_token_usage)} · Missing cost reports: {formatInteger(totals?.missing_cost)}.
           These are not assumed to be zero. Costs shown are provider-reported, not customer billing amounts.
         </p>
-        {data.daily && <><Distribution title="Model calls by UTC day" values={Object.fromEntries(data.daily.map(r=>[r.day,r.calls]))}/><OpsTable title="Daily usage" rows={data.daily} columns={[["day","Day"],["calls","Calls"],["failures","Failures"],["total_tokens","Tokens"],["provider_cost_usd","Provider cost (USD)"],["missing_cost","Missing cost"],["p95_duration_ms","P95 (ms)"]]}/></>}
+        {data.daily && <><div className="ops-distributions"><SeriesChart title="Model calls by UTC day" rows={data.daily} field="calls"/><SeriesChart title="Provider cost by UTC day" rows={data.daily} field="provider_cost_usd" unit="USD"/><SeriesChart title="P95 inference latency" rows={data.daily} field="p95_duration_ms" unit="ms"/></div><OpsTable title="Daily usage" rows={data.daily} columns={[["day","Day"],["calls","Calls"],["failures","Failures"],["total_tokens","Tokens"],["provider_cost_usd","Provider cost (USD)"],["missing_cost","Missing cost"],["p95_duration_ms","P95 (ms)"]]}/></>}
         <section className="table-box"><h2>Usage by application and model</h2>
           <div className="table-scroll"><table><thead><tr>
             <th>Application</th><th>Requested model</th><th>Calls</th><th>Input</th>

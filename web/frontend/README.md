@@ -114,3 +114,8 @@ derived from these sources. Existing latest-deployment traffic sample remains
 a separate panel. Actual runtime credentials, schema compatibility and
 production verification remain required; provider failures are not represented
 as zero activity.
+
+
+### Interactive operations console
+
+Interactive admin presentation over existing authenticated APIs: grouped icon navigation and hash links, overview health-card drilldowns, searchable/sortable/paged tables with bounded projected-field inspectors and formula-neutralized CSV export, clickable distributions, pointer and keyboard sample chart inspection, optional visible-tab 60-second refresh (not configuration), capability filtering and state labels. No backend scope changes, no new dependency, no live capability changes. Browser fixture exercises navigation, filtering, inspector and auto-refresh; build/CI and production visual verification pending.
