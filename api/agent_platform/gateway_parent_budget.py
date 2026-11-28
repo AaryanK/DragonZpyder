@@ -142,6 +142,23 @@ class ParentBudgetGateway:
             raise BudgetExceeded("Duplicate inference request; replay refused")
         return ceiling
 
+    async def accounting_snapshot(self, job_id: str) -> dict:
+        """Private, read-only accounting diagnostics; never free unknown holds."""
+        if not self.active:
+            return {"available": False}
+        async with self.pool.acquire() as con:
+            row=await con.fetchrow("""SELECT b.ceiling_usd,b.reserved_usd,b.settled_usd,
+                (SELECT count(*) FROM agent_budget_reservations r
+                 WHERE r.job_id=b.job_id AND r.tenant_id=b.tenant_id
+                 AND r.status='unknown') AS unknown_count
+                FROM agent_job_budgets b WHERE b.job_id=$1 AND b.tenant_id=$2""",
+                UUID(_id(job_id)),TENANT)
+        if row is None:
+            return {"available": False}
+        return {"available":True,"ceiling_usd":str(row["ceiling_usd"]),
+                "reserved_usd":str(row["reserved_usd"]),"settled_usd":str(row["settled_usd"]),
+                "unknown_count":row["unknown_count"]}
+
     async def settle(self, *, job_id: str, request_id: str,
                      provider_response: object) -> bool:
         """Unknown provider cost: hold retained and return False."""
