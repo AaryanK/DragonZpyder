@@ -433,3 +433,11 @@ Production evidence: session starts and one canonical turn succeeded; a subseque
 - `api/tests/test_gateway_parent_budget.py`: Add environment admission matrix including disabled and unknown environments. Offline CI and live production acceptance pending; no configuration or paid inference changed by this PR.
 
 - `api/tests/test_fastapi_gateway.py`: Supply a synthetic non-resetting provider key-cap response in the existing authenticated reservation route test. Exercise the real cap parser before reservation, without external network or paid inference; fixes the stale fixture exposed by the new dispatch check.
+
+
+## 2026-11-28 — separate approved production key allowance from staging
+
+- `api/agent_platform/key_budget.py`: Keep the staging default at $0.50, and permit the operator-approved $3 non-resetting key limit for production parent jobs only; missing, resetting, exhausted and excessive provider caps remain denied. No credential changes.
+- `api/main.py`: Use the production-aware key ceiling at authenticated parent creation and paid parent dispatch. Preserve the existing $0.50 per-objective maximum, atomic reservations, pricing ceilings, authentication, and independent staging checks. Log only the categorical denial reason.
+- `api/tests/test_key_budget.py`: Exercise production $3, excessive, resetting, depleted and missing cap cases, plus staging isolation.
+- `api/tests/test_fastapi_gateway.py`: Exercise the authenticated reservation/settlement route with synthetic staging-default and production key-cap responses. No provider calls in tests. CI and live workflow acceptance pending.
