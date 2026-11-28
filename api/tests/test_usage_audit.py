@@ -183,3 +183,10 @@ def test_runtime_configuration_only_reports_boolean_gates(monkeypatch):
         assert result.json()["flags"]["DRAGONZPYDER_AGENT_WEB_SEARCH_ENABLED"]=="on"
         assert result.json()["flags"]["DRAGONZPYDER_PERSONAL_MEMORY_RECALL_ENABLED"]=="default_on"
         assert "private-url" not in result.text and ADMIN not in result.text
+
+
+def test_admin_source_gates_only_reports_safe_gate_names(tmp_path,monkeypatch):
+    from main import admin_source_gates
+    (tmp_path/"main.py").write_text('import os\na=os.getenv("DRAGONZPYDER_TEST_ENABLED")\nb=os.getenv("DRAGONZPYDER_SECRET_KEY_ENABLED")\nc=os.getenv("DRAGONZPYDER_API_TOKEN")\n')
+    monkeypatch.setenv("DRAGONZPYDER_TEST_ENABLED","1")
+    assert admin_source_gates(tmp_path)==[{"flag":"DRAGONZPYDER_TEST_ENABLED","references":[{"path":"api/main.py","line":2}],"runtime":"on"}]

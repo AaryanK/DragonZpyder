@@ -267,7 +267,7 @@ ADMIN_RAILWAY_QUERY = """query Inventory($id: String!) {
 }"""
 ADMIN_TRAFFIC_QUERY = """query Traffic($id: String!) {
   httpLogs(deploymentId: $id, beforeLimit: 200) {
-    timestamp method httpStatus edgeRegion totalDuration rxBytes txBytes path clientUa
+    timestamp method httpStatus edgeRegion totalDuration rxBytes txBytes path clientUa srcIp
   }
 }"""
 
@@ -341,13 +341,16 @@ def _admin_window(days):
             "step": {1:900, 7:3600, 30:21600}[days]}
 
 
-async def _admin_http_history(client, days):
-    names = await _admin_service_names(client, "DragonZpyder")
+ADMIN_PUBLIC_HTTP_SERVICES = {"DragonZpyder": {"DragonZpyder Web", "DragonZpyder API"}, "Operly": {"Operly"}}
+
+
+async def _admin_http_history(client, days, project="DragonZpyder"):
+    names = await _admin_service_names(client, project)
     window = _admin_window(days)
     async def service_report(service_id, name):
         try:
-            raw = await _admin_railway(client, "DragonZpyder", ADMIN_HTTP_METRIC_QUERY,
-                {**window, "environment": ADMIN_RAILWAY_ENVIRONMENTS["DragonZpyder"], "service": service_id})
+            raw = await _admin_railway(client, project, ADMIN_HTTP_METRIC_QUERY,
+                {**window, "environment": ADMIN_RAILWAY_ENVIRONMENTS[project], "service": service_id})
             samples = _admin_metric_samples(raw["httpMetrics"])
             status = {}
             for group in raw["httpMetricsGroupedByStatus"][:100]:
@@ -361,8 +364,8 @@ async def _admin_http_history(client, days):
         except (httpx.HTTPError, RuntimeError, ValueError, KeyError, TypeError, AttributeError):
             return {"service": name, "state": "unavailable"}
     import asyncio
-    rows = [(i,n) for i,n in names.items() if n in {"DragonZpyder Web", "DragonZpyder API"}]
-    return {"days": days, "window": window,
+    rows = [(i,n) for i,n in names.items() if n in ADMIN_PUBLIC_HTTP_SERVICES[project]]
+    return {"project": project, "days": days, "window": window,
             "services": await asyncio.gather(*(service_report(i,n) for i,n in rows))}
 
 
@@ -446,11 +449,12 @@ def _admin_client_classes(value):
     return device, os_name, browser
 
 
-def _admin_traffic_summary(rows):
+def _admin_traffic_summary(rows, reader=None):
     """Aggregate a bounded edge-log sample; neither raw paths nor IPs leave server."""
     from collections import Counter
     routes, regions, statuses = Counter(), Counter(), Counter()
     devices, operating_systems, browsers = Counter(), Counter(), Counter()
+    countries, campaigns = Counter(), Counter()
     durations = []
     rx = tx = 0
     timestamps = []
@@ -459,7 +463,10 @@ def _admin_traffic_summary(rows):
         devices[device] += 1
         operating_systems[os_name] += 1
         browsers[browser] += 1
-        path = str(row.get("path", "")).split("?", 1)[0]
+        countries[_admin_country(reader, row.get("srcIp"))] += 1
+        raw_path = str(row.get("path", ""))
+        campaigns[_admin_campaign(raw_path)] += 1
+        path = raw_path.split("?", 1)[0]
         route = next((prefix for prefix in ("/api", "/v2", "/identity", "/admin", "/assets",
                     "/app", "/account", "/healthz") if path == prefix or path.startswith(prefix + "/")), 
                     "/" if path == "/" else "other")
@@ -484,6 +491,8 @@ def _admin_traffic_summary(rows):
             "first_timestamp": min(timestamps, default=None), "last_timestamp": max(timestamps, default=None),
             "routes": dict(routes), "edge_regions": dict(regions), "statuses": dict(statuses),
             "devices": dict(devices), "operating_systems": dict(operating_systems), "browsers": dict(browsers),
+            "countries": dict(countries), "campaign_sources": dict(campaigns),
+            "geo_state": "available" if reader is not None else "unconfigured",
             "received_bytes": rx, "sent_bytes": tx,
             "p95_duration_ms": durations[max(0, (95 * len(durations) + 99)//100 - 1)] if durations else None}
 
@@ -641,6 +650,161 @@ async def admin_config_change(request):
         return fail("Railway outcome unknown; inspect configuration before retrying", 502)
 
 
+def _admin_git_headers():
+    headers = {"accept": "application/vnd.github+json", "x-github-api-version": "2022-11-28",
+               "cookie": "", "user-agent": "DragonZpyder-Admin"}
+    token = os.getenv("DRAGONZPYDER_ADMIN_GITHUB_TOKEN", "")
+    if token:
+        headers["authorization"] = "Bearer " + token
+    return headers
+
+
+async def _admin_git(client, path, params=None):
+    response = await client.get("https://api.github.com/repos/AaryanK/DragonZpyder" + path,
+                                params=params, headers=_admin_git_headers(), timeout=8, follow_redirects=False)
+    response.raise_for_status()
+    return response.json()
+
+
+async def _admin_repo_inventory(client):
+    """Project GitHub's tracked-file tree, without downloading source contents."""
+    from collections import Counter
+    head = await _admin_git(client, "/commits/develop")
+    sha = head.get("sha")
+    if not isinstance(sha, str) or not re.fullmatch(r"[a-f0-9]{40}", sha):
+        raise ValueError("Unknown branch head")
+    tree = await _admin_git(client, "/git/trees/" + sha, {"recursive": "1"})
+    items = tree.get("tree")
+    if not isinstance(items, list):
+        raise ValueError("Tree unavailable")
+    files, roots = [], Counter()
+    for item in items:
+        path = item.get("path")
+        if item.get("type") != "blob" or not isinstance(path, str) or not 1 <= len(path) <= 500:
+            continue
+        roots[path.split("/", 1)[0] if "/" in path else "(root)"] += 1
+        if len(files) < 6000:
+            files.append({"path": path, "bytes": item.get("size") if isinstance(item.get("size"), int) else None})
+    return {"head": sha, "files": files, "folders": dict(roots), "total_files": sum(roots.values()),
+            "partial": bool(tree.get("truncated")) or sum(roots.values()) > len(files)}
+
+
+async def _admin_deployment_details(client, project, rows):
+    """Optional deployment metadata never makes basic inventory unavailable."""
+    import asyncio
+    sem = asyncio.Semaphore(4)
+    async def one(row):
+        if not row.get("deployment"):
+            return row
+        try:
+            async with sem:
+                data = await _admin_railway(client, project, """query Deployment($id: String!) {
+                  deployment(id: $id) { id status createdAt meta }
+                }""", row["deployment"])
+            deployment = data["deployment"]
+            meta = deployment.get("meta") or {}
+            sha = meta.get("commitHash")
+            row.update({"commit": sha if isinstance(sha,str) and re.fullmatch(r"[a-f0-9]{40}",sha) else None,
+                        "created_at": deployment.get("createdAt"), "metadata_state": "available"})
+        except (RuntimeError, httpx.HTTPError, ValueError, KeyError, TypeError, AttributeError):
+            row["metadata_state"] = "unavailable"
+        return row
+    return await asyncio.gather(*(one(dict(row)) for row in rows[:30]))
+
+
+async def _admin_overview(request):
+    """Read-only independent provider coverage checks; zero paid inference."""
+    import asyncio
+    client = request.app.state.http
+    async def check(name, action):
+        try:
+            value = await action()
+            return {"source": name, "state": "available" if value is not None else "unavailable", "records": value}
+        except RuntimeError:
+            return {"source": name, "state": "unconfigured", "records": None}
+        except (httpx.HTTPError, ValueError, KeyError, TypeError, AttributeError):
+            return {"source": name, "state": "unavailable", "records": None}
+    async def inventory(project):
+        return len(await _admin_inventory(client, project))
+    async def resources(project):
+        names = await _admin_service_names(client, project)
+        raw = await _admin_railway(client, project, ADMIN_RESOURCE_QUERY,
+                  {**_admin_window(1), "environment": ADMIN_RAILWAY_ENVIRONMENTS[project]})
+        return sum(bool(m["samples"]) for m in _admin_resource_summary(raw["metrics"], names))
+    async def history(project):
+        report = await _admin_http_history(client, 1, project)
+        good = [s for s in report["services"] if s.get("state") == "available"]
+        return sum(len(s.get("requests", [])) for s in good) if good else None
+    async def recent():
+        rows = await _admin_inventory(client, "DragonZpyder")
+        service = next((s for s in rows if s["service"] == "DragonZpyder Web"), None)
+        if not service or not service.get("deployment"):
+            return None
+        data = await _admin_railway(client, "DragonZpyder", ADMIN_TRAFFIC_QUERY, service["deployment"])
+        return len(data["httpLogs"])
+    async def repo():
+        head = await _admin_git(client, "/commits/develop")
+        return 1 if head.get("sha") else None
+    async def activity():
+        secret = os.getenv("DRAGONZPYDER_ADMIN_TOKEN", "")
+        if len(secret) < 40:
+            raise RuntimeError("unconfigured")
+        r = await client.get(API + "/internal/admin/activity", params={"days": 7},
+              headers={"authorization": "Bearer " + secret, "cookie": ""}, timeout=15, follow_redirects=False)
+        r.raise_for_status()
+        value = r.json()
+        return sum(value.get(k, {}).get("state") == "available" for k in
+                   ("identity", "requests", "daily", "conversations", "workflows", "goals", "memory", "request_owners"))
+    return await asyncio.gather(
+        check("DragonZpyder service inventory", lambda: inventory("DragonZpyder")),
+        check("Operly service inventory", lambda: inventory("Operly")),
+        check("DragonZpyder resource series", lambda: resources("DragonZpyder")),
+        check("Operly resource series", lambda: resources("Operly")),
+        check("DragonZpyder historical HTTP samples", lambda: history("DragonZpyder")),
+        check("Operly historical HTTP samples", lambda: history("Operly")), check("Recent HTTP sample", recent),
+        check("Repository branch head", repo), check("Native activity sources (of 8)", activity))
+
+
+def _admin_geo_reader():
+    """Optional local licensed country MMDB; never sends visitor IPs externally."""
+    path = os.getenv("DRAGONZPYDER_ADMIN_GEOIP_DB", "")
+    if not path:
+        return None
+    try:
+        import maxminddb
+        return maxminddb.open_database(path)
+    except (ImportError, OSError, ValueError):
+        return None
+
+
+def _admin_country(reader, ip):
+    if reader is None or not isinstance(ip, str):
+        return "Unknown"
+    try:
+        import ipaddress
+        if not ipaddress.ip_address(ip).is_global:
+            return "Unknown"
+        result = reader.get(ip) or {}
+        code = (result.get("country") or {}).get("iso_code")
+        return code if isinstance(code, str) and re.fullmatch(r"[A-Z]{2}", code) else "Unknown"
+    except (ValueError, TypeError, OSError, AttributeError):
+        return "Unknown"
+
+
+def _admin_campaign(path):
+    """Only fixed attribution classes; never return arbitrary campaign parameters."""
+    from urllib.parse import urlsplit, parse_qs
+    try:
+        query = parse_qs(urlsplit(path[:2048]).query, max_num_fields=25)
+        source = query.get("utm_source", [""])[0].lower()
+        if source in {"google", "bing", "facebook", "instagram", "linkedin", "reddit", "youtube", "tiktok",
+                      "discord", "chatgpt", "chatgpt.com", "thanksgiving", "newsletter"}:
+            return source
+        return "Other tagged source" if source else "Untagged / unknown"
+    except (ValueError, TypeError):
+        return "Untagged / unknown"
+
+
 async def admin_operations(request: Request):
     """Read limited operations metadata after the existing native admin check."""
     import asyncio
@@ -651,12 +815,16 @@ async def admin_operations(request: Request):
         return JSONResponse({"detail": "Native DragonZpyder administrator session required"},
                             status_code=403, headers=headers)
     source = request.query_params.get("source", "")
-    if source not in {"railway", "traffic", "github", "langfuse", "activity", "resources", "traffic_history", "configuration"}:
+    if source not in {"railway", "traffic", "github", "langfuse", "activity", "resources", "traffic_history", "configuration", "overview", "repository"}:
         return JSONResponse({"detail": "Invalid operations source"}, status_code=400, headers=headers)
     client = request.app.state.http
     result = {"source": source, "retrieved_at": datetime.now(timezone.utc).isoformat()}
     try:
-        if source == "configuration":
+        if source == "overview":
+            result["checks"] = await _admin_overview(request)
+        elif source == "repository":
+            result["repository"] = await _admin_repo_inventory(client)
+        elif source == "configuration":
             result["configuration"] = await _admin_configuration(request)
         elif source in {"resources", "traffic_history"}:
             raw_days = request.query_params.get("days", "1")
@@ -674,7 +842,10 @@ async def admin_operations(request: Request):
                 result.update({"project": project, "days": days, "window": window,
                     "metrics": _admin_resource_summary(data["metrics"], names)})
             else:
-                result["history"] = await _admin_http_history(client, days)
+                project = request.query_params.get("project", "DragonZpyder")
+                if project not in ADMIN_PUBLIC_HTTP_SERVICES:
+                    return JSONResponse({"detail": "Unknown project"}, status_code=400, headers=headers)
+                result["history"] = await _admin_http_history(client, days, project)
         elif source == "activity":
             days = request.query_params.get("days", "30")
             if not days.isdigit() or not 1 <= int(days) <= 90:
@@ -689,20 +860,31 @@ async def admin_operations(request: Request):
         elif source == "railway":
             async def one(project):
                 try:
-                    return {"project": project, "state": "available", "services": await _admin_inventory(client, project)}
+                    return {"project": project, "state": "available", "services": await _admin_deployment_details(client, project, await _admin_inventory(client, project))}
                 except RuntimeError:
                     return {"project": project, "state": "unconfigured", "services": []}
                 except (httpx.HTTPError, ValueError, KeyError, TypeError):
                     return {"project": project, "state": "unavailable", "services": []}
             result["projects"] = await asyncio.gather(*(one(p) for p in ADMIN_RAILWAY_ENVIRONMENTS))
         elif source == "traffic":
-            rows = await _admin_inventory(client, "DragonZpyder")
-            service = next((s for s in rows if s["service"] == "DragonZpyder Web"), None)
+            project = request.query_params.get("project", "DragonZpyder")
+            if project not in ADMIN_PUBLIC_HTTP_SERVICES:
+                return JSONResponse({"detail": "Unknown project"}, status_code=400, headers=headers)
+            service_name = request.query_params.get("service", "DragonZpyder Web" if project == "DragonZpyder" else "Operly")
+            if service_name not in ADMIN_PUBLIC_HTTP_SERVICES[project]:
+                return JSONResponse({"detail": "Unknown public service"}, status_code=400, headers=headers)
+            rows = await _admin_inventory(client, project)
+            service = next((s for s in rows if s["service"] == service_name), None)
             if not service or not service.get("deployment"):
-                raise ValueError("No web deployment")
-            data = await _admin_railway(client, "DragonZpyder", ADMIN_TRAFFIC_QUERY, service["deployment"])
-            result["traffic"] = _admin_traffic_summary(data["httpLogs"])
-            result["scope"] = "Latest DragonZpyder Web deployment; recent bounded edge-log sample, not complete traffic."
+                raise ValueError("No public service deployment")
+            data = await _admin_railway(client, project, ADMIN_TRAFFIC_QUERY, service["deployment"])
+            reader = _admin_geo_reader()
+            try:
+                result["traffic"] = _admin_traffic_summary(data["httpLogs"], reader)
+            finally:
+                if reader is not None:
+                    reader.close()
+            result["scope"] = "Latest " + service_name + " deployment; recent bounded edge-log sample, not complete traffic."
         elif source == "github":
             gh = {"accept": "application/vnd.github+json", "x-github-api-version": "2022-11-28",
                   "cookie": "", "user-agent": "DragonZpyder-Admin"}
