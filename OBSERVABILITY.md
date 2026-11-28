@@ -228,3 +228,6 @@ Admin Configuration compares reviewed source gate names with API/Web process sta
 ### Operations overview and inventory
 
 Add a first-page coverage overview with independent provider checks, GitHub develop tracked-tree inventory with filtering and pagination, optional deployed commit metadata, runtime API literal gate references, bounded campaign tags and optional local MMDB country lookup. Countries are coarse estimates from Railway edge logs, no external IP lookup or raw IP response; requires separately provisioned licensed MMDB path. No data mutation or paid inference by overview. Provider metadata is best effort and not proof of health. Source inventory is not exhaustive behavioral proof. CI and live checks pending.
+
+
+Expand historic and recent HTTP analytics to selected public services in both DragonZpyder and Operly; fixed project/service allowlist, no arbitrary provider targets. Overview checks history separately for each. Tests cover rejection of unknown project and private service selections. Production verification pending.

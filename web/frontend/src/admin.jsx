@@ -54,7 +54,7 @@ function ResourceMetrics({data}) {
   </>;
 }
 function TrafficHistory({report}) {
-  return <><p className="data-note">Historical Railway edge request metrics across deployments for the Web and API services. These are HTTP requests, not unique people or page views. Provider retention and missing intervals limit coverage.</p>
+  return <><p className="data-note">Historical Railway edge request metrics across deployments for the selected project’s public services. These are HTTP requests, not unique people or page views. Provider retention and missing intervals limit coverage.</p>
     {(report.services||[]).map(s=><section key={s.service}><h2 className="ops-subtitle">{s.service} · {s.state}</h2>
       {s.state==="available"&&<><section className="stats"><article className="stat"><span>Reported requests</span><strong>{formatInteger(s.total_requests)}</strong></article></section>
         <SeriesChart title="Request counts by time bucket" rows={s.requests} field="value"/>
@@ -148,23 +148,24 @@ function Overview({checks}) {
 function Operations({source}) {
   const [data,setData] = useState(null), [error,setError] = useState(""), [loading,setLoading] = useState(true);
   const [revision,setRevision] = useState(0);
-  const [period,setPeriod] = useState(source==="activity"?30:1), [project,setProject] = useState("DragonZpyder"), [traceInput,setTraceInput] = useState(""), [trace,setTrace] = useState(""), [cursor,setCursor] = useState("");
+  const [period,setPeriod] = useState(source==="activity"?30:1), [project,setProject] = useState("DragonZpyder"), [trafficService,setTrafficService] = useState("DragonZpyder Web"), [traceInput,setTraceInput] = useState(""), [trace,setTrace] = useState(""), [cursor,setCursor] = useState("");
   useEffect(()=>{
     const controller = new AbortController();
     setData(null); setError(""); setLoading(true);
-    fetch("/admin/api/operations?" + new URLSearchParams({source, ...(["activity","resources","traffic_history"].includes(source)?{days:String(period)}:{}), ...(source==="resources"?{project}:{}), ...(source==="langfuse"?{trace,cursor}:{})}), {credentials:"same-origin",cache:"no-store",signal:controller.signal})
+    fetch("/admin/api/operations?" + new URLSearchParams({source, ...(["activity","resources","traffic_history"].includes(source)?{days:String(period)}:{}), ...(["resources","traffic_history","traffic"].includes(source)?{project}:{}), ...(source==="traffic"?{service:trafficService}:{}), ...(source==="langfuse"?{trace,cursor}:{})}), {credentials:"same-origin",cache:"no-store",signal:controller.signal})
       .then(async r=>{const v=await r.json(); if(!r.ok) throw new Error(typeof v.detail==="string"?v.detail:"Source unavailable"); return v;})
       .then(v=>{if(!controller.signal.aborted)setData(v);})
       .catch(e=>{if(!controller.signal.aborted)setError(e.message);})
       .finally(()=>{if(!controller.signal.aborted)setLoading(false);});
     return ()=>controller.abort();
-  },[source,revision,period,project,trace,cursor]);
+  },[source,revision,period,project,trafficService,trace,cursor]);
   const t=data?.traffic;
   return <section>
     <div className="ops-heading"><p className="data-note">{data ? "Retrieved " + new Date(data.retrieved_at).toLocaleString() : "Live provider data; no simulated metrics."}</p>
       <button onClick={()=>setRevision(v=>v+1)} disabled={loading}>Refresh</button></div>
     {["activity","resources","traffic_history"].includes(source) && <label className="data-note">Period <select value={period} onChange={e=>setPeriod(Number(e.target.value))}><option value={1}>24 hours</option><option value={7}>7 days</option><option value={30}>30 days</option>{source==="activity"&&<option value={90}>90 days</option>}</select></label>}
-    {source==="resources"&&<label className="data-note"> Project <select value={project} onChange={e=>setProject(e.target.value)}><option>DragonZpyder</option><option>Operly</option></select></label>}
+    {["resources","traffic_history","traffic"].includes(source)&&<label className="data-note"> Project <select value={project} onChange={e=>{setProject(e.target.value);setTrafficService(e.target.value==="Operly"?"Operly":"DragonZpyder Web");}}><option>DragonZpyder</option><option>Operly</option></select></label>}
+    {source==="traffic"&&<label className="data-note"> Service <select value={trafficService} onChange={e=>setTrafficService(e.target.value)}>{(project==="Operly"?["Operly"]:["DragonZpyder Web","DragonZpyder API"]).map(s=><option key={s}>{s}</option>)}</select></label>}
     {data && source==="resources"&&<ResourceMetrics data={data}/>}
     {data && source==="traffic_history"&&<TrafficHistory report={data.history}/>}
     {source==="langfuse" && <form className="toolbar" onSubmit={e=>{e.preventDefault();setCursor("");setTrace(traceInput.trim());setRevision(v=>v+1);}}><label>Trace ID<input value={traceInput} maxLength={128} onChange={e=>setTraceInput(e.target.value)} placeholder="All traces"/></label><button>Search</button><button type="button" onClick={()=>{setTraceInput("");setTrace("");setCursor("");}}>Clear</button></form>}

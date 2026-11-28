@@ -1,5 +1,12 @@
 # Codebase change records
 
+## 2026-11-27 — cross-project traffic
+
+- `web/main.py`: Expand historic and recent HTTP analytics to selected public services in both DragonZpyder and Operly; fixed project/service allowlist, no arbitrary provider targets. Overview checks history separately for each. Tests cover rejection of unknown project and private service selections. Production verification pending.
+- `web/frontend/src/admin.jsx`: Project and public service selectors for traffic panels.
+- `web/tests/test_admin_protection.py`: Verify rejection of unsupported project/service pairs.
+
+
 ## 2026-11-27 — operations overview and inventory
 
 - `web/main.py`: Add a first-page coverage overview with independent provider checks, GitHub develop tracked-tree inventory with filtering and pagination, optional deployed commit metadata, runtime API literal gate references, bounded campaign tags and optional local MMDB country lookup. Countries are coarse estimates from Railway edge logs, no external IP lookup or raw IP response; requires separately provisioned licensed MMDB path. No data mutation or paid inference by overview. Provider metadata is best effort and not proof of health. Source inventory is not exhaustive behavioral proof. CI and live checks pending.

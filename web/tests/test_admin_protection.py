@@ -265,3 +265,20 @@ def test_country_and_campaign_aggregates_are_not_raw():
     assert report["campaign_sources"]=={"google":1,"Other tagged source":1}
     assert "8.8.8.8" not in str(report) and "private" not in str(report)
     assert main._admin_traffic_summary([])["geo_state"]=="unconfigured"
+
+
+def test_public_traffic_scope_rejects_arbitrary_projects_and_services(monkeypatch):
+    monkeypatch.setenv("DRAGONZPYDER_ADMIN_EMAILS","owner@example.test")
+    def upstream(req):
+        assert req.url.path=="/identity/v1/me"
+        return httpx.Response(200,json={"email":"owner@example.test","id":"admin-subject"})
+    with TestClient(app) as client:
+        old=client.app.state.http
+        client.app.state.http=httpx.AsyncClient(transport=httpx.MockTransport(upstream))
+        try:
+            h={"cookie":"__Host-dz_identity=valid"}
+            assert client.get("/admin/api/operations?source=traffic&project=unknown",headers=h).status_code==400
+            assert client.get("/admin/api/operations?source=traffic&project=Operly&service=Postgres",headers=h).status_code==400
+            assert client.get("/admin/api/operations?source=traffic_history&project=unknown",headers=h).status_code==400
+        finally:
+            client.app.state.http=old

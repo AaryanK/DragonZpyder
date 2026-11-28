@@ -341,13 +341,16 @@ def _admin_window(days):
             "step": {1:900, 7:3600, 30:21600}[days]}
 
 
-async def _admin_http_history(client, days):
-    names = await _admin_service_names(client, "DragonZpyder")
+ADMIN_PUBLIC_HTTP_SERVICES = {"DragonZpyder": {"DragonZpyder Web", "DragonZpyder API"}, "Operly": {"Operly"}}
+
+
+async def _admin_http_history(client, days, project="DragonZpyder"):
+    names = await _admin_service_names(client, project)
     window = _admin_window(days)
     async def service_report(service_id, name):
         try:
-            raw = await _admin_railway(client, "DragonZpyder", ADMIN_HTTP_METRIC_QUERY,
-                {**window, "environment": ADMIN_RAILWAY_ENVIRONMENTS["DragonZpyder"], "service": service_id})
+            raw = await _admin_railway(client, project, ADMIN_HTTP_METRIC_QUERY,
+                {**window, "environment": ADMIN_RAILWAY_ENVIRONMENTS[project], "service": service_id})
             samples = _admin_metric_samples(raw["httpMetrics"])
             status = {}
             for group in raw["httpMetricsGroupedByStatus"][:100]:
@@ -361,8 +364,8 @@ async def _admin_http_history(client, days):
         except (httpx.HTTPError, RuntimeError, ValueError, KeyError, TypeError, AttributeError):
             return {"service": name, "state": "unavailable"}
     import asyncio
-    rows = [(i,n) for i,n in names.items() if n in {"DragonZpyder Web", "DragonZpyder API"}]
-    return {"days": days, "window": window,
+    rows = [(i,n) for i,n in names.items() if n in ADMIN_PUBLIC_HTTP_SERVICES[project]]
+    return {"project": project, "days": days, "window": window,
             "services": await asyncio.gather(*(service_report(i,n) for i,n in rows))}
 
 
@@ -728,8 +731,8 @@ async def _admin_overview(request):
         raw = await _admin_railway(client, project, ADMIN_RESOURCE_QUERY,
                   {**_admin_window(1), "environment": ADMIN_RAILWAY_ENVIRONMENTS[project]})
         return sum(bool(m["samples"]) for m in _admin_resource_summary(raw["metrics"], names))
-    async def history():
-        report = await _admin_http_history(client, 1)
+    async def history(project):
+        report = await _admin_http_history(client, 1, project)
         good = [s for s in report["services"] if s.get("state") == "available"]
         return sum(len(s.get("requests", [])) for s in good) if good else None
     async def recent():
@@ -757,7 +760,8 @@ async def _admin_overview(request):
         check("Operly service inventory", lambda: inventory("Operly")),
         check("DragonZpyder resource series", lambda: resources("DragonZpyder")),
         check("Operly resource series", lambda: resources("Operly")),
-        check("Historical HTTP samples", history), check("Recent HTTP sample", recent),
+        check("DragonZpyder historical HTTP samples", lambda: history("DragonZpyder")),
+        check("Operly historical HTTP samples", lambda: history("Operly")), check("Recent HTTP sample", recent),
         check("Repository branch head", repo), check("Native activity sources (of 8)", activity))
 
 
@@ -838,7 +842,10 @@ async def admin_operations(request: Request):
                 result.update({"project": project, "days": days, "window": window,
                     "metrics": _admin_resource_summary(data["metrics"], names)})
             else:
-                result["history"] = await _admin_http_history(client, days)
+                project = request.query_params.get("project", "DragonZpyder")
+                if project not in ADMIN_PUBLIC_HTTP_SERVICES:
+                    return JSONResponse({"detail": "Unknown project"}, status_code=400, headers=headers)
+                result["history"] = await _admin_http_history(client, days, project)
         elif source == "activity":
             days = request.query_params.get("days", "30")
             if not days.isdigit() or not 1 <= int(days) <= 90:
@@ -860,18 +867,24 @@ async def admin_operations(request: Request):
                     return {"project": project, "state": "unavailable", "services": []}
             result["projects"] = await asyncio.gather(*(one(p) for p in ADMIN_RAILWAY_ENVIRONMENTS))
         elif source == "traffic":
-            rows = await _admin_inventory(client, "DragonZpyder")
-            service = next((s for s in rows if s["service"] == "DragonZpyder Web"), None)
+            project = request.query_params.get("project", "DragonZpyder")
+            if project not in ADMIN_PUBLIC_HTTP_SERVICES:
+                return JSONResponse({"detail": "Unknown project"}, status_code=400, headers=headers)
+            service_name = request.query_params.get("service", "DragonZpyder Web" if project == "DragonZpyder" else "Operly")
+            if service_name not in ADMIN_PUBLIC_HTTP_SERVICES[project]:
+                return JSONResponse({"detail": "Unknown public service"}, status_code=400, headers=headers)
+            rows = await _admin_inventory(client, project)
+            service = next((s for s in rows if s["service"] == service_name), None)
             if not service or not service.get("deployment"):
-                raise ValueError("No web deployment")
-            data = await _admin_railway(client, "DragonZpyder", ADMIN_TRAFFIC_QUERY, service["deployment"])
+                raise ValueError("No public service deployment")
+            data = await _admin_railway(client, project, ADMIN_TRAFFIC_QUERY, service["deployment"])
             reader = _admin_geo_reader()
             try:
                 result["traffic"] = _admin_traffic_summary(data["httpLogs"], reader)
             finally:
                 if reader is not None:
                     reader.close()
-            result["scope"] = "Latest DragonZpyder Web deployment; recent bounded edge-log sample, not complete traffic."
+            result["scope"] = "Latest " + service_name + " deployment; recent bounded edge-log sample, not complete traffic."
         elif source == "github":
             gh = {"accept": "application/vnd.github+json", "x-github-api-version": "2022-11-28",
                   "cookie": "", "user-agent": "DragonZpyder-Admin"}
