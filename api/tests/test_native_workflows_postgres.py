@@ -24,7 +24,11 @@ def test_native_workflow_commits_and_recovers_exact_phase_without_replay(monkeyp
     from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
     dsn=os.environ["DRAGONZPYDER_BUDGET_TEST_DSN"]
     owner="workflow-test-"+uuid4().hex
-    goal=uuid4()
+    conversation_id,request_id=uuid4(),uuid4()
+    goal=w.objective_id(owner,request_id)
+    import hashlib
+    origin_content="Original downloadable evidence: 42"
+    origin_id=uuid5(request_id,hashlib.sha256(origin_content.encode()).hexdigest()+"\x00origin.txt\x00text/plain")
     for key,value in {
         "DRAGONZPYDER_AGENT_ARTIFACTS_ENABLED":"1",
         "DRAGONZPYDER_ARTIFACT_KEY_B64":base64.b64encode(os.urandom(32)).decode(),
@@ -51,6 +55,7 @@ def test_native_workflow_commits_and_recovers_exact_phase_without_replay(monkeyp
         def bind_tools(self,tools,**kwargs):return self
     script=Model(responses=[
         AIMessage(content="",tool_calls=[{"name":"read_file","args":{"file_path":"/workspace/report.md"},"id":"read-origin"}]),
+        AIMessage(content="",tool_calls=[{"name":"inspect_attachment","args":{"file_id":str(origin_id)},"id":"inspect-origin"}]),
         AIMessage(content="",tool_calls=[{"name":"create_text_artifact","args":{
             "name":"result.txt","content":"independent bytes","content_type":"text/plain"},"id":"write"}]),
         AIMessage(content="The input report was published."),
@@ -62,19 +67,24 @@ def test_native_workflow_commits_and_recovers_exact_phase_without_replay(monkeyp
         return script if len(model_builds)==1 else Model(responses=[
             AIMessage(content="A paid model must not be called during recovery")])
     monkeypatch.setattr(runtime,"model_client",model_client)
-    conversation_id,request_id=uuid4(),uuid4()
     phases=[
         w.WorkflowPhase(id="prepare",objective="Read the original report and publish a text report",
-            required_workspace_paths=["/workspace/report.md"],required_artifact_names=["result.txt"]),
+            required_workspace_paths=["/workspace/report.md"],required_artifact_names=["result.txt"],
+            required_input_artifact_names=["origin.txt"]),
         w.WorkflowPhase(id="review",objective="Review the evidence",depends_on=["prepare"],
             expected_answer="Reviewed the persisted report.")]
-    captured=[]
-    async def capture_schedule(*,owner,session_hash,plan,http):
-        captured.append(plan)
-        return {"goal_id":str(goal),"state":"scheduled","objective_verified":False}
+    dispatches=[]
+    budgets=[]
+    async def dispatch(**kwargs):
+        dispatches.append(kwargs)
+    async def create_budget(goal_id,ceiling,http):
+        budgets.append((goal_id,ceiling))
     async def owned_conversation(db,*,user,conversation_id):
         assert user==owner
-    monkeypatch.setattr(w,"schedule",capture_schedule)
+    import hatchet_sdk
+    monkeypatch.setattr(hatchet_sdk,"Hatchet",lambda:object())
+    monkeypatch.setattr(w,"make_native_workflow_task",lambda _:SimpleNamespace(aio_schedule=dispatch))
+    monkeypatch.setattr(w,"create_budget",create_budget)
     monkeypatch.setattr(w,"require_gate",lambda:"0.50")
     monkeypatch.setattr(w,"_require_conversation",owned_conversation)
     async def run():
@@ -85,38 +95,46 @@ def test_native_workflow_commits_and_recovers_exact_phase_without_replay(monkeyp
         try:
             async with AsyncPostgresSaver.from_conn_string(dsn) as saver:
                 await saver.setup()
+                origin_budget=await w.admit_origin(owner=owner,request_id=request_id,
+                    session_hash="synthetic-session-reference",http=None)
                 origin=build_frontier_agent(Model(responses=[
                     AIMessage(content="",tool_calls=[{"name":"write_file","args":{
                         "file_path":"/workspace/report.md","content":"Original evidence: 42"},"id":"draft"}]),
+                    AIMessage(content="",tool_calls=[{"name":"create_text_artifact","args":{
+                        "name":"origin.txt","content":origin_content,"content_type":"text/plain"},"id":"publish-origin"}]),
                     AIMessage(content="",tool_calls=[{"name":"schedule_workflow","args":{
                         "objective":"Prepare and review a report",
                         "phases":[p.model_dump(mode="json") for p in phases],
                         "start_after_minutes":2},"id":"schedule"}]),
                     AIMessage(content="Scheduled.")]),saver,
+                    artifact_tools=artifacts.native_tools(db_factory,owner=owner,allowed_ids=[],run_id=request_id),
                     workflow_tools=w.native_workflow_tools(owner=owner,session_hash="synthetic-session-reference",
                         conversation_id=conversation_id,request_id=request_id,attachment_ids=[],
-                        mcp_connection_ids=[],allow_computer=False,http=None))
+                        mcp_connection_ids=[],allow_computer=False,http=None,origin_budget=origin_budget))
                 origin_result=await origin.ainvoke({"messages":[{"role":"user","content":"Write a report and verify it later"}]},
                     config={"configurable":{"thread_id":personal_thread(owner,str(conversation_id))},"recursion_limit":128})
-                assert len(captured)==1, [(m.name,m.content) for m in origin_result["messages"] if m.type=="tool"]
-                plan=captured[0]
-                assert plan.workspace_snapshot.paths==["/workspace/report.md"]
-                frozen=w.validate_plan(plan)
+                assert len(dispatches)==1, [(m.name,m.content) for m in origin_result["messages"] if m.type=="tool"]
+                assert dispatches[0]["input"].goal_id==goal
+                assert budgets==[(goal,"0.50")]
                 async with db_factory() as db:
+                    row=await db.fetchrow("SELECT plan,plan_sha256,state FROM dz_native_workflows WHERE goal_id=$1",goal)
+                    assert row["state"]=="active"
+                    frozen=w.as_json(row["plan"])
+                    assert row["plan_sha256"]==w.plan_digest(frozen)
+                    plan=w.WorkflowPlan.model_validate(frozen)
+                    assert plan.workspace_snapshot.paths==["/workspace/report.md"]
+                    assert plan.acceptance_version==1
+                    assert plan.attachment_ids==[origin_id]
+                    assert plan.origin_artifacts[0].filename=="origin.txt"
                     snapshot=await w.load_workspace(db,owner,plan.workspace_snapshot)
                     assert snapshot["/workspace/report.md"]["content"] in ("Original evidence: 42",["Original evidence: 42"])
-                    await db.execute("""INSERT INTO dz_native_workflows
-                      (goal_id,owner_id,session_hash,request_id,conversation_id,plan,plan_sha256,ceiling_usd,state)
-                      VALUES($1,$2,$3,$4,$5,$6::jsonb,$7,0.50,'active')""",
-                      goal,owner,"synthetic-session-reference",plan.request_id,plan.conversation_id,
-                      json.dumps(frozen),w.plan_digest(frozen))
                 state=SimpleNamespace(agent_runtime=SimpleNamespace(_checkpointer=saver))
                 first=await w.execute_phase(goal,state)
                 assert first["state"]=="active",first
                 status=await w.workflow_status(owner,goal)
                 report=status["phase_receipts"][0]["report"]
                 assert report["artifacts"] and not report["objective_verified"]
-                assert "read_file" in report["tool_names"]
+                assert {"read_file","inspect_attachment"}<=set(report["tool_names"])
                 assert report["workspace_snapshot"]["paths"]==["/workspace/report.md"]
                 async with db_factory() as db:
                     _,raw=await artifacts.get(db,owner=owner,file_id=__import__("uuid").UUID(report["artifacts"][0]["id"]))
