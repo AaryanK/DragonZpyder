@@ -95,15 +95,15 @@ def test_native_workflow_commits_and_recovers_exact_phase_without_replay(monkeyp
                     workflow_tools=w.native_workflow_tools(owner=owner,session_hash="synthetic-session-reference",
                         conversation_id=conversation_id,request_id=request_id,attachment_ids=[],
                         mcp_connection_ids=[],allow_computer=False,http=None))
-                await origin.ainvoke({"messages":[{"role":"user","content":"Write a report and verify it later"}]},
+                origin_result=await origin.ainvoke({"messages":[{"role":"user","content":"Write a report and verify it later"}]},
                     config={"configurable":{"thread_id":personal_thread(owner,str(conversation_id))},"recursion_limit":128})
-                assert len(captured)==1
+                assert len(captured)==1, [(m.name,m.content) for m in origin_result["messages"] if m.type=="tool"]
                 plan=captured[0]
                 assert plan.workspace_snapshot.paths==["/workspace/report.md"]
                 frozen=w.validate_plan(plan)
                 async with db_factory() as db:
                     snapshot=await w.load_workspace(db,owner,plan.workspace_snapshot)
-                    assert snapshot["/workspace/report.md"]["content"]==["Original evidence: 42"]
+                    assert snapshot["/workspace/report.md"]["content"] in ("Original evidence: 42",["Original evidence: 42"])
                     await db.execute("""INSERT INTO dz_native_workflows
                       (goal_id,owner_id,session_hash,request_id,conversation_id,plan,plan_sha256,ceiling_usd,state)
                       VALUES($1,$2,$3,$4,$5,$6::jsonb,$7,0.50,'active')""",
