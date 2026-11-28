@@ -40,3 +40,8 @@ All supported clients use the same backend: authenticated session creation at PO
 ### Admin operations
 
 Existing independent admin bearer protects /internal/admin/activity and usage. Activity reads bounded aggregate native request, conversation, goal, workflow and memory counts plus runtime initialization; no customer payloads or identity DB grants. The ledger includes daily UTC usage. See OBSERVABILITY.md for limits.
+
+
+### Admin account analytics
+
+The native admin activity report reads aggregate account states, native signup counts and unexpired session counts using the existing restricted identity database role in a read-only transaction, excluding operator test identities. Distinct request owners are counted across the selected interval, not by summing daily counts. Sessions are not devices or online presence; device/country/referral data are not provided by these stores. No new grants or credentials. CI and live data verification pending.

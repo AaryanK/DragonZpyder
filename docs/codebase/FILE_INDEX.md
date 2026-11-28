@@ -861,3 +861,8 @@ These entries reconcile paths added after the documented baseline; Indexed descr
 | [`web/frontend/src/openrouter-voice.js`](../../web/frontend/src/openrouter-voice.js) | Local AudioWorklet microphone capture, energy VAD with pre-roll, 16 kHz WAV resampling, bounded one-at-a-time turns, prefetch one committed speech segment and stop audio on interruption. | Reviewed |
 | [`api/tests/test_openrouter_voice.py`](../../api/tests/test_openrouter_voice.py) | Offline WAV, modality, session authority, capped key and redacted metering contracts. | Reviewed |
 | [`web/frontend/scripts/test-openrouter-voice.mjs`](../../web/frontend/scripts/test-openrouter-voice.mjs) | Offline WAV encoding, silence/pause and short-noise detector checks. | Reviewed |
+
+
+### Admin account analytics
+
+The native admin activity report reads aggregate account states, native signup counts and unexpired session counts using the existing restricted identity database role in a read-only transaction, excluding operator test identities. Distinct request owners are counted across the selected interval, not by summing daily counts. Sessions are not devices or online presence; device/country/referral data are not provided by these stores. No new grants or credentials. CI and live data verification pending.

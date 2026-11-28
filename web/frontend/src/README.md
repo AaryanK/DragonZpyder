@@ -50,3 +50,8 @@ All supported clients use the same backend: authenticated session creation at PO
 Admin console also renders internal native product/harness aggregates, daily inference usage and trace filtering/pagination; production verification pending.
 
 Resources and Traffic history sections use bounded fixed provider queries, time-series SVG charts and table readbacks; external schema/credentials and live production verification pending.
+
+
+### Admin account analytics
+
+The native admin activity report reads aggregate account states, native signup counts and unexpired session counts using the existing restricted identity database role in a read-only transaction, excluding operator test identities. Distinct request owners are counted across the selected interval, not by summing daily counts. Sessions are not devices or online presence; device/country/referral data are not provided by these stores. No new grants or credentials. CI and live data verification pending.

@@ -69,8 +69,14 @@ function Activity({report}) {
   const data=report;
   const groups=[["requests","Request states"],["workflows","Native workflow states"],["goals","Personal MCP goal states"]];
   const con=data.conversations?.rows?.[0], mem=data.memory?.rows?.[0];
+  const accounts=data.identity?.accounts, sessions=data.identity?.sessions;
   return <>
-    <p className="data-note">Native request and conversation activity over {data.days} days. This is not the registered-user population. Workflow groups include current active or uncertain records even if older.</p>
+    <p className="data-note">Identity inventory and native request activity over {data.days} days. Account and live-session totals are current snapshots, not period counts. Workflow groups include current active or uncertain records even if older.</p>
+    <h2 className="ops-subtitle">Accounts and sessions · {data.identity?.state||"unavailable"}</h2>
+    <section className="stats">{[["Registered non-test accounts",accounts?.total_accounts],["Enabled accounts",accounts?.active_accounts],["Pending accounts",accounts?.pending_accounts],["Disabled accounts",accounts?.disabled_accounts],["Native signups in period",accounts?.native_signups],["Unexpired sessions",sessions?.live_sessions],["Accounts with unexpired sessions",sessions?.session_holders],["Distinct request owners in period",data.request_owners?.rows?.[0]?.distinct_request_owners]].map(([label,value])=>
+      <article className="stat" key={label}><span>{label}</span><strong>{formatInteger(value)}</strong></article>)}</section>
+    <p className="data-note">Registered includes pending imported accounts. Native signups exclude imports and operator tests. An unexpired session is not an online user or unique device. Request owners may include test activity. Device, browser, visitor country and acquisition attribution are not collected by these stores.</p>
+    <h2 className="ops-subtitle">Product usage</h2>
     <section className="stats">{[["Active conversations",con?.active_conversations],["Conversation owners",con?.conversation_owners],["New saved memory entries",mem?.saved_entries],["Memory owners (new entries)",mem?.memory_owners],["New recall-enabled entries",mem?.recall_enabled_entries]].map(([label,value])=>
       <article className="stat" key={label}><span>{label}</span><strong>{formatInteger(value)}</strong></article>)}</section>
     <div className="ops-distributions">{groups.map(([key,label])=><Distribution key={key} title={label+" · "+(data[key]?.state||"unavailable")} values={Object.fromEntries((data[key]?.rows||[]).map(r=>[r.state||r.status,r.count]))}/>)}</div>
