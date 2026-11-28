@@ -201,3 +201,23 @@ def test_origin_budget_is_admitted_before_work(monkeypatch):
     goal,ceiling=asyncio.run(w.admit_origin(owner="owner-a",request_id=req,session_hash="synthetic",http=None))
     assert goal==w.objective_id("owner-a",req) and ceiling=="0.50"
     assert events==[("authority","owner-a","synthetic"),("budget",goal,"0.50")]
+
+
+def test_artifact_input_acceptance_requires_matching_receipt():
+    import json
+    from langchain_core.messages import AIMessage,ToolMessage
+    from agent_platform.native_workflows import required_artifacts_observed,required_reads_observed
+    fid=str(uuid4())
+    sha="a"*64
+    call=AIMessage(content="",tool_calls=[{"name":"inspect_attachment","args":{"file_id":fid},"id":"read"}])
+    receipt=lambda item:ToolMessage(name="inspect_attachment",tool_call_id="read",content=json.dumps(item))
+    good={"file":{"id":fid,"sha256":sha},"text":"Original evidence"}
+    assert required_artifacts_observed([call,receipt(good)],{fid:sha})
+    assert not required_artifacts_observed([call,receipt({"file":good["file"],"status":"requires_isolated_computer"})],{fid:sha})
+    assert not required_artifacts_observed([call,receipt(good)],{fid:"b"*64})
+    path="/workspace/report.md"
+    write=AIMessage(content="",tool_calls=[{"name":"write_file","args":{"file_path":path,"content":"replacement"},"id":"write"}])
+    read=AIMessage(content="",tool_calls=[{"name":"read_file","args":{"file_path":path},"id":"read2"}])
+    result=ToolMessage(name="read_file",tool_call_id="read2",content="replacement")
+    assert not required_reads_observed([write,read,result],[path])
+    assert required_reads_observed([read,result,write],[path])
