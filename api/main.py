@@ -514,11 +514,13 @@ async def inference(prefix: str, request: Request):
             item = json.loads(raw)
             if not isinstance(item, dict) or set(item) != {"job_id", "ceiling_usd"}:
                 return denied(400, "Invalid budget request")
-            from agent_platform.key_budget import verify_key_budget
+            from agent_platform.key_budget import parent_key_ceiling, verify_key_budget
             provider_cap = await verify_key_budget(
-                request.app.state.http, os.getenv("OPENROUTER_API_KEY", "")
+                request.app.state.http, os.getenv("OPENROUTER_API_KEY", ""),
+                max_total=parent_key_ceiling(),
             )
             if provider_cap.get("approved") is not True:
+                log.warning("Parent budget admission denied reason=%s", provider_cap.get("reason"))
                 return denied(503, "Provider hard cap not verified")
             from decimal import Decimal
             if Decimal(str(item["ceiling_usd"])) > Decimal(
@@ -729,9 +731,11 @@ async def inference(prefix: str, request: Request):
                         raise GatewayError(503, "Parallel parent budget gateway is disabled")
                     # Recheck the same non-resetting provider hard cap on every
                     # paid parent dispatch, including production wakes.
-                    from agent_platform.key_budget import verify_key_budget
-                    cap = await verify_key_budget(request.app.state.http, os.getenv("OPENROUTER_API_KEY", ""))
+                    from agent_platform.key_budget import parent_key_ceiling, verify_key_budget
+                    cap = await verify_key_budget(request.app.state.http, os.getenv("OPENROUTER_API_KEY", ""),
+                                                  max_total=parent_key_ceiling())
                     if cap.get("approved") is not True:
+                        log.warning("Parent dispatch denied reason=%s", cap.get("reason"))
                         raise GatewayError(503, "Provider hard cap not verified")
                     try:
                         await parent_budget.reserve(
