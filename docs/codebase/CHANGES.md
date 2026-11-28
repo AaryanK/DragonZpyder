@@ -1,5 +1,9 @@
 # Codebase change records
 
+## 2026-11-27 — isolated VM bootstrap diagnosis
+
+- `apps/sandbox_runner/computer_tool.py`: Defer the requests dependency to the HTTP-only path and return bounded fixed diagnostic exit codes for failed offline isolation probes. The existing scoped runner receives the numeric outcome; UID drop, syscall restrictions, descendant probes and fail-closed behavior remain mandatory. Initial exact-head runner and general CI passed; production VM execution, destruction and objective verification remain unproven.
+
 ## 2026-11-27 — expiring engineering acceptance identity
 
 - `api/tests/test_identity_operator_test_postgres.py`: Generate disposable passwords at runtime so fixtures pass the existing secret scanner. Real PostgreSQL CI for the initial revision passed; final revision remains subject to CI. No actual test credentials committed.
