@@ -778,8 +778,9 @@ async def inference(prefix: str, request: Request):
                         log.warning("Parent dispatch denied reason=%s", cap.get("reason"))
                         raise GatewayError(503, "Provider hard cap not verified")
                     try:
+                        price_caps = await parent_budget.price_caps(body["model"],request.app.state.http)
                         reservation_args = dict(job_id=parent_job_id, request_id=request_id,
-                            payload_bytes=len(raw), output_tokens=body["max_tokens"])
+                            payload_bytes=len(raw), output_tokens=body["max_tokens"],price_caps=price_caps)
                         try:
                             await parent_budget.reserve(**reservation_args)
                         except BudgetExceeded as initial:
@@ -818,7 +819,7 @@ async def inference(prefix: str, request: Request):
                     # Routing price ceilings match the conservative reservation
                     # bound. Do not override the provider's tool requirements.
                     body.setdefault("provider", {})["max_price"] = {
-                        "prompt": 1.0, "completion": 4.0
+                        "prompt": float(price_caps[0]), "completion": float(price_caps[1])
                     }
                     body["usage"] = {"include": True}
                 try:
