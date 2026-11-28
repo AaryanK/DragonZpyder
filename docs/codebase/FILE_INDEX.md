@@ -871,3 +871,8 @@ The native admin activity report reads aggregate account states, native signup c
 ### Recent client distribution
 
 Recent traffic now projects Railway clientUa to coarse device, OS and browser/client counts for the bounded deployment request sample. Unknown or ambiguous UA is explicitly classified; no raw UA or IP is emitted or stored. Request counts are not device or user counts. No country lookup or acquisition tracking; Railway edge region is not visitor country. Source field documented at https://docs.railway.com/cli/logs; credential-backed provider verification pending.
+
+
+### Runtime configuration control
+
+Admin Configuration compares reviewed source gate names with API/Web process state and Railway desired-state projection for API/Web/Worker. Existing admin token authenticates API read; native allowlist and same-origin CSRF protect a narrow API-only Railway upsert of web search, fetch, and native chat memory recall. Default-on memory recall retains existing consent and saved-memory management; no permission or budget bypass, no secret or arbitrary variable editor. Railway accepts desired state, not proof of rollout; process SHA and flags refreshed separately. Audit records go to server logs, not an immutable audit ledger. Worker live state and exhaustive repo-wide capability inventory remain pending. Existing project tokens are required on Web; no token creation or live configuration change performed.

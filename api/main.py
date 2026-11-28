@@ -316,6 +316,62 @@ async def healthz():
 
 
 
+ADMIN_CONFIG_FLAGS = (
+    "DRAGONZPYDER_AGENTS_ENABLED",
+    "DRAGONZPYDER_FIRST_PARTY_CHAT_ENABLED",
+    "DRAGONZPYDER_IDENTITY_HTTP_ENABLED",
+    "DRAGONZPYDER_AGENT_HARNESS_V2",
+    "DRAGONZPYDER_AGENT_USE_GATEWAY",
+    "DRAGONZPYDER_AGENT_PARALLEL_GATEWAY_ENABLED",
+    "DRAGONZPYDER_AGENT_WEB_SEARCH_ENABLED",
+    "DRAGONZPYDER_AGENT_WEB_FETCH_ENABLED",
+    "DRAGONZPYDER_AGENT_ARTIFACTS_ENABLED",
+    "DRAGONZPYDER_FIRST_PARTY_COMPUTER_ENABLED",
+    "DRAGONZPYDER_FIRST_PARTY_REQUEST_LEDGER_ENABLED",
+    "DRAGONZPYDER_FIRST_PARTY_STREAM_ENABLED",
+    "DRAGONZPYDER_NATIVE_DURABLE_WORKFLOWS_ENABLED",
+    "DRAGONZPYDER_EXECUTION_GRAPH_ENABLED",
+    "DRAGONZPYDER_PERSONAL_MCP_SCHEDULED_ENABLED",
+    "DRAGONZPYDER_PERSONAL_GOAL_CONTROLLER_ENABLED",
+    "DRAGONZPYDER_FIRST_PARTY_GOAL_MANAGEMENT_ENABLED",
+    "DRAGONZPYDER_MCP_USER_CONNECTIONS_ENABLED",
+    "DRAGONZPYDER_NATIVE_MCP_OAUTH_ENABLED",
+    "DRAGONZPYDER_MCP_EGRESS_FIREWALL_ENFORCED",
+    "DRAGONZPYDER_MCP_USER_CONNECTIONS_PRODUCTION_APPROVED",
+    "DRAGONZPYDER_MCP_PROGRAMMATIC_READS_ENABLED",
+    "DRAGONZPYDER_AGENT_QUICKJS_ENABLED",
+    "DRAGONZPYDER_ADAPTIVE_ROUTING_ENABLED",
+    "DRAGONZPYDER_AGENT_MEDIA_ENABLED",
+    "DRAGONZPYDER_NATIVE_VOICE_ENABLED",
+    "DRAGONZPYDER_NATIVE_VOICE_AGENT_ENABLED",
+    "DRAGONZPYDER_FIRST_PARTY_WEB_CUTOVER_ENABLED",
+    "DRAGONZPYDER_AGENT_WORKER_ALLOWED",
+    "DRAGONZPYDER_WEB_MONITOR_ENABLED",
+    "DRAGONZPYDER_OPERLY_TOOLS_ENABLED",
+    "DRAGONZPYDER_PERSONAL_MEMORY_RECALL_ENABLED",
+)
+
+
+def admin_runtime_config(request: Request):
+    """Only report allowlisted non-secret booleans from this running process."""
+    values = {}
+    for name in ADMIN_CONFIG_FLAGS:
+        value = os.getenv(name)
+        values[name] = ("default_on" if name.endswith("PERSONAL_MEMORY_RECALL_ENABLED") else "unset") if value is None else (
+            "on" if value == "1" else "off" if value == "0" else "other")
+    return {"flags": values,
+            "deployed_sha": os.getenv("RAILWAY_GIT_COMMIT_SHA"),
+            "dependencies": {name: bool(os.getenv(name)) for name in (
+                "HATCHET_CLIENT_TOKEN", "DRAGONZPYDER_AGENT_DATABASE_URL",
+                "DRAGONZPYDER_MCP_DATABASE_URL", "DRAGONZPYDER_MCP_FERNET_KEYS",
+                "DRAGONZPYDER_SEARXNG_ORIGIN", "DRAGONZPYDER_BRAVE_SEARCH_API_KEY",
+                "DRAGONZPYDER_MEMORY_DATABASE_URL", "DRAGONZPYDER_ARTIFACT_KEY_B64",
+                "DRAGONZPYDER_COMPUTER_RUNNER_URL", "DRAGONZPYDER_NATIVE_DURABLE_MAX_USD")},
+            "native_memory_storage_ready": bool(getattr(request.app.state, "personal_memory_ready", False)),
+            "mcp_initialized": getattr(request.app.state, "mcp_connections", None) is not None,
+            "agent_initialized": getattr(request.app.state, "agent_runtime", None) is not None}
+
+
 async def admin_identity_activity(days: int):
     """Count visible non-test identities and live sessions; never select PII."""
     from identity.http_bridge import _identity_db
@@ -476,6 +532,13 @@ async def inference(prefix: str, request: Request):
             return denied(503, "Parent budget database unavailable")
         return JSONResponse({"status": "created", "job_id": item["job_id"],
                              "atomic_gateway_enforced": True})
+
+    if path == "/internal/admin/config":
+        if not admin_authorized(request):
+            return denied(401, "Admin service authentication required")
+        if request.method != "GET":
+            return denied(405, "Method not allowed")
+        return JSONResponse(admin_runtime_config(request), headers={"cache-control": "no-store"})
 
     if path == "/internal/admin/activity":
         if not admin_authorized(request):

@@ -1,5 +1,15 @@
 # Codebase change records
 
+## 2026-11-27 — runtime configuration console
+
+- `api/main.py`: Restricted service-bearer runtime gate and dependency presence report; no secret values.
+- `api/agent_platform/first_party_chat.py`: Default-on native chat recall gate preserving consent and account memory management.
+- `web/main.py`: Admin Configuration compares reviewed source gate names with API/Web process state and Railway desired-state projection for API/Web/Worker. Existing admin token authenticates API read; native allowlist and same-origin CSRF protect a narrow API-only Railway upsert of web search, fetch, and native chat memory recall. Default-on memory recall retains existing consent and saved-memory management; no permission or budget bypass, no secret or arbitrary variable editor. Railway accepts desired state, not proof of rollout; process SHA and flags refreshed separately. Audit records go to server logs, not an immutable audit ledger. Worker live state and exhaustive repo-wide capability inventory remain pending. Existing project tokens are required on Web; no token creation or live configuration change performed. Correct Railway service inventory join by service ID.
+- `web/frontend/src/admin.jsx`: Configuration tab with desired/live states and explicit confirmation controls.
+- `api/tests/test_usage_audit.py`: Verify authenticated config response and secret redaction.
+- `web/tests/test_admin_protection.py`: Verify native CSRF, fixed mutation scope and missing credential behavior. CI pending.
+
+
 ## 2026-11-27 — coarse client analytics
 
 - `web/main.py`: Recent traffic now projects Railway clientUa to coarse device, OS and browser/client counts for the bounded deployment request sample. Unknown or ambiguous UA is explicitly classified; no raw UA or IP is emitted or stored. Request counts are not device or user counts. No country lookup or acquisition tracking; Railway edge region is not visitor country. Source field documented at https://docs.railway.com/cli/logs; credential-backed provider verification pending.
