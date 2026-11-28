@@ -174,3 +174,30 @@ def test_required_reads_are_evidence_not_model_claims():
     success=ToolMessage(name="read_file",tool_call_id="read",content="1\tOriginal report",status="success")
     assert required_reads_observed([call,success],[path])
     assert not required_reads_observed([call,success],["/workspace/other.md"])
+
+
+def test_new_workflow_contract_requires_checkable_outputs():
+    from agent_platform.native_workflows import WorkflowPhase,WorkflowPlan,require_acceptance,objective_id
+    fields=dict(objective="Produce an evidence report",conversation_id=uuid4(),request_id=uuid4())
+    with pytest.raises(ValueError):
+        require_acceptance(WorkflowPlan(**fields,phases=[WorkflowPhase(id="verify",objective="Trust me")]))
+    require_acceptance(WorkflowPlan(**fields,phases=[WorkflowPhase(id="verify",objective="Publish",required_artifact_names=["report.md"])]))
+    require_acceptance(WorkflowPlan(**fields,phases=[WorkflowPhase(id="verify",objective="Return exact text",expected_answer="42")]))
+    assert objective_id("owner-a",fields["request_id"])==objective_id("owner-a",fields["request_id"])
+    assert objective_id("owner-a",fields["request_id"])!=objective_id("owner-b",fields["request_id"])
+
+
+def test_origin_budget_is_admitted_before_work(monkeypatch):
+    from agent_platform import native_workflows as w
+    events=[]
+    req=uuid4()
+    monkeypatch.setattr(w,"require_gate",lambda:"0.50")
+    async def verify(owner,session_hash):
+        events.append(("authority",owner,session_hash))
+    async def create(goal_id,ceiling,http):
+        events.append(("budget",goal_id,ceiling))
+    monkeypatch.setattr(w,"verify_authority",verify)
+    monkeypatch.setattr(w,"create_budget",create)
+    goal,ceiling=asyncio.run(w.admit_origin(owner="owner-a",request_id=req,session_hash="synthetic",http=None))
+    assert goal==w.objective_id("owner-a",req) and ceiling=="0.50"
+    assert events==[("authority","owner-a","synthetic"),("budget",goal,"0.50")]
