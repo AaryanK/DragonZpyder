@@ -778,10 +778,26 @@ async def inference(prefix: str, request: Request):
                         log.warning("Parent dispatch denied reason=%s", cap.get("reason"))
                         raise GatewayError(503, "Provider hard cap not verified")
                     try:
-                        await parent_budget.reserve(
-                            job_id=parent_job_id, request_id=request_id,
-                            payload_bytes=len(raw), output_tokens=body["max_tokens"]
-                        )
+                        reservation_args = dict(job_id=parent_job_id, request_id=request_id,
+                            payload_bytes=len(raw), output_tokens=body["max_tokens"])
+                        try:
+                            await parent_budget.reserve(**reservation_args)
+                        except BudgetExceeded as initial:
+                            # Reconcile only an exhausted ceiling. This request
+                            # has NOT been sent upstream; retrying reservation
+                            # is not replaying inference or an external effect.
+                            if str(initial)!="Shared parent USD budget exceeded":
+                                raise
+                            try:
+                                resolved=await parent_budget.reconcile(job_id=parent_job_id,
+                                    ledger=ledger,http=request.app.state.http,
+                                    key=os.environ["OPENROUTER_API_KEY"])
+                            except Exception:
+                                resolved=0
+                            if not resolved:
+                                raise
+                            log.info("Parent budget reconciled goal_id=%s holds=%d",parent_job_id,resolved)
+                            await parent_budget.reserve(**reservation_args)
                         parent_reserved = True
                     except (ValueError, BudgetExceeded) as error:
                         # Only fixed categories; no user text or raw exception content.
@@ -840,6 +856,13 @@ async def inference(prefix: str, request: Request):
                     )
                 try:
                     provider_response = upstream.json()
+                    if isinstance(provider_response,dict):
+                        raw_generation=provider_response.get("id")
+                        if isinstance(raw_generation,str) and re.fullmatch(r"[A-Za-z0-9_.:-]{1,128}",raw_generation):
+                            generation_id=raw_generation
+                        raw_model=provider_response.get("model")
+                        if isinstance(raw_model,str) and 0<len(raw_model)<=256:
+                            served_model=raw_model
                     # A paid response can be unusable at the protocol layer.
                     # Settle the authoritative provider usage before validating
                     # the completion shape, rather than stranding its hold.
@@ -907,8 +930,7 @@ async def inference(prefix: str, request: Request):
                         if error.code == TOOL_SELECTION_CODE:
                             raise GatewayError(502, "Model tool selection rejected before dispatch", code=TOOL_SELECTION_CODE) from None
                     raise GatewayError(502, "Model provider returned unexpected content")
-                served_model = str(provider_response.get("model") or body["model"])
-                generation_id = str(provider_response.get("id") or "") or None
+                served_model = served_model or body["model"]
                 response = JSONResponse(payload)
                 status = "ok"
             except GatewayError as error:
