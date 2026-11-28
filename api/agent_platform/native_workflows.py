@@ -12,6 +12,7 @@ from datetime import datetime,timedelta,timezone
 import hashlib
 import hmac
 import json
+import logging
 import os
 import re
 from urllib.parse import urlsplit
@@ -27,6 +28,7 @@ from .budget_reservations import amount
 
 router=APIRouter(tags=["native-durable-workflows"])
 MAX_STEPS=6
+log=logging.getLogger(__name__)
 
 
 class WorkspaceSnapshot(BaseModel):
@@ -45,9 +47,18 @@ def workspace_bytes(files):
     if len(selected)>32:
         raise ValueError("Workspace handoff exceeds file bound")
     for value in selected.values():
-        if (not isinstance(value,dict) or not isinstance(value.get("content"),list)
-                or any(not isinstance(line,str) for line in value["content"])):
+        if not isinstance(value,dict):
             raise ValueError("Invalid workspace file state")
+        content=value.get("content")
+        # Deep Agents >=0.7 uses string FileData; older checkpoints can
+        # still contain lists of lines. Preserve exact native representation.
+        if not (isinstance(content,str) or isinstance(content,list)
+                and all(isinstance(line,str) for line in content)):
+            raise ValueError("Invalid workspace file content")
+        if value.get("encoding","utf-8") not in {"utf-8","base64"}:
+            raise ValueError("Invalid workspace file encoding")
+        if set(value)-{"content","created_at","modified_at","encoding"}:
+            raise ValueError("Unexpected workspace file metadata")
     raw=json.dumps(selected,sort_keys=True,ensure_ascii=False,separators=(",",":"),allow_nan=False).encode()
     if len(raw)>512*1024:
         raise ValueError("Workspace handoff exceeds byte bound")
@@ -355,17 +366,21 @@ def native_workflow_tools(*,owner,session_hash,conversation_id,request_id,
         Declare required_workspace_paths for files a phase must read, and
         required_artifact_names for files it must publish. The current virtual
         workspace is snapshotted by the runtime; do not recreate missing inputs."""
+        stage="authority"
         try:
             require_gate()
             await verify_authority(owner,session_hash)
+            stage="workspace_snapshot"
             async with _conversation_db() as db:
                 await _require_conversation(db,user=owner,conversation_id=conversation_id)
                 snapshot=await save_workspace(db,owner,request_id,runtime.state.get("files",{}))
+            stage="schedule"
             plan=WorkflowPlan(objective=objective,phases=phases,start_after_minutes=start_after_minutes,
                 conversation_id=conversation_id,request_id=request_id,attachment_ids=attachment_ids,
                 mcp_connection_ids=mcp_connection_ids,allow_computer=allow_computer,workspace_snapshot=snapshot)
             return await schedule(owner=owner,session_hash=session_hash,plan=plan,http=http)
-        except Exception:
+        except Exception as exc:
+            log.warning("Workflow schedule unavailable stage=%s error_type=%s",stage,type(exc).__name__)
             raise ToolException("Workflow schedule unavailable or unconfirmed; do not replay") from None
 
     @tool
