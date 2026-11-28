@@ -783,7 +783,21 @@ async def inference(prefix: str, request: Request):
                             payload_bytes=len(raw), output_tokens=body["max_tokens"]
                         )
                         parent_reserved = True
-                    except (ValueError, BudgetExceeded):
+                    except (ValueError, BudgetExceeded) as error:
+                        # Only fixed categories; no user text or raw exception content.
+                        reason = {
+                            "Shared parent USD budget exceeded": "ceiling_exceeded",
+                            "Missing authenticated parent budget": "missing_parent",
+                            "Duplicate inference request; replay refused": "duplicate_request",
+                            "Conflicting idempotency key": "idempotency_conflict",
+                            "Inference request bounds invalid": "request_bounds",
+                        }.get(str(error), "admission_invalid")
+                        try:
+                            accounting = await parent_budget.accounting_snapshot(parent_job_id)
+                        except Exception:
+                            accounting = {"available": False}
+                        log.warning("Parent budget admission denied reason=%s goal_id=%s request_id=%s accounting=%s",
+                                    reason, parent_job_id, request_id, accounting)
                         raise GatewayError(429, "Atomic parent inference budget unavailable") from None
                     # Routing price ceilings match the conservative reservation
                     # bound. Do not override the provider's tool requirements.
@@ -826,6 +840,19 @@ async def inference(prefix: str, request: Request):
                     )
                 try:
                     provider_response = upstream.json()
+                    # A paid response can be unusable at the protocol layer.
+                    # Settle the authoritative provider usage before validating
+                    # the completion shape, rather than stranding its hold.
+                    if parent_reserved:
+                        try:
+                            settled = await parent_budget.settle(
+                                job_id=parent_job_id, request_id=request_id,
+                                provider_response=provider_response)
+                            if not settled:
+                                log.warning("Parent budget settlement unresolved goal_id=%s request_id=%s",
+                                            parent_job_id, request_id)
+                        finally:
+                            parent_finalized = True
                     if agent_protocol:
                         payload = validate_agent_response(
                             provider_response, body["model"],
@@ -882,15 +909,6 @@ async def inference(prefix: str, request: Request):
                     raise GatewayError(502, "Model provider returned unexpected content")
                 served_model = str(provider_response.get("model") or body["model"])
                 generation_id = str(provider_response.get("id") or "") or None
-                if parent_reserved:
-                    # Missing/invalid/above-bound provider usage never frees
-                    # reserved dollars. The provider hard key cap still applies.
-                    try:
-                        await parent_budget.settle(job_id=parent_job_id,
-                            request_id=request_id,
-                            provider_response=provider_response)
-                    finally:
-                        parent_finalized = True
                 response = JSONResponse(payload)
                 status = "ok"
             except GatewayError as error:
