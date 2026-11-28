@@ -66,7 +66,8 @@ def test_native_workflow_commits_and_recovers_exact_phase_without_replay(monkeyp
     phases=[
         w.WorkflowPhase(id="prepare",objective="Read the original report and publish a text report",
             required_workspace_paths=["/workspace/report.md"],required_artifact_names=["result.txt"]),
-        w.WorkflowPhase(id="review",objective="Review the evidence",depends_on=["prepare"])]
+        w.WorkflowPhase(id="review",objective="Review the evidence",depends_on=["prepare"],
+            expected_answer="Reviewed the persisted report.")]
     captured=[]
     async def capture_schedule(*,owner,session_hash,plan,http):
         captured.append(plan)
@@ -137,6 +138,8 @@ def test_native_workflow_commits_and_recovers_exact_phase_without_replay(monkeyp
                 assert await w.execute_phase(goal,state)=={"goal_id":str(goal),"state":"completed"}
                 status=await w.workflow_status(owner,goal)
                 assert status["completed_phases"]==2
+                assert status["acceptance_verified"] is True
+                assert status["objective_verified"] is False
                 assert status["phase_receipts"][1]["report"]["recovered_checkpoint"] is True
                 assert status["phase_receipts"][1]["report"]["answer"]=="Reviewed the persisted report."
                 with pytest.raises(HTTPException) as denied:
