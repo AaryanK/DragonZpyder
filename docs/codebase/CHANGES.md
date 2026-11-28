@@ -8,7 +8,9 @@
 - `api/agent_platform/gateway_parent_budget.py`: Read-only parent ceiling, outstanding reservation, settled spend and unknown-hold count diagnostics. Do not release unknown holds or change approved caps.
 - `api/tests/test_native_workflows_postgres.py`: Regression for chat-created virtual file -> scheduling tool -> persisted workspace snapshot -> separate phase checkpoint and exact recovery.
 - `api/tests/test_native_harness_extensions.py`: Bounded workspace path/size checks and read receipt acceptance regression.
-- Pending CI and production verification. Price-estimation changes, automatic provider reconciliation of already-unknown holds, general semantic objective verification and full evidence transfer are not asserted.
+- `api/agent_platform/gateway_parent_budget.py`, `api/main.py`: On a parent ceiling rejection, reconcile up to 16 outstanding reservations against trusted gateway-owned usage rows, with at most four read-only provider generation metadata lookups; release only authoritative matching costs under atomic settlement, then retry admission once before any inference dispatch. No background polling or replay. Preserve generation identity before response-shape validation.
+- `api/tests/test_gateway_parent_budget.py`: Offline tests for trusted-cost reconciliation, matching generation IDs and unresolved holds.
+- Fix snapshot serialization for current string-valued FileData and legacy list-valued checkpoints; first CI run identified a scheduling regression, compatibility fix and rerun pending. Price-estimation changes, historical holds lacking provider evidence, general semantic objective verification and full evidence transfer remain unresolved.
 
 
 ## 2026-11-27 — cross-project traffic
